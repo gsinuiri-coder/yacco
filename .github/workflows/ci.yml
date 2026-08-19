@@ -45,14 +45,14 @@ jobs:
       # Exposed as env because the secrets context is not available in step `if` conditions.
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Full history for SonarCloud blame and new-code detection.
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4 # version comes from packageManager in package.json
+      - uses: pnpm/action-setup@v6 # version comes from packageManager in package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -99,16 +99,16 @@ jobs:
       - name: SonarCloud scan
         # Skipped on forked PRs (no secrets) and until SONAR_TOKEN is configured.
         if: ${{ env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        uses: sonarsource/sonarqube-scan-action@v6
+        uses: sonarsource/sonarqube-scan-action@v8
 
   gitleaks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # Gitleaks scans the full commit history.
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
