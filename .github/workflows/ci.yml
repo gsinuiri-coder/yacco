@@ -96,7 +96,7 @@ jobs:
       - name: SonarCloud scan
         # Skipped on forked PRs (no secrets) and until SONAR_TOKEN is configured.
         if: ${{ env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        uses: sonarsource/sonarqube-scan-action@v5
+        uses: sonarsource/sonarqube-scan-action@v6
 
   gitleaks:
     runs-on: ubuntu-latest
