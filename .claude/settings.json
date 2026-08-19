@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pnpm exec prettier --write \"$CLAUDE_FILE_PATHS\" && pnpm exec eslint --fix \"$CLAUDE_FILE_PATHS\""
+            "command": "pnpm exec prettier --write $CLAUDE_FILE_PATHS && pnpm exec eslint --fix $CLAUDE_FILE_PATHS"
           }
         ]
       }

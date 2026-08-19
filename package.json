@@ -15,6 +15,9 @@
     "test": "pnpm -r test",
     "test:integration": "pnpm -r test:integration",
     "build": "pnpm -r build",
+    "prisma:validate": "pnpm --filter @yacco/api prisma:validate",
+    "prisma:migrate": "pnpm --filter @yacco/api prisma:migrate",
+    "db:seed": "pnpm --filter @yacco/api db:seed",
     "prepare": "husky"
   },
   "devDependencies": {

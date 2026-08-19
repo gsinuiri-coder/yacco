@@ -1,0 +1,488 @@
+// Yacco — data model per spec §3.5 (docs/yacco-documentacion.md).
+// Prisma names: PascalCase models / camelCase fields; DB stays snake_case
+// (plural tables) via @map/@@map. Money is NUMERIC(10,2); event timestamps
+// are timestamptz (UTC); business days are calendar dates (America/Lima at
+// the edges). CHECK constraints and the partial FIFO index live in the
+// migration SQL — Prisma cannot express them.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Enums ------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  SELLER
+  DRIVER
+
+  @@map("user_role")
+}
+
+enum ProductType {
+  REFILL
+  CONTAINER_SALE
+
+  @@map("product_type")
+}
+
+enum ContainerMovementType {
+  FLEET_ENTRY
+  FILLING
+  ROUTE_LOAD
+  LOAN_DELIVERY
+  EMPTY_PICKUP
+  FULL_RETURN
+  EMPTY_UNLOAD
+  FULL_SALE
+  DAMAGE_WRITE_OFF
+  LOSS_WRITE_OFF
+
+  @@map("container_movement_type")
+}
+
+enum OrderStatus {
+  PENDING
+  ON_ROUTE
+  DELIVERED
+  FAILED
+  CANCELLED
+
+  @@map("order_status")
+}
+
+enum RouteStatus {
+  PLANNED
+  IN_PROGRESS
+  FINISHED
+  SETTLED
+
+  @@map("route_status")
+}
+
+enum StopStatus {
+  PENDING
+  DELIVERED
+  FAILED
+
+  @@map("stop_status")
+}
+
+enum StopOrigin {
+  ORDER
+  VAN_SALE
+
+  @@map("stop_origin")
+}
+
+enum SyncOperationStatus {
+  APPLIED
+  DUPLICATE
+  REJECTED
+
+  @@map("sync_operation_status")
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+
+  @@map("weekday")
+}
+
+// --- Security & catalogs ----------------------------------------------------
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  roles              UserRoleAssignment[]
+  productionBatches  ProductionBatch[]
+  containerMovements ContainerMovement[]
+  orders             Order[]
+  routes             Route[]
+  sales              Sale[]
+  payments           Payment[]
+  routeSettlements   RouteSettlement[]
+  syncOperations     SyncOperation[]
+
+  @@map("users")
+}
+
+model Role {
+  id   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name UserRole @unique
+
+  users UserRoleAssignment[]
+
+  @@map("roles")
+}
+
+model UserRoleAssignment {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model Zone {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  deliveryDays Weekday[] @map("delivery_days")
+  active       Boolean   @default(true)
+
+  customers Customer[]
+  routes    Route[]
+
+  @@map("zones")
+}
+
+model ContainerType {
+  id     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name   String  @unique
+  active Boolean @default(true)
+
+  products   Product[]
+  batchItems BatchItem[]
+  movements  ContainerMovement[]
+  balances   CustomerContainerBalance[]
+
+  @@map("container_types")
+}
+
+model PaymentMethod {
+  id     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name   String  @unique
+  active Boolean @default(true)
+
+  payments Payment[]
+
+  @@map("payment_methods")
+}
+
+// --- Customers & products ---------------------------------------------------
+
+model Customer {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zoneId           String?  @map("zone_id") @db.Uuid
+  name             String
+  phone            String
+  address          String
+  addressReference String   @map("address_reference")
+  creditLimit      Decimal? @map("credit_limit") @db.Decimal(10, 2)
+  debtBalance      Decimal  @default(0) @map("debt_balance") @db.Decimal(10, 2)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  zone       Zone?                      @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  prices     CustomerPrice[]
+  balances   CustomerContainerBalance[]
+  movements  ContainerMovement[]
+  orders     Order[]
+  routeStops RouteStop[]
+  sales      Sale[]
+  payments   Payment[]
+
+  @@map("customers")
+}
+
+model Product {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  containerTypeId String      @map("container_type_id") @db.Uuid
+  name            String
+  type            ProductType
+  listPrice       Decimal     @map("list_price") @db.Decimal(10, 2)
+  active          Boolean     @default(true)
+
+  containerType  ContainerType   @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  customerPrices CustomerPrice[]
+  orderItems     OrderItem[]
+  saleItems      SaleItem[]
+
+  @@map("products")
+}
+
+model CustomerPrice {
+  customerId String  @map("customer_id") @db.Uuid
+  productId  String  @map("product_id") @db.Uuid
+  price      Decimal @db.Decimal(10, 2)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@id([customerId, productId])
+  @@map("customer_prices")
+}
+
+// --- Production -------------------------------------------------------------
+
+model ProductionBatch {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code       String   @unique
+  date       DateTime @db.Date
+  filledById String   @map("filled_by") @db.Uuid
+  notes      String?
+
+  filledBy  User                @relation(fields: [filledById], references: [id], onDelete: Restrict)
+  items     BatchItem[]
+  movements ContainerMovement[]
+
+  @@map("production_batches")
+}
+
+model BatchItem {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchId         String @map("batch_id") @db.Uuid
+  containerTypeId String @map("container_type_id") @db.Uuid
+  producedQty     Int    @map("produced_qty")
+  availableQty    Int    @map("available_qty")
+
+  batch         ProductionBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  containerType ContainerType   @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  routeLoads    RouteLoad[]
+
+  @@map("batch_items")
+}
+
+// --- Container ledger -------------------------------------------------------
+
+// Immutable ledger: never UPDATE/DELETE; corrections are inverse movements.
+model ContainerMovement {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  occurredAt      DateTime              @map("occurred_at") @db.Timestamptz(6)
+  type            ContainerMovementType
+  containerTypeId String                @map("container_type_id") @db.Uuid
+  quantity        Int
+  customerId      String?               @map("customer_id") @db.Uuid
+  batchId         String?               @map("batch_id") @db.Uuid
+  stopId          String?               @map("stop_id") @db.Uuid
+  recordedById    String                @map("recorded_by") @db.Uuid
+
+  containerType ContainerType    @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  customer      Customer?        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  batch         ProductionBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  stop          RouteStop?       @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  recordedBy    User             @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([customerId, occurredAt])
+  @@map("container_movements")
+}
+
+// Materialized from container_movements in the same transaction; always
+// reconstructible from the ledger.
+model CustomerContainerBalance {
+  customerId      String @map("customer_id") @db.Uuid
+  containerTypeId String @map("container_type_id") @db.Uuid
+  quantity        Int    @default(0)
+
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  containerType ContainerType @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+
+  @@id([customerId, containerTypeId])
+  @@map("customer_container_balances")
+}
+
+// --- Orders & routes --------------------------------------------------------
+
+model Order {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId   String      @map("customer_id") @db.Uuid
+  deliveryDate DateTime    @map("delivery_date") @db.Date
+  status       OrderStatus @default(PENDING)
+  createdById  String      @map("created_by") @db.Uuid
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer  Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy User        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  items     OrderItem[]
+  routeStop RouteStop?
+
+  @@index([status, deliveryDate])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId   String  @map("order_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  quantity  Int
+  unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@map("order_items")
+}
+
+model Route {
+  id       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date     DateTime    @db.Date
+  driverId String      @map("driver_id") @db.Uuid
+  zoneId   String?     @map("zone_id") @db.Uuid
+  status   RouteStatus @default(PLANNED)
+
+  driver     User             @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  zone       Zone?            @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  loads      RouteLoad[]
+  stops      RouteStop[]
+  settlement RouteSettlement?
+
+  @@map("routes")
+}
+
+// Consumes batch_items strictly FIFO (oldest production_batches.date first).
+model RouteLoad {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  routeId     String @map("route_id") @db.Uuid
+  batchItemId String @map("batch_item_id") @db.Uuid
+  quantity    Int
+
+  route     Route     @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  batchItem BatchItem @relation(fields: [batchItemId], references: [id], onDelete: Restrict)
+
+  @@map("route_loads")
+}
+
+model RouteStop {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  routeId       String     @map("route_id") @db.Uuid
+  customerId    String     @map("customer_id") @db.Uuid
+  position      Int
+  origin        StopOrigin
+  orderId       String?    @unique @map("order_id") @db.Uuid
+  status        StopStatus @default(PENDING)
+  failureReason String?    @map("failure_reason")
+
+  route     Route               @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  customer  Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  order     Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  movements ContainerMovement[]
+  sales     Sale[]
+  payments  Payment[]
+  evidences Evidence[]
+
+  @@index([routeId, position])
+  @@map("route_stops")
+}
+
+// --- Sales & collections ----------------------------------------------------
+
+model Sale {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId          String   @map("customer_id") @db.Uuid
+  stopId              String?  @map("stop_id") @db.Uuid
+  soldAt              DateTime @map("sold_at") @db.Timestamptz(6)
+  total               Decimal  @db.Decimal(10, 2)
+  creditLimitExceeded Boolean  @default(false) @map("credit_limit_exceeded")
+  recordedById        String   @map("recorded_by") @db.Uuid
+
+  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  stop       RouteStop? @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  recordedBy User       @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  items      SaleItem[]
+  payments   Payment[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  saleId    String  @map("sale_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  quantity  Int
+  unitPrice Decimal @map("unit_price") @db.Decimal(10, 2)
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@map("sale_items")
+}
+
+model Payment {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId      String   @map("customer_id") @db.Uuid
+  saleId          String?  @map("sale_id") @db.Uuid
+  stopId          String?  @map("stop_id") @db.Uuid
+  paymentMethodId String   @map("payment_method_id") @db.Uuid
+  paidAt          DateTime @map("paid_at") @db.Timestamptz(6)
+  amount          Decimal  @db.Decimal(10, 2)
+  recordedById    String   @map("recorded_by") @db.Uuid
+
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sale          Sale?         @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  stop          RouteStop?    @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  recordedBy    User          @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([paidAt, paymentMethodId])
+  @@map("payments")
+}
+
+// A settlement with a mismatch still closes: the difference and its reason
+// are recorded in notes; it never blocks.
+model RouteSettlement {
+  routeId          String   @id @map("route_id") @db.Uuid
+  fullOut          Int      @map("full_out")
+  fullDelivered    Int      @map("full_delivered")
+  fullSold         Int      @map("full_sold")
+  fullReturned     Int      @map("full_returned")
+  emptiesCollected Int      @map("empties_collected")
+  totalSold        Decimal  @map("total_sold") @db.Decimal(10, 2)
+  totalCollected   Decimal  @map("total_collected") @db.Decimal(10, 2)
+  totalOnCredit    Decimal  @map("total_on_credit") @db.Decimal(10, 2)
+  notes            String?
+  settledById      String   @map("settled_by") @db.Uuid
+  settledAt        DateTime @map("settled_at") @db.Timestamptz(6)
+
+  route     Route @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  settledBy User  @relation(fields: [settledById], references: [id], onDelete: Restrict)
+
+  @@map("route_settlements")
+}
+
+// --- Support ----------------------------------------------------------------
+
+model Evidence {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stopId     String   @map("stop_id") @db.Uuid
+  objectKey  String   @map("object_key")
+  capturedAt DateTime @map("captured_at") @db.Timestamptz(6)
+  synced     Boolean  @default(false)
+
+  stop RouteStop @relation(fields: [stopId], references: [id], onDelete: Restrict)
+
+  @@map("evidences")
+}
+
+// id is the device-generated UUID (idempotency key) — no DB default.
+model SyncOperation {
+  id              String              @id @db.Uuid
+  userId          String              @map("user_id") @db.Uuid
+  operationType   String              @map("operation_type")
+  payload         Json
+  clientTimestamp DateTime            @map("client_timestamp") @db.Timestamptz(6)
+  appliedAt       DateTime            @default(now()) @map("applied_at") @db.Timestamptz(6)
+  status          SyncOperationStatus
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("sync_operations")
+}

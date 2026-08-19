@@ -8,10 +8,20 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json",
-    "test": "echo \"no tests yet\""
+    "test": "echo \"no tests yet\"",
+    "prisma:validate": "prisma validate",
+    "prisma:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed"
   },
-  "dependencies": {},
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3"
+  },
   "devDependencies": {
+    "prisma": "^6.19.3",
     "tsx": "^4.19.2"
   }
 }
