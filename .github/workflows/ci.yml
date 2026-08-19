@@ -57,6 +57,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm --filter @yacco/api exec prisma generate
+
       - name: Format check
         run: pnpm exec prettier --check .
 
