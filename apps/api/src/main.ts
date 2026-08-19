@@ -4,6 +4,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module.js";
+import { reportBootstrapFailure } from "./config/report-bootstrap-failure.js";
 
 export async function bootstrap(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule);
@@ -38,10 +39,5 @@ export async function bootstrap(): Promise<INestApplication> {
 const isEntryPoint =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntryPoint) {
-  bootstrap().catch((error: unknown) => {
-    // Fail loudly at boot (bad/missing env, DB unreachable, etc.) instead of
-    // surfacing as an opaque failure on the first request or Prisma query.
-    console.error("Failed to start the application:", error);
-    process.exitCode = 1;
-  });
+  bootstrap().catch(reportBootstrapFailure);
 }
