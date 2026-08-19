@@ -18,6 +18,7 @@
     "prisma:validate": "pnpm --filter @yacco/api prisma:validate",
     "prisma:migrate": "pnpm --filter @yacco/api prisma:migrate",
     "db:seed": "pnpm --filter @yacco/api db:seed",
+    "db:deploy": "pnpm --filter @yacco/api db:deploy",
     "prepare": "husky"
   },
   "devDependencies": {

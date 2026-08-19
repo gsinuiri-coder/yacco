@@ -4,9 +4,15 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module.js";
+import { reportBootstrapFailure } from "./config/report-bootstrap-failure.js";
 
 export async function bootstrap(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule);
+
+  // Registers SIGTERM/SIGINT handlers that call app.close() (which runs
+  // PrismaService.onModuleDestroy -> $disconnect()) so a platform recycling
+  // the instance (Render) doesn't leave the pooled connection dangling.
+  app.enableShutdownHooks();
 
   app.setGlobalPrefix("api/v1");
   app.useGlobalPipes(
@@ -33,5 +39,5 @@ export async function bootstrap(): Promise<INestApplication> {
 const isEntryPoint =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntryPoint) {
-  void bootstrap();
+  bootstrap().catch(reportBootstrapFailure);
 }

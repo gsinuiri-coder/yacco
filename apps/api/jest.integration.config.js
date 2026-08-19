@@ -17,6 +17,6 @@ export default {
   testTimeout: 180000,
   maxWorkers: 1,
   collectCoverage: !!process.env.CI,
-  coverageDirectory: "coverage",
+  coverageDirectory: "coverage/integration",
   collectCoverageFrom: ["src/**/*.ts"],
 };

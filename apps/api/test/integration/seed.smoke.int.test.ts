@@ -8,8 +8,10 @@ let prisma: PrismaClient;
 beforeAll(async () => {
   container = await new PostgreSqlContainer("postgres:16-alpine").start();
   const databaseUrl = container.getConnectionUri();
-  // Explicit env so the container URL is used regardless of the ambient DATABASE_URL.
-  const env = { ...process.env, DATABASE_URL: databaseUrl };
+  // Explicit env so the container URL is used regardless of the ambient
+  // DATABASE_URL. A plain Testcontainers Postgres has no pooler in front of
+  // it, so DIRECT_URL (needed by `prisma migrate deploy`) is the same value.
+  const env = { ...process.env, DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl };
   execSync("pnpm exec prisma migrate deploy", { env, stdio: "inherit" });
   execSync("pnpm exec prisma db seed", { env, stdio: "inherit" });
   prisma = new PrismaClient({ datasourceUrl: databaseUrl });
@@ -34,8 +36,9 @@ test("migrations apply and seed produces the baseline rows", async () => {
 });
 
 test("seed is idempotent: re-running it does not duplicate rows", async () => {
+  const seedDatabaseUrl = container.getConnectionUri();
   execSync("pnpm exec prisma db seed", {
-    env: { ...process.env, DATABASE_URL: container.getConnectionUri() },
+    env: { ...process.env, DATABASE_URL: seedDatabaseUrl, DIRECT_URL: seedDatabaseUrl },
     stdio: "inherit",
   });
   expect(await prisma.role.count()).toBe(3);
