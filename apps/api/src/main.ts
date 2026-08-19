@@ -8,6 +8,11 @@ import { AppModule } from "./app.module.js";
 export async function bootstrap(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule);
 
+  // Registers SIGTERM/SIGINT handlers that call app.close() (which runs
+  // PrismaService.onModuleDestroy -> $disconnect()) so a platform recycling
+  // the instance (Render) doesn't leave the pooled connection dangling.
+  app.enableShutdownHooks();
+
   app.setGlobalPrefix("api/v1");
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
@@ -33,5 +38,10 @@ export async function bootstrap(): Promise<INestApplication> {
 const isEntryPoint =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntryPoint) {
-  void bootstrap();
+  bootstrap().catch((error: unknown) => {
+    // Fail loudly at boot (bad/missing env, DB unreachable, etc.) instead of
+    // surfacing as an opaque failure on the first request or Prisma query.
+    console.error("Failed to start the application:", error);
+    process.exitCode = 1;
+  });
 }

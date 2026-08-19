@@ -2,7 +2,6 @@ import { execSync } from "node:child_process";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { AppModule } from "../../../src/app.module.js";
 
 export interface TestAppContext {
   app: INestApplication;
@@ -17,16 +16,26 @@ export interface TestAppContext {
 export async function startTestApp(): Promise<TestAppContext> {
   const container = await new PostgreSqlContainer("postgres:16-alpine").start();
   const databaseUrl = container.getConnectionUri();
-  const env = { ...process.env, DATABASE_URL: databaseUrl };
+  // A plain Testcontainers Postgres has no pooler in front of it, so the
+  // pooled and direct endpoints are the same connection.
+  const env = { ...process.env, DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl };
   execSync("pnpm exec prisma migrate deploy", { env, stdio: "inherit" });
   execSync("pnpm exec prisma db seed", { env, stdio: "inherit" });
 
   process.env.DATABASE_URL = databaseUrl;
+  process.env.DIRECT_URL = databaseUrl;
   process.env.JWT_ACCESS_SECRET ??= "test-access-secret";
   process.env.JWT_ACCESS_EXPIRES_IN ??= "15m";
   process.env.JWT_REFRESH_SECRET ??= "test-refresh-secret";
   process.env.JWT_REFRESH_EXPIRES_IN ??= "30d";
+  process.env.PORT ??= "0";
 
+  // Dynamic import, deferred until after the env vars above are set:
+  // app.module.ts's @Module() decorator evaluates ConfigModule.forRoot()
+  // (and therefore our env validation) as soon as the module is loaded, so a
+  // static top-level import here would validate against whatever the
+  // ambient/.env values were at test-file load time, not these overrides.
+  const { AppModule } = await import("../../../src/app.module.js");
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
   app.setGlobalPrefix("api/v1");

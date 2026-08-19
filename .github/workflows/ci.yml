@@ -36,9 +36,12 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
-      # Dummy URL so `prisma validate` can resolve env("DATABASE_URL");
-      # integration tests override it with the Testcontainers URL.
+      # Dummy URLs so `prisma validate` can resolve env("DATABASE_URL") and
+      # env("DIRECT_URL"); integration tests override both with the
+      # Testcontainers URL, and the app's own env validation only runs when
+      # the app actually boots (not during these CLI-only steps).
       DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+      DIRECT_URL: "postgresql://ci:ci@localhost:5432/ci"
       # Exposed as env because the secrets context is not available in step `if` conditions.
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
