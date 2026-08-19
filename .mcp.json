@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "neon": { "type": "http", "url": "https://mcp.neon.tech/mcp" },
+    "render": { "//": "seguir render.com/docs/mcp-server (API key por env var)" },
+    "figma": { "//": "seguir la guía oficial del Dev Mode MCP server de Figma" }
+  }
+}
