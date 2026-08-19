@@ -117,9 +117,6 @@ export class UsersService {
       if (isPrismaKnownError(error, "P2025")) {
         throw new NotFoundException(`User "${id}" not found`);
       }
-      if (isPrismaKnownError(error, "P2002")) {
-        throw new ConflictException("Username is already taken");
-      }
       throw error;
     }
   }

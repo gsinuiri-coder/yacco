@@ -1,9 +1,11 @@
+import { JwtService } from "@nestjs/jwt";
 import request from "supertest";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
+const jwtService = new JwtService();
 
 let ctx: TestAppContext;
 
@@ -147,4 +149,68 @@ test("role guard: a SELLER-only user is denied ADMIN-only endpoints, and no toke
     .expect(403);
 
   await request(server()).get("/api/v1/users").expect(401);
+});
+
+test("refresh: a user deactivated after issuing a refresh token loses access on refresh", async () => {
+  const adminLogin = await request(server())
+    .post("/api/v1/auth/login")
+    .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
+    .expect(200);
+  const adminToken = adminLogin.body.accessToken as string;
+
+  const created = await request(server())
+    .post("/api/v1/users")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: "Se Desactiva Luego",
+      username: "deactivated-after-refresh",
+      password: "throwaway-password",
+      roles: ["DRIVER"],
+    })
+    .expect(201);
+
+  const driverLogin = await request(server())
+    .post("/api/v1/auth/login")
+    .send({ username: "deactivated-after-refresh", password: "throwaway-password" })
+    .expect(200);
+  const driverRefreshToken = driverLogin.body.refreshToken as string;
+
+  await request(server())
+    .patch(`/api/v1/users/${created.body.id}`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ active: false })
+    .expect(200);
+
+  await request(server())
+    .post("/api/v1/auth/refresh")
+    .set("Authorization", `Bearer ${driverRefreshToken}`)
+    .expect(401);
+});
+
+// The strategies' `type` claim check is defense-in-depth beyond secret
+// separation: forge a token with the RIGHT secret for its guard but the
+// WRONG `type`, so the request only fails at the strategy's own check.
+
+test("access guard: a token signed with the access secret but type=refresh is rejected", async () => {
+  const forgedToken = jwtService.sign(
+    { sub: "irrelevant", username: "irrelevant", roles: ["ADMIN"], type: "refresh" },
+    { secret: process.env.JWT_ACCESS_SECRET as string, expiresIn: "15m" },
+  );
+
+  await request(server())
+    .get("/api/v1/users")
+    .set("Authorization", `Bearer ${forgedToken}`)
+    .expect(401);
+});
+
+test("refresh guard: a token signed with the refresh secret but type=access is rejected", async () => {
+  const forgedToken = jwtService.sign(
+    { sub: "irrelevant", username: "irrelevant", roles: ["ADMIN"], type: "access" },
+    { secret: process.env.JWT_REFRESH_SECRET as string, expiresIn: "30d" },
+  );
+
+  await request(server())
+    .post("/api/v1/auth/refresh")
+    .set("Authorization", `Bearer ${forgedToken}`)
+    .expect(401);
 });

@@ -72,3 +72,35 @@ test("HU-22 E1: admin creates a user with SELLER and DRIVER roles, and both pers
   );
   expect(persistedAfterPatch.roles).toEqual(["ADMIN"]);
 });
+
+test("create: a duplicate username is rejected with 409 Conflict", async () => {
+  await request(server())
+    .post("/api/v1/users")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: "Primero",
+      username: "duplicate-username",
+      password: "first-password",
+      roles: ["SELLER"],
+    })
+    .expect(201);
+
+  await request(server())
+    .post("/api/v1/users")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: "Segundo",
+      username: "duplicate-username",
+      password: "second-password",
+      roles: ["DRIVER"],
+    })
+    .expect(409);
+});
+
+test("update: an unknown user id is rejected with 404 Not Found", async () => {
+  await request(server())
+    .patch("/api/v1/users/00000000-0000-0000-0000-000000000000")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ active: false })
+    .expect(404);
+});
