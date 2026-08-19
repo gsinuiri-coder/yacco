@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Never cancel main builds: deployment will hang off this workflow (§6.2).
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: "0"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      # Shadow database used only by the migration drift check below.
+      shadow-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shadow
+          POSTGRES_PASSWORD: shadow
+          POSTGRES_DB: shadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U shadow"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      # Dummy URL so `prisma validate` can resolve env("DATABASE_URL");
+      # integration tests override it with the Testcontainers URL.
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+      # Exposed as env because the secrets context is not available in step `if` conditions.
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history for SonarCloud blame and new-code detection.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4 # version comes from packageManager in package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @yacco/api exec prisma generate
+
+      - name: Format check
+        run: pnpm exec prettier --check .
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Prisma validate
+        run: pnpm prisma:validate
+
+      - name: Check migrations are in sync with the schema
+        working-directory: apps/api
+        run: >
+          pnpm exec prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema-datamodel prisma/schema.prisma
+          --shadow-database-url "postgresql://shadow:shadow@localhost:5432/shadow"
+          --exit-code
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Integration tests (Testcontainers)
+        run: pnpm test:integration
+
+      - name: Build
+        run: pnpm build
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
+      - name: SonarCloud scan
+        # Skipped on forked PRs (no secrets) and until SONAR_TOKEN is configured.
+        if: ${{ env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: sonarsource/sonarqube-scan-action@v5
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Gitleaks scans the full commit history.
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
