@@ -78,39 +78,33 @@ sobre cada archivo tocado antes de cada commit, y `lint-staged` (vía Husky,
 en el pre-commit hook real) sí corre correctamente y sí bloquea el commit si
 falla.
 
-## 4. `SonarCloud Code Analysis` nunca se publica en PRs de Dependabot
+## 4. Dependabot bloqueado: el check obligatorio de SonarCloud no se publica en PRs de Dependabot
 
-**Bloquea:** el merge de cualquier PR abierto por Dependabot mientras ese
-check siga en la lista de checks obligatorios de `main` y no se permita
-bypass (`--admin`). No es por PR — es sistémico, afecta a todos por igual.
+**Bloquea:** ningún PR de dependencias puede mergearse sin bypass, mientras
+`SonarCloud Code Analysis` siga en la lista de checks obligatorios de
+`main`. No bloquea el MVP.
 
-**Causa:** el branch protection de `main` exige el check `SonarCloud Code
-Analysis`. El step `SonarCloud scan` de `ci.yml` está condicionado a
-`env.SONAR_TOKEN != ''`, y ese secreto **nunca llega** a un workflow
-disparado por un `pull_request` de `dependabot[bot]` — es una restricción
-de GitHub Actions (protección anti-exfiltración), no una falla de
-configuración del repo.
+**Causa probable:** `SONAR_TOKEN` vive en el almacén de secretos de
+Actions; los workflows disparados por Dependabot parecen leer un almacén
+distinto (o no reciben secretos del repo en absoluto para eventos
+`pull_request` de `dependabot[bot]`, restricción anti-exfiltración conocida
+de GitHub Actions). No es una causa 100% confirmada a nivel de este repo —
+ver "Estado" abajo.
 
-**Intento de arreglo que NO funcionó:** agregar `SONAR_TOKEN` como
-[Dependabot secret](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/configuring-access-to-private-registries-for-dependabot#storing-credentials-for-dependabot-to-use)
-(Settings → Secrets and variables → Dependabot). Ese almacén es para que
-Dependabot se autentique a sí mismo contra registros privados al resolver
-versiones — GitHub Actions nunca lee de ahí. `secrets.SONAR_TOKEN` en un
-workflow solo lee el almacén de **Actions**, que sigue sin exponerse a
-estos runs. Verificado en vivo contra el PR #13 (`@types/node` 22→26,
-abierto disparando "Check for updates" manualmente): el job `ci` corre
-completo y en verde, pero el step `SonarCloud scan` aparece `skipped` y el
-volcado de entorno confirma `SONAR_TOKEN:` vacío.
+**Estado:** se agregó un secreto `SONAR_TOKEN` desde la UI de Settings →
+Secrets and variables → Dependabot. Al confirmar contra la API
+(`GET /repos/.../dependabot/secrets`) inmediatamente después, el repo
+reporta **cero** Dependabot secrets configurados (`total_count: 0`) — no
+quedó claro si la adición no se guardó, se aplicó en otro alcance, o algo
+más. El único secreto visible vía API es el de Actions (`SONAR_TOKEN`,
+`updated_at: 2026-08-19T06:43:31Z`, anterior a este intento). Un PR de
+Dependabot abierto después del intento (#13) tampoco recibió el token
+(`SonarCloud scan` step: `skipped`, `SONAR_TOKEN` vacío en el log) — así
+que lo verificado hoy es "no corría antes de agregar el secreto, y sigue
+sin correr después del intento de agregarlo", no que sea estructuralmente
+imposible de arreglar. Pendiente confirmar en el próximo intento.
 
-**Desbloqueo:** requiere una decisión de diseño de CI, no solo config —
-opciones a evaluar cuando se retome: mover el paso de Sonar a un workflow
-separado disparado por `pull_request_target` (con las precauciones de
-seguridad correspondientes: solo analizar, nunca ejecutar código de la PR
-con permisos elevados), o excluir `SonarCloud Code Analysis` de los checks
-obligatorios específicamente para el actor `dependabot[bot]`. Ninguna se
-aplicó todavía — deliberadamente pospuesto.
+**Impacto:** ningún PR de dependencias puede mergearse sin bypass. No
+bloquea el MVP. PR #13 (`@types/node` 22→26) queda abierto como indicador.
 
-**Mientras tanto:** los PRs de Dependabot que cumplan el resto de los
-criterios de merge (CI propio en verde, sin violación de peers) se
-evalúan pero no se mergean solos por este bloqueo; requieren revisión
-manual caso por caso. El PR #13 quedó abierto como recordatorio visible.
+**Retomar:** después de la Demo 1.
