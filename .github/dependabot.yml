@@ -12,6 +12,14 @@ updates:
         update-types:
           - minor
           - patch
+    # Prisma 7 requires ESM; NestJS is CommonJS. This is an architecture
+    # conflict, not a scheduling one — see docs/backlog-tecnico.md. Without
+    # this, every 7.x patch opens a PR that has to be closed by hand.
+    ignore:
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
