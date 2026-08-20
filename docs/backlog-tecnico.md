@@ -49,8 +49,12 @@ pequeño — es el momento más barato para pagarlo.
   (`chore(deps-dev): bump typescript from 5.9.3 to 6.0.3`). Dependabot lo
   va a seguir reabriendo cada semana — es intencional, no hay regla de
   `ignore` para `typescript`.
-- ESLint 10: PR #2 (`chore(deps-dev): bump eslint from 9.39.5 to 10.8.1`),
-  mismo criterio de calendario que TypeScript.
+- ESLint 10: **ya mergeado** (PR #2, `chore(deps-dev): bump eslint from
+9.39.5 to 10.8.1`, commit `b05d85c`). Se mergeó antes de que este criterio
+  de calendario quedara explícito; la decisión, una vez detectado, fue
+  dejarlo como está en vez de revertir — el criterio de posponer hasta
+  después de la Demo 1 aplica de aquí en adelante, no retroactivamente. No
+  queda seguimiento pendiente para eslint.
 
 ## 3. Expansión de `$CLAUDE_FILE_PATHS` en el hook `PostToolUse` bajo Windows/MINGW
 
@@ -73,3 +77,40 @@ con `MSYS_NO_PATHCONV=1` antepuesto al comando del hook.
 sobre cada archivo tocado antes de cada commit, y `lint-staged` (vía Husky,
 en el pre-commit hook real) sí corre correctamente y sí bloquea el commit si
 falla.
+
+## 4. `SonarCloud Code Analysis` nunca se publica en PRs de Dependabot
+
+**Bloquea:** el merge de cualquier PR abierto por Dependabot mientras ese
+check siga en la lista de checks obligatorios de `main` y no se permita
+bypass (`--admin`). No es por PR — es sistémico, afecta a todos por igual.
+
+**Causa:** el branch protection de `main` exige el check `SonarCloud Code
+Analysis`. El step `SonarCloud scan` de `ci.yml` está condicionado a
+`env.SONAR_TOKEN != ''`, y ese secreto **nunca llega** a un workflow
+disparado por un `pull_request` de `dependabot[bot]` — es una restricción
+de GitHub Actions (protección anti-exfiltración), no una falla de
+configuración del repo.
+
+**Intento de arreglo que NO funcionó:** agregar `SONAR_TOKEN` como
+[Dependabot secret](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/configuring-access-to-private-registries-for-dependabot#storing-credentials-for-dependabot-to-use)
+(Settings → Secrets and variables → Dependabot). Ese almacén es para que
+Dependabot se autentique a sí mismo contra registros privados al resolver
+versiones — GitHub Actions nunca lee de ahí. `secrets.SONAR_TOKEN` en un
+workflow solo lee el almacén de **Actions**, que sigue sin exponerse a
+estos runs. Verificado en vivo contra el PR #13 (`@types/node` 22→26,
+abierto disparando "Check for updates" manualmente): el job `ci` corre
+completo y en verde, pero el step `SonarCloud scan` aparece `skipped` y el
+volcado de entorno confirma `SONAR_TOKEN:` vacío.
+
+**Desbloqueo:** requiere una decisión de diseño de CI, no solo config —
+opciones a evaluar cuando se retome: mover el paso de Sonar a un workflow
+separado disparado por `pull_request_target` (con las precauciones de
+seguridad correspondientes: solo analizar, nunca ejecutar código de la PR
+con permisos elevados), o excluir `SonarCloud Code Analysis` de los checks
+obligatorios específicamente para el actor `dependabot[bot]`. Ninguna se
+aplicó todavía — deliberadamente pospuesto.
+
+**Mientras tanto:** los PRs de Dependabot que cumplan el resto de los
+criterios de merge (CI propio en verde, sin violación de peers) se
+evalúan pero no se mergean solos por este bloqueo; requieren revisión
+manual caso por caso. El PR #13 quedó abierto como recordatorio visible.
