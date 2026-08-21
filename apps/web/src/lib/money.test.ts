@@ -22,6 +22,15 @@ describe("formatMoney", () => {
     expect(formatMoney("999.99")).toBe("S/ 999.99");
   });
 
+  it("groups an integer far beyond NUMERIC(10,2) without exponential blowup", () => {
+    // Regression for typescript:S8786: the old lookahead regex
+    // (/\B(?=(\d{3})+(?!\d))/g) had super-linear backtracking on long digit
+    // runs. Money is capped at 8 integer digits end to end, but this helper
+    // is a reusable string formatter, so it must stay flat even if reused
+    // with unbounded input.
+    expect(formatMoney("123456789012.34")).toBe("S/ 123,456,789,012.34");
+  });
+
   it("pads a short or missing fraction to two digits", () => {
     expect(formatMoney("5")).toBe("S/ 5.00");
     expect(formatMoney("5.4")).toBe("S/ 5.40");

@@ -15,9 +15,24 @@ export function isValidMoney(value: string): boolean {
   return MONEY_PATTERN.test(value);
 }
 
-/** Groups thousands by slicing the digit string — no arithmetic involved. */
+/**
+ * Groups thousands by slicing the digit string — no arithmetic involved.
+ * Walks right to left inserting a separator every 3 digits, so the cost is
+ * linear in the input length however long the string is (no regex
+ * backtracking, unlike the lookahead-based version this replaced).
+ */
 function groupThousands(digits: string): string {
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  let grouped = "";
+  let sinceSeparator = 0;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    grouped = digits[i] + grouped;
+    sinceSeparator++;
+    if (sinceSeparator === 3 && i !== 0) {
+      grouped = `,${grouped}`;
+      sinceSeparator = 0;
+    }
+  }
+  return grouped;
 }
 
 /**
