@@ -35,6 +35,16 @@ async function createUserAndLogin(username: string, role: string): Promise<strin
   return login(username, password);
 }
 
+/**
+ * Flattens the error payload so a test can assert *why* a request was
+ * rejected. Nest sends an array of strings for validation failures and a
+ * single string for the exceptions the service throws.
+ */
+function messagesOf(response: { body: { message?: string | string[] } }): string {
+  const { message } = response.body;
+  return Array.isArray(message) ? message.join(" | ") : (message ?? "");
+}
+
 function validCustomer(overrides: Record<string, unknown> = {}) {
   return {
     name: "Bodega Santa Rosa",
@@ -111,38 +121,47 @@ describe("POST /api/v1/customers", () => {
   });
 
   test("rejects a body missing required fields with 400", async () => {
-    await request(server())
+    const response = await request(server())
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ name: "Sin telefono" })
-      .expect(400);
+      .send({ name: "Sin telefono" });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("El teléfono es obligatorio");
   });
 
   test("rejects a non-numeric credit limit with 400", async () => {
-    await request(server())
+    const response = await request(server())
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send(validCustomer({ phone: "900000003", creditLimit: "mucho" }))
-      .expect(400);
+      .send(validCustomer({ phone: "900000003", creditLimit: "mucho" }));
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("límite de crédito");
   });
 
   test("rejects a zone that does not exist with 400", async () => {
-    await request(server())
+    const response = await request(server())
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send(validCustomer({ phone: "900000004", zoneId: "99999999-9999-4999-8999-999999999999" }))
-      .expect(400);
+      .send(validCustomer({ phone: "900000004", zoneId: "99999999-9999-4999-8999-999999999999" }));
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("no existe");
   });
 
   // debtBalance is a ledger balance: only sales and payments may move it, in
   // the same transaction as their source row. The API must refuse it outright
   // rather than accept and ignore it, or the caller would think it took.
   test("refuses a body carrying debtBalance instead of silently ignoring it", async () => {
-    await request(server())
+    const response = await request(server())
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send(validCustomer({ phone: "900000005", debtBalance: "999.99" }))
-      .expect(400);
+      .send(validCustomer({ phone: "900000005", debtBalance: "999.99" }));
+
+    expect(response.status).toBe(400);
+    // Rejected *because of* debtBalance, not for some unrelated reason.
+    expect(messagesOf(response)).toContain("debtBalance");
   });
 });
 
@@ -190,10 +209,12 @@ describe("GET /api/v1/customers", () => {
   });
 
   test("rejects a page size above the cap with 400", async () => {
-    await request(server())
+    const response = await request(server())
       .get("/api/v1/customers?limit=5000")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .expect(400);
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("100");
   });
 
   test("searches by name, case-insensitively", async () => {
@@ -252,10 +273,12 @@ describe("GET /api/v1/customers", () => {
   // The boolean transform must leave a value it does not recognise alone so
   // @IsBoolean reports it, rather than quietly turning it into false.
   test("rejects a non-boolean active filter with 400", async () => {
-    await request(server())
+    const response = await request(server())
       .get("/api/v1/customers?active=quizas")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .expect(400);
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("activo");
   });
 
   test("exposes debtBalance and creditLimit as read-only strings in the list", async () => {
@@ -268,26 +291,31 @@ describe("GET /api/v1/customers", () => {
   });
 
   test("rejects an unknown query parameter with 400", async () => {
-    await request(server())
+    const response = await request(server())
       .get("/api/v1/customers?debtBalance=0")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .expect(400);
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("debtBalance");
   });
 });
 
 describe("GET /api/v1/customers/:id", () => {
   test("an unknown id is rejected with 404 Not Found", async () => {
-    await request(server())
+    const response = await request(server())
       .get("/api/v1/customers/00000000-0000-4000-8000-000000000000")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .expect(404);
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(404);
+    expect(messagesOf(response)).toContain("no existe");
   });
 
   test("a malformed id is rejected with 400", async () => {
-    await request(server())
+    const response = await request(server())
       .get("/api/v1/customers/not-a-uuid")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .expect(400);
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
   });
 });
 
@@ -335,35 +363,45 @@ describe("PATCH /api/v1/customers/:id", () => {
   });
 
   test("an unknown id is rejected with 404 Not Found", async () => {
-    await request(server())
+    const response = await request(server())
       .patch("/api/v1/customers/00000000-0000-4000-8000-000000000000")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ active: false })
-      .expect(404);
+      .send({ active: false });
+
+    expect(response.status).toBe(404);
+    expect(messagesOf(response)).toContain("no existe");
   });
 });
 
 describe("role guard", () => {
   test("DRIVER is refused on every customers route", async () => {
-    await request(server())
+    const list = await request(server())
       .get("/api/v1/customers")
-      .set("Authorization", `Bearer ${driverToken}`)
-      .expect(403);
+      .set("Authorization", `Bearer ${driverToken}`);
+    expect(list.status).toBe(403);
 
-    await request(server())
+    const create = await request(server())
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${driverToken}`)
-      .send(validCustomer({ phone: "933000001" }))
-      .expect(403);
+      .send(validCustomer({ phone: "933000001" }));
+    expect(create.status).toBe(403);
 
-    await request(server())
+    const patch = await request(server())
       .patch("/api/v1/customers/00000000-0000-4000-8000-000000000000")
       .set("Authorization", `Bearer ${driverToken}`)
-      .send({ active: false })
-      .expect(403);
+      .send({ active: false });
+    expect(patch.status).toBe(403);
+
+    // 403 must come from the guard, not from the customer not existing.
+    const detail = await request(server())
+      .get("/api/v1/customers/00000000-0000-4000-8000-000000000000")
+      .set("Authorization", `Bearer ${driverToken}`);
+    expect(detail.status).toBe(403);
   });
 
   test("an unauthenticated request is refused with 401", async () => {
-    await request(server()).get("/api/v1/customers").expect(401);
+    const response = await request(server()).get("/api/v1/customers");
+
+    expect(response.status).toBe(401);
   });
 });
