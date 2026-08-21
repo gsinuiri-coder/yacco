@@ -26,6 +26,7 @@ test("migrations apply and seed produces the baseline rows", async () => {
   expect(await prisma.role.count()).toBe(3);
   expect(await prisma.containerType.count()).toBe(2);
   expect(await prisma.paymentMethod.count()).toBe(4);
+  expect(await prisma.product.count()).toBe(4);
 
   const admin = await prisma.user.findUnique({
     where: { username: "admin" },
@@ -44,5 +45,8 @@ test("seed is idempotent: re-running it does not duplicate rows", async () => {
   expect(await prisma.role.count()).toBe(3);
   expect(await prisma.containerType.count()).toBe(2);
   expect(await prisma.paymentMethod.count()).toBe(4);
+  // Product.name is not @unique, so this is what actually proves the
+  // findFirst-then-create path in seed.ts is idempotent, not a upsert().
+  expect(await prisma.product.count()).toBe(4);
   expect(await prisma.user.count()).toBe(1);
 });

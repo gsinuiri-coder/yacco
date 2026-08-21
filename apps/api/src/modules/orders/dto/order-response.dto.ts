@@ -68,6 +68,13 @@ export class OrderResponseDto {
 
   @ApiProperty({ type: OrderItemResponseDto, isArray: true })
   items!: OrderItemResponseDto[];
+
+  /**
+   * Sum of quantity × unitPrice across items, computed with Decimal and
+   * serialized the same way as unitPrice: a 2-decimal string, never a float.
+   */
+  @ApiProperty({ type: String, example: "37.50" })
+  total!: string;
 }
 
 export class PaginatedOrdersDto {

@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole } from "@prisma/client";
+import { PrismaClient, ProductType, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -14,11 +14,70 @@ async function main() {
   }
 
   // Catalog names are UI strings and stay in Spanish (es-PE).
+  const containerTypesByName = new Map<string, { id: string }>();
   for (const name of ["Con caño", "Sin caño"]) {
-    await prisma.containerType.upsert({
+    const containerType = await prisma.containerType.upsert({
       where: { name },
       update: {},
       create: { name },
+    });
+    containerTypesByName.set(name, containerType);
+  }
+
+  // Product.name is not @unique (two customer-facing products can share a
+  // name across catalogs in the future), so this can't be a upsert() on
+  // {where:{name}} — findFirst + create-if-missing is what makes it
+  // idempotent instead.
+  //
+  // listPrice values are provisional placeholders, pending confirmation with
+  // the plant owner — see docs/backlog-tecnico.md. The names are not
+  // placeholders: they get copied onto every OrderItem created against them.
+  const products: {
+    name: string;
+    type: ProductType;
+    containerTypeName: string;
+    listPrice: string;
+  }[] = [
+    {
+      name: "Recarga 20L con caño",
+      type: ProductType.REFILL,
+      containerTypeName: "Con caño",
+      listPrice: "8.00",
+    },
+    {
+      name: "Recarga 20L sin caño",
+      type: ProductType.REFILL,
+      containerTypeName: "Sin caño",
+      listPrice: "8.00",
+    },
+    {
+      name: "Bidón 20L con caño",
+      type: ProductType.CONTAINER_SALE,
+      containerTypeName: "Con caño",
+      listPrice: "30.00",
+    },
+    {
+      name: "Bidón 20L sin caño",
+      type: ProductType.CONTAINER_SALE,
+      containerTypeName: "Sin caño",
+      listPrice: "28.00",
+    },
+  ];
+  for (const product of products) {
+    const existing = await prisma.product.findFirst({ where: { name: product.name } });
+    if (existing !== null) continue;
+
+    const containerType = containerTypesByName.get(product.containerTypeName);
+    if (containerType === undefined) {
+      throw new Error(`Seed data error: container type "${product.containerTypeName}" not found`);
+    }
+    await prisma.product.create({
+      data: {
+        name: product.name,
+        type: product.type,
+        containerTypeId: containerType.id,
+        listPrice: product.listPrice,
+      },
     });
   }
 
@@ -51,7 +110,7 @@ async function main() {
     create: { userId: admin.id, roleId: adminRole.id },
   });
 
-  console.log("Seed completed: roles, container types, payment methods, admin user.");
+  console.log("Seed completed: roles, container types, products, payment methods, admin user.");
 }
 
 main()

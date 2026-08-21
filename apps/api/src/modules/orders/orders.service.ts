@@ -38,6 +38,17 @@ export function formatBusinessDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+/**
+ * Sum of quantity × unitPrice across every item, in Decimal throughout: a
+ * single float in this sum would break the money guarantee the whole project
+ * stands on (CLAUDE.md).
+ */
+function computeOrderTotal(items: { quantity: number; unitPrice: Prisma.Decimal }[]): string {
+  return items
+    .reduce((sum, item) => sum.plus(item.unitPrice.times(item.quantity)), new Prisma.Decimal(0))
+    .toFixed(2);
+}
+
 function toOrderResponse(order: OrderWithRelations): OrderResponseDto {
   return {
     id: order.id,
@@ -54,6 +65,7 @@ function toOrderResponse(order: OrderWithRelations): OrderResponseDto {
       quantity: item.quantity,
       unitPrice: item.unitPrice.toFixed(2),
     })),
+    total: computeOrderTotal(order.items),
   };
 }
 
