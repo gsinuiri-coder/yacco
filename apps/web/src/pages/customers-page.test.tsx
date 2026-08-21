@@ -18,6 +18,7 @@ function buildCustomer(overrides: Partial<Customer> = {}): Customer {
     address: "Av. Los Alamos 452",
     addressReference: "Portón azul",
     zoneId: null,
+    zone: null,
     creditLimit: null,
     debtBalance: "0.00",
     active: true,
@@ -78,6 +79,7 @@ describe("CustomersPage", () => {
             name: "Panadería Aurora",
             phone: "987654322",
             zoneId: "33333333-3333-4333-8333-333333333333",
+            zone: { id: "33333333-3333-4333-8333-333333333333", name: "Norte" },
             active: false,
             debtBalance: "0.00",
           }),
@@ -96,7 +98,8 @@ describe("CustomersPage", () => {
     const aurora = screen.getByText("Panadería Aurora").closest("tr");
     expect(aurora).not.toBeNull();
     expect(within(aurora as HTMLElement).getByText("Desactivado")).toBeInTheDocument();
-    expect(within(aurora as HTMLElement).getByText("33333333")).toBeInTheDocument();
+    expect(within(aurora as HTMLElement).getByText("Norte")).toBeInTheDocument();
+    expect(within(aurora as HTMLElement).queryByText("33333333")).not.toBeInTheDocument();
 
     expect(screen.getByText("2 clientes")).toBeInTheDocument();
   });

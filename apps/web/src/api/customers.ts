@@ -16,6 +16,7 @@ export interface Customer {
   address: string;
   addressReference: string;
   zoneId: string | null;
+  zone: { id: string; name: string } | null;
   creditLimit: string | null;
   debtBalance: string;
   active: boolean;
