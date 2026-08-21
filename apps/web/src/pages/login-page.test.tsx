@@ -82,11 +82,20 @@ describe("LoginPage", () => {
     const loginStarted = new Promise<void>((resolve) => {
       resolveLogin = resolve;
     });
+    // El handler no responde hasta que el test lo autoriza. Antes esperaba
+    // 50 ms fijos, y bajo carga la petición podía terminar antes de que
+    // corriera la aserción: el formulario ya no estaba en curso y el test
+    // fallaba de forma intermitente. Con la compuerta, la ventana en la que
+    // se afirma "en curso" no compite con el fin de la petición.
+    let allowLoginToFinish: (() => void) | undefined;
+    const loginMayFinish = new Promise<void>((resolve) => {
+      allowLoginToFinish = resolve;
+    });
 
     server.use(
       http.post(`${API_BASE_URL}/auth/login`, async () => {
         resolveLogin?.();
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await loginMayFinish;
         return HttpResponse.json({ accessToken: buildToken(), refreshToken: "refresh-nuevo" });
       }),
     );
@@ -97,9 +106,12 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: "Ingresar" }));
 
     await loginStarted;
-    expect(screen.getByRole("button", { name: "Ingresando…" })).toBeDisabled();
+    // findBy en vez de getBy: espera a que React pinte el estado "en curso"
+    // en vez de exigir que ya esté pintado en ese instante.
+    expect(await screen.findByRole("button", { name: "Ingresando…" })).toBeDisabled();
     expect(screen.getByLabelText("Usuario")).toBeDisabled();
 
+    allowLoginToFinish?.();
     expect(await screen.findByRole("heading", { name: "Panel" })).toBeInTheDocument();
   });
 
