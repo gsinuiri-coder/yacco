@@ -85,6 +85,9 @@ jobs:
           --exit-code
 
       - name: Unit tests
+        # `pnpm -r test`: Jest en @yacco/api y Vitest en @yacco/web. Ambos dejan
+        # su lcov en disco aquí, antes del scan de SonarCloud, que es quien lo
+        # lee vía sonar.javascript.lcov.reportPaths.
         run: pnpm test
 
       - name: Integration tests (Testcontainers)
