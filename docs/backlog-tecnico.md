@@ -45,3 +45,22 @@ UI sigue mostrando lo viejo hasta el próximo refresh.
 
 **Para cerrarla:** agregar `GET /api/v1/auth/me` protegido con `JwtAccessGuard`
 que devuelva el usuario desde la base, y usarlo como fuente de verdad en la UI.
+
+## Password del admin de producción
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo con datos reales.
+
+El usuario `admin` de la base de producción (Neon, proyecto `yacco-production`)
+quedó con la contraseña `admin123` **solo para la Demo 1**. Es la contraseña por
+defecto del seed (`apps/api/prisma/seed.ts`, `SEED_ADMIN_PASSWORD ?? "admin123"`)
+y es pública: está en el repositorio, en `LoginDto` como ejemplo de Swagger y en
+esta misma línea.
+
+Mientras la base solo tenga datos de demostración el riesgo es aceptable. En el
+momento en que entren clientes, ventas o deudas reales, deja de serlo: cualquiera
+que encuentre la URL de la API entra como ADMIN.
+
+**Para cerrarla:** rotar a una contraseña fuerte, ya sea corriendo el seed contra
+producción con `SEED_ADMIN_PASSWORD` apuntando al valor nuevo, o con un `UPDATE`
+manual del `password_hash` (bcrypt, 10 rondas). Guardar el valor en el gestor de
+credenciales, nunca en el repositorio ni en un `.env` versionado.
