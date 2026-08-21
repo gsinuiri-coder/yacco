@@ -68,6 +68,12 @@ export class OrdersService {
    *
    * Customer and products are checked before the insert so the caller gets a
    * message naming what is missing, instead of a raw foreign-key violation.
+   *
+   * Both are also checked for `active`. This is office entry, not field
+   * capture: a deactivated customer or a withdrawn product is a deliberate
+   * decision someone took, and taking an order against it would quietly undo
+   * that decision. A merely dormant customer (no recent orders) still has
+   * active = true, so reactivating one over the phone is unaffected.
    */
   async create(dto: CreateOrderDto, createdById: string): Promise<OrderResponseDto> {
     const deliveryDate = parseBusinessDate(dto.deliveryDate, "La fecha de entrega");
@@ -75,21 +81,32 @@ export class OrdersService {
     const order = await this.prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({
         where: { id: dto.customerId },
-        select: { id: true },
+        select: { id: true, name: true, active: true },
       });
       if (customer === null) {
         throw new BadRequestException(`El cliente "${dto.customerId}" no existe`);
+      }
+      if (!customer.active) {
+        throw new BadRequestException(
+          `El cliente "${customer.name}" está desactivado; reactívalo antes de tomarle un pedido`,
+        );
       }
 
       const requestedProductIds = [...new Set(dto.items.map((item) => item.productId))];
       const products = await tx.product.findMany({
         where: { id: { in: requestedProductIds } },
-        select: { id: true },
+        select: { id: true, name: true, active: true },
       });
       if (products.length !== requestedProductIds.length) {
         const found = new Set(products.map((product) => product.id));
         const missing = requestedProductIds.filter((id) => !found.has(id));
         throw new BadRequestException(`No existen los productos: ${missing.join(", ")}`);
+      }
+
+      const inactive = products.filter((product) => !product.active);
+      if (inactive.length > 0) {
+        const names = inactive.map((product) => `"${product.name}"`).join(", ");
+        throw new BadRequestException(`Ya no están a la venta los productos: ${names}`);
       }
 
       return tx.order.create({

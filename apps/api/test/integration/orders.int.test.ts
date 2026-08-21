@@ -210,6 +210,77 @@ describe("POST /api/v1/orders", () => {
     expect(messagesOf(response)).toContain(MISSING_UUID);
   });
 
+  // Office entry, not field capture: a deactivated customer is a decision
+  // someone took, and taking an order against it would quietly undo it.
+  test("refuses an order for a deactivated customer, saying it must be reactivated", async () => {
+    const created = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        name: "Bodega Cerrada",
+        phone: "955000001",
+        address: "Av. Cerrada 1",
+        addressReference: "Cortina abajo",
+      })
+      .expect(201);
+    await request(server())
+      .patch(`/api/v1/customers/${created.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ active: false })
+      .expect(200);
+
+    const response = await request(server())
+      .post("/api/v1/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validOrder({ customerId: created.body.id }));
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("Bodega Cerrada");
+    expect(messagesOf(response)).toContain("desactivado");
+    expect(messagesOf(response)).toContain("reactívalo");
+  });
+
+  test("refuses a product that is no longer on sale, naming it", async () => {
+    const prisma = ctx.app.get(PrismaService);
+    const containerType = await prisma.containerType.findFirstOrThrow();
+    const withdrawn = await prisma.product.create({
+      data: {
+        containerTypeId: containerType.id,
+        name: "Recarga descontinuada",
+        type: "REFILL",
+        listPrice: "9.00",
+        active: false,
+      },
+    });
+
+    const response = await request(server())
+      .post("/api/v1/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validOrder({ items: [{ productId: withdrawn.id, quantity: 1, unitPrice: "9.00" }] }));
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("Recarga descontinuada");
+    expect(messagesOf(response)).toContain("Ya no están a la venta");
+  });
+
+  test("a customer and products that are all active still go through", async () => {
+    const response = await request(server())
+      .post("/api/v1/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(
+        validOrder({
+          items: [
+            { productId: refillProductId, quantity: 2, unitPrice: "12.50" },
+            { productId: containerProductId, quantity: 1, unitPrice: "35.00" },
+          ],
+        }),
+      );
+
+    expect(response.status).toBe(201);
+    expect(response.body.status).toBe(OrderStatus.PENDING);
+    expect(response.body.items).toHaveLength(2);
+  });
+
   test("rejects quantity 0 before the CHECK constraint has to", async () => {
     const response = await request(server())
       .post("/api/v1/orders")

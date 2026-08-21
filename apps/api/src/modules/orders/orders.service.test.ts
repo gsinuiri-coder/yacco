@@ -43,6 +43,16 @@ function validItems() {
   return [{ productId: PRODUCT_ID, quantity: 3, unitPrice: "12.50" }];
 }
 
+// create() selects `active` on both, so the shapes the mock returns have to
+// carry it — an undefined `active` would read as deactivated.
+function activeCustomer(overrides: Record<string, unknown> = {}) {
+  return { id: CUSTOMER_ID, name: "Bodega Santa Rosa", active: true, ...overrides };
+}
+
+function activeProduct(overrides: Record<string, unknown> = {}) {
+  return { id: PRODUCT_ID, name: "Recarga 20L", active: true, ...overrides };
+}
+
 function firstCallArgs(mockFn: { mock: { calls: unknown[] } }): Record<string, unknown> {
   const args = mockFn.mock.calls[0] as [Record<string, unknown>] | undefined;
   if (args === undefined) {
@@ -105,8 +115,8 @@ describe("OrdersService", () => {
 
   describe("create", () => {
     it("HU-06 E1: a captured order is born PENDING with its items", async () => {
-      prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-      prisma.product.findMany.mockResolvedValue([{ id: PRODUCT_ID }]);
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.product.findMany.mockResolvedValue([activeProduct()]);
       prisma.order.create.mockResolvedValue(buildOrder());
 
       const result = await service.create(
@@ -126,8 +136,8 @@ describe("OrdersService", () => {
     });
 
     it("persists unitPrice as an exact Decimal and returns it as a 2-decimal string", async () => {
-      prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-      prisma.product.findMany.mockResolvedValue([{ id: PRODUCT_ID }]);
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.product.findMany.mockResolvedValue([activeProduct()]);
       prisma.order.create.mockResolvedValue(buildOrder());
 
       const result = await service.create(
@@ -157,9 +167,71 @@ describe("OrdersService", () => {
       expect(prisma.order.create).not.toHaveBeenCalled();
     });
 
+    it("refuses to take an order for a deactivated customer, saying so", async () => {
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer({ active: false }));
+
+      await expect(
+        service.create(
+          { customerId: CUSTOMER_ID, deliveryDate: "2026-08-25", items: validItems() },
+          USER_ID,
+        ),
+      ).rejects.toThrow("desactivado");
+      expect(prisma.order.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a product that is no longer on sale, naming it", async () => {
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.product.findMany.mockResolvedValue([
+        activeProduct({ name: "Recarga descontinuada", active: false }),
+      ]);
+
+      const attempt = service.create(
+        { customerId: CUSTOMER_ID, deliveryDate: "2026-08-25", items: validItems() },
+        USER_ID,
+      );
+
+      await expect(attempt).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.order.create).not.toHaveBeenCalled();
+    });
+
+    it("names every inactive product, not just the first", async () => {
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.product.findMany.mockResolvedValue([
+        activeProduct({ name: "Recarga vieja", active: false }),
+        activeProduct({ id: OTHER_PRODUCT_ID, name: "Bidón retirado", active: false }),
+      ]);
+
+      const attempt = service.create(
+        {
+          customerId: CUSTOMER_ID,
+          deliveryDate: "2026-08-25",
+          items: [
+            { productId: PRODUCT_ID, quantity: 1, unitPrice: "10.00" },
+            { productId: OTHER_PRODUCT_ID, quantity: 1, unitPrice: "20.00" },
+          ],
+        },
+        USER_ID,
+      );
+
+      await expect(attempt).rejects.toThrow("Recarga vieja");
+      await expect(
+        service.create(
+          {
+            customerId: CUSTOMER_ID,
+            deliveryDate: "2026-08-25",
+            items: [
+              { productId: PRODUCT_ID, quantity: 1, unitPrice: "10.00" },
+              { productId: OTHER_PRODUCT_ID, quantity: 1, unitPrice: "20.00" },
+            ],
+          },
+          USER_ID,
+        ),
+      ).rejects.toThrow("Bidón retirado");
+    });
+
     it("names the products that do not exist instead of failing on the foreign key", async () => {
-      prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-      prisma.product.findMany.mockResolvedValue([{ id: PRODUCT_ID }]);
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.product.findMany.mockResolvedValue([activeProduct()]);
 
       await expect(
         service.create(
@@ -178,8 +250,8 @@ describe("OrdersService", () => {
     });
 
     it("looks each product up once even when it repeats across items", async () => {
-      prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-      prisma.product.findMany.mockResolvedValue([{ id: PRODUCT_ID }]);
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.product.findMany.mockResolvedValue([activeProduct()]);
       prisma.order.create.mockResolvedValue(buildOrder());
 
       await service.create(
@@ -196,7 +268,7 @@ describe("OrdersService", () => {
 
       expect(prisma.product.findMany).toHaveBeenCalledWith({
         where: { id: { in: [PRODUCT_ID] } },
-        select: { id: true },
+        select: { id: true, name: true, active: true },
       });
     });
 
