@@ -37,6 +37,9 @@ spec disagree, STOP and ask before proceeding.
 - Route loading consumes batches strictly FIFO (oldest batch date first).
 - Credit limit WARNS and records `credit_limit_exceeded`; it never blocks.
 - Money is `NUMERIC(10,2)` end to end. Never floats.
+- Money on the wire is a 2-decimal string (`"12.50"`), never a JSON number: a
+  JSON number is an IEEE-754 double and breaks the guarantee before the value
+  reaches Postgres. Parse to `Prisma.Decimal` at the edge.
 - Every operational row records `created_at` and `recorded_by`/`created_by`.
 - Driver field writes enter ONLY through `POST /api/v1/sync/operations`
   (idempotent by device-generated UUID; duplicates -> DUPLICATE, never re-applied).
