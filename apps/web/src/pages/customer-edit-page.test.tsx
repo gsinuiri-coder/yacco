@@ -21,6 +21,7 @@ function buildCustomer(overrides: Partial<Customer> = {}): Customer {
     address: "Av. Los Alamos 452",
     addressReference: "Portón azul",
     zoneId: null,
+    zone: null,
     creditLimit: "150.00",
     debtBalance: "40.50",
     active: true,

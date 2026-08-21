@@ -219,10 +219,8 @@ function CustomerRow({ customer }: { customer: Customer }) {
         <div className="cell-secondary">{customer.phone}</div>
       </td>
       <td>
-        {customer.zoneId ? (
-          // The API returns only the id — there is no zone name in
-          // CustomerResponseDto and no zones endpoint yet.
-          <span className="badge badge--muted">{customer.zoneId.slice(0, 8)}</span>
+        {customer.zone ? (
+          <span className="badge badge--muted">{customer.zone.name}</span>
         ) : (
           <span className="cell-secondary">Sin zona</span>
         )}
