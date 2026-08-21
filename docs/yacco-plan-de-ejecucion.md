@@ -109,6 +109,8 @@ Un desarrollador solo no necesita un zoológico de agentes; estos dos cubren el 
 
 Reglas de seguridad MCP: mínimo privilegio por token; toda escritura vía MCP se revisa antes de confirmar; **ningún MCP con escritura contra la base de producción, nunca**. El `.mcp.json` del repo (Anexo C) versiona las definiciones sin secretos; credenciales por variables de entorno locales.
 
+**Límite conocido del MCP de Neon — crear proyectos.** Su `create_project` solo acepta `name` y `org_id`: no expone `pg_version` ni `region_id`, y el servidor no ofrece un cliente HTTP genérico para pegarle a la API de Neon. Un proyecto creado por MCP nace por tanto en la major y la región por defecto de la cuenta (hoy **PG 18 / `aws-us-east-1`**). Para la **BD demo de D-13** eso coincide con producción y está bien: se crea por MCP sin más. Si alguna vez hace falta una versión o una región distintas, el proyecto se crea **desde la consola de Neon**, no por MCP, y recién después se capturan las cadenas. Anotado para no rediagnosticarlo.
+
 ---
 
 ## 3. Ciclo de trabajo con Claude Code

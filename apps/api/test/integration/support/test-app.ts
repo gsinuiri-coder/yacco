@@ -14,7 +14,7 @@ export interface TestAppContext {
  * auth/users integration tests exercise the same migrate+seed path.
  */
 export async function startTestApp(): Promise<TestAppContext> {
-  const container = await new PostgreSqlContainer("postgres:16-alpine").start();
+  const container = await new PostgreSqlContainer("postgres:18-alpine").start();
   const databaseUrl = container.getConnectionUri();
   // A plain Testcontainers Postgres has no pooler in front of it, so the
   // pooled and direct endpoints are the same connection.

@@ -14,7 +14,7 @@ let app: INestApplication;
 let baseUrl: string;
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer("postgres:16-alpine").start();
+  container = await new PostgreSqlContainer("postgres:18-alpine").start();
   const databaseUrl = container.getConnectionUri();
   const env = { ...process.env, DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl };
   execSync("pnpm exec prisma migrate deploy", { env, stdio: "inherit" });

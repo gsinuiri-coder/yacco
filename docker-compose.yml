@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: yacco
@@ -8,8 +8,12 @@ services:
       POSTGRES_DB: yacco_dev
     ports:
       - "5432:5432"
+    # Postgres 18+ images store data in a major-version subdirectory
+    # (/var/lib/postgresql/18/docker), so the mount goes one level up. Mounting
+    # at /var/lib/postgresql/data — the pre-18 convention — makes the container
+    # refuse to start.
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U yacco -d yacco_dev"]
       interval: 5s
