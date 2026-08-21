@@ -46,3 +46,19 @@ test("rejects a malformed DIRECT_URL", () => {
 test("rejects a non-numeric PORT", () => {
   expect(() => validateEnv(validConfig({ PORT: "not-a-port" }))).toThrow(/PORT must be an integer/);
 });
+
+test("defaults WEB_ORIGIN to the local Vite dev server when unset", () => {
+  const result = validateEnv(validConfig());
+  expect(result.WEB_ORIGIN).toBe("http://localhost:5173");
+});
+
+test("accepts an explicit WEB_ORIGIN override", () => {
+  const result = validateEnv(validConfig({ WEB_ORIGIN: "https://app.yacco.pe" }));
+  expect(result.WEB_ORIGIN).toBe("https://app.yacco.pe");
+});
+
+test("rejects an empty WEB_ORIGIN", () => {
+  expect(() => validateEnv(validConfig({ WEB_ORIGIN: "" }))).toThrow(
+    /WEB_ORIGIN must not be empty/,
+  );
+});

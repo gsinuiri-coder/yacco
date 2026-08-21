@@ -45,6 +45,13 @@ export class EnvironmentVariables {
   @Min(0)
   @Max(65535)
   PORT!: number;
+
+  // Origin allowed by CORS (app.enableCors in main.ts). Differs per
+  // environment (local Vite dev server, the demo frontend, production) so it
+  // has a dev-safe default instead of being required.
+  @IsString()
+  @IsNotEmpty({ message: "WEB_ORIGIN must not be empty" })
+  WEB_ORIGIN: string = "http://localhost:5173";
 }
 
 /**

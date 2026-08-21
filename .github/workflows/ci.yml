@@ -23,7 +23,7 @@ jobs:
     services:
       # Shadow database used only by the migration drift check below.
       shadow-db:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: shadow
           POSTGRES_PASSWORD: shadow

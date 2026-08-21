@@ -6,7 +6,7 @@ let container: StartedPostgreSqlContainer;
 let prisma: PrismaClient;
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer("postgres:16-alpine").start();
+  container = await new PostgreSqlContainer("postgres:18-alpine").start();
   const databaseUrl = container.getConnectionUri();
   // Explicit env so the container URL is used regardless of the ambient
   // DATABASE_URL. A plain Testcontainers Postgres has no pooler in front of

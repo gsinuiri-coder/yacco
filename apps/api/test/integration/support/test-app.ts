@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { INestApplication, RequestMethod, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 
@@ -14,7 +14,7 @@ export interface TestAppContext {
  * auth/users integration tests exercise the same migrate+seed path.
  */
 export async function startTestApp(): Promise<TestAppContext> {
-  const container = await new PostgreSqlContainer("postgres:16-alpine").start();
+  const container = await new PostgreSqlContainer("postgres:18-alpine").start();
   const databaseUrl = container.getConnectionUri();
   // A plain Testcontainers Postgres has no pooler in front of it, so the
   // pooled and direct endpoints are the same connection.
@@ -38,7 +38,13 @@ export async function startTestApp(): Promise<TestAppContext> {
   const { AppModule } = await import("../../../src/app.module.js");
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
-  app.setGlobalPrefix("api/v1");
+  // Mirrors main.ts's exclude list (health checks stay unversioned there too).
+  app.setGlobalPrefix("api/v1", {
+    exclude: [
+      { path: "health", method: RequestMethod.GET },
+      { path: "health/db", method: RequestMethod.GET },
+    ],
+  });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
