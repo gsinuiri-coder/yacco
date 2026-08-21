@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ORDERS_PAGE_SIZE, listOrders } from "../api/orders";
 import type { Order, OrderStatus, PaginatedOrders } from "../api/orders";
 import type { Customer } from "../api/customers";
-import { SLOW_REQUEST_MESSAGE } from "../api/timing";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
 import { CustomerSelect } from "../components/customer-select";
+import { ErrorState } from "../components/error-state";
+import { PaginationNav } from "../components/pagination-nav";
+import { SlowRequestNotice } from "../components/slow-request-notice";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatBusinessDate } from "../lib/business-date";
 import { formatMoney } from "../lib/money";
@@ -191,22 +193,10 @@ export function OrdersPage() {
           )}
         </div>
 
-        {isSlow && isLoading && (
-          <p className="notice notice--info" role="status">
-            {SLOW_REQUEST_MESSAGE}
-          </p>
-        )}
+        <SlowRequestNotice show={isSlow && isLoading} />
 
         {errorMessage ? (
-          <div className="state">
-            <p className="state__title">No se pudo cargar la lista</p>
-            <p role="alert">{errorMessage}</p>
-            <div className="state__actions">
-              <button type="button" className="button button--secondary" onClick={retry}>
-                Reintentar
-              </button>
-            </div>
-          </div>
+          <ErrorState message={errorMessage} onRetry={retry} />
         ) : isLoading ? (
           <p className="state" role="status">
             Cargando pedidos…
@@ -239,29 +229,13 @@ export function OrdersPage() {
               </table>
             </div>
 
-            <nav className="pagination" aria-label="Paginación">
-              <span className="pagination__status">
-                Página {result?.page ?? page} de {totalPages}
-              </span>
-              <div className="pagination__controls">
-                <button
-                  type="button"
-                  className="button button--secondary"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={page <= 1}
-                >
-                  Anterior
-                </button>
-                <button
-                  type="button"
-                  className="button button--secondary"
-                  onClick={() => setPage((current) => current + 1)}
-                  disabled={page >= totalPages}
-                >
-                  Siguiente
-                </button>
-              </div>
-            </nav>
+            <PaginationNav
+              displayPage={result?.page ?? page}
+              page={page}
+              totalPages={totalPages}
+              onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+              onNext={() => setPage((current) => current + 1)}
+            />
           </>
         )}
       </section>
