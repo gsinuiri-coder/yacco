@@ -1,10 +1,20 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
+    // Vite resuelve los imports, no Node: por eso se sobreescribe el
+    // module/moduleResolution NodeNext de la base del monorepo.
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
+    // Vite emite el bundle; tsc aquí solo verifica tipos.
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false
   },
-  "include": ["src"]
+  // src/ completo (incluidos los tests colocados) más los archivos de
+  // configuración: si un archivo no pertenece al programa de ningún tsconfig,
+  // SonarCloud lo indexa pero no lo analiza.
+  "include": ["src", "vite.config.ts", "vitest.setup.ts"]
 }

@@ -32,3 +32,28 @@ services:
         sync: false
       - key: WEB_ORIGIN
         sync: false
+
+  - type: web
+    runtime: static
+    name: yacco-web
+    # Igual que la API: el build corre desde la raíz del monorepo para que los
+    # filtros de pnpm resuelvan contra el workspace.
+    buildCommand: >-
+      HUSKY=0 pnpm install --frozen-lockfile &&
+      pnpm --filter @yacco/web build
+    staticPublishPath: apps/web/dist
+    routes:
+      # SPA: sin este rewrite, entrar directo a /login (o recargar ahí) devuelve
+      # 404, porque no existe ese archivo en disco — la ruta la resuelve el
+      # router en el cliente.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Vite inlinea las VITE_* en build, así que este valor queda horneado en
+      # el bundle: no es un secreto y por eso va en claro, a diferencia de las
+      # credenciales de la API.
+      - key: VITE_API_BASE_URL
+        value: https://yacco-api.onrender.com/api/v1
