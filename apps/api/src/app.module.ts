@@ -4,6 +4,7 @@ import { validateEnv } from "./config/env.validation.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { UsersModule } from "./modules/users/users.module.js";
+import { CustomersModule } from "./modules/customers/customers.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
 
 @Module({
@@ -12,6 +13,7 @@ import { HealthModule } from "./modules/health/health.module.js";
     PrismaModule,
     AuthModule,
     UsersModule,
+    CustomersModule,
     HealthModule,
   ],
 })
