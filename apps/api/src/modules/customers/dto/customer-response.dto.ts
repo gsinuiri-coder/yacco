@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
+/** Minimum the front needs to show the zone name instead of a raw id. */
+export class CustomerZoneDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
 export class CustomerResponseDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
@@ -18,6 +27,10 @@ export class CustomerResponseDto {
 
   @ApiPropertyOptional({ format: "uuid", nullable: true })
   zoneId!: string | null;
+
+  /** Read-only. Null when the customer has no zone — never a stub with null fields. */
+  @ApiPropertyOptional({ type: CustomerZoneDto, nullable: true })
+  zone!: CustomerZoneDto | null;
 
   /**
    * Read-only. Serialized as a fixed 2-decimal string so a NUMERIC(10,2)
