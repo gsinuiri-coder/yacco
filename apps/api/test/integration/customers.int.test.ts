@@ -92,6 +92,7 @@ describe("POST /api/v1/customers", () => {
       creditLimit: null,
       active: true,
       zoneId: null,
+      zone: null,
     });
     expect(response.body.id).toEqual(expect.any(String));
 
@@ -100,9 +101,10 @@ describe("POST /api/v1/customers", () => {
       .set("Authorization", `Bearer ${sellerToken}`)
       .expect(200);
     expect(detail.body.debtBalance).toBe("0.00");
+    expect(detail.body.zone).toBeNull();
   });
 
-  test("accepts a zone and a credit limit, echoing the limit with 2 decimals", async () => {
+  test("accepts a zone and a credit limit, echoing the limit with 2 decimals and the zone name", async () => {
     const response = await request(server())
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -117,7 +119,14 @@ describe("POST /api/v1/customers", () => {
       .expect(201);
 
     expect(response.body.zoneId).toBe(northZoneId);
+    expect(response.body.zone).toEqual({ id: northZoneId, name: "Norte" });
     expect(response.body.creditLimit).toBe("150.50");
+
+    const detail = await request(server())
+      .get(`/api/v1/customers/${response.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(detail.body.zone).toEqual({ id: northZoneId, name: "Norte" });
   });
 
   test("rejects a body missing required fields with 400", async () => {
@@ -247,6 +256,7 @@ describe("GET /api/v1/customers", () => {
     expect(response.body.total).toBeGreaterThan(0);
     for (const customer of response.body.data) {
       expect(customer.zoneId).toBe(northZoneId);
+      expect(customer.zone).toEqual({ id: northZoneId, name: "Norte" });
     }
   });
 

@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { Customer } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateCustomerDto } from "./dto/create-customer.dto.js";
 import type { CustomerResponseDto, PaginatedCustomersDto } from "./dto/customer-response.dto.js";
@@ -11,12 +10,19 @@ function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
+/** Everything the wire shape needs, and nothing else. */
+const CUSTOMER_INCLUDE = {
+  zone: { select: { id: true, name: true } },
+} satisfies Prisma.CustomerInclude;
+
+type CustomerWithZone = Prisma.CustomerGetPayload<{ include: typeof CUSTOMER_INCLUDE }>;
+
 /**
  * Maps a row to the wire shape. `debtBalance` and `creditLimit` come out as
  * fixed 2-decimal strings: a NUMERIC(10,2) must never round-trip through a
  * JSON number, which is an IEEE-754 double.
  */
-function toCustomerResponse(customer: Customer): CustomerResponseDto {
+function toCustomerResponse(customer: CustomerWithZone): CustomerResponseDto {
   return {
     id: customer.id,
     name: customer.name,
@@ -24,6 +30,7 @@ function toCustomerResponse(customer: Customer): CustomerResponseDto {
     address: customer.address,
     addressReference: customer.addressReference,
     zoneId: customer.zoneId,
+    zone: customer.zone,
     creditLimit: customer.creditLimit === null ? null : customer.creditLimit.toFixed(2),
     debtBalance: customer.debtBalance.toFixed(2),
     active: customer.active,
@@ -51,6 +58,7 @@ export class CustomersService {
           creditLimit: dto.creditLimit === undefined ? null : new Prisma.Decimal(dto.creditLimit),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
         },
+        include: CUSTOMER_INCLUDE,
       });
       return toCustomerResponse(customer);
     } catch (error) {
@@ -78,6 +86,7 @@ export class CustomersService {
         orderBy: { name: "asc" },
         skip: (page - 1) * limit,
         take: limit,
+        include: CUSTOMER_INCLUDE,
       }),
     ]);
 
@@ -91,7 +100,10 @@ export class CustomersService {
   }
 
   async findOne(id: string): Promise<CustomerResponseDto> {
-    const customer = await this.prisma.customer.findUnique({ where: { id } });
+    const customer = await this.prisma.customer.findUnique({
+      where: { id },
+      include: CUSTOMER_INCLUDE,
+    });
     if (customer === null) {
       throw new NotFoundException(`El cliente "${id}" no existe`);
     }
@@ -122,6 +134,7 @@ export class CustomersService {
             : {}),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
         },
+        include: CUSTOMER_INCLUDE,
       });
       return toCustomerResponse(customer);
     } catch (error) {

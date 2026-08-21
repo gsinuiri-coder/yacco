@@ -13,10 +13,13 @@ import { DEFAULT_LIMIT, DEFAULT_PAGE } from "./dto/list-customers-query.dto.js";
 
 const ZONE_ID = "11111111-1111-4111-8111-111111111111";
 
-function buildCustomer(overrides: Partial<Customer> = {}): Customer {
+function buildCustomer(
+  overrides: Partial<Customer> & { zone?: { id: string; name: string } | null } = {},
+) {
   return {
     id: "customer-1",
     zoneId: null,
+    zone: null,
     name: "Bodega Santa Rosa",
     phone: "987654321",
     address: "Av. Los Alamos 452",
@@ -119,6 +122,24 @@ describe("CustomersService", () => {
       });
 
       expect(firstCallData(prisma.customer.create)).toMatchObject({ active: false });
+    });
+
+    it("returns zone as {id, name}, and includes it in the Prisma call", async () => {
+      const zone = { id: ZONE_ID, name: "Norte" };
+      prisma.customer.create.mockResolvedValue(buildCustomer({ zoneId: ZONE_ID, zone }));
+
+      const result = await service.create({
+        name: "Bodega Santa Rosa",
+        phone: "987654321",
+        address: "Av. Los Alamos 452",
+        addressReference: "Porton azul frente al parque",
+        zoneId: ZONE_ID,
+      });
+
+      expect(result.zone).toEqual(zone);
+      expect(prisma.customer.create).toHaveBeenCalledWith(
+        expect.objectContaining({ include: { zone: { select: { id: true, name: true } } } }),
+      );
     });
 
     it("rejects an unknown zone with 400 instead of leaking the Prisma error", async () => {
@@ -225,6 +246,14 @@ describe("CustomersService", () => {
       expect(result.creditLimit).toBe("200.00");
     });
 
+    it("returns zone: null, not a stub object, when the customer has no zone", async () => {
+      prisma.customer.findUnique.mockResolvedValue(buildCustomer());
+
+      const result = await service.findOne("customer-1");
+
+      expect(result.zone).toBeNull();
+    });
+
     it("throws NotFoundException for an unknown id", async () => {
       prisma.customer.findUnique.mockResolvedValue(null);
 
@@ -241,6 +270,7 @@ describe("CustomersService", () => {
       expect(prisma.customer.update).toHaveBeenCalledWith({
         where: { id: "customer-1" },
         data: { active: false },
+        include: { zone: { select: { id: true, name: true } } },
       });
       expect(result.active).toBe(false);
     });
