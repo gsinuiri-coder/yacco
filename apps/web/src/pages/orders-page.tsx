@@ -1,0 +1,308 @@
+import { useCallback, useEffect, useState } from "react";
+import { ORDERS_PAGE_SIZE, listOrders } from "../api/orders";
+import type { Order, OrderStatus, PaginatedOrders } from "../api/orders";
+import type { Customer } from "../api/customers";
+import { SLOW_REQUEST_MESSAGE } from "../api/timing";
+import { useAuth } from "../auth/use-auth";
+import { AppShell } from "../components/app-shell";
+import { CustomerSelect } from "../components/customer-select";
+import { useSlowRequest } from "../hooks/use-slow-request";
+import { formatBusinessDate } from "../lib/business-date";
+import { formatMoney } from "../lib/money";
+
+type StatusFilter = OrderStatus | "all";
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "PENDING", label: "Pendiente" },
+  { value: "ON_ROUTE", label: "En ruta" },
+  { value: "DELIVERED", label: "Entregado" },
+  { value: "FAILED", label: "No entregado" },
+  { value: "CANCELLED", label: "Cancelado" },
+];
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  PENDING: "Pendiente",
+  ON_ROUTE: "En ruta",
+  DELIVERED: "Entregado",
+  FAILED: "No entregado",
+  CANCELLED: "Cancelado",
+};
+
+const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
+  PENDING: "badge--warning",
+  ON_ROUTE: "badge--info",
+  DELIVERED: "badge--active",
+  FAILED: "badge--danger",
+  CANCELLED: "badge--inactive",
+};
+
+export function OrdersPage() {
+  const { apiClient } = useAuth();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [deliveryDateFrom, setDeliveryDateFrom] = useState("");
+  const [deliveryDateTo, setDeliveryDateTo] = useState("");
+  const [customerFilter, setCustomerFilter] = useState<Customer | null>(null);
+  const [page, setPage] = useState(1);
+
+  const [result, setResult] = useState<PaginatedOrders | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const isSlow = useSlowRequest(isLoading);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    listOrders(apiClient, {
+      page,
+      limit: ORDERS_PAGE_SIZE,
+      ...(statusFilter === "all" ? {} : { status: statusFilter }),
+      ...(deliveryDateFrom ? { deliveryDateFrom } : {}),
+      ...(deliveryDateTo ? { deliveryDateTo } : {}),
+      ...(customerFilter ? { customerId: customerFilter.id } : {}),
+    })
+      .then((response) => {
+        if (!cancelled) setResult(response);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        // SessionExpiredError is handled by the api client + ProtectedRoute;
+        // anything else is the office's problem to see and retry.
+        setErrorMessage(
+          error instanceof Error ? error.message : "No se pudo cargar la lista de pedidos.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    apiClient,
+    page,
+    statusFilter,
+    deliveryDateFrom,
+    deliveryDateTo,
+    customerFilter,
+    reloadToken,
+  ]);
+
+  const retry = useCallback(() => setReloadToken((token) => token + 1), []);
+
+  const clearFilters = useCallback(() => {
+    setStatusFilter("all");
+    setDeliveryDateFrom("");
+    setDeliveryDateTo("");
+    setCustomerFilter(null);
+    setPage(1);
+  }, []);
+
+  const total = result?.total ?? 0;
+  const totalPages = result?.totalPages ?? 0;
+  const orders = result?.data ?? [];
+  const hasFilters =
+    statusFilter !== "all" ||
+    deliveryDateFrom !== "" ||
+    deliveryDateTo !== "" ||
+    customerFilter !== null;
+
+  return (
+    <AppShell>
+      <div className="page-header">
+        <div>
+          <h1>Pedidos</h1>
+          <p className="page-header__subtitle">
+            {isLoading && result === null
+              ? "Cargando…"
+              : `${total} ${total === 1 ? "pedido" : "pedidos"}${hasFilters ? " con este filtro" : ""}`}
+          </p>
+        </div>
+      </div>
+
+      <section className="card">
+        <div className="toolbar">
+          <div className="field">
+            <label className="field__label" htmlFor="statusFilter">
+              Estado
+            </label>
+            <select
+              id="statusFilter"
+              value={statusFilter}
+              onChange={(event) => {
+                setStatusFilter(event.target.value as StatusFilter);
+                setPage(1);
+              }}
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="deliveryDateFrom">
+              Entrega desde
+            </label>
+            <input
+              id="deliveryDateFrom"
+              type="date"
+              value={deliveryDateFrom}
+              onChange={(event) => {
+                setDeliveryDateFrom(event.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="deliveryDateTo">
+              Entrega hasta
+            </label>
+            <input
+              id="deliveryDateTo"
+              type="date"
+              value={deliveryDateTo}
+              onChange={(event) => {
+                setDeliveryDateTo(event.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+          <div className="toolbar__search">
+            <CustomerSelect
+              id="customerFilter"
+              label="Cliente"
+              value={customerFilter}
+              onChange={(customer) => {
+                setCustomerFilter(customer);
+                setPage(1);
+              }}
+            />
+          </div>
+          {hasFilters && (
+            <button type="button" className="button button--secondary" onClick={clearFilters}>
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+
+        {isSlow && isLoading && (
+          <p className="notice notice--info" role="status">
+            {SLOW_REQUEST_MESSAGE}
+          </p>
+        )}
+
+        {errorMessage ? (
+          <div className="state">
+            <p className="state__title">No se pudo cargar la lista</p>
+            <p role="alert">{errorMessage}</p>
+            <div className="state__actions">
+              <button type="button" className="button button--secondary" onClick={retry}>
+                Reintentar
+              </button>
+            </div>
+          </div>
+        ) : isLoading ? (
+          <p className="state" role="status">
+            Cargando pedidos…
+          </p>
+        ) : orders.length === 0 ? (
+          <EmptyState hasFilters={hasFilters} />
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table className="table">
+                <caption className="visually-hidden">
+                  Pedidos con cliente, fecha de entrega, estado e ítems
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Cliente</th>
+                    <th scope="col">Entrega</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Ítems</th>
+                    <th scope="col" className="table__numeric">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((order) => (
+                    <OrderRow key={order.id} order={order} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <nav className="pagination" aria-label="Paginación">
+              <span className="pagination__status">
+                Página {result?.page ?? page} de {totalPages}
+              </span>
+              <div className="pagination__controls">
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={page <= 1}
+                >
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => setPage((current) => current + 1)}
+                  disabled={page >= totalPages}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </nav>
+          </>
+        )}
+      </section>
+    </AppShell>
+  );
+}
+
+function OrderRow({ order }: { order: Order }) {
+  const itemsSummary = order.items
+    .map((item) => `${item.quantity}× ${item.product.name}`)
+    .join(", ");
+
+  return (
+    <tr>
+      <td>
+        <div className="cell-primary">{order.customer.name}</div>
+        <div className="cell-secondary">{order.customer.phone}</div>
+      </td>
+      <td>{formatBusinessDate(order.deliveryDate)}</td>
+      <td>
+        <span className={`badge ${STATUS_BADGE_CLASS[order.status]}`}>
+          {STATUS_LABELS[order.status]}
+        </span>
+      </td>
+      <td className="cell-secondary">{itemsSummary}</td>
+      <td className="table__numeric">{formatMoney(order.total)}</td>
+    </tr>
+  );
+}
+
+function EmptyState({ hasFilters }: { hasFilters: boolean }) {
+  return (
+    <div className="state">
+      <p className="state__title">
+        {hasFilters ? "Ningún pedido coincide con el filtro" : "Todavía no hay pedidos"}
+      </p>
+      <p>
+        {hasFilters
+          ? "Prueba con otro estado, fecha o cliente."
+          : "Los pedidos capturados aparecerán aquí."}
+      </p>
+    </div>
+  );
+}

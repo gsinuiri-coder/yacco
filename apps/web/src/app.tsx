@@ -5,6 +5,7 @@ import { CustomerEditPage } from "./pages/customer-edit-page";
 import { CustomersPage } from "./pages/customers-page";
 import { DashboardPage } from "./pages/dashboard-page";
 import { LoginPage } from "./pages/login-page";
+import { OrdersPage } from "./pages/orders-page";
 import { ProtectedRoute } from "./routes/protected-route";
 
 export function App() {
@@ -17,6 +18,7 @@ export function App() {
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/new" element={<CustomerCreatePage />} />
           <Route path="/customers/:customerId" element={<CustomerEditPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
         </Route>
       </Routes>
     </AuthProvider>
