@@ -1,5 +1,8 @@
 import { Route, Routes } from "react-router";
 import { AuthProvider } from "./auth/auth-provider";
+import { CustomerCreatePage } from "./pages/customer-create-page";
+import { CustomerEditPage } from "./pages/customer-edit-page";
+import { CustomersPage } from "./pages/customers-page";
 import { DashboardPage } from "./pages/dashboard-page";
 import { LoginPage } from "./pages/login-page";
 import { ProtectedRoute } from "./routes/protected-route";
@@ -11,6 +14,9 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/customers/new" element={<CustomerCreatePage />} />
+          <Route path="/customers/:customerId" element={<CustomerEditPage />} />
         </Route>
       </Routes>
     </AuthProvider>
