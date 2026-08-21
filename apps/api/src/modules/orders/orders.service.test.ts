@@ -281,6 +281,72 @@ describe("OrdersService", () => {
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.customer.findUnique).not.toHaveBeenCalled();
     });
+
+    it("totals quantity × unitPrice across several items", async () => {
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.product.findMany.mockResolvedValue([activeProduct()]);
+      prisma.order.create.mockResolvedValue(
+        buildOrder({
+          items: [
+            {
+              id: "item-1",
+              productId: PRODUCT_ID,
+              product: { id: PRODUCT_ID, name: "Recarga 20L" },
+              quantity: 3,
+              unitPrice: new Prisma.Decimal("12.50"),
+            },
+            {
+              id: "item-2",
+              productId: OTHER_PRODUCT_ID,
+              product: { id: OTHER_PRODUCT_ID, name: "Bidón 20L" },
+              quantity: 2,
+              unitPrice: new Prisma.Decimal("30.00"),
+            },
+          ],
+        }),
+      );
+
+      const result = await service.create(
+        { customerId: CUSTOMER_ID, deliveryDate: "2026-08-25", items: validItems() },
+        USER_ID,
+      );
+
+      // 3 * 12.50 + 2 * 30.00 = 97.50
+      expect(result.total).toBe("97.50");
+    });
+
+    it("totals prices that would betray a float sum, as an exact string", async () => {
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.product.findMany.mockResolvedValue([activeProduct()]);
+      prisma.order.create.mockResolvedValue(
+        buildOrder({
+          items: [
+            {
+              id: "item-1",
+              productId: PRODUCT_ID,
+              product: { id: PRODUCT_ID, name: "Recarga 20L" },
+              quantity: 3,
+              unitPrice: new Prisma.Decimal("0.10"),
+            },
+            {
+              id: "item-2",
+              productId: OTHER_PRODUCT_ID,
+              product: { id: OTHER_PRODUCT_ID, name: "Bidón 20L" },
+              quantity: 1,
+              unitPrice: new Prisma.Decimal("0.20"),
+            },
+          ],
+        }),
+      );
+
+      const result = await service.create(
+        { customerId: CUSTOMER_ID, deliveryDate: "2026-08-25", items: validItems() },
+        USER_ID,
+      );
+
+      // 0.10 * 3 + 0.20 * 1 = 0.5000000000000001 in binary floating point.
+      expect(result.total).toBe("0.50");
+    });
   });
 
   describe("findAll", () => {

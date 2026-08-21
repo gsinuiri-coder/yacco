@@ -64,3 +64,17 @@ que encuentre la URL de la API entra como ADMIN.
 producción con `SEED_ADMIN_PASSWORD` apuntando al valor nuevo, o con un `UPDATE`
 manual del `password_hash` (bcrypt, 10 rondas). Guardar el valor en el gestor de
 credenciales, nunca en el repositorio ni en un `.env` versionado.
+
+## Precios de lista del catálogo de productos
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo.
+
+Precios de lista del catálogo son placeholder; confirmar con el cliente antes
+del piloto de campo. Los cuatro productos sembrados en
+`apps/api/prisma/seed.ts` (recargas y bidones de 20L, con y sin caño) llevan
+`listPrice` provisional (S/ 8.00 la recarga, S/ 30.00 / S/ 28.00 el bidón) para
+que el módulo de Orders tenga algo con qué capturar un pedido en la demo.
+
+**Para cerrarla:** confirmar los precios reales con el dueño de la planta y
+actualizar el seed (o los `Product.listPrice` en la base ya sembrada) antes de
+que un pedido real se capture contra ellos.

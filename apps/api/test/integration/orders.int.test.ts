@@ -165,6 +165,8 @@ describe("POST /api/v1/orders", () => {
       ["12.50", "35.00"],
     );
     expect(response.body.items[0].product.name).toEqual(expect.any(String));
+    // 3 * 12.50 + 1 * 35.00 = 72.50
+    expect(response.body.total).toBe("72.50");
   });
 
   test("money keeps 2 decimals exactly, with no float round-trip", async () => {
@@ -279,6 +281,8 @@ describe("POST /api/v1/orders", () => {
     expect(response.status).toBe(201);
     expect(response.body.status).toBe(OrderStatus.PENDING);
     expect(response.body.items).toHaveLength(2);
+    // 2 * 12.50 + 1 * 35.00 = 60.00
+    expect(response.body.total).toBe("60.00");
   });
 
   test("rejects quantity 0 before the CHECK constraint has to", async () => {
@@ -384,6 +388,7 @@ describe("GET /api/v1/orders", () => {
     // Items and customer travel with the list, so the web needs no N+1.
     expect(response.body.data[0].items.length).toBeGreaterThan(0);
     expect(response.body.data[0].customer.name).toEqual(expect.any(String));
+    expect(response.body.data[0].total).toMatch(/^\d+\.\d{2}$/);
   });
 
   test("rejects a page size above the cap", async () => {
@@ -473,6 +478,25 @@ describe("GET /api/v1/orders/:id", () => {
     expect(response.body.id).toBe(orderId);
     expect(response.body.items[0].quantity).toBe(3);
     expect(response.body.items[0].unitPrice).toBe("12.50");
+    // 3 * 12.50 = 37.50
+    expect(response.body.total).toBe("37.50");
+  });
+
+  test("totals prices that would betray a float sum, as an exact string", async () => {
+    const orderId = await createOrder(adminToken, {
+      items: [
+        { productId: refillProductId, quantity: 3, unitPrice: "0.10" },
+        { productId: containerProductId, quantity: 1, unitPrice: "0.20" },
+      ],
+    });
+
+    const response = await request(server())
+      .get(`/api/v1/orders/${orderId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    // 0.10 * 3 + 0.20 * 1 = 0.5000000000000001 in binary floating point.
+    expect(response.body.total).toBe("0.50");
   });
 
   test("an unknown id is rejected with 404", async () => {
