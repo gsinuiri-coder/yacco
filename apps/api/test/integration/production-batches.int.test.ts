@@ -364,6 +364,14 @@ describe("GET /api/v1/production-batches", () => {
       true,
     );
   });
+
+  test("role guard: SELLER puede listar lotes", async () => {
+    const response = await request(server())
+      .get("/api/v1/production-batches")
+      .set("Authorization", `Bearer ${sellerToken}`);
+
+    expect(response.status).toBe(200);
+  });
 });
 
 describe("GET /api/v1/production-batches/:id", () => {
@@ -387,5 +395,17 @@ describe("GET /api/v1/production-batches/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(response.status).toBe(404);
+  });
+
+  test("role guard: SELLER puede ver un lote por id", async () => {
+    const created = await createBatch(adminToken, {
+      items: [{ containerTypeId: containerTypeA, producedQty: 5 }],
+    }).expect(201);
+
+    const response = await request(server())
+      .get(`/api/v1/production-batches/${created.body.id}`)
+      .set("Authorization", `Bearer ${sellerToken}`);
+
+    expect(response.status).toBe(200);
   });
 });
