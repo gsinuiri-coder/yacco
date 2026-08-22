@@ -68,6 +68,23 @@ export interface OrderListParams {
 /** Matches MAX_LIMIT in the API's list-orders-query.dto.ts. */
 export const ORDERS_PAGE_SIZE = 20;
 
+/** Matches MAX_ITEM_QUANTITY in the API's create-order.dto.ts. */
+export const MAX_ITEM_QUANTITY = 100000;
+
+/** CreateOrderItemDto. */
+export interface CreateOrderItemBody {
+  productId: string;
+  quantity: number;
+  unitPrice: string;
+}
+
+/** CreateOrderDto. `status` and `createdById` are absent: the API assigns both. */
+export interface CreateOrderBody {
+  customerId: string;
+  deliveryDate: string;
+  items: CreateOrderItemBody[];
+}
+
 function buildListQuery(params: OrderListParams): string {
   const query = new URLSearchParams();
   if (params.page !== undefined) query.set("page", String(params.page));
@@ -85,4 +102,8 @@ export function listOrders(
 ): Promise<PaginatedOrders> {
   const query = buildListQuery(params);
   return apiClient.request<PaginatedOrders>(`/orders${query ? `?${query}` : ""}`);
+}
+
+export function createOrder(apiClient: ApiClient, body: CreateOrderBody): Promise<Order> {
+  return apiClient.request<Order>("/orders", { method: "POST", body });
 }

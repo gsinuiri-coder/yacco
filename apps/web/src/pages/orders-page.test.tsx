@@ -133,6 +133,10 @@ describe("OrdersPage", () => {
     expect(within(table).getByText("S/ 37.50")).toBeInTheDocument();
     expect(within(table).getByText("Pendiente")).toBeInTheDocument();
     expect(within(table).getByText("3× Recarga 20L")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Nuevo pedido" })).toHaveAttribute(
+      "href",
+      "/orders/new",
+    );
   });
 
   it("muestra la fecha de entrega como el día exacto, sin desplazamiento de huso", async () => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router";
 import { ORDERS_PAGE_SIZE, listOrders } from "../api/orders";
 import type { Order, OrderStatus, PaginatedOrders } from "../api/orders";
 import type { Customer } from "../api/customers";
@@ -124,6 +125,9 @@ export function OrdersPage() {
               : `${total} ${total === 1 ? "pedido" : "pedidos"}${hasFilters ? " con este filtro" : ""}`}
           </p>
         </div>
+        <Link to="/orders/new" className="button button--primary">
+          Nuevo pedido
+        </Link>
       </div>
 
       <section className="card">

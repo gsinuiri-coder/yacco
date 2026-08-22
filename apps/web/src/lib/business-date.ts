@@ -16,3 +16,15 @@ export function formatBusinessDate(value: string): string {
   const [, year, month, day] = match;
   return `${day}/${month}/${year}`;
 }
+
+/**
+ * Today's calendar day in America/Lima, as "AAAA-MM-DD" — the default for a
+ * new order's deliveryDate. This does not parse a date string (the thing the
+ * rule above forbids); it reads the current instant in an explicit timezone,
+ * which is the opposite operation. The "en-CA" locale is a formatting trick:
+ * it happens to produce ISO order (year-month-day) directly, so the result
+ * needs no further text manipulation.
+ */
+export function todayInLima(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" }).format(new Date());
+}
