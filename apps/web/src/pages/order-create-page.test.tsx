@@ -211,6 +211,57 @@ describe("OrderCreatePage", () => {
     expect(screen.getByRole("heading", { name: "Nuevo pedido" })).toBeInTheDocument();
   });
 
+  it("el error de 'Elige un cliente' desaparece al elegir uno, sin volver a enviar", async () => {
+    const user = userEvent.setup();
+    const product = buildProduct();
+    stubProducts([product]);
+    const customer = buildCustomer();
+    stubCustomerSearch([customer]);
+
+    renderCreate();
+    await screen.findByRole("heading", { name: "Nuevo pedido" });
+    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+    await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
+    expect(await screen.findByText("Elige un cliente")).toBeInTheDocument();
+
+    // Corrige el campo sin tocar el botón de enviar de nuevo.
+    await pickCustomer(user, customer);
+
+    expect(screen.queryByText("Elige un cliente")).not.toBeInTheDocument();
+  });
+
+  it("corregir el precio de una línea no borra el error de otra línea que sigue mal", async () => {
+    const user = userEvent.setup();
+    const product = buildProduct();
+    stubProducts([product]);
+    const customer = buildCustomer();
+    stubCustomerSearch([customer]);
+    // Sin handler de POST: si el formulario llamara a la API, MSW haría fallar el test.
+
+    renderCreate();
+    await screen.findByRole("heading", { name: "Nuevo pedido" });
+    await pickCustomer(user, customer);
+    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+    await user.clear(screen.getByLabelText("Precio unitario (ítem 1)"));
+    await user.type(screen.getByLabelText("Precio unitario (ítem 1)"), "mucho");
+
+    await user.click(screen.getByRole("button", { name: "Agregar ítem" }));
+    await user.selectOptions(screen.getByLabelText("Producto (ítem 2)"), product.id);
+    await user.clear(screen.getByLabelText("Precio unitario (ítem 2)"));
+    await user.type(screen.getByLabelText("Precio unitario (ítem 2)"), "también-mucho");
+
+    await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
+    expect(await screen.findByText(/Ítem 1: El precio unitario/)).toBeInTheDocument();
+    expect(screen.getByText(/Ítem 2: El precio unitario/)).toBeInTheDocument();
+
+    // Corrige solo el ítem 1, sin volver a enviar.
+    await user.clear(screen.getByLabelText("Precio unitario (ítem 1)"));
+    await user.type(screen.getByLabelText("Precio unitario (ítem 1)"), "9.99");
+
+    expect(screen.queryByText(/Ítem 1: El precio unitario/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Ítem 2: El precio unitario/)).toBeInTheDocument();
+  });
+
   it("no permite quitar la última línea", async () => {
     stubProducts([buildProduct()]);
     stubCustomerSearch([]);

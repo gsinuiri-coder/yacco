@@ -19,7 +19,6 @@ type FieldErrors = Partial<Record<keyof CustomerFormValues, string>>;
 // same answer without a round trip. The API stays the authority: whatever it
 // rejects is surfaced verbatim by the pages through `submitError`.
 const MAX_LENGTHS = { name: 160, phone: 30, address: 255, addressReference: 255 } as const;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function emptyCustomerForm(): CustomerFormValues {
   return {
@@ -72,10 +71,6 @@ export function validateCustomerForm(values: CustomerFormValues): FieldErrors {
     errors.addressReference = `La referencia no puede superar los ${MAX_LENGTHS.addressReference} caracteres`;
   }
 
-  if (values.zoneId.trim() && !UUID_PATTERN.test(values.zoneId.trim())) {
-    errors.zoneId = "La zona debe ser un identificador válido";
-  }
-
   if (values.creditLimit.trim() && !isValidMoney(values.creditLimit.trim())) {
     errors.creditLimit = 'El límite de crédito debe ser un monto como "150.00"';
   }
@@ -112,6 +107,9 @@ export function CustomerForm({
 
   function setField<K extends keyof CustomerFormValues>(key: K, value: CustomerFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
+    // Clears only this field's error: a full re-validate on every keystroke
+    // would flag fields the user hasn't finished typing into yet.
+    setErrors((current) => ({ ...current, [key]: undefined }));
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -167,15 +165,6 @@ export function CustomerForm({
             className="form-grid__full"
             hint="Cómo encontrar la puerta: un color, una esquina, un negocio al lado."
             onChange={(value) => setField("addressReference", value)}
-          />
-          <TextField
-            id="zoneId"
-            label="Zona (opcional)"
-            value={values.zoneId}
-            error={errors.zoneId}
-            disabled={isSubmitting}
-            hint="Identificador de la zona de reparto."
-            onChange={(value) => setField("zoneId", value)}
           />
           <TextField
             id="creditLimit"

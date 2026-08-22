@@ -92,3 +92,24 @@ la pantalla.
 **Para cerrarla:** que `OrdersService.toOrderResponse` incluya el usuario
 (al menos `username`) en el `include` de Prisma, igual que ya hace con
 `customer` e `items.product`.
+
+## No se puede asignar zona a un cliente desde la UI
+
+**Estado:** abierto. **Disparador:** cuando exista un módulo Zones (listado y
+seed) para elegir de ahí.
+
+El formulario de crear/editar cliente pedía `zoneId` como texto libre con
+formato UUID v4, pero no existe módulo de Zones: no hay endpoint para
+listarlas y el seed no siembra ninguna, así que no había forma de que un
+usuario supiera o escribiera un valor válido. Se probó contra producción y
+resultó en un campo imposible de llenar correctamente, así que se quitó del
+formulario (`apps/web/src/components/customer-form.tsx`). `zoneId` sigue
+siendo opcional en `CreateCustomerDto`/`UpdateCustomerDto` — sin cambios en
+el backend — y la lista de clientes sigue mostrando la zona de quien ya la
+tenga (`customers-page.tsx`); solo se omitió el campo de entrada.
+
+**Para cerrarla:** agregar un módulo Zones de solo lectura (mínimo
+`GET /api/v1/zones`, con datos sembrados) y, en el formulario, un `<select>`
+cargado de ahí en vez del texto libre — el mismo patrón que `api/products.ts`
+y el `<select>` de producto en `order-items-form.tsx`. Hasta entonces,
+`zoneId` solo se puede poblar por API.

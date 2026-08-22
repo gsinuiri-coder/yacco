@@ -59,7 +59,8 @@ export interface OrderItemsFormProps {
   items: OrderItemDraft[];
   errors: (string | undefined)[];
   disabled: boolean;
-  onChange: (items: OrderItemDraft[]) => void;
+  /** `changedIndex` is set only for an edit to that line's own fields — never for add/remove. */
+  onChange: (items: OrderItemDraft[], changedIndex?: number) => void;
 }
 
 /**
@@ -100,7 +101,10 @@ export function OrderItemsForm({ items, errors, disabled, onChange }: OrderItems
   }, [apiClient, reloadToken]);
 
   function updateItem(index: number, patch: Partial<OrderItemDraft>) {
-    onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    onChange(
+      items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+      index,
+    );
   }
 
   function handleProductChange(index: number, productId: string) {
