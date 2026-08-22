@@ -107,3 +107,12 @@ export function listOrders(
 export function createOrder(apiClient: ApiClient, body: CreateOrderBody): Promise<Order> {
   return apiClient.request<Order>("/orders", { method: "POST", body });
 }
+
+export function getOrder(apiClient: ApiClient, id: string): Promise<Order> {
+  return apiClient.request<Order>(`/orders/${id}`);
+}
+
+/** No body: the only transition this endpoint allows is PENDING -> CANCELLED. */
+export function cancelOrder(apiClient: ApiClient, id: string): Promise<Order> {
+  return apiClient.request<Order>(`/orders/${id}/cancel`, { method: "PATCH" });
+}

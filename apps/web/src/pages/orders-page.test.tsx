@@ -103,6 +103,7 @@ function renderOrders() {
   return renderWithProviders(
     <Routes>
       <Route path="/orders" element={<OrdersPage />} />
+      <Route path="/orders/:orderId" element={<h1>Detalle</h1>} />
     </Routes>,
     "/orders",
   );
@@ -265,6 +266,18 @@ describe("OrdersPage", () => {
 
     await waitFor(() => expect(seen.at(-1)?.searchParams.get("page")).toBe("2"));
     expect(await screen.findByText("Página 2 de 2")).toBeInTheDocument();
+  });
+
+  it("una fila lleva al detalle del pedido", async () => {
+    const user = userEvent.setup();
+    stubOrders(() => buildPage({ data: [buildOrder({ id: "order-77" })] }));
+
+    renderOrders();
+    await screen.findByText("Bodega Santa Rosa");
+
+    await user.click(screen.getByRole("link", { name: "Ver pedido de Bodega Santa Rosa" }));
+
+    expect(await screen.findByRole("heading", { name: "Detalle" })).toBeInTheDocument();
   });
 
   it("distingue el estado por color, no solo por texto", async () => {

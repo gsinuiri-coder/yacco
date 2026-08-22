@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ORDERS_PAGE_SIZE, listOrders } from "../api/orders";
 import type { Order, OrderStatus, PaginatedOrders } from "../api/orders";
 import type { Customer } from "../api/customers";
@@ -7,6 +7,7 @@ import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
 import { CustomerSelect } from "../components/customer-select";
 import { ErrorState } from "../components/error-state";
+import { ORDER_STATUS_LABELS, OrderStatusBadge } from "../components/order-status-badge";
 import { PaginationNav } from "../components/pagination-nav";
 import { SlowRequestNotice } from "../components/slow-request-notice";
 import { useSlowRequest } from "../hooks/use-slow-request";
@@ -17,31 +18,15 @@ type StatusFilter = OrderStatus | "all";
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "Todos" },
-  { value: "PENDING", label: "Pendiente" },
-  { value: "ON_ROUTE", label: "En ruta" },
-  { value: "DELIVERED", label: "Entregado" },
-  { value: "FAILED", label: "No entregado" },
-  { value: "CANCELLED", label: "Cancelado" },
+  ...(Object.entries(ORDER_STATUS_LABELS) as [OrderStatus, string][]).map(([value, label]) => ({
+    value,
+    label,
+  })),
 ];
-
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING: "Pendiente",
-  ON_ROUTE: "En ruta",
-  DELIVERED: "Entregado",
-  FAILED: "No entregado",
-  CANCELLED: "Cancelado",
-};
-
-const STATUS_BADGE_CLASS: Record<OrderStatus, string> = {
-  PENDING: "badge--warning",
-  ON_ROUTE: "badge--info",
-  DELIVERED: "badge--active",
-  FAILED: "badge--danger",
-  CANCELLED: "badge--inactive",
-};
 
 export function OrdersPage() {
   const { apiClient } = useAuth();
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [deliveryDateFrom, setDeliveryDateFrom] = useState("");
   const [deliveryDateTo, setDeliveryDateTo] = useState("");
@@ -227,7 +212,11 @@ export function OrdersPage() {
                 </thead>
                 <tbody>
                   {orders.map((order) => (
-                    <OrderRow key={order.id} order={order} />
+                    <OrderRow
+                      key={order.id}
+                      order={order}
+                      onOpen={() => void navigate(`/orders/${order.id}`)}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -247,22 +236,29 @@ export function OrdersPage() {
   );
 }
 
-function OrderRow({ order }: { order: Order }) {
+function OrderRow({ order, onOpen }: { order: Order; onOpen: () => void }) {
   const itemsSummary = order.items
     .map((item) => `${item.quantity}× ${item.product.name}`)
     .join(", ");
 
   return (
-    <tr>
+    <tr
+      className="table__row--clickable"
+      role="link"
+      tabIndex={0}
+      aria-label={`Ver pedido de ${order.customer.name}`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onOpen();
+      }}
+    >
       <td>
         <div className="cell-primary">{order.customer.name}</div>
         <div className="cell-secondary">{order.customer.phone}</div>
       </td>
       <td>{formatBusinessDate(order.deliveryDate)}</td>
       <td>
-        <span className={`badge ${STATUS_BADGE_CLASS[order.status]}`}>
-          {STATUS_LABELS[order.status]}
-        </span>
+        <OrderStatusBadge status={order.status} />
       </td>
       <td className="cell-secondary">{itemsSummary}</td>
       <td className="table__numeric">{formatMoney(order.total)}</td>
