@@ -10,9 +10,19 @@ import type { CreateOrderDto } from "./dto/create-order.dto.js";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto.js";
 import type { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.dto.js";
 
-/** Everything the wire shape needs, and nothing else. */
+/**
+ * Everything the wire shape needs, and nothing else. The order's own
+ * `customerId`/`customer` on the wire are derived from its location — an
+ * order has no direct customer FK any more, only a location one (spec: an
+ * order belongs to the location the truck delivers to).
+ */
 const ORDER_INCLUDE = {
-  customer: { select: { id: true, name: true, phone: true } },
+  location: {
+    select: {
+      phone: true,
+      customer: { select: { id: true, name: true } },
+    },
+  },
   items: { include: { product: { select: { id: true, name: true } } } },
 } satisfies Prisma.OrderInclude;
 
@@ -52,8 +62,8 @@ function computeOrderTotal(items: { quantity: number; unitPrice: Prisma.Decimal 
 function toOrderResponse(order: OrderWithRelations): OrderResponseDto {
   return {
     id: order.id,
-    customerId: order.customerId,
-    customer: order.customer,
+    customerId: order.location.customer.id,
+    customer: { ...order.location.customer, phone: order.location.phone },
     deliveryDate: formatBusinessDate(order.deliveryDate),
     status: order.status,
     createdById: order.createdById,
@@ -104,6 +114,20 @@ export class OrdersService {
         );
       }
 
+      // No location is chosen yet (a future phase adds that): an order always
+      // lands at the customer's primary location. Every customer has exactly
+      // one (created atomically with the customer, enforced by a partial
+      // unique index), so this is a defensive guard, not an expected path.
+      const primaryLocation = await tx.customerLocation.findFirst({
+        where: { customerId: dto.customerId, isPrimary: true },
+        select: { id: true },
+      });
+      if (primaryLocation === null) {
+        throw new BadRequestException(
+          `El cliente "${customer.name}" no tiene una locación principal`,
+        );
+      }
+
       const requestedProductIds = [...new Set(dto.items.map((item) => item.productId))];
       const products = await tx.product.findMany({
         where: { id: { in: requestedProductIds } },
@@ -123,7 +147,7 @@ export class OrdersService {
 
       return tx.order.create({
         data: {
-          customerId: dto.customerId,
+          locationId: primaryLocation.id,
           deliveryDate,
           createdById,
           items: {
@@ -221,7 +245,7 @@ function buildOrderFilter(query: ListOrdersQueryDto): Prisma.OrderWhereInput {
 
   return {
     ...(status !== undefined ? { status } : {}),
-    ...(customerId !== undefined ? { customerId } : {}),
+    ...(customerId !== undefined ? { location: { customerId } } : {}),
     // Both ends inclusive: they are calendar days, not instants.
     ...(from !== undefined || to !== undefined
       ? {

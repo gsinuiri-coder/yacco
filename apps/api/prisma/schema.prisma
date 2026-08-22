@@ -184,19 +184,46 @@ model PaymentMethod {
 
 // --- Customers & products ---------------------------------------------------
 
+// Contact/address fields live only on CustomerLocation now: a customer with
+// several locations would otherwise have two copies of "the address" (this
+// row and its primary location) that can silently drift apart. Credit limit
+// and debt stay here — spec: consolidated at the customer, never per location.
 model Customer {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zoneId      String?  @map("zone_id") @db.Uuid
+  name        String
+  creditLimit Decimal? @map("credit_limit") @db.Decimal(10, 2)
+  debtBalance Decimal  @default(0) @map("debt_balance") @db.Decimal(10, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  zone      Zone?              @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  locations CustomerLocation[]
+  prices    CustomerPrice[]
+  payments  Payment[]
+
+  @@map("customers")
+}
+
+// A customer can have several physical locations; everything the truck or
+// the ledger touches (orders, route stops, container movements/balances,
+// sales) hangs off the location where it actually happens, never off the
+// customer directly. Exactly one location per customer is primary — enforced
+// by a partial unique index in the migration SQL (Prisma cannot express a
+// partial index in the schema).
+model CustomerLocation {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  zoneId           String?  @map("zone_id") @db.Uuid
+  customerId       String   @map("customer_id") @db.Uuid
   name             String
-  phone            String
   address          String
   addressReference String   @map("address_reference")
-  creditLimit      Decimal? @map("credit_limit") @db.Decimal(10, 2)
-  debtBalance      Decimal  @default(0) @map("debt_balance") @db.Decimal(10, 2)
+  phone            String
+  isPrimary        Boolean  @default(false) @map("is_primary")
   active           Boolean  @default(true)
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  zone       Zone?                      @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
   prices     CustomerPrice[]
   balances   CustomerContainerBalance[]
   movements  ContainerMovement[]
@@ -205,7 +232,7 @@ model Customer {
   sales      Sale[]
   payments   Payment[]
 
-  @@map("customers")
+  @@map("customer_locations")
 }
 
 model Product {
@@ -224,15 +251,22 @@ model Product {
   @@map("products")
 }
 
+// The price agreement is with the customer; `locationId` is an optional
+// override for one branch. The old (customerId, productId) composite key is
+// gone: that pair alone can no longer be unique once a location-specific row
+// can coexist with the customer-wide one, so this has a surrogate id instead
+// — see the two partial unique indexes (one per tier) in the migration SQL.
 model CustomerPrice {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerId String  @map("customer_id") @db.Uuid
   productId  String  @map("product_id") @db.Uuid
+  locationId String? @map("location_id") @db.Uuid
   price      Decimal @db.Decimal(10, 2)
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  customer Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  product  Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
 
-  @@id([customerId, productId])
   @@map("customer_prices")
 }
 
@@ -275,32 +309,34 @@ model ContainerMovement {
   type            ContainerMovementType
   containerTypeId String                @map("container_type_id") @db.Uuid
   quantity        Int
-  customerId      String?               @map("customer_id") @db.Uuid
+  locationId      String?               @map("location_id") @db.Uuid
   batchId         String?               @map("batch_id") @db.Uuid
   stopId          String?               @map("stop_id") @db.Uuid
   recordedById    String                @map("recorded_by") @db.Uuid
 
-  containerType ContainerType    @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
-  customer      Customer?        @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  batch         ProductionBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  stop          RouteStop?       @relation(fields: [stopId], references: [id], onDelete: Restrict)
-  recordedBy    User             @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  containerType ContainerType     @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  location      CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  batch         ProductionBatch?  @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  stop          RouteStop?        @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  recordedBy    User              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
 
-  @@index([customerId, occurredAt])
+  @@index([locationId, occurredAt])
   @@map("container_movements")
 }
 
 // Materialized from container_movements in the same transaction; always
-// reconstructible from the ledger.
+// reconstructible from the ledger. Lives at the location, not the customer:
+// containers sit at one physical address, with no customer-wide tier to
+// preserve — unlike CustomerPrice, this is a straight move, not an override.
 model CustomerContainerBalance {
-  customerId      String @map("customer_id") @db.Uuid
+  locationId      String @map("location_id") @db.Uuid
   containerTypeId String @map("container_type_id") @db.Uuid
   quantity        Int    @default(0)
 
-  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  containerType ContainerType @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  location      CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  containerType ContainerType    @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
 
-  @@id([customerId, containerTypeId])
+  @@id([locationId, containerTypeId])
   @@map("customer_container_balances")
 }
 
@@ -308,14 +344,14 @@ model CustomerContainerBalance {
 
 model Order {
   id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId   String      @map("customer_id") @db.Uuid
+  locationId   String      @map("location_id") @db.Uuid
   deliveryDate DateTime    @map("delivery_date") @db.Date
   status       OrderStatus @default(PENDING)
   createdById  String      @map("created_by") @db.Uuid
   createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  customer  Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  createdBy User        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  location  CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
   items     OrderItem[]
   routeStop RouteStop?
 
@@ -368,7 +404,7 @@ model RouteLoad {
 model RouteStop {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   routeId       String     @map("route_id") @db.Uuid
-  customerId    String     @map("customer_id") @db.Uuid
+  locationId    String     @map("location_id") @db.Uuid
   position      Int
   origin        StopOrigin
   orderId       String?    @unique @map("order_id") @db.Uuid
@@ -376,7 +412,7 @@ model RouteStop {
   failureReason String?    @map("failure_reason")
 
   route     Route               @relation(fields: [routeId], references: [id], onDelete: Restrict)
-  customer  Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  location  CustomerLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
   order     Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
   movements ContainerMovement[]
   sales     Sale[]
@@ -391,16 +427,16 @@ model RouteStop {
 
 model Sale {
   id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId          String   @map("customer_id") @db.Uuid
+  locationId          String   @map("location_id") @db.Uuid
   stopId              String?  @map("stop_id") @db.Uuid
   soldAt              DateTime @map("sold_at") @db.Timestamptz(6)
   total               Decimal  @db.Decimal(10, 2)
   creditLimitExceeded Boolean  @default(false) @map("credit_limit_exceeded")
   recordedById        String   @map("recorded_by") @db.Uuid
 
-  customer   Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  stop       RouteStop? @relation(fields: [stopId], references: [id], onDelete: Restrict)
-  recordedBy User       @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  location   CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  stop       RouteStop?       @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  recordedBy User             @relation(fields: [recordedById], references: [id], onDelete: Restrict)
   items      SaleItem[]
   payments   Payment[]
 
@@ -420,9 +456,13 @@ model SaleItem {
   @@map("sale_items")
 }
 
+// Always tied to a customer; the location is optional — spec: with a
+// location, that branch's manager settles their own debt; without one, the
+// principal pays at the customer's consolidated level.
 model Payment {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerId      String   @map("customer_id") @db.Uuid
+  locationId      String?  @map("location_id") @db.Uuid
   saleId          String?  @map("sale_id") @db.Uuid
   stopId          String?  @map("stop_id") @db.Uuid
   paymentMethodId String   @map("payment_method_id") @db.Uuid
@@ -430,11 +470,12 @@ model Payment {
   amount          Decimal  @db.Decimal(10, 2)
   recordedById    String   @map("recorded_by") @db.Uuid
 
-  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  sale          Sale?         @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  stop          RouteStop?    @relation(fields: [stopId], references: [id], onDelete: Restrict)
-  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
-  recordedBy    User          @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  location      CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  sale          Sale?             @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  stop          RouteStop?        @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  paymentMethod PaymentMethod     @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  recordedBy    User              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
 
   @@index([paidAt, paymentMethodId])
   @@map("payments")

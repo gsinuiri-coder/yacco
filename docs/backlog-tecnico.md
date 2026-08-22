@@ -113,3 +113,19 @@ tenga (`customers-page.tsx`); solo se omitió el campo de entrada.
 cargado de ahí en vez del texto libre — el mismo patrón que `api/products.ts`
 y el `<select>` de producto en `order-items-form.tsx`. Hasta entonces,
 `zoneId` solo se puede poblar por API.
+
+## Reparto de un pago global entre deudas del cliente
+
+**Estado:** abierto. **Disparador:** cuando exista el módulo de Payments.
+
+Un pago sin `locationId` (Payment.locationId es opcional, spec: sin locación
+el principal paga a nivel del cliente consolidado) puede tener que saldar
+deuda acumulada en varias ventas/locaciones a la vez. La regla de negocio
+decidida con el cliente: el reparto se hace saldando primero la deuda más
+antigua (FIFO por fecha de venta/deuda), con posibilidad de asignación manual
+por el usuario cuando el reparto automático no sea el que corresponde (p.ej.
+el cliente indica que ese pago es específicamente para una venta puntual).
+
+**Para cerrarla:** implementar esta regla en el servicio de Payments cuando
+se construya (aún no existe ningún módulo de Sales/Payments en `apps/api/src`),
+como parte de la lógica de creación de un pago sin `locationId`.

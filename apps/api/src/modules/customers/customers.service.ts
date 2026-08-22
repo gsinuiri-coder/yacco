@@ -10,25 +10,40 @@ function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
-/** Everything the wire shape needs, and nothing else. */
+/**
+ * Everything the wire shape needs, and nothing else. `locations` pulls only
+ * the primary one: address/phone/reference live there now (never duplicated
+ * onto Customer itself), and every customer has exactly one primary location
+ * by construction (see `create` below and the partial unique index in the
+ * migration).
+ */
 const CUSTOMER_INCLUDE = {
   zone: { select: { id: true, name: true } },
+  locations: { where: { isPrimary: true }, take: 1 },
 } satisfies Prisma.CustomerInclude;
 
-type CustomerWithZone = Prisma.CustomerGetPayload<{ include: typeof CUSTOMER_INCLUDE }>;
+type CustomerWithRelations = Prisma.CustomerGetPayload<{ include: typeof CUSTOMER_INCLUDE }>;
 
 /**
  * Maps a row to the wire shape. `debtBalance` and `creditLimit` come out as
  * fixed 2-decimal strings: a NUMERIC(10,2) must never round-trip through a
  * JSON number, which is an IEEE-754 double.
  */
-function toCustomerResponse(customer: CustomerWithZone): CustomerResponseDto {
+function toCustomerResponse(customer: CustomerWithRelations): CustomerResponseDto {
+  const primaryLocation = customer.locations[0];
+  if (primaryLocation === undefined) {
+    // Would mean the invariant "every customer has a primary location" was
+    // violated somewhere else; surfacing it loudly beats returning a
+    // half-built response with an undefined address.
+    throw new Error(`El cliente "${customer.id}" no tiene una locación principal`);
+  }
+
   return {
     id: customer.id,
     name: customer.name,
-    phone: customer.phone,
-    address: customer.address,
-    addressReference: customer.addressReference,
+    phone: primaryLocation.phone,
+    address: primaryLocation.address,
+    addressReference: primaryLocation.addressReference,
     zoneId: customer.zoneId,
     zone: customer.zone,
     creditLimit: customer.creditLimit === null ? null : customer.creditLimit.toFixed(2),
@@ -45,18 +60,28 @@ export class CustomersService {
   /**
    * `debtBalance` is not accepted here and is not passed to Prisma: a new
    * customer always starts at the column default of 0 (spec HU-05 E1).
+   *
+   * The primary location is created in the same nested write — Prisma runs a
+   * nested `create` as part of the same transaction as its parent — so a
+   * customer never exists even briefly without one.
    */
   async create(dto: CreateCustomerDto): Promise<CustomerResponseDto> {
     try {
       const customer = await this.prisma.customer.create({
         data: {
           name: dto.name,
-          phone: dto.phone,
-          address: dto.address,
-          addressReference: dto.addressReference,
           zoneId: dto.zoneId ?? null,
           creditLimit: dto.creditLimit === undefined ? null : new Prisma.Decimal(dto.creditLimit),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
+          locations: {
+            create: {
+              name: "Principal",
+              address: dto.address,
+              addressReference: dto.addressReference,
+              phone: dto.phone,
+              isPrimary: true,
+            },
+          },
         },
         include: CUSTOMER_INCLUDE,
       });
@@ -120,19 +145,29 @@ export class CustomersService {
    * can move it.
    */
   async update(id: string, dto: UpdateCustomerDto): Promise<CustomerResponseDto> {
+    // address/addressReference/phone live on the primary location now; a
+    // nested updateMany (scoped to isPrimary, never more than one row) moves
+    // them in the same transaction as the customer's own fields, so a patch
+    // that touches both never leaves one written without the other.
+    const locationPatch = {
+      ...(dto.address !== undefined ? { address: dto.address } : {}),
+      ...(dto.addressReference !== undefined ? { addressReference: dto.addressReference } : {}),
+      ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+    };
+
     try {
       const customer = await this.prisma.customer.update({
         where: { id },
         data: {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
-          ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
-          ...(dto.address !== undefined ? { address: dto.address } : {}),
-          ...(dto.addressReference !== undefined ? { addressReference: dto.addressReference } : {}),
           ...(dto.zoneId !== undefined ? { zoneId: dto.zoneId } : {}),
           ...(dto.creditLimit !== undefined
             ? { creditLimit: new Prisma.Decimal(dto.creditLimit) }
             : {}),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
+          ...(Object.keys(locationPatch).length > 0
+            ? { locations: { updateMany: { where: { isPrimary: true }, data: locationPatch } } }
+            : {}),
         },
         include: CUSTOMER_INCLUDE,
       });
@@ -149,7 +184,11 @@ export class CustomersService {
   }
 }
 
-/** Search matches name or phone; zone and active narrow it further. */
+/**
+ * Search matches name or phone; zone and active narrow it further. Phone
+ * lives on the location now, so it matches against any of the customer's
+ * locations — not just the primary one.
+ */
 function buildCustomerFilter(query: ListCustomersQueryDto): Prisma.CustomerWhereInput {
   const { search, zoneId, active } = query;
   return {
@@ -159,7 +198,7 @@ function buildCustomerFilter(query: ListCustomersQueryDto): Prisma.CustomerWhere
       ? {
           OR: [
             { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
-            { phone: { contains: search } },
+            { locations: { some: { phone: { contains: search } } } },
           ],
         }
       : {}),
