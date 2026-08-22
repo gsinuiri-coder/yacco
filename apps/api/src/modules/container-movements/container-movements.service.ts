@@ -55,7 +55,28 @@ export class ContainerMovementsService {
    * Registers one ledger row — append-only, never updated or deleted (spec):
    * a mistake is corrected with an inverse movement, never by editing this
    * one. There is deliberately no update()/remove() on this service or its
-   * controller.
+   * controller. Opens its own transaction; the HTTP controller is the only
+   * caller that needs one (a caller with an already-open transaction of its
+   * own — ProductionBatchesService — uses `createWithinTransaction` below).
+   */
+  async create(
+    dto: CreateContainerMovementDto,
+    recordedById: string,
+  ): Promise<ContainerMovementResponseDto> {
+    const movement = await this.prisma.$transaction((tx) =>
+      this.createWithinTransaction(tx, dto, recordedById),
+    );
+    return toMovementResponse(movement);
+  }
+
+  /**
+   * The one place the ledger is ever written — everything above validates,
+   * this is the only INSERT. Takes a Prisma client rather than assuming
+   * `this.prisma`: `create()` above passes its own freshly-opened `tx`, and a
+   * caller that already has an open transaction (a production batch's
+   * FILLING movements) passes that one instead, so the movement and
+   * whatever else that caller is doing commit or roll back together — never
+   * two separate transactions pretending to be one.
    *
    * `type` alone no longer determines fromState/toState (damage happens at
    * the plant and on the route; a sale can leave from either), so the caller
@@ -66,11 +87,18 @@ export class ContainerMovementsService {
    * `CustomerContainerBalance` in the SAME transaction: letting the ledger
    * and the balance diverge would make the system lie about what a customer
    * still owes in containers.
+   *
+   * `batchId` is deliberately not part of `CreateContainerMovementDto`: it is
+   * an internal linkage the system sets when a production batch registers
+   * its FILLING movements, never something a caller of the public
+   * POST /container-movements route should be able to fabricate by hand.
    */
-  async create(
+  async createWithinTransaction(
+    client: Prisma.TransactionClient,
     dto: CreateContainerMovementDto,
     recordedById: string,
-  ): Promise<ContainerMovementResponseDto> {
+    batchId?: string,
+  ): Promise<MovementWithRelations> {
     const fromState = dto.fromState ?? null;
     const toState = dto.toState ?? null;
 
@@ -80,7 +108,7 @@ export class ContainerMovementsService {
       );
     }
 
-    await this.assertContainerTypeExists(dto.containerTypeId);
+    await this.assertContainerTypeExists(client, dto.containerTypeId);
 
     const touchesCustomer =
       fromState === ContainerState.WITH_CUSTOMER || toState === ContainerState.WITH_CUSTOMER;
@@ -88,52 +116,49 @@ export class ContainerMovementsService {
       throw new BadRequestException('Un movimiento hacia o desde "en cliente" exige una locación');
     }
     if (dto.locationId !== undefined) {
-      await this.assertLocationExists(dto.locationId);
+      await this.assertLocationExists(client, dto.locationId);
     }
 
-    const movement = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.containerMovement.create({
-        data: {
-          occurredAt: new Date(),
-          type: dto.type,
-          containerTypeId: dto.containerTypeId,
-          quantity: dto.quantity,
-          fromState,
-          toState,
-          locationId: dto.locationId ?? null,
-          recordedById,
-        },
-        include: MOVEMENT_INCLUDE,
-      });
-
-      if (touchesCustomer) {
-        // Never both at once: no type in the matrix has WITH_CUSTOMER on
-        // both sides, so this is a plain delivery-in or pickup/write-off-out.
-        const delta = toState === ContainerState.WITH_CUSTOMER ? dto.quantity : -dto.quantity;
-        // dto.locationId is defined here — touchesCustomer already required it above.
-        const locationId = dto.locationId as string;
-        const key = {
-          locationId_containerTypeId: { locationId, containerTypeId: dto.containerTypeId },
-        };
-        // Reads the current balance and writes the absolute result inside
-        // this same transaction, rather than upsert's `increment`: with a
-        // composite (no single-column) id, Prisma's upsert does not apply
-        // `increment` against the row already on disk when the ON CONFLICT
-        // branch is taken, so a second movement silently overwrote the first
-        // instead of adding to it.
-        const existing = await tx.customerContainerBalance.findUnique({ where: key });
-        const nextQuantity = (existing?.quantity ?? 0) + delta;
-        await tx.customerContainerBalance.upsert({
-          where: key,
-          create: { locationId, containerTypeId: dto.containerTypeId, quantity: nextQuantity },
-          update: { quantity: nextQuantity },
-        });
-      }
-
-      return created;
+    const created = await client.containerMovement.create({
+      data: {
+        occurredAt: new Date(),
+        type: dto.type,
+        containerTypeId: dto.containerTypeId,
+        quantity: dto.quantity,
+        fromState,
+        toState,
+        locationId: dto.locationId ?? null,
+        batchId: batchId ?? null,
+        recordedById,
+      },
+      include: MOVEMENT_INCLUDE,
     });
 
-    return toMovementResponse(movement);
+    if (touchesCustomer) {
+      // Never both at once: no type in the matrix has WITH_CUSTOMER on
+      // both sides, so this is a plain delivery-in or pickup/write-off-out.
+      const delta = toState === ContainerState.WITH_CUSTOMER ? dto.quantity : -dto.quantity;
+      // dto.locationId is defined here — touchesCustomer already required it above.
+      const locationId = dto.locationId as string;
+      const key = {
+        locationId_containerTypeId: { locationId, containerTypeId: dto.containerTypeId },
+      };
+      // Reads the current balance and writes the absolute result inside
+      // this same transaction, rather than upsert's `increment`: with a
+      // composite (no single-column) id, Prisma's upsert does not apply
+      // `increment` against the row already on disk when the ON CONFLICT
+      // branch is taken, so a second movement silently overwrote the first
+      // instead of adding to it.
+      const existing = await client.customerContainerBalance.findUnique({ where: key });
+      const nextQuantity = (existing?.quantity ?? 0) + delta;
+      await client.customerContainerBalance.upsert({
+        where: key,
+        create: { locationId, containerTypeId: dto.containerTypeId, quantity: nextQuantity },
+        update: { quantity: nextQuantity },
+      });
+    }
+
+    return created;
   }
 
   /** Always paginated; the count runs against the same filter as the page. */
@@ -205,8 +230,11 @@ export class ContainerMovementsService {
     );
   }
 
-  private async assertContainerTypeExists(containerTypeId: string): Promise<void> {
-    const containerType = await this.prisma.containerType.findUnique({
+  private async assertContainerTypeExists(
+    client: Prisma.TransactionClient,
+    containerTypeId: string,
+  ): Promise<void> {
+    const containerType = await client.containerType.findUnique({
       where: { id: containerTypeId },
       select: { id: true },
     });
@@ -215,8 +243,11 @@ export class ContainerMovementsService {
     }
   }
 
-  private async assertLocationExists(locationId: string): Promise<void> {
-    const location = await this.prisma.customerLocation.findUnique({
+  private async assertLocationExists(
+    client: Prisma.TransactionClient,
+    locationId: string,
+  ): Promise<void> {
+    const location = await client.customerLocation.findUnique({
       where: { id: locationId },
       select: { id: true },
     });
