@@ -57,3 +57,38 @@ export function formatOptionalMoney(value: string | null): string {
 export function isPositiveMoney(value: string): boolean {
   return !value.startsWith("-") && /[1-9]/.test(value);
 }
+
+/**
+ * Splits a money string into cents as a BigInt, by text — never through
+ * Number. A single order line can already reach 10 integer-cent digits
+ * (MONEY_PATTERN's 8 integer digits), and MAX_ITEM_QUANTITY (100000) pushes
+ * a line total past that; an order total then sums many such lines. BigInt
+ * has no double's 2^53 boundary, so it stays exact the whole way.
+ */
+function toCents(value: string): bigint {
+  const isNegative = value.startsWith("-");
+  const unsigned = isNegative ? value.slice(1) : value;
+  const [integerPart = "0", fractionPart = ""] = unsigned.split(".");
+  const cents = fractionPart.padEnd(2, "0").slice(0, 2);
+  const magnitude = BigInt(`${integerPart === "" ? "0" : integerPart}${cents}`);
+  return isNegative ? -magnitude : magnitude;
+}
+
+/** Inverse of toCents: BigInt cents back to a 2-decimal money string, by text. */
+function fromCents(cents: bigint): string {
+  const isNegative = cents < 0n;
+  const digits = (isNegative ? -cents : cents).toString().padStart(3, "0");
+  const integerPart = digits.slice(0, -2);
+  const fractionPart = digits.slice(-2);
+  return `${isNegative ? "-" : ""}${integerPart}.${fractionPart}`;
+}
+
+/** Live line subtotal while a seller assembles an order: quantity × unit price. */
+export function multiplyMoney(price: string, quantity: number): string {
+  return fromCents(toCents(price) * BigInt(quantity));
+}
+
+/** Live order total: the sum of every line subtotal. */
+export function sumMoney(values: string[]): string {
+  return fromCents(values.reduce((sum, value) => sum + toCents(value), 0n));
+}

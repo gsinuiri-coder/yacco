@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatMoney, formatOptionalMoney, isPositiveMoney, isValidMoney } from "./money";
+import {
+  formatMoney,
+  formatOptionalMoney,
+  isPositiveMoney,
+  isValidMoney,
+  multiplyMoney,
+  sumMoney,
+} from "./money";
 
 describe("formatMoney", () => {
   it("keeps the trailing zero that Number() would silently drop", () => {
@@ -71,5 +78,44 @@ describe("isValidMoney", () => {
     expect(isValidMoney("-150.00")).toBe(false);
     expect(isValidMoney("999999999.00")).toBe(false);
     expect(isValidMoney("")).toBe(false);
+  });
+});
+
+describe("multiplyMoney", () => {
+  it("keeps the tenth of a cent Number() would lose", () => {
+    // 0.10 x 3 in float is 0.30000000000000004 — this must land on "0.30".
+    expect(multiplyMoney("0.10", 3)).toBe("0.30");
+  });
+
+  it("returns zero for a zero quantity", () => {
+    expect(multiplyMoney("12.50", 0)).toBe("0.00");
+  });
+
+  it("stays exact past Number.MAX_SAFE_INTEGER in cents", () => {
+    // A single line tops out just short of 2^53: MONEY_PATTERN's 8 integer
+    // digits cap unitPrice at 99999999.99 (9999999999 cents), and
+    // MAX_ITEM_QUANTITY caps quantity at 100000, so the largest possible line
+    // is 999999999900000 cents (~9.99e14) — under 2^53 (~9.007e15). The order
+    // total sums across items with no upper bound on how many, so this test
+    // demonstrates the boundary through sumMoney of several max lines, the
+    // same way the real order total is computed.
+    const maxLine = multiplyMoney("99999999.99", 100000);
+    expect(maxLine).toBe("9999999999000.00");
+
+    const total = sumMoney(Array(10).fill(maxLine) as string[]);
+    expect(total).toBe("99999999990000.00");
+
+    const totalCents = 9999999999000_00n * 10n;
+    expect(totalCents).toBeGreaterThan(2n ** 53n);
+  });
+});
+
+describe("sumMoney", () => {
+  it("sums without losing a trailing tenth of a cent", () => {
+    expect(sumMoney(["0.10", "0.20"])).toBe("0.30");
+  });
+
+  it("returns zero for no lines", () => {
+    expect(sumMoney([])).toBe("0.00");
   });
 });
