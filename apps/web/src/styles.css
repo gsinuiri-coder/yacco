@@ -390,6 +390,10 @@ select:disabled {
   background: var(--surface-sunken);
 }
 
+.table__row--clickable {
+  cursor: pointer;
+}
+
 .table__numeric {
   text-align: right;
   /* Tabular figures keep the decimal points of a debt column aligned. */

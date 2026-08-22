@@ -78,3 +78,17 @@ que el módulo de Orders tenga algo con qué capturar un pedido en la demo.
 **Para cerrarla:** confirmar los precios reales con el dueño de la planta y
 actualizar el seed (o los `Product.listPrice` en la base ya sembrada) antes de
 que un pedido real se capture contra ellos.
+
+## El detalle de pedido no puede mostrar quién lo registró
+
+**Estado:** abierto. **Disparador:** cuando el dueño de la planta pida ver
+quién tomó un pedido.
+
+`OrderResponseDto` expone `createdById` pero no el nombre del creador; el
+detalle no puede mostrar quién registró el pedido. `apps/web/src/pages/order-detail-page.tsx`
+omite el campo en vez de mostrar el UUID crudo, que no le sirve a quien mira
+la pantalla.
+
+**Para cerrarla:** que `OrdersService.toOrderResponse` incluya el usuario
+(al menos `username`) en el `include` de Prisma, igual que ya hace con
+`customer` e `items.product`.
