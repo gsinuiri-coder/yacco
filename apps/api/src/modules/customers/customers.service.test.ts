@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { Prisma } from "@prisma/client";
-import type { Customer } from "@prisma/client";
+import type { Customer, CustomerLocation } from "@prisma/client";
 import { jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { CustomersService } from "./customers.service.js";
@@ -12,23 +12,44 @@ import { DEFAULT_LIMIT, DEFAULT_PAGE } from "./dto/list-customers-query.dto.js";
 // entonces se crea con saldo de envases 0 y deuda S/ 0."
 
 const ZONE_ID = "11111111-1111-4111-8111-111111111111";
+const CUSTOMER_INCLUDE = {
+  zone: { select: { id: true, name: true } },
+  locations: { where: { isPrimary: true }, take: 1 },
+};
+
+function buildPrimaryLocation(overrides: Partial<CustomerLocation> = {}) {
+  return {
+    id: "77777777-7777-4777-8777-777777777777",
+    customerId: "customer-1",
+    name: "Principal",
+    address: "Av. Los Alamos 452",
+    addressReference: "Porton azul frente al parque",
+    phone: "987654321",
+    isPrimary: true,
+    active: true,
+    createdAt: new Date("2026-08-21T15:00:00.000Z"),
+    ...overrides,
+  };
+}
 
 function buildCustomer(
-  overrides: Partial<Customer> & { zone?: { id: string; name: string } | null } = {},
+  overrides: Partial<Customer> & {
+    zone?: { id: string; name: string } | null;
+    locations?: ReturnType<typeof buildPrimaryLocation>[];
+  } = {},
 ) {
+  const { locations, ...customerOverrides } = overrides;
   return {
     id: "customer-1",
     zoneId: null,
     zone: null,
     name: "Bodega Santa Rosa",
-    phone: "987654321",
-    address: "Av. Los Alamos 452",
-    addressReference: "Porton azul frente al parque",
     creditLimit: null,
     debtBalance: new Prisma.Decimal(0),
     active: true,
     createdAt: new Date("2026-08-21T15:00:00.000Z"),
-    ...overrides,
+    locations: locations ?? [buildPrimaryLocation()],
+    ...customerOverrides,
   };
 }
 
@@ -91,6 +112,54 @@ describe("CustomersService", () => {
       expect(result.active).toBe(true);
     });
 
+    // Domain: the primary location is created with the customer, in the same
+    // transaction — a nested Prisma create runs atomically with its parent.
+    it("creates the primary location nested, with the address/reference/phone sent", async () => {
+      prisma.customer.create.mockResolvedValue(buildCustomer());
+
+      await service.create({
+        name: "Bodega Santa Rosa",
+        phone: "987654321",
+        address: "Av. Los Alamos 452",
+        addressReference: "Porton azul frente al parque",
+      });
+
+      expect(firstCallData(prisma.customer.create).locations).toEqual({
+        create: {
+          name: "Principal",
+          address: "Av. Los Alamos 452",
+          addressReference: "Porton azul frente al parque",
+          phone: "987654321",
+          isPrimary: true,
+        },
+      });
+    });
+
+    it("exposes the primary location's address/reference/phone on the customer returned", async () => {
+      prisma.customer.create.mockResolvedValue(
+        buildCustomer({
+          locations: [
+            buildPrimaryLocation({
+              address: "Av. Los Alamos 452",
+              addressReference: "Porton azul frente al parque",
+              phone: "987654321",
+            }),
+          ],
+        }),
+      );
+
+      const result = await service.create({
+        name: "Bodega Santa Rosa",
+        phone: "987654321",
+        address: "Av. Los Alamos 452",
+        addressReference: "Porton azul frente al parque",
+      });
+
+      expect(result.address).toBe("Av. Los Alamos 452");
+      expect(result.addressReference).toBe("Porton azul frente al parque");
+      expect(result.phone).toBe("987654321");
+    });
+
     it("stores creditLimit as an exact Decimal, never as a float", async () => {
       prisma.customer.create.mockResolvedValue(
         buildCustomer({ creditLimit: new Prisma.Decimal("150.55") }),
@@ -124,7 +193,7 @@ describe("CustomersService", () => {
       expect(firstCallData(prisma.customer.create)).toMatchObject({ active: false });
     });
 
-    it("returns zone as {id, name}, and includes it in the Prisma call", async () => {
+    it("returns zone as {id, name}, and includes it and the primary location in the Prisma call", async () => {
       const zone = { id: ZONE_ID, name: "Norte" };
       prisma.customer.create.mockResolvedValue(buildCustomer({ zoneId: ZONE_ID, zone }));
 
@@ -138,7 +207,7 @@ describe("CustomersService", () => {
 
       expect(result.zone).toEqual(zone);
       expect(prisma.customer.create).toHaveBeenCalledWith(
-        expect.objectContaining({ include: { zone: { select: { id: true, name: true } } } }),
+        expect.objectContaining({ include: CUSTOMER_INCLUDE }),
       );
     });
 
@@ -186,7 +255,9 @@ describe("CustomersService", () => {
       expect(result.data).toHaveLength(1);
     });
 
-    it("searches name and phone, and counts against the same filter as the page", async () => {
+    // Phone lives on the location now: the search matches any of the
+    // customer's locations, not just the primary one.
+    it("searches name and phone (via locations), and counts against the same filter as the page", async () => {
       prisma.customer.count.mockResolvedValue(1);
       prisma.customer.findMany.mockResolvedValue([buildCustomer()]);
 
@@ -195,7 +266,7 @@ describe("CustomersService", () => {
       const expectedWhere = {
         OR: [
           { name: { contains: "rosa", mode: Prisma.QueryMode.insensitive } },
-          { phone: { contains: "rosa" } },
+          { locations: { some: { phone: { contains: "rosa" } } } },
         ],
       };
       expect(prisma.customer.count).toHaveBeenCalledWith({ where: expectedWhere });
@@ -259,6 +330,13 @@ describe("CustomersService", () => {
 
       await expect(service.findOne("missing")).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    // Internal invariant guard: every customer must have a primary location.
+    it("throws if the customer somehow has no primary location", async () => {
+      prisma.customer.findUnique.mockResolvedValue(buildCustomer({ locations: [] }));
+
+      await expect(service.findOne("customer-1")).rejects.toThrow("locación principal");
+    });
   });
 
   describe("update", () => {
@@ -270,7 +348,7 @@ describe("CustomersService", () => {
       expect(prisma.customer.update).toHaveBeenCalledWith({
         where: { id: "customer-1" },
         data: { active: false },
-        include: { zone: { select: { id: true, name: true } } },
+        include: CUSTOMER_INCLUDE,
       });
       expect(result.active).toBe(false);
     });
@@ -286,8 +364,11 @@ describe("CustomersService", () => {
       expect(updateData.creditLimit).toBeInstanceOf(Prisma.Decimal);
     });
 
-    it("updates contact and location fields", async () => {
-      prisma.customer.update.mockResolvedValue(buildCustomer({ phone: "912345678" }));
+    // address/addressReference/phone now live on the primary location: the
+    // service must move them there through a nested updateMany scoped to
+    // isPrimary, in the same write as the customer's own fields.
+    it("updates contact/address fields through the primary location, in the same write", async () => {
+      prisma.customer.update.mockResolvedValue(buildCustomer());
 
       await service.update("customer-1", {
         phone: "912345678",
@@ -297,11 +378,26 @@ describe("CustomersService", () => {
       });
 
       expect(firstCallData(prisma.customer.update)).toEqual({
-        phone: "912345678",
-        address: "Jr. Nuevo 100",
-        addressReference: "Al lado del grifo",
         zoneId: ZONE_ID,
+        locations: {
+          updateMany: {
+            where: { isPrimary: true },
+            data: {
+              address: "Jr. Nuevo 100",
+              addressReference: "Al lado del grifo",
+              phone: "912345678",
+            },
+          },
+        },
       });
+    });
+
+    it("does not touch locations at all when no location field is in the patch", async () => {
+      prisma.customer.update.mockResolvedValue(buildCustomer());
+
+      await service.update("customer-1", { name: "Nuevo nombre" });
+
+      expect(firstCallData(prisma.customer.update)).not.toHaveProperty("locations");
     });
 
     it("throws NotFoundException for an unknown id", async () => {

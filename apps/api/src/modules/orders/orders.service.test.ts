@@ -16,16 +16,19 @@ const PRODUCT_ID = "22222222-2222-4222-8222-222222222222";
 const OTHER_PRODUCT_ID = "33333333-3333-4333-8333-333333333333";
 const ORDER_ID = "44444444-4444-4444-8444-444444444444";
 const USER_ID = "55555555-5555-4555-8555-555555555555";
+const LOCATION_ID = "66666666-6666-4666-8666-666666666666";
 
 function buildOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: ORDER_ID,
-    customerId: CUSTOMER_ID,
     deliveryDate: new Date(Date.UTC(2026, 7, 25)),
     status: OrderStatus.PENDING,
     createdById: USER_ID,
     createdAt: new Date("2026-08-21T15:00:00.000Z"),
-    customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa", phone: "987654321" },
+    location: {
+      phone: "987654321",
+      customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa" },
+    },
     items: [
       {
         id: "item-1",
@@ -71,9 +74,15 @@ function buildPrismaMock() {
       updateMany: jest.fn<() => Promise<unknown>>(),
     },
     customer: { findUnique: jest.fn<() => Promise<unknown>>() },
+    customerLocation: { findFirst: jest.fn<() => Promise<unknown>>() },
     product: { findMany: jest.fn<() => Promise<unknown>>() },
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
+}
+
+/** Every "create" test needs the customer to have a primary location. */
+function primaryLocation(overrides: Record<string, unknown> = {}) {
+  return { id: LOCATION_ID, ...overrides };
 }
 
 describe("OrdersService", () => {
@@ -116,6 +125,7 @@ describe("OrdersService", () => {
   describe("create", () => {
     it("HU-06 E1: a captured order is born PENDING with its items", async () => {
       prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(primaryLocation());
       prisma.product.findMany.mockResolvedValue([activeProduct()]);
       prisma.order.create.mockResolvedValue(buildOrder());
 
@@ -130,13 +140,28 @@ describe("OrdersService", () => {
       // Status is never sent: the column default is what makes it PENDING.
       expect(createArgs.data).not.toHaveProperty("status");
       expect(createArgs.data.createdById).toBe(USER_ID);
+      expect(createArgs.data.locationId).toBe(LOCATION_ID);
       expect(result.status).toBe(OrderStatus.PENDING);
       expect(result.deliveryDate).toBe("2026-08-25");
       expect(result.items).toHaveLength(1);
     });
 
+    it("refuses when the customer has no primary location", async () => {
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create(
+          { customerId: CUSTOMER_ID, deliveryDate: "2026-08-25", items: validItems() },
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.order.create).not.toHaveBeenCalled();
+    });
+
     it("persists unitPrice as an exact Decimal and returns it as a 2-decimal string", async () => {
       prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(primaryLocation());
       prisma.product.findMany.mockResolvedValue([activeProduct()]);
       prisma.order.create.mockResolvedValue(buildOrder());
 
@@ -181,6 +206,7 @@ describe("OrdersService", () => {
 
     it("refuses a product that is no longer on sale, naming it", async () => {
       prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(primaryLocation());
       prisma.product.findMany.mockResolvedValue([
         activeProduct({ name: "Recarga descontinuada", active: false }),
       ]);
@@ -196,6 +222,7 @@ describe("OrdersService", () => {
 
     it("names every inactive product, not just the first", async () => {
       prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(primaryLocation());
       prisma.product.findMany.mockResolvedValue([
         activeProduct({ name: "Recarga vieja", active: false }),
         activeProduct({ id: OTHER_PRODUCT_ID, name: "Bidón retirado", active: false }),
@@ -231,6 +258,7 @@ describe("OrdersService", () => {
 
     it("names the products that do not exist instead of failing on the foreign key", async () => {
       prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(primaryLocation());
       prisma.product.findMany.mockResolvedValue([activeProduct()]);
 
       await expect(
@@ -251,6 +279,7 @@ describe("OrdersService", () => {
 
     it("looks each product up once even when it repeats across items", async () => {
       prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(primaryLocation());
       prisma.product.findMany.mockResolvedValue([activeProduct()]);
       prisma.order.create.mockResolvedValue(buildOrder());
 
@@ -284,6 +313,7 @@ describe("OrdersService", () => {
 
     it("totals quantity × unitPrice across several items", async () => {
       prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(primaryLocation());
       prisma.product.findMany.mockResolvedValue([activeProduct()]);
       prisma.order.create.mockResolvedValue(
         buildOrder({
@@ -317,6 +347,7 @@ describe("OrdersService", () => {
 
     it("totals prices that would betray a float sum, as an exact string", async () => {
       prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findFirst.mockResolvedValue(primaryLocation());
       prisma.product.findMany.mockResolvedValue([activeProduct()]);
       prisma.order.create.mockResolvedValue(
         buildOrder({
@@ -374,7 +405,7 @@ describe("OrdersService", () => {
       });
 
       expect(prisma.order.count).toHaveBeenCalledWith({
-        where: { status: OrderStatus.PENDING, customerId: CUSTOMER_ID },
+        where: { status: OrderStatus.PENDING, location: { customerId: CUSTOMER_ID } },
       });
     });
 
