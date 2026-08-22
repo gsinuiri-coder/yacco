@@ -165,6 +165,12 @@ h2 {
   flex-wrap: wrap;
 }
 
+.page-header__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 .page-header__subtitle {
   margin: var(--space-1) 0 0;
   color: var(--text-muted);

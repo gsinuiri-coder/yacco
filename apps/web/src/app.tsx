@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router";
 import { AuthProvider } from "./auth/auth-provider";
 import { CustomerCreatePage } from "./pages/customer-create-page";
+import { CustomerDetailPage } from "./pages/customer-detail-page";
 import { CustomerEditPage } from "./pages/customer-edit-page";
 import { CustomersPage } from "./pages/customers-page";
 import { DashboardPage } from "./pages/dashboard-page";
@@ -19,7 +20,8 @@ export function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/new" element={<CustomerCreatePage />} />
-          <Route path="/customers/:customerId" element={<CustomerEditPage />} />
+          <Route path="/customers/:customerId" element={<CustomerDetailPage />} />
+          <Route path="/customers/:customerId/edit" element={<CustomerEditPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/new" element={<OrderCreatePage />} />
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />

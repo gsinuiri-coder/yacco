@@ -54,10 +54,10 @@ function stubPatch(status = 200, payload?: JsonBodyType): { body: unknown } {
 function renderEdit() {
   return renderWithProviders(
     <Routes>
-      <Route path="/customers/:customerId" element={<CustomerEditPage />} />
+      <Route path="/customers/:customerId/edit" element={<CustomerEditPage />} />
       <Route path="/customers" element={<h1>Clientes</h1>} />
     </Routes>,
-    `/customers/${CUSTOMER_ID}`,
+    `/customers/${CUSTOMER_ID}/edit`,
   );
 }
 

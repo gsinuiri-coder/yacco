@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { CUSTOMERS_PAGE_SIZE, listCustomers } from "../api/customers";
 import type { Customer, PaginatedCustomers } from "../api/customers";
 import { useAuth } from "../auth/use-auth";
@@ -24,6 +24,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export function CustomersPage() {
   const { apiClient } = useAuth();
+  const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
@@ -163,7 +164,11 @@ export function CustomersPage() {
                 </thead>
                 <tbody>
                   {customers.map((customer) => (
-                    <CustomerRow key={customer.id} customer={customer} />
+                    <CustomerRow
+                      key={customer.id}
+                      customer={customer}
+                      onOpen={() => void navigate(`/customers/${customer.id}`)}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -183,11 +188,20 @@ export function CustomersPage() {
   );
 }
 
-function CustomerRow({ customer }: { customer: Customer }) {
+function CustomerRow({ customer, onOpen }: { customer: Customer; onOpen: () => void }) {
   const owes = isPositiveMoney(customer.debtBalance);
 
   return (
-    <tr>
+    <tr
+      className="table__row--clickable"
+      role="link"
+      tabIndex={0}
+      aria-label={`Ver cliente ${customer.name}`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onOpen();
+      }}
+    >
       <td>
         <div className="cell-primary">{customer.name}</div>
         <div className="cell-secondary">{customer.phone}</div>
@@ -208,7 +222,11 @@ function CustomerRow({ customer }: { customer: Customer }) {
         {formatMoney(customer.debtBalance)}
       </td>
       <td className="table__actions">
-        <Link to={`/customers/${customer.id}`} className="button button--ghost">
+        <Link
+          to={`/customers/${customer.id}/edit`}
+          className="button button--ghost"
+          onClick={(event) => event.stopPropagation()}
+        >
           Editar
         </Link>
       </td>
