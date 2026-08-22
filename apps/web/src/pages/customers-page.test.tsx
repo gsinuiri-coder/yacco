@@ -57,7 +57,8 @@ function renderCustomers() {
     <Routes>
       <Route path="/customers" element={<CustomersPage />} />
       <Route path="/customers/new" element={<h1>Nuevo cliente</h1>} />
-      <Route path="/customers/:customerId" element={<h1>Editar</h1>} />
+      <Route path="/customers/:customerId" element={<h1>Ficha</h1>} />
+      <Route path="/customers/:customerId/edit" element={<h1>Editar</h1>} />
     </Routes>,
     "/customers",
   );
@@ -231,7 +232,7 @@ describe("CustomersPage", () => {
     expect(await screen.findByText("Ningún cliente coincide con la búsqueda")).toBeInTheDocument();
   });
 
-  it("enlaza a la ficha de cada cliente y al alta", async () => {
+  it("enlaza a la edición de cada cliente y al alta", async () => {
     stubCustomers(() => buildPage());
 
     renderCustomers();
@@ -239,11 +240,36 @@ describe("CustomersPage", () => {
 
     expect(screen.getByRole("link", { name: "Editar" })).toHaveAttribute(
       "href",
-      "/customers/11111111-1111-4111-8111-111111111111",
+      "/customers/11111111-1111-4111-8111-111111111111/edit",
     );
     expect(screen.getByRole("link", { name: "Nuevo cliente" })).toHaveAttribute(
       "href",
       "/customers/new",
     );
+  });
+
+  it("una fila lleva a la ficha del cliente", async () => {
+    const user = userEvent.setup();
+    stubCustomers(() => buildPage());
+
+    renderCustomers();
+    await screen.findByText("Bodega Santa Rosa");
+
+    await user.click(screen.getByRole("link", { name: "Ver cliente Bodega Santa Rosa" }));
+
+    expect(await screen.findByRole("heading", { name: "Ficha" })).toBeInTheDocument();
+  });
+
+  it("clicar «Editar» no dispara también la navegación de la fila", async () => {
+    const user = userEvent.setup();
+    stubCustomers(() => buildPage());
+
+    renderCustomers();
+    await screen.findByText("Bodega Santa Rosa");
+
+    await user.click(screen.getByRole("link", { name: "Editar" }));
+
+    expect(await screen.findByRole("heading", { name: "Editar" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Ficha" })).not.toBeInTheDocument();
   });
 });

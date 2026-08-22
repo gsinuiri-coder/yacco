@@ -164,6 +164,15 @@ describe("apiClient", () => {
     await expect(client.request("/customers")).rejects.toThrow("name no puede estar vacío");
   });
 
+  it("resuelve sin intentar parsear un 204 sin cuerpo", async () => {
+    server.use(
+      http.delete(`${BASE_URL}/customers/c1`, () => new HttpResponse(null, { status: 204 })),
+    );
+
+    const client = createApiClient(deps);
+    await expect(client.request("/customers/c1", { method: "DELETE" })).resolves.toBeUndefined();
+  });
+
   it("usa el statusText cuando el cuerpo del error no es JSON", async () => {
     server.use(
       http.get(

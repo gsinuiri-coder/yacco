@@ -104,6 +104,12 @@ export function createApiClient(deps: ApiClientDeps): ApiClient {
       throw new ApiError(response.status, await readErrorMessage(response));
     }
 
+    // 204 (e.g. DELETE) has no body; response.json() would throw trying to
+    // parse an empty string as JSON.
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
     return (await response.json()) as T;
   }
 
