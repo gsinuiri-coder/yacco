@@ -133,6 +133,7 @@ export function OrderCreatePage() {
             errors={itemErrors}
             disabled={isSubmitting}
             onChange={handleItemsChange}
+            customerId={customer?.id ?? null}
           />
 
           <SlowRequestNotice show={isSlow && isSubmitting} />
