@@ -52,6 +52,22 @@ export function OrderCreatePage() {
     return nextCustomerError === undefined && nextItemErrors.every((error) => error === undefined);
   }
 
+  function handleCustomerChange(next: Customer | null) {
+    setCustomer(next);
+    // Clears only this field's error: a full re-validate on every change
+    // would flag the item lines before the seller has finished them.
+    setCustomerError(undefined);
+  }
+
+  function handleItemsChange(nextItems: OrderItemDraft[], changedIndex?: number) {
+    setItems(nextItems);
+    if (changedIndex !== undefined) {
+      setItemErrors((current) =>
+        current.map((error, index) => (index === changedIndex ? undefined : error)),
+      );
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // Guards a stray second submit event arriving before the disabled button
@@ -94,7 +110,7 @@ export function OrderCreatePage() {
                 id="customerId"
                 label="Cliente"
                 value={customer}
-                onChange={setCustomer}
+                onChange={handleCustomerChange}
               />
               {customerError && <span className="field__error">{customerError}</span>}
             </div>
@@ -116,7 +132,7 @@ export function OrderCreatePage() {
             items={items}
             errors={itemErrors}
             disabled={isSubmitting}
-            onChange={setItems}
+            onChange={handleItemsChange}
           />
 
           <SlowRequestNotice show={isSlow && isSubmitting} />
