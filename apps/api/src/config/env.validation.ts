@@ -2,12 +2,41 @@
 // sometimes the first thing loaded (e.g. by its own unit test), so it can't
 // rely on some other module having imported reflect-metadata first.
 import "reflect-metadata";
-import { Type, plainToInstance } from "class-transformer";
-import { IsInt, IsNotEmpty, IsString, Matches, Max, Min, validateSync } from "class-validator";
+import { Transform, Type, plainToInstance } from "class-transformer";
+import {
+  ArrayNotEmpty,
+  IsArray,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  validateSync,
+} from "class-validator";
 
 // Prisma resolves DIRECT_URL eagerly too (it's declared in the datasource
 // block), so a malformed/missing value must fail the same way as DATABASE_URL.
 const POSTGRES_URL_PATTERN = /^postgres(ql)?:\/\/.+/;
+
+const WEB_ORIGIN_DEFAULT = "http://localhost:5173";
+
+/**
+ * WEB_ORIGIN is a comma-separated list, so a local Vite dev server and the
+ * deployed frontend can both be allowed at once — pointing it only at the
+ * deployed origin would break local development against production. The
+ * single-origin form still works: it is just a list of one. Each value is
+ * trimmed, and empty entries (a stray or trailing comma) are dropped rather
+ * than becoming a "" origin. `undefined` (the variable unset) falls back to
+ * the local dev default before parsing.
+ */
+export function parseWebOrigins(raw: string | undefined): string[] {
+  const source = raw === undefined ? WEB_ORIGIN_DEFAULT : raw;
+  return source
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
 
 export class EnvironmentVariables {
   @IsString()
@@ -46,12 +75,20 @@ export class EnvironmentVariables {
   @Max(65535)
   PORT!: number;
 
-  // Origin allowed by CORS (app.enableCors in main.ts). Differs per
-  // environment (local Vite dev server, the demo frontend, production) so it
-  // has a dev-safe default instead of being required.
-  @IsString()
-  @IsNotEmpty({ message: "WEB_ORIGIN must not be empty" })
-  WEB_ORIGIN: string = "http://localhost:5173";
+  /**
+   * Origins allowed by CORS (app.enableCors in main.ts), parsed from a
+   * comma-separated string to a list. A silently empty list would let the
+   * API start yet reject every browser request with no clear signal, so an
+   * empty result after parsing (e.g. WEB_ORIGIN="" or ",,") fails the boot
+   * instead — see parseWebOrigins above.
+   */
+  @Transform(({ value }: { value: unknown }) =>
+    parseWebOrigins(typeof value === "string" ? value : undefined),
+  )
+  @IsArray({ message: "WEB_ORIGIN must be a comma-separated list of origins" })
+  @ArrayNotEmpty({ message: "WEB_ORIGIN must include at least one origin" })
+  @IsString({ each: true })
+  WEB_ORIGIN: string[] = parseWebOrigins(undefined);
 }
 
 /**

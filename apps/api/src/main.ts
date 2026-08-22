@@ -4,6 +4,7 @@ import { INestApplication, RequestMethod, ValidationPipe } from "@nestjs/common"
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module.js";
+import { parseWebOrigins } from "./config/env.validation.js";
 import { reportBootstrapFailure } from "./config/report-bootstrap-failure.js";
 
 // Kept outside the versioned prefix on purpose: Render's health check and
@@ -22,9 +23,11 @@ export async function bootstrap(): Promise<INestApplication> {
   // the instance (Render) doesn't leave the pooled connection dangling.
   app.enableShutdownHooks();
 
-  // credentials:true requires an explicit origin (not "*"); WEB_ORIGIN is per
-  // environment (local/demo/production point at different frontends).
-  app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true });
+  // credentials:true requires explicit origins (not "*"); WEB_ORIGIN is a
+  // comma-separated list so local dev and a deployed frontend can both be
+  // allowed at once. ConfigModule's validate (env.validation.ts) already
+  // fails the boot if it parses to an empty list, so this is never [].
+  app.enableCors({ origin: parseWebOrigins(process.env.WEB_ORIGIN), credentials: true });
 
   app.setGlobalPrefix("api/v1", { exclude: GLOBAL_PREFIX_EXCLUDE });
   app.useGlobalPipes(
