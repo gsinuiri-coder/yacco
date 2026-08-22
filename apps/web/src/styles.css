@@ -32,6 +32,8 @@
   --danger-border: #f0c5c5;
   --success: #14663a;
   --success-soft: #e9f5ed;
+  --warning: #8a5a00;
+  --warning-soft: #fdf1d9;
   --neutral-soft: #eef1f4;
 
   --space-1: 0.25rem;
@@ -226,6 +228,7 @@ h2 {
 input[type="text"],
 input[type="search"],
 input[type="password"],
+input[type="date"],
 select {
   width: 100%;
   padding: 0.5rem 0.6875rem;
@@ -440,6 +443,86 @@ select:disabled {
   background: var(--neutral-soft);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.badge--warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.badge--info {
+  background: var(--brand-soft);
+  color: var(--brand-hover);
+}
+
+.badge--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* --- Customer select (combobox) -------------------------------------------- */
+
+.combobox {
+  position: relative;
+}
+
+.combobox__selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0.5rem 0.6875rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.combobox__selected-name {
+  font-weight: 560;
+}
+
+.combobox__selected-detail {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.combobox__results {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: var(--space-1);
+}
+
+.combobox__result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.combobox__result:hover,
+.combobox__result:focus-visible {
+  background: var(--brand-soft);
+}
+
+.combobox__empty {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-subtle);
+  font-size: 0.875rem;
 }
 
 /* --- States --------------------------------------------------------------- */

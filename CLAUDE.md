@@ -40,6 +40,12 @@ spec disagree, STOP and ask before proceeding.
 - Money on the wire is a 2-decimal string (`"12.50"`), never a JSON number: a
   JSON number is an IEEE-754 double and breaks the guarantee before the value
   reaches Postgres. Parse to `Prisma.Decimal` at the edge.
+- Business dates (`deliveryDate`, `routes.date`) are `"AAAA-MM-DD"` strings on
+  the wire — a calendar day, not an instant. The front NEVER converts them
+  with `new Date(...)`, `Date.parse`, or a date library: that parses as UTC
+  midnight and reads back a day earlier in America/Lima (UTC-5). Format by
+  splitting the string as text, the same way money is formatted without
+  going through `Number`.
 - Every operational row records `created_at` and `recorded_by`/`created_by`.
 - Driver field writes enter ONLY through `POST /api/v1/sync/operations`
   (idempotent by device-generated UUID; duplicates -> DUPLICATE, never re-applied).

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { CUSTOMERS_PAGE_SIZE, listCustomers } from "../api/customers";
 import type { Customer, PaginatedCustomers } from "../api/customers";
-import { SLOW_REQUEST_MESSAGE } from "../api/timing";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
+import { ErrorState } from "../components/error-state";
+import { PaginationNav } from "../components/pagination-nav";
+import { SlowRequestNotice } from "../components/slow-request-notice";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatMoney, isPositiveMoney } from "../lib/money";
 
@@ -129,22 +131,10 @@ export function CustomersPage() {
           </div>
         </div>
 
-        {isSlow && isLoading && (
-          <p className="notice notice--info" role="status">
-            {SLOW_REQUEST_MESSAGE}
-          </p>
-        )}
+        <SlowRequestNotice show={isSlow && isLoading} />
 
         {errorMessage ? (
-          <div className="state">
-            <p className="state__title">No se pudo cargar la lista</p>
-            <p role="alert">{errorMessage}</p>
-            <div className="state__actions">
-              <button type="button" className="button button--secondary" onClick={retry}>
-                Reintentar
-              </button>
-            </div>
-          </div>
+          <ErrorState message={errorMessage} onRetry={retry} />
         ) : isLoading ? (
           <p className="state" role="status">
             Cargando clientes…
@@ -179,29 +169,13 @@ export function CustomersPage() {
               </table>
             </div>
 
-            <nav className="pagination" aria-label="Paginación">
-              <span className="pagination__status">
-                Página {result?.page ?? page} de {totalPages}
-              </span>
-              <div className="pagination__controls">
-                <button
-                  type="button"
-                  className="button button--secondary"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={page <= 1}
-                >
-                  Anterior
-                </button>
-                <button
-                  type="button"
-                  className="button button--secondary"
-                  onClick={() => setPage((current) => current + 1)}
-                  disabled={page >= totalPages}
-                >
-                  Siguiente
-                </button>
-              </div>
-            </nav>
+            <PaginationNav
+              displayPage={result?.page ?? page}
+              page={page}
+              totalPages={totalPages}
+              onPrevious={() => setPage((current) => Math.max(1, current - 1))}
+              onNext={() => setPage((current) => current + 1)}
+            />
           </>
         )}
       </section>

@@ -1,0 +1,88 @@
+/**
+ * Contracts derived from apps/api/src/modules/orders. Do not invent fields
+ * here: if the API changes, this file is updated against the real DTOs.
+ *
+ * Money (`unitPrice`, `total`) is a 2-decimal string on the wire and stays a
+ * string here — see lib/money.ts. `deliveryDate` is a calendar day in
+ * America/Lima as "AAAA-MM-DD", never a Date — see lib/business-date.ts.
+ */
+import type { ApiClient } from "./api-client";
+
+/** Enum OrderStatus en Prisma. */
+export type OrderStatus = "PENDING" | "ON_ROUTE" | "DELIVERED" | "FAILED" | "CANCELLED";
+
+/** OrderCustomerDto: the minimum to recognise the customer without a second call. */
+export interface OrderCustomer {
+  id: string;
+  name: string;
+  phone: string;
+}
+
+/** OrderProductDto. */
+export interface OrderProduct {
+  id: string;
+  name: string;
+}
+
+/** OrderItemResponseDto. */
+export interface OrderItem {
+  id: string;
+  productId: string;
+  product: OrderProduct;
+  quantity: number;
+  unitPrice: string;
+}
+
+/** OrderResponseDto. `createdAt` is an ISO instant once serialized. */
+export interface Order {
+  id: string;
+  customerId: string;
+  customer: OrderCustomer;
+  deliveryDate: string;
+  status: OrderStatus;
+  createdById: string;
+  createdAt: string;
+  items: OrderItem[];
+  total: string;
+}
+
+/** PaginatedOrdersDto. */
+export interface PaginatedOrders {
+  data: Order[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/** ListOrdersQueryDto. */
+export interface OrderListParams {
+  page?: number;
+  limit?: number;
+  status?: OrderStatus;
+  customerId?: string;
+  deliveryDateFrom?: string;
+  deliveryDateTo?: string;
+}
+
+/** Matches MAX_LIMIT in the API's list-orders-query.dto.ts. */
+export const ORDERS_PAGE_SIZE = 20;
+
+function buildListQuery(params: OrderListParams): string {
+  const query = new URLSearchParams();
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.status) query.set("status", params.status);
+  if (params.customerId) query.set("customerId", params.customerId);
+  if (params.deliveryDateFrom) query.set("deliveryDateFrom", params.deliveryDateFrom);
+  if (params.deliveryDateTo) query.set("deliveryDateTo", params.deliveryDateTo);
+  return query.toString();
+}
+
+export function listOrders(
+  apiClient: ApiClient,
+  params: OrderListParams = {},
+): Promise<PaginatedOrders> {
+  const query = buildListQuery(params);
+  return apiClient.request<PaginatedOrders>(`/orders${query ? `?${query}` : ""}`);
+}
