@@ -5,6 +5,7 @@ import type { JsonBodyType } from "msw";
 import { Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Customer, PaginatedCustomers } from "../api/customers";
+import type { EffectivePrice } from "../api/customer-prices";
 import type { Product } from "../api/products";
 import { API_BASE_URL } from "../config";
 import { renderWithProviders } from "../test/render";
@@ -63,6 +64,23 @@ function stubCustomerSearch(customers: Customer[]): void {
   );
 }
 
+/** By default every product prices at list, mirroring "no agreement" for this customer. */
+function stubEffectivePrices(customerId: string, items: EffectivePrice[]): void {
+  server.use(
+    http.get(`${API_BASE_URL}/customers/${customerId}/effective-prices`, () =>
+      HttpResponse.json(items),
+    ),
+  );
+}
+
+function listPriced(products: Product[]): EffectivePrice[] {
+  return products.map((product) => ({
+    product: { id: product.id, name: product.name },
+    price: product.listPrice,
+    source: "LIST",
+  }));
+}
+
 /** Captures the JSON body of the POST so the test can assert the contract. */
 function stubCreate(status = 201, payload?: JsonBodyType): { body: unknown } {
   const captured: { body: unknown } = { body: undefined };
@@ -112,13 +130,14 @@ describe("OrderCreatePage", () => {
     stubProducts(products);
     const customer = buildCustomer();
     stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, listPriced(products));
     const captured = stubCreate();
 
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
 
-    await user.selectOptions(screen.getByLabelText("Producto (ítem 1)"), products[0]!.id);
+    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), products[0]!.id);
     await user.clear(screen.getByLabelText("Cantidad (ítem 1)"));
     await user.type(screen.getByLabelText("Cantidad (ítem 1)"), "3");
 
@@ -144,14 +163,42 @@ describe("OrderCreatePage", () => {
     expect(typeof body.items[0]!.unitPrice).toBe("string");
   });
 
+  it("elegir cliente y producto prellena con el precio PACTADO, no el de lista", async () => {
+    const user = userEvent.setup();
+    const product = buildProduct();
+    stubProducts([product]);
+    const customer = buildCustomer();
+    stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, [
+      { product: { id: product.id, name: product.name }, price: "9.90", source: "CUSTOMER" },
+    ]);
+    const captured = stubCreate();
+
+    renderCreate();
+    await screen.findByRole("heading", { name: "Nuevo pedido" });
+    await pickCustomer(user, customer);
+    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+
+    expect(screen.getByLabelText("Precio unitario (ítem 1)")).toHaveValue("9.90");
+    expect(screen.getByText("Pactado")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
+    await screen.findByRole("heading", { name: "Pedidos" });
+    const body = captured.body as { items: { unitPrice: string }[] };
+    expect(body.items[0]!.unitPrice).toBe("9.90");
+  });
+
   it("actualiza el total en vivo al cambiar cantidad y al agregar línea", async () => {
     const user = userEvent.setup();
     const product = buildProduct({ listPrice: "10.00" });
     stubProducts([product]);
-    stubCustomerSearch([]);
+    const customer = buildCustomer();
+    stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, listPriced([product]));
 
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
+    await pickCustomer(user, customer);
 
     await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
     await user.clear(screen.getByLabelText("Cantidad (ítem 1)"));
@@ -175,6 +222,7 @@ describe("OrderCreatePage", () => {
     stubProducts([product]);
     const customer = buildCustomer();
     stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, listPriced([product]));
     const captured = stubCreate();
 
     renderCreate();
@@ -195,17 +243,17 @@ describe("OrderCreatePage", () => {
   });
 
   it("exige elegir un cliente antes de enviar", async () => {
-    const user = userEvent.setup();
-    const product = buildProduct();
-    stubProducts([product]);
+    stubProducts([buildProduct()]);
     stubCustomerSearch([]);
     // Sin handler de POST: si el formulario llamara a la API, MSW haría fallar el test.
+    // Sin cliente, el producto está deshabilitado — no hay forma de completar
+    // el ítem, así que el error de cliente es el único camino de validación.
 
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+    expect(screen.getByLabelText("Producto (ítem 1)")).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Registrar pedido" }));
 
     expect(await screen.findByText("Elige un cliente")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Nuevo pedido" })).toBeInTheDocument();
@@ -217,10 +265,10 @@ describe("OrderCreatePage", () => {
     stubProducts([product]);
     const customer = buildCustomer();
     stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, listPriced([product]));
 
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
     await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
     expect(await screen.findByText("Elige un cliente")).toBeInTheDocument();
 
@@ -236,6 +284,7 @@ describe("OrderCreatePage", () => {
     stubProducts([product]);
     const customer = buildCustomer();
     stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, listPriced([product]));
     // Sin handler de POST: si el formulario llamara a la API, MSW haría fallar el test.
 
     renderCreate();
@@ -278,6 +327,7 @@ describe("OrderCreatePage", () => {
     stubProducts([product]);
     const customer = buildCustomer();
     stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, listPriced([product]));
     // Sin handler de POST: si el formulario llamara a la API, MSW haría fallar el test.
 
     renderCreate();
@@ -302,6 +352,7 @@ describe("OrderCreatePage", () => {
     stubProducts([product]);
     const customer = buildCustomer();
     stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, listPriced([product]));
     stubCreate(400, { message: 'Ya no están a la venta los productos: "Recarga 20L"' });
 
     renderCreate();
@@ -325,6 +376,7 @@ describe("OrderCreatePage", () => {
     stubProducts([product]);
     const customer = buildCustomer();
     stubCustomerSearch([customer]);
+    stubEffectivePrices(customer.id, listPriced([product]));
     let postCount = 0;
     server.use(
       http.post(`${API_BASE_URL}/orders`, async () => {
