@@ -49,16 +49,35 @@ test("rejects a non-numeric PORT", () => {
 
 test("defaults WEB_ORIGIN to the local Vite dev server when unset", () => {
   const result = validateEnv(validConfig());
-  expect(result.WEB_ORIGIN).toBe("http://localhost:5173");
+  expect(result.WEB_ORIGIN).toEqual(["http://localhost:5173"]);
 });
 
-test("accepts an explicit WEB_ORIGIN override", () => {
+test("a single WEB_ORIGIN still works (today's deployed form)", () => {
   const result = validateEnv(validConfig({ WEB_ORIGIN: "https://app.yacco.pe" }));
-  expect(result.WEB_ORIGIN).toBe("https://app.yacco.pe");
+  expect(result.WEB_ORIGIN).toEqual(["https://app.yacco.pe"]);
 });
 
-test("rejects an empty WEB_ORIGIN", () => {
-  expect(() => validateEnv(validConfig({ WEB_ORIGIN: "" }))).toThrow(
-    /WEB_ORIGIN must not be empty/,
+test("parses several comma-separated origins into a list", () => {
+  const result = validateEnv(
+    validConfig({ WEB_ORIGIN: "http://localhost:5173,https://app.yacco.pe" }),
+  );
+  expect(result.WEB_ORIGIN).toEqual(["http://localhost:5173", "https://app.yacco.pe"]);
+});
+
+test("trims whitespace around each origin", () => {
+  const result = validateEnv(
+    validConfig({ WEB_ORIGIN: " http://localhost:5173 , https://app.yacco.pe " }),
+  );
+  expect(result.WEB_ORIGIN).toEqual(["http://localhost:5173", "https://app.yacco.pe"]);
+});
+
+test("a trailing comma does not produce an empty origin", () => {
+  const result = validateEnv(validConfig({ WEB_ORIGIN: "https://app.yacco.pe," }));
+  expect(result.WEB_ORIGIN).toEqual(["https://app.yacco.pe"]);
+});
+
+test.each(["", ",", " , , "])("rejects a WEB_ORIGIN with no real origin (%j)", (webOrigin) => {
+  expect(() => validateEnv(validConfig({ WEB_ORIGIN: webOrigin }))).toThrow(
+    /WEB_ORIGIN must include at least one origin/,
   );
 });
