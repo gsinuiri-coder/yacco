@@ -50,6 +50,20 @@ enum ContainerMovementType {
   @@map("container_movement_type")
 }
 
+// The five places a container can be, inside or at the edge of the fleet.
+// "On route" splits full/empty because the truck carries both at once: a
+// single ON_ROUTE bucket would let unloading more empties than were picked up
+// balance out arithmetically, hiding a shortage the settlement must catch.
+enum ContainerState {
+  EMPTY_AT_PLANT
+  FULL_AT_PLANT
+  FULL_ON_ROUTE
+  EMPTY_ON_ROUTE
+  WITH_CUSTOMER
+
+  @@map("container_state")
+}
+
 enum OrderStatus {
   PENDING
   ON_ROUTE
@@ -303,12 +317,22 @@ model BatchItem {
 // --- Container ledger -------------------------------------------------------
 
 // Immutable ledger: never UPDATE/DELETE; corrections are inverse movements.
+// `fromState`/`toState` make the direction of every movement explicit rather
+// than deducing it from `type` — a type alone stopped determining it once
+// damage could happen both at the plant and on the route, and a sale could
+// leave from either place too. Null on one side means the container is
+// crossing the fleet's boundary: no `fromState` is a fleet entry, no
+// `toState` is an exit (sale, damage, loss). Both null at once is not a
+// movement at all — see the `container_movements_state_check` CHECK
+// constraint (hand-written migration SQL; Prisma cannot express it).
 model ContainerMovement {
   id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   occurredAt      DateTime              @map("occurred_at") @db.Timestamptz(6)
   type            ContainerMovementType
   containerTypeId String                @map("container_type_id") @db.Uuid
   quantity        Int
+  fromState       ContainerState?       @map("from_state")
+  toState         ContainerState?       @map("to_state")
   locationId      String?               @map("location_id") @db.Uuid
   batchId         String?               @map("batch_id") @db.Uuid
   stopId          String?               @map("stop_id") @db.Uuid
