@@ -46,6 +46,10 @@ spec disagree, STOP and ask before proceeding.
   midnight and reads back a day earlier in America/Lima (UTC-5). Format by
   splitting the string as text, the same way money is formatted without
   going through `Number`.
+- Un catálogo (productos, tipos de envase, zonas, locaciones, métodos de
+  pago) se lee SIEMPRE de su propio endpoint. Si no existe ese endpoint, el
+  campo NO se ofrece en la UI: nunca se le pide al usuario un identificador
+  que no tiene forma de conocer, ni se deriva el catálogo de otro recurso.
 - Every operational row records `created_at` and `recorded_by`/`created_by`.
 - Driver field writes enter ONLY through `POST /api/v1/sync/operations`
   (idempotent by device-generated UUID; duplicates -> DUPLICATE, never re-applied).
