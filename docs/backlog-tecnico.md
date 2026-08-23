@@ -114,6 +114,29 @@ cargado de ahí en vez del texto libre — el mismo patrón que `api/products.ts
 y el `<select>` de producto en `order-items-form.tsx`. Hasta entonces,
 `zoneId` solo se puede poblar por API.
 
+## La matriz de transiciones de envases está duplicada
+
+**Estado:** abierto. **Disparador:** cuando exista `packages/shared` con
+contenido real (previsto para el sync-engine de S5).
+
+`CONTAINER_MOVEMENT_TRANSITIONS` (`apps/api/src/modules/container-movements/container-movement-transitions.ts`)
+define qué pares (`fromState`, `toState`) admite cada `ContainerMovementType`,
+y no hay ningún endpoint que la exponga: el DTO valida el par en el servicio,
+no con decoradores, así que ni siquiera el schema de Swagger la refleja.
+
+La pantalla de movimientos de envases (`apps/web/src/lib/container-movement-transitions.ts`)
+necesita esa regla para ofrecer solo los orígenes válidos de las tres
+operaciones que registra a mano (`FLEET_ENTRY`, `DAMAGE_WRITE_OFF`,
+`LOSS_WRITE_OFF`), así que la copia a mano, acotada a esas tres — nunca a la
+matriz completa. Un desfase entre las dos copias no corrompe datos: el
+backend sigue validando en `POST /container-movements`, así que en el peor
+caso el usuario ve un 400 con el mensaje real del servidor, nunca un envío
+aceptado en silencio.
+
+**Para cerrarla:** mover `container-movement-transitions.ts` a
+`packages/shared` y que `apps/api` importe de ahí en vez de tener su propia
+copia local; `apps/web` deja de necesitar el espejo manual.
+
 ## Reparto de un pago global entre deudas del cliente
 
 **Estado:** abierto. **Disparador:** cuando exista el módulo de Payments.
