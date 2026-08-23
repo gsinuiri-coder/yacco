@@ -429,6 +429,13 @@ select:disabled {
   color: var(--text-subtle);
 }
 
+/* Inventory: a negative net (more fills than registered empties) is a real
+   signal, not an error state — flagged, never hidden or absolute-valued. */
+.table__cell--negative {
+  font-weight: 620;
+  color: var(--danger);
+}
+
 /* --- Order items sub-form --------------------------------------------------- */
 
 .order-items {
@@ -611,6 +618,12 @@ select:disabled {
   background: var(--brand-soft);
   border-color: #cfe3ee;
   color: var(--brand-hover);
+}
+
+.notice--warning {
+  background: var(--warning-soft);
+  border-color: #f0dfb8;
+  color: var(--warning);
 }
 
 .notice + * {
