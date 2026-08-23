@@ -104,6 +104,58 @@ describe("InventoryPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("una respuesta con filas cuya suma total es cero renderiza la matriz, no el vacío real (bug de producción)", async () => {
+    stubInventory([
+      item({
+        containerTypeId: "con-canio",
+        containerType: { id: "con-canio", name: "Con caño" },
+        state: "EMPTY_AT_PLANT",
+        quantity: -50,
+      }),
+      item({
+        containerTypeId: "con-canio",
+        containerType: { id: "con-canio", name: "Con caño" },
+        state: "FULL_AT_PLANT",
+        quantity: 50,
+      }),
+    ]);
+
+    renderInventory();
+
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(screen.queryByText("Todavía no hay movimientos de envases")).not.toBeInTheDocument();
+
+    const negativeCell = screen.getByText("-50");
+    expect(negativeCell).toHaveClass("table__cell--negative");
+    expect(negativeCell).toHaveAccessibleName(/faltan registrar entradas de envases/);
+    expect(
+      screen.getByText(/se registraron más envases llenados que vacíos disponibles/),
+    ).toBeInTheDocument();
+  });
+
+  it("una respuesta con filas cuya suma total es negativa renderiza la matriz, no el vacío real", async () => {
+    stubInventory([
+      item({
+        containerTypeId: "con-canio",
+        containerType: { id: "con-canio", name: "Con caño" },
+        state: "EMPTY_AT_PLANT",
+        quantity: -80,
+      }),
+      item({
+        containerTypeId: "con-canio",
+        containerType: { id: "con-canio", name: "Con caño" },
+        state: "FULL_AT_PLANT",
+        quantity: 50,
+      }),
+    ]);
+
+    renderInventory();
+
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(screen.queryByText("Todavía no hay movimientos de envases")).not.toBeInTheDocument();
+    expect(screen.getByText(/Total general del parque/)).toHaveTextContent("-30 envases");
+  });
+
   it("sin negativos no muestra el aviso", async () => {
     stubInventory([item({ state: "EMPTY_AT_PLANT", quantity: 10 })]);
 

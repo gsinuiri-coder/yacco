@@ -51,9 +51,11 @@ export function InventoryPage() {
 
   const rows = items ? pivotInventory(items) : [];
   const total = totalInventory(rows);
-  // Today, before any production or fleet-entry has been registered, this is
-  // exactly what the API returns: every row present, every quantity zero.
-  const isEmpty = items !== null && total === 0;
+  // Empty means the ledger has no rows at all — never "the quantities sum to
+  // zero". Filling a batch with no prior fleet entry nets EMPTY_AT_PLANT and
+  // FULL_AT_PLANT to exactly zero on real, present rows; a sum-based check
+  // would misread that as "no movements yet" and hide the matrix.
+  const isEmpty = items !== null && items.length === 0;
   const showNegativeNotice = hasNegativeQuantity(rows);
 
   return (
