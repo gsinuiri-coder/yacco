@@ -64,8 +64,8 @@ export function InventoryPage() {
         <div>
           <h1>Inventario de envases</h1>
           <p className="page-header__subtitle">
-            El total es el parque registrado: todo lo que entró menos lo que salió por venta, daño o
-            pérdida.
+            El total son los envases de la empresa: todo lo que entró menos lo que salió por venta,
+            daño o pérdida.
           </p>
         </div>
       </div>
@@ -118,8 +118,7 @@ export function InventoryPage() {
               </div>
 
               <p className="page-header__subtitle">
-                Total general del parque: <strong>{total}</strong>{" "}
-                {total === 1 ? "envase" : "envases"}
+                Total general: <strong>{total}</strong> {total === 1 ? "envase" : "envases"}
               </p>
             </>
           )}

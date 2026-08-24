@@ -5,7 +5,7 @@ import { CONTAINER_STATE_LABELS } from "./container-inventory";
 /** Every ContainerMovementType, not just the three this screen can register:
  * the history shows the whole ledger, including what other processes emit. */
 export const CONTAINER_MOVEMENT_TYPE_LABELS: Record<ContainerMovementType, string> = {
-  FLEET_ENTRY: "Entrada al parque",
+  FLEET_ENTRY: "Ingreso de envases nuevos",
   FILLING: "Llenado",
   ROUTE_LOAD: "Carga a ruta",
   LOAN_DELIVERY: "Entrega al cliente",
@@ -26,7 +26,7 @@ export const CONTAINER_STATE_ORIGIN_LABELS: Record<ContainerState, string> = {
   WITH_CUSTOMER: "de los que están en poder del cliente",
 };
 
-const OUTSIDE_FLEET_LABEL = "Fuera del parque";
+const OUTSIDE_FLEET_LABEL = "Fuera de la empresa";
 
 /** History row's "de qué estado a cuál", reusing the inventory screen's state names. */
 export function formatStateTransition(

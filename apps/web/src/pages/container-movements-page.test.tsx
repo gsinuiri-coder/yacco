@@ -161,7 +161,7 @@ describe("ContainerMovementsPage", () => {
 
     expect(optionLabels).toEqual([
       "Selecciona una operación",
-      "Entrada al parque",
+      "Ingreso de envases nuevos",
       "Baja por daño",
       "Baja por pérdida",
     ]);
@@ -174,7 +174,7 @@ describe("ContainerMovementsPage", () => {
     expect(optionLabels).not.toContain("Venta");
   });
 
-  it("entrada al parque: el POST lleva toState EMPTY_AT_PLANT, sin fromState ni locationId", async () => {
+  it("ingreso de envases nuevos: el POST lleva toState EMPTY_AT_PLANT, sin fromState ni locationId", async () => {
     const user = userEvent.setup();
     const captured = stubCreate();
 
@@ -404,6 +404,6 @@ describe("ContainerMovementsPage", () => {
     expect(within(table).getByText("Baja por daño")).toBeInTheDocument();
     expect(within(table).getByText("Con caño")).toBeInTheDocument();
     expect(within(table).getByText("4")).toBeInTheDocument();
-    expect(within(table).getByText("Llenos en planta → Fuera del parque")).toBeInTheDocument();
+    expect(within(table).getByText("Llenos en planta → Fuera de la empresa")).toBeInTheDocument();
   });
 });

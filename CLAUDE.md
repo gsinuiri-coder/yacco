@@ -50,6 +50,9 @@ spec disagree, STOP and ask before proceeding.
   pago) se lee SIEMPRE de su propio endpoint. Si no existe ese endpoint, el
   campo NO se ofrece en la UI: nunca se le pide al usuario un identificador
   que no tiene forma de conocer, ni se deriva el catálogo de otro recurso.
+- Los textos de la interfaz usan el vocabulario de la planta, no jerga
+  técnica ni analogías del desarrollador. Ante la duda, la palabra que usaría
+  el dueño hablando con su conductor.
 - Every operational row records `created_at` and `recorded_by`/`created_by`.
 - Driver field writes enter ONLY through `POST /api/v1/sync/operations`
   (idempotent by device-generated UUID; duplicates -> DUPLICATE, never re-applied).
