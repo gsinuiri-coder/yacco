@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { isValidContainerTransition } from "./container-movement-transitions.js";
+import { assertContainerTypeExists, assertLocationExists } from "./container-reference-guards.js";
 import type { CreateContainerMovementDto } from "./dto/create-container-movement.dto.js";
 import type {
   ContainerInventoryItemDto,
@@ -138,7 +139,7 @@ export class ContainerMovementsService {
       throw new BadRequestException("La fecha del movimiento no puede ser futura");
     }
 
-    await this.assertContainerTypeExists(client, dto.containerTypeId);
+    await assertContainerTypeExists(client, dto.containerTypeId);
 
     const touchesCustomer =
       fromState === ContainerState.WITH_CUSTOMER || toState === ContainerState.WITH_CUSTOMER;
@@ -146,7 +147,7 @@ export class ContainerMovementsService {
       throw new BadRequestException('Un movimiento hacia o desde "en cliente" exige una locación');
     }
     if (dto.locationId !== undefined) {
-      await this.assertLocationExists(client, dto.locationId);
+      await assertLocationExists(client, dto.locationId);
     }
 
     const created = await client.containerMovement.create({
@@ -258,32 +259,6 @@ export class ContainerMovementsService {
         quantity: netByKey.get(`${containerType.id}:${state}`) ?? 0,
       })),
     );
-  }
-
-  private async assertContainerTypeExists(
-    client: Prisma.TransactionClient,
-    containerTypeId: string,
-  ): Promise<void> {
-    const containerType = await client.containerType.findUnique({
-      where: { id: containerTypeId },
-      select: { id: true },
-    });
-    if (containerType === null) {
-      throw new BadRequestException(`El tipo de envase "${containerTypeId}" no existe`);
-    }
-  }
-
-  private async assertLocationExists(
-    client: Prisma.TransactionClient,
-    locationId: string,
-  ): Promise<void> {
-    const location = await client.customerLocation.findUnique({
-      where: { id: locationId },
-      select: { id: true },
-    });
-    if (location === null) {
-      throw new BadRequestException(`La locación "${locationId}" no existe`);
-    }
   }
 }
 

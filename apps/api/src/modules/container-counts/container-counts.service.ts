@@ -1,7 +1,11 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
+import {
+  assertContainerTypeExists,
+  assertLocationExists,
+} from "../container-movements/container-reference-guards.js";
 import type { CreateContainerCountDto } from "./dto/create-container-count.dto.js";
 import type { ContainerCountResponseDto } from "./dto/container-count-response.dto.js";
 
@@ -77,8 +81,8 @@ export class ContainerCountsService {
     const countedAt = options?.occurredAt ?? new Date();
 
     const created = await this.prisma.$transaction(async (tx) => {
-      await this.assertContainerTypeExists(tx, dto.containerTypeId);
-      await this.assertLocationExists(tx, dto.locationId);
+      await assertContainerTypeExists(tx, dto.containerTypeId);
+      await assertLocationExists(tx, dto.locationId);
 
       const balance = await tx.customerContainerBalance.findUnique({
         where: {
@@ -125,31 +129,5 @@ export class ContainerCountsService {
     });
 
     return toCountResponse(created);
-  }
-
-  private async assertContainerTypeExists(
-    client: Prisma.TransactionClient,
-    containerTypeId: string,
-  ): Promise<void> {
-    const containerType = await client.containerType.findUnique({
-      where: { id: containerTypeId },
-      select: { id: true },
-    });
-    if (containerType === null) {
-      throw new BadRequestException(`El tipo de envase "${containerTypeId}" no existe`);
-    }
-  }
-
-  private async assertLocationExists(
-    client: Prisma.TransactionClient,
-    locationId: string,
-  ): Promise<void> {
-    const location = await client.customerLocation.findUnique({
-      where: { id: locationId },
-      select: { id: true },
-    });
-    if (location === null) {
-      throw new BadRequestException(`La locación "${locationId}" no existe`);
-    }
   }
 }
