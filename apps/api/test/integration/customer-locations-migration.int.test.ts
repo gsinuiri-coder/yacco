@@ -31,17 +31,24 @@ import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, "../../prisma/migrations");
-// customer_locations is the migration under test. container_count and
-// container_count_check must be parked alongside it, not because they are
-// under test, but because both FK into customer_locations: applied against
-// the pre-customer_locations schema (what the first `migrate deploy` below
-// simulates), that FK would fail on the missing table. Every OTHER migration
-// chronologically after customer_locations (container_states, the two enum
-// additions) touches only container_movements and stays applied throughout.
+// customer_locations is the migration under test. Every other migration
+// listed here is parked alongside it not because it is under test, but
+// because it depends on something customer_locations adds — a FK
+// (container_count, container_count_check point at customer_locations
+// itself) or, as with opening_balance_indexes, a plain column reference
+// (its CREATE UNIQUE INDEX on sales("location_id") needs that column, which
+// customer_locations is the one that adds — sales starts with customer_id
+// instead). Applied against the pre-customer_locations schema (what the
+// first `migrate deploy` below simulates), any of these would fail on the
+// missing table/column. Every OTHER migration chronologically after
+// customer_locations (container_states, the enum additions,
+// opening_balance_sales_payments's plain ADD COLUMN) touches nothing
+// customer_locations owns and stays applied throughout.
 const NEW_MIGRATION_NAMES = [
   "20260822090000_customer_locations",
   "20260824032647_container_count",
   "20260824032801_container_count_check",
+  "20260824061020_opening_balance_indexes",
 ];
 
 let container: StartedPostgreSqlContainer | undefined;
