@@ -53,6 +53,14 @@ spec disagree, STOP and ask before proceeding.
 - Los textos de la interfaz usan el vocabulario de la planta, no jerga
   técnica ni analogías del desarrollador. Ante la duda, la palabra que usaría
   el dueño hablando con su conductor.
+- Una migración ya aplicada en cualquier base —incluida la local de Docker—
+  está congelada. No se edita, ni siquiera un comentario: cambiar el archivo
+  rompe el checksum y `prisma migrate deploy` se niega a avanzar, lo que en
+  el build de Render significa deploy fallido contra una base viva. Las
+  correcciones van en una migración nueva, o el comentario se escribe en el
+  código que la acompaña. Si el archivo ya se editó por error y solo afecta
+  a la base local, se resuelve con `prisma migrate reset` en Docker, nunca
+  tocando a mano la tabla `_prisma_migrations`.
 - Every operational row records `created_at` and `recorded_by`/`created_by`.
 - Driver field writes enter ONLY through `POST /api/v1/sync/operations`
   (idempotent by device-generated UUID; duplicates -> DUPLICATE, never re-applied).

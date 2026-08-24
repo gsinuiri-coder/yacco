@@ -173,8 +173,7 @@ como parte de la lógica de creación de un pago sin `locationId`.
 
 ## Certeza del saldo de apertura de envases en poder del cliente
 
-**Estado:** abierto. **Disparador:** diseño de S3 (saldos y bajas), antes de
-construir la carga de apertura.
+**Estado:** resuelta.
 
 Decisión de dominio tomada con el dueño de la planta: los saldos de envases
 prestados que se carguen en la apertura no tienen todos el mismo grado de
@@ -195,5 +194,54 @@ con la filosofía ya aceptada en el resto del sistema: las discrepancias se
 registran, nunca se suprimen (mismo espíritu que el ajuste de una liquidación
 con descuadre, o la advertencia de sobreproducción de un lote).
 
-**Para cerrarla:** diseñar en S3, junto con el resto de saldos y bajas —no
-antes: aún no existe carga de apertura ni módulo de saldos que la necesite.
+**Cómo quedó resuelta:** no como una columna de "confirmado"/"estimado" en el
+saldo de apertura, sino como algo derivado. `OPENING_BALANCE` registra lo que
+el cargador del padrón creyó al arrancar, sin distinguir origen — esa carga
+es siempre la estimación de partida. `ContainerCount`, el libro de conteos
+físicos, es la fuente de la certeza real: su sola existencia para una
+locación y tipo de envase, con la fecha `countedAt` del conteo más reciente,
+dice si ese saldo está confirmado y desde cuándo. Un saldo sin ningún conteo
+posterior a su `OPENING_BALANCE` sigue siendo la estimación original; uno con
+un conteo posterior queda confirmado a esa fecha — sin guardar la etiqueta en
+ningún lado, se consulta.
+
+## Lista fija de migraciones en customer-locations-migration.int.test.ts
+
+**Estado:** abierto. **Disparador:** antes del siguiente PR que agregue una
+migración con FK a `customer_locations`.
+
+Este test prueba el backfill de la migración `customer_locations` aparcando
+temporalmente su carpeta (y las de cualquier otra migración que dependa de
+ella) para simular el esquema previo, insertando filas con ese esquema viejo,
+y restaurando todo para comprobar que el backfill las reconecta sin pérdida.
+Qué carpetas aparcar vive en una constante fija, `NEW_MIGRATION_NAMES`, que
+hoy lista `customer_locations` más las dos de `container_counts` (ambas con
+FK a `customer_locations`).
+
+Esa lista es manual: cada migración futura que agregue una FK a
+`customer_locations` tiene que añadirse a mano ahí también, o el `migrate
+deploy` del primer paso del test intenta crear esa FK contra una base que
+todavía no tiene la tabla y falla. Ya pasó una vez en este mismo sprint —
+las migraciones de `container_counts` rompieron este test hasta que se las
+agregó a la lista— y el síntoma es confuso a propósito: un `Command failed:
+pnpm exec prisma migrate deploy` en un archivo de test que el PR de turno no
+tocó, sin ninguna pista de que la causa es una FK nueva en un módulo no
+relacionado.
+
+**Razón:** una lista mantenida a mano que un PR ajeno tiene que recordar
+actualizar es del mismo tipo de fragilidad que el resto del sistema evita en
+el código de producción (el catálogo que se deriva de otro recurso, el
+vocabulario hardcodeado) — aquí sobrevive porque es un test, pero el costo es
+el mismo: alguien pierde tiempo diagnosticando un fallo que no tiene relación
+aparente con su cambio.
+
+**Para cerrarla:** rediseñar el parking para que no dependa de nombrar
+migraciones. En vez de mover las carpetas reales fuera de
+`prisma/migrations` (lo que las hace "no existir" para cualquier otra
+migración que las necesite), copiar a un directorio temporal solo las
+migraciones _anteriores_ a `customer_locations` por criterio cronológico
+(comparando el prefijo de fecha del nombre de carpeta) y correr
+`migrate deploy` apuntando ese directorio temporal como `prisma/migrations`
+para el primer paso. Así el primer deploy nunca ve ninguna migración
+posterior a `customer_locations` — ni las que existen hoy ni las que se
+agreguen mañana — sin que el test tenga que conocer sus nombres.

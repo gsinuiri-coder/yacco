@@ -1,0 +1,12 @@
+-- Adds the movement type ContainerCountsService emits when a physical count
+-- at a customer location disagrees with the materialized balance.
+--
+-- Postgres does not allow a newly added enum value to be used inside the
+-- SAME TRANSACTION that added it, so this migration ONLY adds the value —
+-- no SQL statement in this file may reference COUNT_ADJUSTMENT. This does
+-- NOT constrain application code: TypeScript referencing COUNT_ADJUSTMENT
+-- (the transition matrix, ContainerCountsService, the movements service's
+-- public-route guard) runs after this migration's transaction has
+-- committed, so it is unaffected and safe to ship in the same PR.
+-- AlterEnum
+ALTER TYPE "container_movement_type" ADD VALUE 'COUNT_ADJUSTMENT';

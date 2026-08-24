@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { isValidContainerTransition } from "./container-movement-transitions.js";
+import { assertContainerTypeExists, assertLocationExists } from "./container-reference-guards.js";
 import type { CreateContainerMovementDto } from "./dto/create-container-movement.dto.js";
 import type {
   ContainerInventoryItemDto,
@@ -47,6 +48,21 @@ function limaDayStartUtc(date: string): Date {
   return new Date(Date.UTC(year, month - 1, day, 5, 0, 0));
 }
 
+/**
+ * Movement types that only ever enter through their own trusted writer, each
+ * calling `createWithinTransaction` directly — never through this public
+ * route. Each writer keeps a companion record this ledger row must stay in
+ * lock-step with: the customer-roster loader's cutover entry for
+ * OPENING_BALANCE, the `container_counts` row for COUNT_ADJUSTMENT. A
+ * movement of either type registered here by hand would have no such
+ * companion, leaving the ledger and that record diverging — exactly what
+ * each of those tables exists to prevent.
+ */
+const INTERNAL_ONLY_MOVEMENT_TYPES: ReadonlySet<ContainerMovementType> = new Set([
+  ContainerMovementType.OPENING_BALANCE,
+  ContainerMovementType.COUNT_ADJUSTMENT,
+]);
+
 @Injectable()
 export class ContainerMovementsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -63,14 +79,8 @@ export class ContainerMovementsService {
     dto: CreateContainerMovementDto,
     recordedById: string,
   ): Promise<ContainerMovementResponseDto> {
-    // Opening balances enter only through the customer-roster loader, which
-    // calls createWithinTransaction directly with a backdated occurredAt. If
-    // a user could POST one by hand here, they would have a way to
-    // materialize containers "in the customer's hands" on the street with
-    // nothing behind them — no roster entry, no cutover date, no audit trail
-    // for why that customer supposedly already owed the fleet.
-    if (dto.type === ContainerMovementType.OPENING_BALANCE) {
-      throw new BadRequestException("Los saldos de apertura no se registran por esta vía");
+    if (INTERNAL_ONLY_MOVEMENT_TYPES.has(dto.type)) {
+      throw new BadRequestException("Este tipo de movimiento no se registra por esta vía");
     }
     const movement = await this.prisma.$transaction((tx) =>
       this.createWithinTransaction(tx, dto, recordedById),
@@ -129,7 +139,7 @@ export class ContainerMovementsService {
       throw new BadRequestException("La fecha del movimiento no puede ser futura");
     }
 
-    await this.assertContainerTypeExists(client, dto.containerTypeId);
+    await assertContainerTypeExists(client, dto.containerTypeId);
 
     const touchesCustomer =
       fromState === ContainerState.WITH_CUSTOMER || toState === ContainerState.WITH_CUSTOMER;
@@ -137,7 +147,7 @@ export class ContainerMovementsService {
       throw new BadRequestException('Un movimiento hacia o desde "en cliente" exige una locación');
     }
     if (dto.locationId !== undefined) {
-      await this.assertLocationExists(client, dto.locationId);
+      await assertLocationExists(client, dto.locationId);
     }
 
     const created = await client.containerMovement.create({
@@ -249,32 +259,6 @@ export class ContainerMovementsService {
         quantity: netByKey.get(`${containerType.id}:${state}`) ?? 0,
       })),
     );
-  }
-
-  private async assertContainerTypeExists(
-    client: Prisma.TransactionClient,
-    containerTypeId: string,
-  ): Promise<void> {
-    const containerType = await client.containerType.findUnique({
-      where: { id: containerTypeId },
-      select: { id: true },
-    });
-    if (containerType === null) {
-      throw new BadRequestException(`El tipo de envase "${containerTypeId}" no existe`);
-    }
-  }
-
-  private async assertLocationExists(
-    client: Prisma.TransactionClient,
-    locationId: string,
-  ): Promise<void> {
-    const location = await client.customerLocation.findUnique({
-      where: { id: locationId },
-      select: { id: true },
-    });
-    if (location === null) {
-      throw new BadRequestException(`La locación "${locationId}" no existe`);
-    }
   }
 }
 
