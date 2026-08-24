@@ -498,6 +498,12 @@ model Sale {
   // money and those products moved before the system existed, and counting
   // them would throw off the day's own numbers.
   isOpeningBalance    Boolean  @default(false) @map("is_opening_balance")
+  // Reference to the record in the system this row was imported from (the
+  // roster loader's source). Unique when present — hand-written partial
+  // index sales_external_id_key — so a second run of the loader finds the
+  // charge it already created instead of creating it again. Null for every
+  // sale the system itself registers: those come from no import.
+  externalId          String?  @map("external_id")
   recordedById        String   @map("recorded_by") @db.Uuid
 
   location   CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)

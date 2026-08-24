@@ -61,9 +61,9 @@ async function unsetPrimaryLocation(customerId: string): Promise<void> {
 
 /**
  * Inserted directly, bypassing SalesService: simulates an opening charge
- * that landed on a customer's non-primary location, to prove
- * assertNoOpeningBalanceExists finds it across every location the customer
- * has, not just the one this call would target.
+ * that landed on a customer's non-primary location, to prove the credit's
+ * exclusion check (assertNoOpeningBalanceExists) finds a charge across
+ * every location the customer has, not just the primary one.
  */
 async function insertOpeningChargeOnLocation(locationId: string): Promise<void> {
   const prisma = ctx.app.get(PrismaService);
@@ -91,7 +91,12 @@ async function customerDebtBalance(customerId: string): Promise<string> {
  * `ValidationPipe` against them), so a test that never constructs the
  * actual class would leave that file completely unexercised.
  */
-function chargeDto(fields: { customerId: string; amount: string; soldAt: Date }) {
+function chargeDto(fields: {
+  customerId: string;
+  amount: string;
+  soldAt: Date;
+  externalId?: string;
+}) {
   return Object.assign(new CreateOpeningChargeDto(), fields);
 }
 
@@ -137,27 +142,66 @@ describe("SalesService.createOpeningCharge", () => {
     expect(items).toHaveLength(0);
   });
 
-  test("a second opening charge for the same customer is rejected, even one pointing at another of their locations", async () => {
+  test("two opening charges for the same customer, dated differently, are both created and debtBalance is their sum", async () => {
     const sales = ctx.app.get(SalesService);
-    const prisma = ctx.app.get(PrismaService);
     const customerId = await createCustomer();
-    const secondaryLocation = await prisma.customerLocation.create({
-      data: {
+
+    const first = await sales.createOpeningCharge(
+      chargeDto({
         customerId,
-        name: "Sucursal",
-        address: "Jr. Sucursal 200",
-        addressReference: "Al fondo",
-        phone: "987000999",
-      },
-    });
-    await insertOpeningChargeOnLocation(secondaryLocation.id);
+        amount: "40.00",
+        soldAt: new Date("2026-01-10T05:00:00.000Z"),
+        externalId: `despacho-${customerId}-1`,
+      }),
+      recordedById,
+    );
+    const second = await sales.createOpeningCharge(
+      chargeDto({
+        customerId,
+        amount: "12.50",
+        soldAt: new Date("2026-02-03T05:00:00.000Z"),
+        externalId: `despacho-${customerId}-2`,
+      }),
+      recordedById,
+    );
+
+    expect(first.id).not.toBe(second.id);
+    expect(first.externalId).toBe(`despacho-${customerId}-1`);
+    expect(second.soldAt).toEqual(new Date("2026-02-03T05:00:00.000Z"));
+    expect(await customerDebtBalance(customerId)).toBe("52.50");
+  });
+
+  test("a second opening charge with the same externalId is rejected and leaves debtBalance untouched", async () => {
+    const sales = ctx.app.get(SalesService);
+    const customerId = await createCustomer();
+    const externalId = `despacho-${customerId}-repetido`;
+    await sales.createOpeningCharge(
+      chargeDto({ customerId, amount: "40.00", soldAt: new Date(), externalId }),
+      recordedById,
+    );
 
     await expect(
       sales.createOpeningCharge(
-        chargeDto({ customerId, amount: "50.00", soldAt: new Date() }),
+        chargeDto({ customerId, amount: "40.00", soldAt: new Date(), externalId }),
         recordedById,
       ),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(/referencia externa/);
+    expect(await customerDebtBalance(customerId)).toBe("40.00");
+  });
+
+  test("several opening charges with no externalId do not collide with each other", async () => {
+    const sales = ctx.app.get(SalesService);
+    const customerId = await createCustomer();
+
+    for (const amount of ["10.00", "20.00", "30.00"]) {
+      const sale = await sales.createOpeningCharge(
+        chargeDto({ customerId, amount, soldAt: new Date() }),
+        recordedById,
+      );
+      expect(sale.externalId).toBeNull();
+    }
+
+    expect(await customerDebtBalance(customerId)).toBe("60.00");
   });
 
   test("a customer with no primary location fails with a clear message", async () => {
@@ -396,6 +440,29 @@ describe("mutual exclusion between an opening charge and an opening credit", () 
       chargeDto({ customerId, amount: "30.00", soldAt: new Date() }),
       recordedById,
     );
+
+    await expect(
+      sales.createOpeningCredit(
+        creditDto({ customerId, paymentMethodId, amount: "10.00", paidAt: new Date() }),
+        recordedById,
+      ),
+    ).rejects.toThrow(/cargo de apertura/);
+  });
+
+  test("a customer with an opening charge on a non-primary location also rejects an opening credit", async () => {
+    const sales = ctx.app.get(SalesService);
+    const prisma = ctx.app.get(PrismaService);
+    const customerId = await createCustomer();
+    const secondaryLocation = await prisma.customerLocation.create({
+      data: {
+        customerId,
+        name: "Sucursal",
+        address: "Jr. Sucursal 200",
+        addressReference: "Al fondo",
+        phone: "987000999",
+      },
+    });
+    await insertOpeningChargeOnLocation(secondaryLocation.id);
 
     await expect(
       sales.createOpeningCredit(
