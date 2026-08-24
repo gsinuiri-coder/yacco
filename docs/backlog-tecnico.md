@@ -351,3 +351,61 @@ su límite por un cálculo que interpreta mal el signo.
 S4, agregar un test que cubra explícitamente un cliente con `debtBalance`
 negativo comprando contra su límite, para que esa lectura de signo quede
 verificada y no solo documentada acá.
+
+## CHECK de no negatividad en customer_container_balances
+
+**Estado:** RESUELTA en PR #51 (`fix/allow-negative-container-balance`).
+No existía entrada previa: se registra aquí junto con su cierre, para que
+quede el escenario que lo motivó.
+
+`customer_container_balances` tenía `CHECK (quantity >= 0)`
+(`customer_container_balances_quantity_check`) desde la migración inicial.
+Escenario real, confirmado con el dueño: el conductor anterior se olvidó de
+anotar una entrega, el sistema cree que el cliente tiene 2 envases y el
+cliente devuelve 3. El saldo intentaba bajar a -1 y la transacción moría con
+un error crudo de Postgres, en el celular del conductor, a media ruta.
+
+**Razón:** eso es lo contrario de "alerta sin bloquear", la filosofía del
+cliente para operaciones de campo. Un saldo en -1 ES información: dice que
+hay una entrega sin registrar. Bloquearlo solo consigue que el conductor no
+registre la devolución, y entonces se pierden las dos cosas.
+
+**Cómo se cerró:** migración `20260824164243_allow_negative_container_balance`
+elimina el CHECK del saldo. El CHECK de `container_counts.counted_quantity
+
+> = 0` se queda: lo que se cuenta no puede ser negativo; lo que el sistema
+> CREE que hay sí, porque la creencia puede estar equivocada y el signo es
+> justamente la señal. Fuera del CHECK no había ninguna validación en
+> servicios, DTOs, tipos ni web que asumiera saldo no negativo (la web ya
+> trataba el negativo del inventario como señal). La rutina de cuadre no
+> reporta un negativo consistente entre libro y materializado — no es un
+> descuadre suyo, es un hallazgo operativo que le corresponde al reporte de
+> envases prestados, que aún no existe (ver pendiente abajo).
+
+**Pendiente derivado:** reporte de envases prestados que muestre los saldos
+negativos como "entrega sin registrar". No es parte de este cierre.
+
+## El auto-deploy de yacco-api puede no dispararse sin error visible
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo (a partir de
+ahí, `main` y producción desincronizados afectan a usuarios reales).
+
+El webhook de auto-deploy de `yacco-api` en Render puede no dispararse para
+un commit de `main` sin dejar error en ninguna parte: ni en GitHub, ni en la
+pantalla de Events de Render, ni en la API que sigue sirviendo la versión
+anterior con `/health` en 200. `main` y producción quedan desincronizados en
+silencio.
+
+Ocurrió con `89deab1` (PR #50) el 24/08/2026: media hora después del merge,
+Events de Render no tenía ningún deploy para ese commit — el último era
+`88370a6` (PR #49). La migración de #50 llegó a Neon solo porque Giancarlo
+lanzó un Manual Deploy a mano.
+
+**Razón:** se detectó únicamente porque el commit llevaba migración y se
+estaba vigilando `_prisma_migrations` en Neon. Un commit sin migración no
+habría dado ninguna señal: producción habría seguido corriendo código viejo
+indefinidamente, con todos los checks en verde.
+
+**Mitigación pendiente:** exponer `RENDER_GIT_COMMIT` en `/health`, para
+poder comparar lo desplegado contra el tip de `main` en segundos, sin
+depender de que el commit traiga migración. Es su propio PR.

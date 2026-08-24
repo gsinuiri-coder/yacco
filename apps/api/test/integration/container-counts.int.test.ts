@@ -154,6 +154,44 @@ describe("POST /api/v1/container-counts", () => {
     });
   });
 
+  // The owner's real case, one step later: the books had gone to -1 because a
+  // return exceeded what was believed. A physical count of 0 is what the
+  // driver actually sees; the +1 adjustment it emits is the unrecorded
+  // delivery finally entering the ledger — larger than what was counted.
+  test("a count over a negative balance brings it back to countedQuantity, emitting the positive delta", async () => {
+    await createMovement(adminToken, {
+      type: "LOAN_DELIVERY",
+      fromState: "FULL_ON_ROUTE",
+      toState: "WITH_CUSTOMER",
+      locationId,
+      quantity: 2,
+    }).expect(201);
+    await createMovement(adminToken, {
+      type: "EMPTY_PICKUP",
+      fromState: "WITH_CUSTOMER",
+      toState: "EMPTY_ON_ROUTE",
+      locationId,
+      quantity: 3,
+    }).expect(201);
+    expect(await balanceOf()).toBe(-1);
+
+    const response = await createCount(adminToken, { countedQuantity: 0 }).expect(201);
+
+    expect(response.body).toMatchObject({ countedQuantity: 0, expectedQuantity: -1 });
+    expect(response.body.adjustmentId).not.toBeNull();
+    expect(await balanceOf()).toBe(0);
+
+    const movement = await ctx.app.get(PrismaService).containerMovement.findUnique({
+      where: { id: response.body.adjustmentId },
+    });
+    expect(movement).toMatchObject({
+      type: "COUNT_ADJUSTMENT",
+      fromState: null,
+      toState: "WITH_CUSTOMER",
+      quantity: 1,
+    });
+  });
+
   test("a zero delta records the count with no adjustment and leaves the balance unchanged", async () => {
     await createMovement(adminToken, {
       type: "LOAN_DELIVERY",

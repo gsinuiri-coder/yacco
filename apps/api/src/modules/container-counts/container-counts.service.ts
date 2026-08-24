@@ -50,7 +50,11 @@ export class ContainerCountsService {
    * 2. `delta = countedQuantity - expectedQuantity`. A positive delta means
    *    the customer has more than the books say (COUNT_ADJUSTMENT from
    *    outside the fleet into WITH_CUSTOMER); negative means fewer
-   *    (WITH_CUSTOMER out). Zero means the count matched — the ledger's own
+   *    (WITH_CUSTOMER out). `expectedQuantity` may be negative (a return
+   *    larger than the books said — a delivery nobody recorded), so a
+   *    count of 0 yields a positive delta larger than what was counted:
+   *    that adjustment is the unrecorded delivery finally entering the
+   *    ledger. Zero means the count matched — the ledger's own
    *    CHECK requires a positive quantity, and a zero-quantity entry
    *    wouldn't say anything a movement can say anyway, so none is emitted.
    *    The count row is still written either way: a count that matches is

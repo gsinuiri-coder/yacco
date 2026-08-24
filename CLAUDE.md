@@ -83,7 +83,9 @@ spec disagree, STOP and ask before proceeding.
 
 - Domain logic is TDD: acceptance criteria in spec §2.4 (Gherkin) become tests first.
 - Small diffs. Conventional Commits. PR + green CI before merge; squash to `main`.
-- Migrations are expand/contract; merges containing migrations happen outside
-  08:00–20:00 America/Lima.
+- Migrations are expand/contract. Merges containing migrations happen outside
+  08:00–20:00 America/Lima WHILE THERE ARE REAL USERS in production. Today the
+  only user is Giancarlo, so the window does not apply and is not re-decided
+  on every PR; it applies again from the start of the field pilot.
 - Don't add dependencies without asking. Don't read or write `.env*` files.
 - Don't force-push. Don't edit applied migrations.

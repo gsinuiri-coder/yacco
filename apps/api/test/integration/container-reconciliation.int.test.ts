@@ -205,6 +205,40 @@ describe("GET /api/v1/container-reconciliation", () => {
     expect(response.body.discrepancies).toEqual([]);
   });
 
+  // A negative balance that ledger and materialization agree on is not a
+  // mismatch of this routine — it is an unrecorded delivery, an operational
+  // finding for the loaned-containers report (not yet written), never here.
+  test("a consistent negative balance (a return larger than the books) is not reported as a mismatch", async () => {
+    const locationC = await createCustomerLocation("Bodega Cuadre C", "987000003");
+    await createMovement(adminToken, {
+      type: "LOAN_DELIVERY",
+      containerTypeId: containerTypeA,
+      fromState: "FULL_ON_ROUTE",
+      toState: "WITH_CUSTOMER",
+      locationId: locationC,
+      quantity: 2,
+    }).expect(201);
+    await createMovement(adminToken, {
+      type: "EMPTY_PICKUP",
+      containerTypeId: containerTypeA,
+      fromState: "WITH_CUSTOMER",
+      toState: "EMPTY_ON_ROUTE",
+      locationId: locationC,
+      quantity: 3,
+    }).expect(201);
+
+    const prisma = ctx.app.get(PrismaService);
+    const balance = await prisma.customerContainerBalance.findUniqueOrThrow({
+      where: {
+        locationId_containerTypeId: { locationId: locationC, containerTypeId: containerTypeA },
+      },
+    });
+    expect(balance.quantity).toBe(-1);
+
+    const response = await getReconciliation(adminToken).expect(200);
+    expect(findDiscrepancy(response.body.discrepancies, locationC, containerTypeA)).toBeUndefined();
+  });
+
   test("case (d): a fully returned pair and an untouched pair never appear in the report", async () => {
     const response = await getReconciliation(adminToken).expect(200);
 
