@@ -56,36 +56,48 @@ async function assertCustomerActive(
 }
 
 /**
- * Shared by both directions: the ledger gives one net figure per customer,
- * never both a charge and a credit, so creating either one first checks that
- * NEITHER already exists. Sale has no customerId column (it hangs off the
- * location), so finding its opening charge goes through the location
- * relation; Payment carries customerId directly.
+ * The ledger gives a customer either debt or a balance in their favor, never
+ * both — so a charge and a credit exclude each other. The two directions are
+ * NOT symmetric, though:
+ *   - A customer has as many opening charges as unpaid deliveries in the
+ *     paper ledger (each with its own date and outstanding balance — that
+ *     age is what "oldest debt first" needs), so creating a charge only
+ *     checks that no opening CREDIT exists.
+ *   - A customer has at most one opening credit
+ *     (payments_opening_balance_customer_key), so creating one checks that
+ *     neither a credit nor any charge exists.
+ * Sale has no customerId column (it hangs off the location), so finding a
+ * charge goes through the location relation; Payment carries customerId.
  */
-async function assertNoOpeningBalanceExists(
+async function assertNoOpeningCreditExists(
   client: Prisma.TransactionClient,
   customerId: string,
 ): Promise<void> {
-  const [existingCharge, existingCredit] = await Promise.all([
-    client.sale.findFirst({
-      where: { isOpeningBalance: true, location: { customerId } },
-      select: { id: true },
-    }),
-    client.payment.findFirst({
-      where: { isOpeningBalance: true, customerId },
-      select: { id: true },
-    }),
-  ]);
-  if (existingCharge !== null) {
-    throw new BadRequestException(
-      `El cliente "${customerId}" ya tiene un cargo de apertura registrado`,
-    );
-  }
+  const existingCredit = await client.payment.findFirst({
+    where: { isOpeningBalance: true, customerId },
+    select: { id: true },
+  });
   if (existingCredit !== null) {
     throw new BadRequestException(
       `El cliente "${customerId}" ya tiene un abono de apertura registrado`,
     );
   }
+}
+
+async function assertNoOpeningBalanceExists(
+  client: Prisma.TransactionClient,
+  customerId: string,
+): Promise<void> {
+  const existingCharge = await client.sale.findFirst({
+    where: { isOpeningBalance: true, location: { customerId } },
+    select: { id: true },
+  });
+  if (existingCharge !== null) {
+    throw new BadRequestException(
+      `El cliente "${customerId}" ya tiene un cargo de apertura registrado`,
+    );
+  }
+  await assertNoOpeningCreditExists(client, customerId);
 }
 
 async function getPrimaryLocationId(
@@ -129,51 +141,70 @@ export class SalesService {
    * without the read-then-write-absolute workaround — copying that pattern
    * here by cargo cult would be needless complexity.
    *
-   * No P2002 handling on `sales_opening_balance_location_key` below, and
-   * that is deliberate: the partial index is the integrity guarantee, and
-   * the transaction still fails either way if it is ever violated — a
-   * violation just surfaces as a raw error instead of a translated one. The
-   * customer-roster loader that is this method's only caller runs
-   * sequentially, in a single process, so there is no concurrent path that
-   * could ever reach this race. If one shows up later, that is where the
-   * catch (and its test) belongs, not here ahead of any caller that needs
-   * it.
+   * One opening charge per unpaid delivery, not per customer: the paper
+   * ledger carries the debt with that detail (five unpaid deliveries, each
+   * with its own date and balance), and loading the net would lose the age
+   * that "oldest debt first" runs on. The only uniqueness a charge carries
+   * is `externalId` (sales_external_id_key, partial: nulls never collide).
+   * A duplicate there IS caught and translated, unlike the credit's index
+   * below, because it is an expected event — the roster loader run a second
+   * time — not a race, and the loader needs a message it can show.
+   *
+   * The amount of an opening charge is the OUTSTANDING BALANCE of that
+   * delivery, not its original price: the source has lines with partial
+   * payments already applied, where the figure is not quantity times price.
+   * Nothing here reconciles it against anything, on purpose.
    */
   async createOpeningCharge(dto: CreateOpeningChargeDto, recordedById: string): Promise<Sale> {
     const total = assertPositiveAmount(dto.amount);
     assertNotFuture(dto.soldAt, "La fecha de la venta");
 
-    return this.prisma.$transaction(async (tx) => {
-      await assertCustomerActive(tx, dto.customerId);
-      await assertNoOpeningBalanceExists(tx, dto.customerId);
-      const locationId = await getPrimaryLocationId(tx, dto.customerId);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await assertCustomerActive(tx, dto.customerId);
+        await assertNoOpeningCreditExists(tx, dto.customerId);
+        const locationId = await getPrimaryLocationId(tx, dto.customerId);
 
-      const sale = await tx.sale.create({
-        data: {
-          locationId,
-          stopId: null,
-          soldAt: dto.soldAt,
-          total,
-          // Not a credit-limit decision anyone made — this debt was already
-          // there when the system started, so there is no "exceeded the
-          // limit" moment to flag.
-          creditLimitExceeded: false,
-          isOpeningBalance: true,
-          recordedById,
-        },
+        const sale = await tx.sale.create({
+          data: {
+            locationId,
+            stopId: null,
+            soldAt: dto.soldAt,
+            total,
+            externalId: dto.externalId ?? null,
+            // Not a credit-limit decision anyone made — this debt was
+            // already there when the system started, so there is no
+            // "exceeded the limit" moment to flag.
+            creditLimitExceeded: false,
+            isOpeningBalance: true,
+            recordedById,
+          },
+        });
+
+        await tx.customer.update({
+          where: { id: dto.customerId },
+          data: { debtBalance: { increment: total } },
+        });
+
+        return sale;
       });
-
-      await tx.customer.update({
-        where: { id: dto.customerId },
-        data: { debtBalance: { increment: total } },
-      });
-
-      return sale;
-    });
+    } catch (error) {
+      // P2002: sales_external_id_key is the only unique index a charge can hit.
+      if (isPrismaKnownError(error, "P2002")) {
+        throw new BadRequestException(
+          `Ya existe un cargo de apertura con la referencia externa "${dto.externalId}"`,
+        );
+      }
+      throw error;
+    }
   }
 
-  // No P2002 handling on payments_opening_balance_customer_key either, same
-  // reasoning as createOpeningCharge above.
+  // No P2002 handling on payments_opening_balance_customer_key, and that is
+  // deliberate: assertNoOpeningBalanceExists already rejects the duplicate
+  // with a translated message, so the index only fires under a race — and
+  // the roster loader, this method's only caller, runs sequentially in a
+  // single process. If a concurrent caller shows up later, that is where the
+  // catch (and its test) belongs.
   async createOpeningCredit(dto: CreateOpeningCreditDto, recordedById: string): Promise<Payment> {
     const amount = assertPositiveAmount(dto.amount);
     assertNotFuture(dto.paidAt, "La fecha del pago");
