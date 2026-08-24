@@ -6,6 +6,7 @@ import { AuthModule } from "./modules/auth/auth.module.js";
 import { UsersModule } from "./modules/users/users.module.js";
 import { ContainerMovementsModule } from "./modules/container-movements/container-movements.module.js";
 import { ContainerCountsModule } from "./modules/container-counts/container-counts.module.js";
+import { ContainerReconciliationModule } from "./modules/container-reconciliation/container-reconciliation.module.js";
 import { ContainerTypesModule } from "./modules/container-types/container-types.module.js";
 import { CustomerLocationsModule } from "./modules/customer-locations/customer-locations.module.js";
 import { CustomerPricesModule } from "./modules/customer-prices/customer-prices.module.js";
@@ -29,6 +30,7 @@ import { HealthModule } from "./modules/health/health.module.js";
     ContainerTypesModule,
     ContainerMovementsModule,
     ContainerCountsModule,
+    ContainerReconciliationModule,
     ProductionBatchesModule,
     HealthModule,
   ],
