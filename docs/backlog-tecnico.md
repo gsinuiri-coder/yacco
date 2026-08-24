@@ -114,6 +114,47 @@ cargado de ahí en vez del texto libre — el mismo patrón que `api/products.ts
 y el `<select>` de producto en `order-items-form.tsx`. Hasta entonces,
 `zoneId` solo se puede poblar por API.
 
+## La matriz de transiciones de envases está duplicada
+
+**Estado:** abierto. **Disparador:** antes de tocar las transiciones de ruta
+en S5 (`ROUTE_LOAD`, `LOAN_DELIVERY`, `EMPTY_PICKUP`, `FULL_RETURN`,
+`EMPTY_UNLOAD`) — `packages/shared` debe existir con contenido real ANTES de
+ese sprint, no durante ni después.
+
+`CONTAINER_MOVEMENT_TRANSITIONS` (`apps/api/src/modules/container-movements/container-movement-transitions.ts`)
+define qué pares (`fromState`, `toState`) admite cada `ContainerMovementType`,
+y no hay ningún endpoint que la exponga: el DTO valida el par en el servicio,
+no con decoradores, así que ni siquiera el schema de Swagger la refleja.
+
+La pantalla de movimientos de envases (`apps/web/src/lib/container-movement-transitions.ts`)
+necesita esa regla para ofrecer solo los orígenes válidos de las tres
+operaciones que registra a mano (`FLEET_ENTRY`, `DAMAGE_WRITE_OFF`,
+`LOSS_WRITE_OFF`), así que la copia a mano, acotada a esas tres — nunca a la
+matriz completa. Un desfase entre las dos copias no corrompe datos: el
+backend sigue validando en `POST /container-movements`, así que en el peor
+caso el usuario ve un 400 con el mensaje real del servidor, nunca un envío
+aceptado en silencio.
+
+El test de este espejo (`apps/web/src/lib/container-movement-transitions.test.ts`)
+no importa `container-movement-transitions.ts` de `apps/api` para comparar
+contra la fuente real: ese archivo importa `ContainerMovementType` y
+`ContainerState` desde `@prisma/client`, que no es dependencia de `apps/web`,
+y agregarlo solo para un test metería el cliente de base de datos —Prisma,
+sus tipos generados, potencialmente su motor— en el bundle que llega al
+navegador. El test se limita entonces a afirmar la auto-consistencia del
+espejo (qué operaciones y pares ofrece), no que coincida con el backend.
+
+Hoy el riesgo es bajo: tres tipos, dos con un único par. Deja de serlo en S5,
+cuando la app de reparto empiece a emitir `ROUTE_LOAD`/`LOAN_DELIVERY`/etc. y
+alguna pantalla de oficina necesite mostrar o validar esos mismos pares —dos
+copias de una matriz de 9 tipos, mantenidas a mano en repos separados, es
+donde un desfase real se vuelve probable, no solo teórico.
+
+**Para cerrarla:** mover `container-movement-transitions.ts` a
+`packages/shared` y que `apps/api` importe de ahí en vez de tener su propia
+copia local; `apps/web` deja de necesitar el espejo manual y su test puede
+importar la matriz real en vez de solo auto-verificarse.
+
 ## Reparto de un pago global entre deudas del cliente
 
 **Estado:** abierto. **Disparador:** cuando exista el módulo de Payments.

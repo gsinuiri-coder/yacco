@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router";
 import { AuthProvider } from "./auth/auth-provider";
+import { ContainerMovementsPage } from "./pages/container-movements-page";
 import { CustomerCreatePage } from "./pages/customer-create-page";
 import { CustomerDetailPage } from "./pages/customer-detail-page";
 import { CustomerEditPage } from "./pages/customer-edit-page";
@@ -29,6 +30,7 @@ export function App() {
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/production" element={<ProductionPage />} />
+          <Route path="/container-movements" element={<ContainerMovementsPage />} />
         </Route>
       </Routes>
     </AuthProvider>
