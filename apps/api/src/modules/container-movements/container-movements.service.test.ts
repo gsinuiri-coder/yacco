@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { ContainerMovementType, ContainerState } from "@prisma/client";
+import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "./container-movements.service.js";
@@ -266,6 +266,117 @@ describe("ContainerMovementsService", () => {
         update: { quantity: number };
       }>(prisma.customerContainerBalance.upsert);
       expect(upsertArgs.update.quantity).toBe(6);
+    });
+
+    it("rejects OPENING_BALANCE on the public route — it only enters through the roster loader", async () => {
+      await expect(
+        service.create(
+          {
+            type: ContainerMovementType.OPENING_BALANCE,
+            containerTypeId: CONTAINER_TYPE_ID,
+            quantity: 5,
+            toState: ContainerState.WITH_CUSTOMER,
+            locationId: LOCATION_ID,
+          },
+          USER_ID,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.containerType.findUnique).not.toHaveBeenCalled();
+      expect(prisma.containerMovement.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("createWithinTransaction — occurredAt", () => {
+    function fleetEntryDto() {
+      return {
+        type: ContainerMovementType.FLEET_ENTRY,
+        containerTypeId: CONTAINER_TYPE_ID,
+        quantity: 10,
+        toState: ContainerState.EMPTY_AT_PLANT,
+      } as const;
+    }
+
+    it("persists an explicit occurredAt as-is", async () => {
+      prisma.containerType.findUnique.mockResolvedValue(containerTypeRow());
+      prisma.containerMovement.create.mockResolvedValue(movementRow());
+      const occurredAt = new Date("2026-01-15T05:00:00.000Z");
+
+      await service.createWithinTransaction(
+        prisma as unknown as Prisma.TransactionClient,
+        fleetEntryDto(),
+        USER_ID,
+        { occurredAt },
+      );
+
+      expect(firstCallData(prisma.containerMovement.create).occurredAt).toBe(occurredAt);
+    });
+
+    it("defaults occurredAt to now when none is given", async () => {
+      prisma.containerType.findUnique.mockResolvedValue(containerTypeRow());
+      prisma.containerMovement.create.mockResolvedValue(movementRow());
+      const before = Date.now();
+
+      await service.createWithinTransaction(
+        prisma as unknown as Prisma.TransactionClient,
+        fleetEntryDto(),
+        USER_ID,
+      );
+
+      const after = Date.now();
+      const persisted = firstCallData(prisma.containerMovement.create).occurredAt as Date;
+      expect(persisted.getTime()).toBeGreaterThanOrEqual(before);
+      expect(persisted.getTime()).toBeLessThanOrEqual(after);
+    });
+
+    it("rejects a future occurredAt, without touching the database", async () => {
+      const future = new Date(Date.now() + 60_000);
+
+      await expect(
+        service.createWithinTransaction(
+          prisma as unknown as Prisma.TransactionClient,
+          fleetEntryDto(),
+          USER_ID,
+          { occurredAt: future },
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.containerMovement.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("createWithinTransaction — OPENING_BALANCE", () => {
+    it("increases the customer's container balance in the same transaction", async () => {
+      prisma.containerType.findUnique.mockResolvedValue(containerTypeRow());
+      prisma.customerLocation.findUnique.mockResolvedValue(locationRow());
+      prisma.customerContainerBalance.findUnique.mockResolvedValue(null);
+      prisma.containerMovement.create.mockResolvedValue(
+        movementRow({
+          type: ContainerMovementType.OPENING_BALANCE,
+          fromState: null,
+          toState: ContainerState.WITH_CUSTOMER,
+          locationId: LOCATION_ID,
+          quantity: 7,
+        }),
+      );
+
+      await service.createWithinTransaction(
+        prisma as unknown as Prisma.TransactionClient,
+        {
+          type: ContainerMovementType.OPENING_BALANCE,
+          containerTypeId: CONTAINER_TYPE_ID,
+          quantity: 7,
+          toState: ContainerState.WITH_CUSTOMER,
+          locationId: LOCATION_ID,
+        },
+        USER_ID,
+        { occurredAt: new Date("2026-01-01T05:00:00.000Z") },
+      );
+
+      const upsertArgs = firstCallArg<{
+        create: { quantity: number };
+        update: { quantity: number };
+      }>(prisma.customerContainerBalance.upsert);
+      expect(upsertArgs.create.quantity).toBe(7);
+      expect(upsertArgs.update.quantity).toBe(7);
     });
   });
 

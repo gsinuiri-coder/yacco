@@ -1,0 +1,12 @@
+-- Adds the movement type the customer-roster loader uses to seed each
+-- customer's opening container balance from the paper ledger.
+--
+-- Postgres does not allow a newly added enum value to be used inside the
+-- SAME TRANSACTION that added it, so this migration ONLY adds the value —
+-- no SQL statement in this file may reference OPENING_BALANCE. This does
+-- NOT constrain application code: TypeScript referencing OPENING_BALANCE
+-- (the transition matrix, the service's public-route guard) runs after this
+-- migration's transaction has committed, so it is unaffected and safe to
+-- ship in the same PR.
+-- AlterEnum
+ALTER TYPE "container_movement_type" ADD VALUE 'OPENING_BALANCE';

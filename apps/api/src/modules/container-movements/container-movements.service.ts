@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { ContainerState, Prisma } from "@prisma/client";
+import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { isValidContainerTransition } from "./container-movement-transitions.js";
 import type { CreateContainerMovementDto } from "./dto/create-container-movement.dto.js";
@@ -63,6 +63,15 @@ export class ContainerMovementsService {
     dto: CreateContainerMovementDto,
     recordedById: string,
   ): Promise<ContainerMovementResponseDto> {
+    // Opening balances enter only through the customer-roster loader, which
+    // calls createWithinTransaction directly with a backdated occurredAt. If
+    // a user could POST one by hand here, they would have a way to
+    // materialize containers "in the customer's hands" on the street with
+    // nothing behind them — no roster entry, no cutover date, no audit trail
+    // for why that customer supposedly already owed the fleet.
+    if (dto.type === ContainerMovementType.OPENING_BALANCE) {
+      throw new BadRequestException("Los saldos de apertura no se registran por esta vía");
+    }
     const movement = await this.prisma.$transaction((tx) =>
       this.createWithinTransaction(tx, dto, recordedById),
     );
@@ -88,24 +97,36 @@ export class ContainerMovementsService {
    * and the balance diverge would make the system lie about what a customer
    * still owes in containers.
    *
-   * `batchId` is deliberately not part of `CreateContainerMovementDto`: it is
-   * an internal linkage the system sets when a production batch registers
-   * its FILLING movements, never something a caller of the public
+   * `batchId` and `occurredAt` are deliberately not part of
+   * `CreateContainerMovementDto`: both are internal linkage only a trusted
+   * caller with an already-open transaction may set — `batchId` by a
+   * production batch registering its FILLING movements, `occurredAt` by the
+   * customer-roster loader backdating an OPENING_BALANCE entry to the
+   * roster's cutover date. Neither is something a caller of the public
    * POST /container-movements route should be able to fabricate by hand.
    */
   async createWithinTransaction(
     client: Prisma.TransactionClient,
     dto: CreateContainerMovementDto,
     recordedById: string,
-    batchId?: string,
+    options?: { batchId?: string; occurredAt?: Date },
   ): Promise<MovementWithRelations> {
     const fromState = dto.fromState ?? null;
     const toState = dto.toState ?? null;
 
     if (!isValidContainerTransition(dto.type, fromState, toState)) {
       throw new BadRequestException(
-        `El movimiento "${dto.type}" no admite pasar de ${fromState ?? "afuera del parque"} a ${toState ?? "afuera del parque"}`,
+        `El movimiento "${dto.type}" no admite pasar de ${fromState ?? "fuera de la empresa"} a ${toState ?? "fuera de la empresa"}`,
       );
+    }
+
+    // occurredAt is an instant (timestamptz), not a business date — the
+    // caller is responsible for resolving its own calendar date to an
+    // instant before it gets here; this service does no timezone conversion.
+    // Defaults to now for every caller except the one that backdates it.
+    const occurredAt = options?.occurredAt ?? new Date();
+    if (occurredAt.getTime() > Date.now()) {
+      throw new BadRequestException("La fecha del movimiento no puede ser futura");
     }
 
     await this.assertContainerTypeExists(client, dto.containerTypeId);
@@ -121,14 +142,14 @@ export class ContainerMovementsService {
 
     const created = await client.containerMovement.create({
       data: {
-        occurredAt: new Date(),
+        occurredAt,
         type: dto.type,
         containerTypeId: dto.containerTypeId,
         quantity: dto.quantity,
         fromState,
         toState,
         locationId: dto.locationId ?? null,
-        batchId: batchId ?? null,
+        batchId: options?.batchId ?? null,
         recordedById,
       },
       include: MOVEMENT_INCLUDE,

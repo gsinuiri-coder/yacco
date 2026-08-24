@@ -79,4 +79,23 @@ describe("isValidContainerTransition", () => {
       ),
     ).toBe(false);
   });
+
+  it("OPENING_BALANCE accepts only null -> WITH_CUSTOMER, nothing else", () => {
+    expect(
+      isValidContainerTransition(
+        ContainerMovementType.OPENING_BALANCE,
+        null,
+        ContainerState.WITH_CUSTOMER,
+      ),
+    ).toBe(true);
+    for (const state of ALL_STATES) {
+      if (state === ContainerState.WITH_CUSTOMER) continue;
+      expect(isValidContainerTransition(ContainerMovementType.OPENING_BALANCE, null, state)).toBe(
+        false,
+      );
+      expect(isValidContainerTransition(ContainerMovementType.OPENING_BALANCE, state, null)).toBe(
+        false,
+      );
+    }
+  });
 });
