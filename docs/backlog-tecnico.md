@@ -170,3 +170,30 @@ el cliente indica que ese pago es específicamente para una venta puntual).
 **Para cerrarla:** implementar esta regla en el servicio de Payments cuando
 se construya (aún no existe ningún módulo de Sales/Payments en `apps/api/src`),
 como parte de la lógica de creación de un pago sin `locationId`.
+
+## Certeza del saldo de apertura de envases en poder del cliente
+
+**Estado:** abierto. **Disparador:** diseño de S3 (saldos y bajas), antes de
+construir la carga de apertura.
+
+Decisión de dominio tomada con el dueño de la planta: los saldos de envases
+prestados que se carguen en la apertura no tienen todos el mismo grado de
+confianza. De algunos clientes el dueño sabe con certeza cuántos envases
+tienen; de otros es una estimación, porque el repartidor a veces no anotaba
+la entrega.
+
+Esa diferencia debe sobrevivir a la carga inicial: el saldo de apertura lleva
+su propio grado de certeza (al menos "confirmado" vs. "estimado"), y tiene
+que existir una forma de que un saldo estimado pase a confirmado cuando
+alguien lo verifique físicamente — algo que va a ocurrir durante el piloto,
+cuando el conductor llegue a un cliente y cuente lo que tiene.
+
+**Razón:** sin el origen del número, un saldo de "5 envases" es indistinguible
+entre dato duro y aproximación, y esa distinción es justo la que decide si un
+reclamo al cliente se sostiene con evidencia o con insistencia. Es coherente
+con la filosofía ya aceptada en el resto del sistema: las discrepancias se
+registran, nunca se suprimen (mismo espíritu que el ajuste de una liquidación
+con descuadre, o la advertencia de sobreproducción de un lote).
+
+**Para cerrarla:** diseñar en S3, junto con el resto de saldos y bajas —no
+antes: aún no existe carga de apertura ni módulo de saldos que la necesite.

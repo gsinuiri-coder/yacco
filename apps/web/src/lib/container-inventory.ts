@@ -63,7 +63,7 @@ export function pivotInventory(items: ContainerInventoryItem[]): InventoryRow[] 
   );
 }
 
-/** Total general del parque: the sum across every row, negatives included. */
+/** Total general: the sum across every row, negatives included. */
 export function totalInventory(rows: InventoryRow[]): number {
   return rows.reduce((sum, row) => sum + row.total, 0);
 }

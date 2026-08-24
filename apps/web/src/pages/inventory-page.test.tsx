@@ -65,7 +65,7 @@ describe("InventoryPage", () => {
       "8",
       "50",
     ]);
-    expect(screen.getByText(/Total general del parque/)).toHaveTextContent("50 envases");
+    expect(screen.getByText(/Total general/)).toHaveTextContent("50 envases");
   });
 
   it("un estado ausente en la respuesta se muestra como 0, no en blanco", async () => {
@@ -153,7 +153,7 @@ describe("InventoryPage", () => {
 
     expect(await screen.findByRole("table")).toBeInTheDocument();
     expect(screen.queryByText("Todavía no hay movimientos de envases")).not.toBeInTheDocument();
-    expect(screen.getByText(/Total general del parque/)).toHaveTextContent("-30 envases");
+    expect(screen.getByText(/Total general/)).toHaveTextContent("-30 envases");
   });
 
   it("sin negativos no muestra el aviso", async () => {
