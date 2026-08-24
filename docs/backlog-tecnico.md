@@ -207,8 +207,24 @@ ningún lado, se consulta.
 
 ## Lista fija de migraciones en customer-locations-migration.int.test.ts
 
-**Estado:** abierto. **Disparador:** antes del siguiente PR que agregue una
-migración con FK a `customer_locations`.
+**Estado:** RESUELTA en PR #49 (`fix/migration-test-no-parking`). Se
+conserva la entrada como registro: la lista tuvo que ampliarse tres veces en
+un solo sprint (`container_count`, `container_count_check`,
+`opening_balance_indexes`) antes de cerrarse de raíz.
+
+**Cómo se cerró:** el test ya no mueve carpetas del repo ni conoce nombres de
+migraciones. Copia `schema.prisma` y las migraciones a un directorio temporal
+y corre `migrate deploy --schema <tmp>/schema.prisma`: en la primera pasada
+copia solo las carpetas cuyo nombre es menor que
+`20260822090000_customer_locations` (el prefijo de timestamp ordena igual que
+la cronología), y en la segunda copia todas. `prisma/migrations` no se toca
+en ningún momento, así que tampoco hace falta el `finally`/`afterAll` que
+restauraba las carpetas si el proceso moría a medias.
+
+_Texto original de la entrada, tal como se escribió cuando estaba abierta:_
+
+**Estado (original):** abierto. **Disparador:** antes del siguiente PR que
+agregue una migración con FK a `customer_locations`.
 
 Este test prueba el backfill de la migración `customer_locations` aparcando
 temporalmente su carpeta (y las de cualquier otra migración que dependa de
