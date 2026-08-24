@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma, type Payment, type Sale } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateOpeningChargeDto } from "./dto/create-opening-charge.dto.js";
@@ -116,45 +116,33 @@ export class SalesService {
     const total = assertPositiveAmount(dto.amount);
     assertNotFuture(dto.soldAt, "La fecha de la venta");
 
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        await assertCustomerActive(tx, dto.customerId);
-        await assertNoOpeningBalanceExists(tx, dto.customerId);
-        const locationId = await getPrimaryLocationId(tx, dto.customerId);
+    return this.prisma.$transaction(async (tx) => {
+      await assertCustomerActive(tx, dto.customerId);
+      await assertNoOpeningBalanceExists(tx, dto.customerId);
+      const locationId = await getPrimaryLocationId(tx, dto.customerId);
 
-        const sale = await tx.sale.create({
-          data: {
-            locationId,
-            stopId: null,
-            soldAt: dto.soldAt,
-            total,
-            // Not a credit-limit decision anyone made — this debt was
-            // already there when the system started, so there is no
-            // "exceeded the limit" moment to flag.
-            creditLimitExceeded: false,
-            isOpeningBalance: true,
-            recordedById,
-          },
-        });
-
-        await tx.customer.update({
-          where: { id: dto.customerId },
-          data: { debtBalance: { increment: total } },
-        });
-
-        return sale;
+      const sale = await tx.sale.create({
+        data: {
+          locationId,
+          stopId: null,
+          soldAt: dto.soldAt,
+          total,
+          // Not a credit-limit decision anyone made — this debt was already
+          // there when the system started, so there is no "exceeded the
+          // limit" moment to flag.
+          creditLimitExceeded: false,
+          isOpeningBalance: true,
+          recordedById,
+        },
       });
-    } catch (error) {
-      // sales_opening_balance_location_key: belt and suspenders on top of
-      // assertNoOpeningBalanceExists for a race between two concurrent
-      // requests on the same customer.
-      if (isPrismaKnownError(error, "P2002")) {
-        throw new ConflictException(
-          `El cliente "${dto.customerId}" ya tiene un cargo de apertura registrado`,
-        );
-      }
-      throw error;
-    }
+
+      await tx.customer.update({
+        where: { id: dto.customerId },
+        data: { debtBalance: { increment: total } },
+      });
+
+      return sale;
+    });
   }
 
   async createOpeningCredit(dto: CreateOpeningCreditDto, recordedById: string): Promise<Payment> {
@@ -188,13 +176,6 @@ export class SalesService {
         return payment;
       });
     } catch (error) {
-      // payments_opening_balance_customer_key: belt and suspenders, same as
-      // createOpeningCharge above.
-      if (isPrismaKnownError(error, "P2002")) {
-        throw new ConflictException(
-          `El cliente "${dto.customerId}" ya tiene un abono de apertura registrado`,
-        );
-      }
       // P2003: the only FK this method doesn't pre-validate is paymentMethodId.
       if (isPrismaKnownError(error, "P2003")) {
         throw new BadRequestException(`El método de pago "${dto.paymentMethodId}" no existe`);

@@ -3,6 +3,8 @@ import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { SalesService } from "../../src/modules/sales/sales.service.js";
+import { CreateOpeningChargeDto } from "../../src/modules/sales/dto/create-opening-charge.dto.js";
+import { CreateOpeningCreditDto } from "../../src/modules/sales/dto/create-opening-credit.dto.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
@@ -13,6 +15,7 @@ import type { TestAppContext } from "./support/test-app.js";
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
+const MISSING_UUID = "00000000-0000-4000-8000-000000000000";
 
 let ctx: TestAppContext;
 let adminToken: string;
@@ -81,6 +84,26 @@ async function customerDebtBalance(customerId: string): Promise<string> {
   return customer.debtBalance.toFixed(2);
 }
 
+/**
+ * Real `CreateOpeningChargeDto`/`CreateOpeningCreditDto` instances, not
+ * plain object literals: SalesService only imports these types (`import
+ * type`, erased at compile time — there is no controller to run a
+ * `ValidationPipe` against them), so a test that never constructs the
+ * actual class would leave that file completely unexercised.
+ */
+function chargeDto(fields: { customerId: string; amount: string; soldAt: Date }) {
+  return Object.assign(new CreateOpeningChargeDto(), fields);
+}
+
+function creditDto(fields: {
+  customerId: string;
+  paymentMethodId: string;
+  amount: string;
+  paidAt: Date;
+}) {
+  return Object.assign(new CreateOpeningCreditDto(), fields);
+}
+
 beforeAll(async () => {
   ctx = await startTestApp();
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
@@ -102,7 +125,7 @@ describe("SalesService.createOpeningCharge", () => {
     const customerId = await createCustomer();
 
     const sale = await sales.createOpeningCharge(
-      { customerId, amount: "125.50", soldAt: new Date("2026-01-10T05:00:00.000Z") },
+      chargeDto({ customerId, amount: "125.50", soldAt: new Date("2026-01-10T05:00:00.000Z") }),
       recordedById,
     );
 
@@ -130,7 +153,10 @@ describe("SalesService.createOpeningCharge", () => {
     await insertOpeningChargeOnLocation(secondaryLocation.id);
 
     await expect(
-      sales.createOpeningCharge({ customerId, amount: "50.00", soldAt: new Date() }, recordedById),
+      sales.createOpeningCharge(
+        chargeDto({ customerId, amount: "50.00", soldAt: new Date() }),
+        recordedById,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -140,7 +166,10 @@ describe("SalesService.createOpeningCharge", () => {
     await unsetPrimaryLocation(customerId);
 
     await expect(
-      sales.createOpeningCharge({ customerId, amount: "50.00", soldAt: new Date() }, recordedById),
+      sales.createOpeningCharge(
+        chargeDto({ customerId, amount: "50.00", soldAt: new Date() }),
+        recordedById,
+      ),
     ).rejects.toThrow(/locación principal/);
   });
 
@@ -149,7 +178,7 @@ describe("SalesService.createOpeningCharge", () => {
 
     await expect(
       sales.createOpeningCharge(
-        { customerId: "00000000-0000-4000-8000-000000000000", amount: "10.00", soldAt: new Date() },
+        chargeDto({ customerId: MISSING_UUID, amount: "10.00", soldAt: new Date() }),
         recordedById,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -160,7 +189,10 @@ describe("SalesService.createOpeningCharge", () => {
     const customerId = await createCustomer({ active: false });
 
     await expect(
-      sales.createOpeningCharge({ customerId, amount: "10.00", soldAt: new Date() }, recordedById),
+      sales.createOpeningCharge(
+        chargeDto({ customerId, amount: "10.00", soldAt: new Date() }),
+        recordedById,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -169,7 +201,10 @@ describe("SalesService.createOpeningCharge", () => {
     const customerId = await createCustomer();
 
     await expect(
-      sales.createOpeningCharge({ customerId, amount: "0.00", soldAt: new Date() }, recordedById),
+      sales.createOpeningCharge(
+        chargeDto({ customerId, amount: "0.00", soldAt: new Date() }),
+        recordedById,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -178,7 +213,10 @@ describe("SalesService.createOpeningCharge", () => {
     const customerId = await createCustomer();
 
     await expect(
-      sales.createOpeningCharge({ customerId, amount: "-5.00", soldAt: new Date() }, recordedById),
+      sales.createOpeningCharge(
+        chargeDto({ customerId, amount: "-5.00", soldAt: new Date() }),
+        recordedById,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -188,7 +226,10 @@ describe("SalesService.createOpeningCharge", () => {
     const future = new Date(Date.now() + 60_000);
 
     await expect(
-      sales.createOpeningCharge({ customerId, amount: "10.00", soldAt: future }, recordedById),
+      sales.createOpeningCharge(
+        chargeDto({ customerId, amount: "10.00", soldAt: future }),
+        recordedById,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -198,7 +239,7 @@ describe("SalesService.createOpeningCharge", () => {
     const backdated = new Date("2025-06-15T05:00:00.000Z");
 
     const sale = await sales.createOpeningCharge(
-      { customerId, amount: "10.00", soldAt: backdated },
+      chargeDto({ customerId, amount: "10.00", soldAt: backdated }),
       recordedById,
     );
 
@@ -212,12 +253,12 @@ describe("SalesService.createOpeningCredit", () => {
     const customerId = await createCustomer();
 
     await sales.createOpeningCredit(
-      {
+      creditDto({
         customerId,
         paymentMethodId,
         amount: "80.25",
         paidAt: new Date("2026-01-10T05:00:00.000Z"),
-      },
+      }),
       recordedById,
     );
 
@@ -228,13 +269,13 @@ describe("SalesService.createOpeningCredit", () => {
     const sales = ctx.app.get(SalesService);
     const customerId = await createCustomer();
     await sales.createOpeningCredit(
-      { customerId, paymentMethodId, amount: "20.00", paidAt: new Date() },
+      creditDto({ customerId, paymentMethodId, amount: "20.00", paidAt: new Date() }),
       recordedById,
     );
 
     await expect(
       sales.createOpeningCredit(
-        { customerId, paymentMethodId, amount: "5.00", paidAt: new Date() },
+        creditDto({ customerId, paymentMethodId, amount: "5.00", paidAt: new Date() }),
         recordedById,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -246,7 +287,7 @@ describe("SalesService.createOpeningCredit", () => {
 
     await expect(
       sales.createOpeningCredit(
-        { customerId, paymentMethodId, amount: "0.00", paidAt: new Date() },
+        creditDto({ customerId, paymentMethodId, amount: "0.00", paidAt: new Date() }),
         recordedById,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -258,7 +299,7 @@ describe("SalesService.createOpeningCredit", () => {
 
     await expect(
       sales.createOpeningCredit(
-        { customerId, paymentMethodId, amount: "-5.00", paidAt: new Date() },
+        creditDto({ customerId, paymentMethodId, amount: "-5.00", paidAt: new Date() }),
         recordedById,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -271,7 +312,7 @@ describe("SalesService.createOpeningCredit", () => {
 
     await expect(
       sales.createOpeningCredit(
-        { customerId, paymentMethodId, amount: "10.00", paidAt: future },
+        creditDto({ customerId, paymentMethodId, amount: "10.00", paidAt: future }),
         recordedById,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -283,11 +324,28 @@ describe("SalesService.createOpeningCredit", () => {
     const backdated = new Date("2025-06-15T05:00:00.000Z");
 
     const payment = await sales.createOpeningCredit(
-      { customerId, paymentMethodId, amount: "10.00", paidAt: backdated },
+      creditDto({ customerId, paymentMethodId, amount: "10.00", paidAt: backdated }),
       recordedById,
     );
 
     expect(payment.paidAt).toEqual(backdated);
+  });
+
+  test("rejects an unknown paymentMethodId", async () => {
+    const sales = ctx.app.get(SalesService);
+    const customerId = await createCustomer();
+
+    await expect(
+      sales.createOpeningCredit(
+        creditDto({
+          customerId,
+          paymentMethodId: MISSING_UUID,
+          amount: "10.00",
+          paidAt: new Date(),
+        }),
+        recordedById,
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 });
 
@@ -296,13 +354,13 @@ describe("mutual exclusion between an opening charge and an opening credit", () 
     const sales = ctx.app.get(SalesService);
     const customerId = await createCustomer();
     await sales.createOpeningCharge(
-      { customerId, amount: "30.00", soldAt: new Date() },
+      chargeDto({ customerId, amount: "30.00", soldAt: new Date() }),
       recordedById,
     );
 
     await expect(
       sales.createOpeningCredit(
-        { customerId, paymentMethodId, amount: "10.00", paidAt: new Date() },
+        creditDto({ customerId, paymentMethodId, amount: "10.00", paidAt: new Date() }),
         recordedById,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -312,12 +370,15 @@ describe("mutual exclusion between an opening charge and an opening credit", () 
     const sales = ctx.app.get(SalesService);
     const customerId = await createCustomer();
     await sales.createOpeningCredit(
-      { customerId, paymentMethodId, amount: "30.00", paidAt: new Date() },
+      creditDto({ customerId, paymentMethodId, amount: "30.00", paidAt: new Date() }),
       recordedById,
     );
 
     await expect(
-      sales.createOpeningCharge({ customerId, amount: "10.00", soldAt: new Date() }, recordedById),
+      sales.createOpeningCharge(
+        chargeDto({ customerId, amount: "10.00", soldAt: new Date() }),
+        recordedById,
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 });
