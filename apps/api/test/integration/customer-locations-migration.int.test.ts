@@ -31,8 +31,18 @@ import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, "../../prisma/migrations");
-const NEW_MIGRATION_NAME = "20260822090000_customer_locations";
-const NEW_MIGRATION_DIR = path.join(MIGRATIONS_DIR, NEW_MIGRATION_NAME);
+// customer_locations is the migration under test. container_count and
+// container_count_check must be parked alongside it, not because they are
+// under test, but because both FK into customer_locations: applied against
+// the pre-customer_locations schema (what the first `migrate deploy` below
+// simulates), that FK would fail on the missing table. Every OTHER migration
+// chronologically after customer_locations (container_states, the two enum
+// additions) touches only container_movements and stays applied throughout.
+const NEW_MIGRATION_NAMES = [
+  "20260822090000_customer_locations",
+  "20260824032647_container_count",
+  "20260824032801_container_count_check",
+];
 
 let container: StartedPostgreSqlContainer | undefined;
 let prisma: PrismaClient | undefined;
@@ -41,14 +51,18 @@ let isParked = false;
 
 function parkNewMigration(): void {
   parkedDir = mkdtempSync(path.join(tmpdir(), "yacco-parked-migration-"));
-  renameSync(NEW_MIGRATION_DIR, path.join(parkedDir, NEW_MIGRATION_NAME));
+  for (const name of NEW_MIGRATION_NAMES) {
+    renameSync(path.join(MIGRATIONS_DIR, name), path.join(parkedDir, name));
+  }
   isParked = true;
 }
 
-/** Idempotent: safe to call whether or not the migration is currently parked. */
+/** Idempotent: safe to call whether or not the migrations are currently parked. */
 function restoreNewMigration(): void {
   if (!isParked || parkedDir === undefined) return;
-  renameSync(path.join(parkedDir, NEW_MIGRATION_NAME), NEW_MIGRATION_DIR);
+  for (const name of NEW_MIGRATION_NAMES) {
+    renameSync(path.join(parkedDir, name), path.join(MIGRATIONS_DIR, name));
+  }
   isParked = false;
 }
 

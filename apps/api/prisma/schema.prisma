@@ -47,6 +47,7 @@ enum ContainerMovementType {
   DAMAGE_WRITE_OFF
   LOSS_WRITE_OFF
   OPENING_BALANCE
+  COUNT_ADJUSTMENT
 
   @@map("container_movement_type")
 }
@@ -132,6 +133,7 @@ model User {
   roles              UserRoleAssignment[]
   productionBatches  ProductionBatch[]
   containerMovements ContainerMovement[]
+  containerCounts    ContainerCount[]
   orders             Order[]
   routes             Route[]
   sales              Sale[]
@@ -183,6 +185,7 @@ model ContainerType {
   batchItems BatchItem[]
   movements  ContainerMovement[]
   balances   CustomerContainerBalance[]
+  counts     ContainerCount[]
 
   @@map("container_types")
 }
@@ -242,6 +245,7 @@ model CustomerLocation {
   prices     CustomerPrice[]
   balances   CustomerContainerBalance[]
   movements  ContainerMovement[]
+  counts     ContainerCount[]
   orders     Order[]
   routeStops RouteStop[]
   sales      Sale[]
@@ -339,11 +343,12 @@ model ContainerMovement {
   stopId          String?               @map("stop_id") @db.Uuid
   recordedById    String                @map("recorded_by") @db.Uuid
 
-  containerType ContainerType     @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
-  location      CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  batch         ProductionBatch?  @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  stop          RouteStop?        @relation(fields: [stopId], references: [id], onDelete: Restrict)
-  recordedBy    User              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  containerType  ContainerType     @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  location       CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  batch          ProductionBatch?  @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  stop           RouteStop?        @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  recordedBy     User              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  containerCount ContainerCount?
 
   @@index([locationId, occurredAt])
   @@map("container_movements")
@@ -363,6 +368,33 @@ model CustomerContainerBalance {
 
   @@id([locationId, containerTypeId])
   @@map("customer_container_balances")
+}
+
+// Append-only record of a physical count at a customer location — never
+// updated or deleted, same rule as container_movements. `expectedQuantity`
+// is a deliberate snapshot of what CustomerContainerBalance held the moment
+// of the count, not something re-derived later: it is the evidence of the
+// discrepancy on that date, and the balance keeps moving after the count, so
+// re-reading it later would erase what the count actually found.
+// `adjustmentId` is null when the count matched the balance exactly — no
+// COUNT_ADJUSTMENT is emitted for a zero delta (see ContainerCountsService).
+model ContainerCount {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId       String   @map("location_id") @db.Uuid
+  containerTypeId  String   @map("container_type_id") @db.Uuid
+  countedAt        DateTime @map("counted_at") @db.Timestamptz(6)
+  countedQuantity  Int      @map("counted_quantity")
+  expectedQuantity Int      @map("expected_quantity")
+  adjustmentId     String?  @unique @map("adjustment_id") @db.Uuid
+  countedById      String   @map("counted_by") @db.Uuid
+
+  location      CustomerLocation   @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  containerType ContainerType      @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  adjustment    ContainerMovement? @relation(fields: [adjustmentId], references: [id], onDelete: Restrict)
+  countedBy     User               @relation(fields: [countedById], references: [id], onDelete: Restrict)
+
+  @@index([locationId, containerTypeId, countedAt])
+  @@map("container_counts")
 }
 
 // --- Orders & routes --------------------------------------------------------

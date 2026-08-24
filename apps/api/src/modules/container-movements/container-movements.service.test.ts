@@ -284,6 +284,23 @@ describe("ContainerMovementsService", () => {
       expect(prisma.containerType.findUnique).not.toHaveBeenCalled();
       expect(prisma.containerMovement.create).not.toHaveBeenCalled();
     });
+
+    it("rejects COUNT_ADJUSTMENT on the public route — it only enters through ContainerCountsService", async () => {
+      await expect(
+        service.create(
+          {
+            type: ContainerMovementType.COUNT_ADJUSTMENT,
+            containerTypeId: CONTAINER_TYPE_ID,
+            quantity: 3,
+            toState: ContainerState.WITH_CUSTOMER,
+            locationId: LOCATION_ID,
+          },
+          USER_ID,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.containerType.findUnique).not.toHaveBeenCalled();
+      expect(prisma.containerMovement.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("createWithinTransaction — occurredAt", () => {

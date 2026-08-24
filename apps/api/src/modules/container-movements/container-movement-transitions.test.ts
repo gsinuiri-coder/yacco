@@ -98,4 +98,30 @@ describe("isValidContainerTransition", () => {
       );
     }
   });
+
+  it("COUNT_ADJUSTMENT accepts both directions across the fleet boundary, nothing else", () => {
+    expect(
+      isValidContainerTransition(
+        ContainerMovementType.COUNT_ADJUSTMENT,
+        null,
+        ContainerState.WITH_CUSTOMER,
+      ),
+    ).toBe(true);
+    expect(
+      isValidContainerTransition(
+        ContainerMovementType.COUNT_ADJUSTMENT,
+        ContainerState.WITH_CUSTOMER,
+        null,
+      ),
+    ).toBe(true);
+    for (const state of ALL_STATES) {
+      if (state === ContainerState.WITH_CUSTOMER) continue;
+      expect(isValidContainerTransition(ContainerMovementType.COUNT_ADJUSTMENT, null, state)).toBe(
+        false,
+      );
+      expect(isValidContainerTransition(ContainerMovementType.COUNT_ADJUSTMENT, state, null)).toBe(
+        false,
+      );
+    }
+  });
 });

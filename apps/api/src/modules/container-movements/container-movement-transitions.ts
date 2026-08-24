@@ -52,6 +52,18 @@ export const CONTAINER_MOVEMENT_TRANSITIONS: Record<ContainerMovementType, State
   // it. The alternative — chaining fake FILLING + ROUTE_LOAD + LOAN_DELIVERY
   // movements — would invent production batches that never existed.
   [ContainerMovementType.OPENING_BALANCE]: [{ from: null, to: ContainerState.WITH_CUSTOMER }],
+  // Both directions, unlike LOSS_WRITE_OFF: a loss is the customer's fault
+  // and is reclaimable — they had them and lost them. A count adjustment
+  // says the opposite: OUR number was wrong, and these containers were
+  // never really there (or there were more than we thought) — nothing to
+  // reclaim either way. Conflating the two would make it impossible, months
+  // later, to tell a real customer debt from a bookkeeping error. Whoever
+  // records the count picks which one applies; this matrix only says both
+  // directions are structurally valid for COUNT_ADJUSTMENT.
+  [ContainerMovementType.COUNT_ADJUSTMENT]: [
+    { from: null, to: ContainerState.WITH_CUSTOMER },
+    { from: ContainerState.WITH_CUSTOMER, to: null },
+  ],
 };
 
 export function isValidContainerTransition(

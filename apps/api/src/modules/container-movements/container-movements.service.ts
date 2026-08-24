@@ -47,6 +47,21 @@ function limaDayStartUtc(date: string): Date {
   return new Date(Date.UTC(year, month - 1, day, 5, 0, 0));
 }
 
+/**
+ * Movement types that only ever enter through their own trusted writer, each
+ * calling `createWithinTransaction` directly — never through this public
+ * route. Each writer keeps a companion record this ledger row must stay in
+ * lock-step with: the customer-roster loader's cutover entry for
+ * OPENING_BALANCE, the `container_counts` row for COUNT_ADJUSTMENT. A
+ * movement of either type registered here by hand would have no such
+ * companion, leaving the ledger and that record diverging — exactly what
+ * each of those tables exists to prevent.
+ */
+const INTERNAL_ONLY_MOVEMENT_TYPES: ReadonlySet<ContainerMovementType> = new Set([
+  ContainerMovementType.OPENING_BALANCE,
+  ContainerMovementType.COUNT_ADJUSTMENT,
+]);
+
 @Injectable()
 export class ContainerMovementsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -63,14 +78,8 @@ export class ContainerMovementsService {
     dto: CreateContainerMovementDto,
     recordedById: string,
   ): Promise<ContainerMovementResponseDto> {
-    // Opening balances enter only through the customer-roster loader, which
-    // calls createWithinTransaction directly with a backdated occurredAt. If
-    // a user could POST one by hand here, they would have a way to
-    // materialize containers "in the customer's hands" on the street with
-    // nothing behind them — no roster entry, no cutover date, no audit trail
-    // for why that customer supposedly already owed the fleet.
-    if (dto.type === ContainerMovementType.OPENING_BALANCE) {
-      throw new BadRequestException("Los saldos de apertura no se registran por esta vía");
+    if (INTERNAL_ONLY_MOVEMENT_TYPES.has(dto.type)) {
+      throw new BadRequestException("Este tipo de movimiento no se registra por esta vía");
     }
     const movement = await this.prisma.$transaction((tx) =>
       this.createWithinTransaction(tx, dto, recordedById),

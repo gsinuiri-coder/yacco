@@ -173,8 +173,7 @@ como parte de la lógica de creación de un pago sin `locationId`.
 
 ## Certeza del saldo de apertura de envases en poder del cliente
 
-**Estado:** abierto. **Disparador:** diseño de S3 (saldos y bajas), antes de
-construir la carga de apertura.
+**Estado:** resuelta.
 
 Decisión de dominio tomada con el dueño de la planta: los saldos de envases
 prestados que se carguen en la apertura no tienen todos el mismo grado de
@@ -195,5 +194,13 @@ con la filosofía ya aceptada en el resto del sistema: las discrepancias se
 registran, nunca se suprimen (mismo espíritu que el ajuste de una liquidación
 con descuadre, o la advertencia de sobreproducción de un lote).
 
-**Para cerrarla:** diseñar en S3, junto con el resto de saldos y bajas —no
-antes: aún no existe carga de apertura ni módulo de saldos que la necesite.
+**Cómo quedó resuelta:** no como una columna de "confirmado"/"estimado" en el
+saldo de apertura, sino como algo derivado. `OPENING_BALANCE` registra lo que
+el cargador del padrón creyó al arrancar, sin distinguir origen — esa carga
+es siempre la estimación de partida. `ContainerCount`, el libro de conteos
+físicos, es la fuente de la certeza real: su sola existencia para una
+locación y tipo de envase, con la fecha `countedAt` del conteo más reciente,
+dice si ese saldo está confirmado y desde cuándo. Un saldo sin ningún conteo
+posterior a su `OPENING_BALANCE` sigue siendo la estimación original; uno con
+un conteo posterior queda confirmado a esa fecha — sin guardar la etiqueta en
+ningún lado, se consulta.
