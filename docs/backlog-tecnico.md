@@ -245,3 +245,36 @@ migraciones _anteriores_ a `customer_locations` por criterio cronológico
 para el primer paso. Así el primer deploy nunca ve ninguna migración
 posterior a `customer_locations` — ni las que existen hoy ni las que se
 agreguen mañana — sin que el test tenga que conocer sus nombres.
+
+## Sin lock sobre customer_container_balances al leer-y-reescribir
+
+**Estado:** aceptado. **Disparador:** más de dos rutas cargando/entregando al
+mismo tiempo, o un descuadre real que `GET /container-reconciliation` reporte
+sin que se le encuentre una causa identificable en el código.
+
+Tanto `ContainerMovementsService.createWithinTransaction` como
+`ContainerCountsService.create` leen la fila de `customer_container_balances`
+(`findUnique`) y escriben la cantidad absoluta resultante dentro de la misma
+transacción, pero sin tomar `SELECT ... FOR UPDATE` sobre esa fila antes de
+leerla. Dos transacciones concurrentes sobre el mismo par
+(locación, tipo de envase) pueden intercalarse: ambas leen el mismo valor
+base, cada una calcula su propio delta sobre él, y la segunda en escribir
+pisa el resultado de la primera en vez de sumarse a él — una pérdida de
+actualización clásica.
+
+**Razón:** con solo dos rutas operando hoy, dos transacciones chocando sobre
+el mismo par exacto en la misma ventana de milisegundos es improbable. Tomar
+el lock evitaría esa colisión, pero a cambio metería contención justo en el
+camino de carga de ruta (`ROUTE_LOAD`) — donde ya importa que el reparto
+salga rápido — para cubrir un caso más angosto que el que ya cubre
+`GET /container-reconciliation`: la rutina de cuadre detecta el descuadre
+sin importar si la causa fue una pérdida de actualización concurrente o un
+bug de lógica, así que ya es la red de seguridad que un lock solo duplicaría
+parcialmente.
+
+**Para cerrarla:** si el piloto agrega una tercera ruta operando en
+simultáneo, o si el cuadre reporta un descuadre real que no se explica por
+ningún bug de código, agregar `SELECT ... FOR UPDATE` sobre la fila de
+`customer_container_balances` (o de `CustomerContainerBalance` vía
+`queryRaw`, ya que Prisma no expone `FOR UPDATE` en su API tipada) antes de
+leerla, en ambos servicios.
