@@ -8,6 +8,7 @@ import {
   IsArray,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Matches,
   Max,
@@ -89,6 +90,18 @@ export class EnvironmentVariables {
   @ArrayNotEmpty({ message: "WEB_ORIGIN must include at least one origin" })
   @IsString({ each: true })
   WEB_ORIGIN: string[] = parseWebOrigins(undefined);
+
+  /**
+   * Injected by Render into the service environment: the git commit the
+   * running build was made from. Surfaced by GET /health so what is deployed
+   * can be compared against the tip of main in seconds — an auto-deploy that
+   * silently never fired (it happened, 2026-08-24) is otherwise invisible
+   * until some consequence shows up. Absent locally and in tests on purpose;
+   * HealthService reports null then, never a guess.
+   */
+  @IsOptional()
+  @IsString()
+  RENDER_GIT_COMMIT?: string;
 }
 
 /**

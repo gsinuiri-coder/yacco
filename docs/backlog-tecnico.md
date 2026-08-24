@@ -409,3 +409,26 @@ indefinidamente, con todos los checks en verde.
 **Mitigación pendiente:** exponer `RENDER_GIT_COMMIT` en `/health`, para
 poder comparar lo desplegado contra el tip de `main` en segundos, sin
 depender de que el commit traiga migración. Es su propio PR.
+
+## Test flaky en apps/web: customers-page falla bajo carga
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo.
+
+`src/pages/customers-page.test.tsx` (caso «Siguiente» pide la página 2 y
+muestra sus filas) falló el 24/08/2026 corriendo `pnpm test` completo (toda
+la suite de web en paralelo con la de api) y pasó aislado 12/12 en el mismo
+árbol, sin cambiar nada. No se persiguió en ese momento porque el PR de
+turno (#51) no tocaba la web.
+
+**Razón:** un test que enseña a ignorar el rojo es un pasivo. Con el piloto
+encima hay que poder confiar en el CI sin pensarlo: si un fallo en
+`customers-page` puede ser "el flaky de siempre", el día que sea real se va
+a descartar igual; y si empieza a fallar en CI, o se reintenta a ciegas o se
+bloquea `main` por nada.
+
+**Para cerrarla:** reproducirlo bajo carga (la suite completa de web, o el
+archivo en bucle con `--reporter=verbose`) y encontrar la carrera: lo más
+probable es una espera sobre la segunda página que se resuelve antes de que
+el mock de la API cambie de respuesta, o un `findBy` con timeout justo. La
+salida es una espera explícita sobre el estado que el test necesita, no un
+`retry` ni un timeout más largo.
