@@ -180,6 +180,16 @@ export class ContainerMovementsService {
       // `increment` against the row already on disk when the ON CONFLICT
       // branch is taken, so a second movement silently overwrote the first
       // instead of adding to it.
+      // A negative result is valid and expected, never clamped or rejected:
+      // this balance is what the system BELIEVES the customer holds, and the
+      // belief can be wrong. The previous driver forgot to write down a
+      // delivery, the books say 2, the customer hands back 3 -> -1. That
+      // sign says "there is a delivery nobody recorded" — information the
+      // owner needs, which is why the database no longer has a CHECK on it
+      // (20260824164243_allow_negative_container_balance). Blocking here
+      // would only make the driver skip registering the return, losing both
+      // facts. A physical count later brings it back to what is actually
+      // there, through COUNT_ADJUSTMENT.
       const existing = await client.customerContainerBalance.findUnique({ where: key });
       const nextQuantity = (existing?.quantity ?? 0) + delta;
       await client.customerContainerBalance.upsert({

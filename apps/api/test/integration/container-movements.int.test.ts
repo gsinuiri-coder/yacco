@@ -214,6 +214,57 @@ describe("POST /api/v1/container-movements — customer-facing movements", () =>
     });
     expect(afterPickup?.quantity).toBe(0);
   });
+
+  // Spec §2.4 / the owner's real case: the previous driver forgot to write
+  // down a delivery, the books say 2, the customer hands back 3. The return
+  // MUST be registered and the balance MUST go negative — the sign is the
+  // signal that a delivery went unrecorded. Blocking it would lose both.
+  test("a pickup larger than the balance is registered and leaves the balance negative, with no error", async () => {
+    await createMovement(adminToken, {
+      type: "LOAN_DELIVERY",
+      fromState: "FULL_ON_ROUTE",
+      toState: "WITH_CUSTOMER",
+      locationId,
+      quantity: 2,
+    }).expect(201);
+
+    await createMovement(adminToken, {
+      type: "EMPTY_PICKUP",
+      fromState: "WITH_CUSTOMER",
+      toState: "EMPTY_ON_ROUTE",
+      locationId,
+      quantity: 3,
+    }).expect(201);
+
+    const prisma = ctx.app.get(PrismaService);
+    const balance = await prisma.customerContainerBalance.findUniqueOrThrow({
+      where: { locationId_containerTypeId: { locationId, containerTypeId } },
+    });
+    expect(balance.quantity).toBe(-1);
+  });
+
+  test("a loss write-off larger than the balance is registered and leaves the balance negative, with no error", async () => {
+    await createMovement(adminToken, {
+      type: "LOAN_DELIVERY",
+      fromState: "FULL_ON_ROUTE",
+      toState: "WITH_CUSTOMER",
+      locationId,
+      quantity: 1,
+    }).expect(201);
+
+    await createMovement(adminToken, {
+      type: "LOSS_WRITE_OFF",
+      fromState: "WITH_CUSTOMER",
+      locationId,
+      quantity: 4,
+    }).expect(201);
+
+    const prisma = ctx.app.get(PrismaService);
+    const balance = await prisma.customerContainerBalance.findUniqueOrThrow({
+      where: { locationId_containerTypeId: { locationId, containerTypeId } },
+    });
+    expect(balance.quantity).toBe(-3);
+  });
 });
 
 describe("the ledger's own invariants, enforced by the database", () => {

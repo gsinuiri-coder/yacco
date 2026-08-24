@@ -66,6 +66,14 @@ export class ContainerReconciliationService {
    *      is the obvious false positive this routine must never produce, so
    *      the WHERE below excludes it by construction: a pair untouched on
    *      both sides never even appears in this query's output.
+   *
+   * A NEGATIVE balance that ledger and materialization agree on is NOT a
+   * mismatch of this routine either, and it is not reported: the customer
+   * returned more than the books said they had, so a delivery went
+   * unrecorded. Both sides reconstruct the same negative because the ledger
+   * faithfully holds every movement that WAS registered — the routine is
+   * doing its job. That negative is an operational finding, and it belongs
+   * to the loaned-containers report (not yet written), never here.
    */
   async check(): Promise<ContainerReconciliationResponseDto> {
     const rows = await this.prisma.$queryRaw<DiscrepancyRow[]>`
