@@ -489,6 +489,15 @@ model Sale {
   soldAt              DateTime @map("sold_at") @db.Timestamptz(6)
   total               Decimal  @db.Decimal(10, 2)
   creditLimitExceeded Boolean  @default(false) @map("credit_limit_exceeded")
+  // Marks the charge that carries the customer's debt from the paper ledger
+  // into the system at cutover. It is not a sale: it has no items, because
+  // nobody knows what was actually sold to produce that debt, and faking
+  // products would be worse than leaving it empty. It DOES count in the
+  // customer's account statement — it is real debt — but never in a cash
+  // reconciliation, a route settlement, or a products-sold report: that
+  // money and those products moved before the system existed, and counting
+  // them would throw off the day's own numbers.
+  isOpeningBalance    Boolean  @default(false) @map("is_opening_balance")
   recordedById        String   @map("recorded_by") @db.Uuid
 
   location   CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
@@ -517,15 +526,24 @@ model SaleItem {
 // location, that branch's manager settles their own debt; without one, the
 // principal pays at the customer's consolidated level.
 model Payment {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId      String   @map("customer_id") @db.Uuid
-  locationId      String?  @map("location_id") @db.Uuid
-  saleId          String?  @map("sale_id") @db.Uuid
-  stopId          String?  @map("stop_id") @db.Uuid
-  paymentMethodId String   @map("payment_method_id") @db.Uuid
-  paidAt          DateTime @map("paid_at") @db.Timestamptz(6)
-  amount          Decimal  @db.Decimal(10, 2)
-  recordedById    String   @map("recorded_by") @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId       String   @map("customer_id") @db.Uuid
+  locationId       String?  @map("location_id") @db.Uuid
+  saleId           String?  @map("sale_id") @db.Uuid
+  stopId           String?  @map("stop_id") @db.Uuid
+  paymentMethodId  String   @map("payment_method_id") @db.Uuid
+  paidAt           DateTime @map("paid_at") @db.Timestamptz(6)
+  amount           Decimal  @db.Decimal(10, 2)
+  // Marks the credit that carries the customer's favorable balance from the
+  // paper ledger into the system at cutover — an advance or an un-returned
+  // change, never a prepayment plan (decided with the plant owner). It is
+  // not a collection made today: that money came in months before the
+  // system existed. It DOES count in the customer's account statement — a
+  // real credit — but never in a cash reconciliation, a route settlement,
+  // or a products-sold report, for the same reason as isOpeningBalance on
+  // Sale.
+  isOpeningBalance Boolean  @default(false) @map("is_opening_balance")
+  recordedById     String   @map("recorded_by") @db.Uuid
 
   customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
   location      CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)

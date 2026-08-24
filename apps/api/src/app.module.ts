@@ -14,6 +14,7 @@ import { CustomersModule } from "./modules/customers/customers.module.js";
 import { OrdersModule } from "./modules/orders/orders.module.js";
 import { ProductsModule } from "./modules/products/products.module.js";
 import { ProductionBatchesModule } from "./modules/production-batches/production-batches.module.js";
+import { SalesModule } from "./modules/sales/sales.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
 
 @Module({
@@ -32,6 +33,7 @@ import { HealthModule } from "./modules/health/health.module.js";
     ContainerCountsModule,
     ContainerReconciliationModule,
     ProductionBatchesModule,
+    SalesModule,
     HealthModule,
   ],
 })

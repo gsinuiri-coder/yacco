@@ -278,3 +278,60 @@ ningún bug de código, agregar `SELECT ... FOR UPDATE` sobre la fila de
 `customer_container_balances` (o de `CustomerContainerBalance` vía
 `queryRaw`, ya que Prisma no expone `FOR UPDATE` en su API tipada) antes de
 leerla, en ambos servicios.
+
+## Falta la rutina de cuadre del dinero
+
+**Estado:** abierto. **Disparador:** cuando exista el camino de escritura de
+ventas y pagos en S4.
+
+`GET /container-reconciliation` (`ContainerReconciliationService`) tiene un
+equivalente pendiente para el dinero: comparar `debtBalance` de cada cliente
+contra la suma de `sales.total` menos la suma de `payments.amount` de todas
+sus locaciones — incluyendo los registros de apertura de ambos tipos
+(`isOpeningBalance`), porque son cargos y abonos legítimos, no ruido a
+filtrar.
+
+Mismo diseño y misma razón que la rutina de envases: reconstrucción en SQL
+escrita independiente del código que materializa (`SalesService`, y el
+futuro camino de ventas/pagos de S4), para que sea una segunda opinión sobre
+el libro y no una función comprobándose a sí misma; reporta y no repara;
+`LEFT JOIN` en las resoluciones de nombre para no descartar en silencio una
+fila huérfana.
+
+Asimetría a tener en cuenta al escribir la consulta: `sales` cuelga de
+`location_id` (sin `customer_id` propio, igual que la limitación que
+`SalesService.assertNoOpeningBalanceExists` ya resuelve con un join a
+`customer_locations`), mientras que `payments` sí carga `customer_id`
+directamente. La reconstrucción tiene que agrupar `sales` por cliente a
+través de la locación antes de poder restarle `payments`, que ya viene
+agrupable por cliente sin join.
+
+**Para cerrarla:** diseñar junto con el camino de escritura de ventas y pagos
+de S4 — no antes: hasta entonces `sales`/`payments` solo tienen los dos
+registros de apertura por cliente que `SalesService` puede crear, sin
+suficiente superficie para que la rutina demuestre nada.
+
+## Clientes con saldo a favor al cierre del cuaderno
+
+**Estado:** resuelto (diseño); pendiente de código en S4.
+
+Consultado con el dueño: existen clientes con saldo a favor al cierre del
+cuaderno, y son adelantos puntuales o vueltos no devueltos, NO un modelo de
+cobro por adelantado. Se resuelven con un abono de apertura simétrico al
+cargo (`SalesService.createOpeningCredit`), y por eso `debtBalance` puede
+quedar negativo — pero solo por la apertura, no por operación normal:
+`debt_balance` no tiene CHECK de no negatividad (verificado), así que no hizo
+falta ninguna migración para permitirlo.
+
+**Consecuencia para S4:** la regla de distribución "deuda más antigua
+primero" no necesita una rama especial para un pago sin cargos que cubrir —
+un saldo de partida negativo ya es, aritméticamente, "esta deuda no existe
+todavía". Pero el control de límite de crédito sí necesita cuidado: debe
+leer un `debtBalance` negativo como lo que es (crédito a favor del cliente),
+nunca como deuda, o un cliente con saldo a favor podría aparecer excediendo
+su límite por un cálculo que interpreta mal el signo.
+
+**Para cerrarla:** cuando se construya el control de límite de crédito de
+S4, agregar un test que cubra explícitamente un cliente con `debtBalance`
+negativo comprando contra su límite, para que esa lectura de signo quede
+verificada y no solo documentada acá.
