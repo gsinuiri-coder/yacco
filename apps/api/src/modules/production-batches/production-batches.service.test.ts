@@ -138,7 +138,7 @@ describe("ProductionBatchesService", () => {
       );
 
       expect(containerMovementsService.createWithinTransaction).toHaveBeenCalledTimes(2);
-      const [firstTx, firstDto, firstUser, firstBatchId] =
+      const [firstTx, firstDto, firstUser, firstOptions] =
         containerMovementsService.createWithinTransaction.mock.calls[0]!;
       expect(firstTx).toBe(prisma);
       expect(firstDto).toMatchObject({
@@ -149,7 +149,7 @@ describe("ProductionBatchesService", () => {
         toState: ContainerState.FULL_AT_PLANT,
       });
       expect(firstUser).toBe(USER_ID);
-      expect(firstBatchId).toBe(BATCH_ID);
+      expect(firstOptions).toEqual({ batchId: BATCH_ID });
 
       const [, secondDto] = containerMovementsService.createWithinTransaction.mock.calls[1]!;
       expect(secondDto).toMatchObject({ containerTypeId: CONTAINER_TYPE_B, quantity: 30 });

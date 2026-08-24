@@ -46,6 +46,7 @@ enum ContainerMovementType {
   FULL_SALE
   DAMAGE_WRITE_OFF
   LOSS_WRITE_OFF
+  OPENING_BALANCE
 
   @@map("container_movement_type")
 }

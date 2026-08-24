@@ -46,6 +46,12 @@ export const CONTAINER_MOVEMENT_TRANSITIONS: Record<ContainerMovementType, State
   // Damage can be found in any state the container was already in.
   [ContainerMovementType.DAMAGE_WRITE_OFF]: ALL_STATES.map((from) => ({ from, to: null })),
   [ContainerMovementType.LOSS_WRITE_OFF]: [{ from: ContainerState.WITH_CUSTOMER, to: null }],
+  // These containers were already in the customer's hands when the system
+  // went live: they entered the fleet on a date nobody recorded, so crossing
+  // the boundary straight into WITH_CUSTOMER is the only honest way to say
+  // it. The alternative — chaining fake FILLING + ROUTE_LOAD + LOAN_DELIVERY
+  // movements — would invent production batches that never existed.
+  [ContainerMovementType.OPENING_BALANCE]: [{ from: null, to: ContainerState.WITH_CUSTOMER }],
 };
 
 export function isValidContainerTransition(

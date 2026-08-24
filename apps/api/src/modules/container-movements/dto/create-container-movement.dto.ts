@@ -3,9 +3,12 @@ import { ContainerMovementType, ContainerState } from "@prisma/client";
 import { IsEnum, IsInt, IsOptional, IsUUID, Min } from "class-validator";
 
 /**
- * `occurredAt` is absent on purpose: this phase captures a movement at the
+ * `occurredAt` is absent on purpose: this route captures a movement at the
  * moment it is registered (office entry), so the service stamps `now()` —
- * same as `createdAt` elsewhere. Backdating is a future phase.
+ * same as `createdAt` elsewhere. Backdating exists only internally, for the
+ * customer-roster loader's OPENING_BALANCE entries (see
+ * `ContainerMovementsService.createWithinTransaction`); a caller of this
+ * public route can never set it.
  *
  * `fromState`/`toState` are both optional here (validated as a pair against
  * `CONTAINER_MOVEMENT_TRANSITIONS` in the service, not by class-validator —

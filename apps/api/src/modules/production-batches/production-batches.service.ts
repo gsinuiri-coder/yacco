@@ -144,7 +144,7 @@ export class ProductionBatchesService {
               toState: ContainerState.FULL_AT_PLANT,
             },
             filledById,
-            created.id,
+            { batchId: created.id },
           );
 
           if (item.producedQty > emptyAvailable) {
