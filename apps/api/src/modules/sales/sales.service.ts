@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma, type Payment, type Sale } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { MONEY_MESSAGE, MONEY_PATTERN } from "../customers/dto/create-customer.dto.js";
 import type { CreateOpeningChargeDto } from "./dto/create-opening-charge.dto.js";
 import type { CreateOpeningCreditDto } from "./dto/create-opening-credit.dto.js";
 
@@ -8,7 +9,23 @@ function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
+/**
+ * This module has no controller, so the DTOs' `@Matches(MONEY_PATTERN)`
+ * decorator never runs through a `ValidationPipe` — it is documentation, not
+ * enforcement. This service is the only real boundary the amount crosses, so
+ * it re-checks the format here before trusting the string as money, not just
+ * its sign:
+ *   - "150,00" (comma decimal — what Excel exports under a Spanish locale)
+ *     would otherwise reach `new Prisma.Decimal(...)` and blow up with a raw,
+ *     unfriendly parse error instead of a clear Spanish message.
+ *   - "150.005" would otherwise parse fine and silently get rounded by
+ *     Postgres against `Decimal(10,2)` on insert — money altered with no
+ *     trace of it happening.
+ */
 function assertPositiveAmount(amount: string): Prisma.Decimal {
+  if (!MONEY_PATTERN.test(amount)) {
+    throw new BadRequestException(`El monto ${MONEY_MESSAGE}`);
+  }
   const parsed = new Prisma.Decimal(amount);
   if (parsed.lte(0)) {
     throw new BadRequestException("El monto debe ser mayor que 0");
@@ -111,6 +128,16 @@ export class SalesService {
    * single-column-keyed row applies correctly, so both methods below use it
    * without the read-then-write-absolute workaround — copying that pattern
    * here by cargo cult would be needless complexity.
+   *
+   * No P2002 handling on `sales_opening_balance_location_key` below, and
+   * that is deliberate: the partial index is the integrity guarantee, and
+   * the transaction still fails either way if it is ever violated — a
+   * violation just surfaces as a raw error instead of a translated one. The
+   * customer-roster loader that is this method's only caller runs
+   * sequentially, in a single process, so there is no concurrent path that
+   * could ever reach this race. If one shows up later, that is where the
+   * catch (and its test) belongs, not here ahead of any caller that needs
+   * it.
    */
   async createOpeningCharge(dto: CreateOpeningChargeDto, recordedById: string): Promise<Sale> {
     const total = assertPositiveAmount(dto.amount);
@@ -145,6 +172,8 @@ export class SalesService {
     });
   }
 
+  // No P2002 handling on payments_opening_balance_customer_key either, same
+  // reasoning as createOpeningCharge above.
   async createOpeningCredit(dto: CreateOpeningCreditDto, recordedById: string): Promise<Payment> {
     const amount = assertPositiveAmount(dto.amount);
     assertNotFuture(dto.paidAt, "La fecha del pago");

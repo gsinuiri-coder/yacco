@@ -349,6 +349,45 @@ describe("SalesService.createOpeningCredit", () => {
   });
 });
 
+// This module has no controller, so the DTOs' @Matches(MONEY_PATTERN) never
+// runs through a ValidationPipe — SalesService re-validates the format
+// itself (see assertPositiveAmount), and these prove it does, on both
+// methods: a comma decimal (what Excel exports under es-PE), a third
+// decimal place (would otherwise round silently against Decimal(10,2)), a
+// non-numeric string, and an empty string.
+describe("amount format validation", () => {
+  const invalidAmounts: [string, string][] = [
+    ["150,00", "comma decimal separator"],
+    ["150.005", "three decimal places"],
+    ["not-a-number", "non-numeric"],
+    ["", "empty string"],
+  ];
+
+  it.each(invalidAmounts)("createOpeningCharge rejects amount %j (%s)", async (amount) => {
+    const sales = ctx.app.get(SalesService);
+    const customerId = await createCustomer();
+
+    await expect(
+      sales.createOpeningCharge(
+        chargeDto({ customerId, amount, soldAt: new Date() }),
+        recordedById,
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it.each(invalidAmounts)("createOpeningCredit rejects amount %j (%s)", async (amount) => {
+    const sales = ctx.app.get(SalesService);
+    const customerId = await createCustomer();
+
+    await expect(
+      sales.createOpeningCredit(
+        creditDto({ customerId, paymentMethodId, amount, paidAt: new Date() }),
+        recordedById,
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
+
 describe("mutual exclusion between an opening charge and an opening credit", () => {
   test("a customer with an opening charge rejects an opening credit", async () => {
     const sales = ctx.app.get(SalesService);
