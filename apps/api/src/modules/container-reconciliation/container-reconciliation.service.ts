@@ -6,10 +6,10 @@ import type {
 } from "./dto/container-reconciliation-response.dto.js";
 
 interface DiscrepancyRow {
-  location_id: string;
-  location_name: string;
+  location_id: string | null;
+  location_name: string | null;
   container_type_id: string;
-  container_type_name: string;
+  container_type_name: string | null;
   ledger_quantity: number;
   materialized_quantity: number;
 }
@@ -95,9 +95,17 @@ export class ContainerReconciliationService {
       FULL OUTER JOIN customer_container_balances AS balance
         ON balance.location_id = ledger.location_id
         AND balance.container_type_id = ledger.container_type_id
-      JOIN customer_locations AS location
+      -- LEFT JOIN, not INNER: an INNER JOIN would silently drop any row
+      -- whose location_id/container_type_id doesn't resolve — including a
+      -- WITH_CUSTOMER movement with a NULL location_id. The movements
+      -- service's own guard makes that impossible today, but this routine
+      -- exists precisely so it never has to trust that invariant: a check
+      -- that produces false negatives is worse than no check at all,
+      -- because it manufactures confidence. An orphaned row must show up,
+      -- never silently disappear.
+      LEFT JOIN customer_locations AS location
         ON location.id = COALESCE(ledger.location_id, balance.location_id)
-      JOIN container_types AS container_type
+      LEFT JOIN container_types AS container_type
         ON container_type.id = COALESCE(ledger.container_type_id, balance.container_type_id)
       WHERE COALESCE(ledger.ledger_quantity, 0) <> COALESCE(balance.quantity, 0)
       ORDER BY location.name, container_type.name

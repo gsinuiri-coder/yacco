@@ -60,8 +60,10 @@ function getReconciliation(token: string) {
 }
 
 interface Discrepancy {
-  locationId: string;
+  locationId: string | null;
+  locationName: string | null;
   containerTypeId: string;
+  containerTypeName: string | null;
   ledgerQuantity: number;
   materializedQuantity: number;
   difference: number;
@@ -256,6 +258,39 @@ describe("GET /api/v1/container-reconciliation", () => {
 
       const found = findDiscrepancy(response.body.discrepancies, locationB, containerTypeA);
       expect(found).toMatchObject({ ledgerQuantity: 0, materializedQuantity: 7, difference: -7 });
+    });
+  });
+
+  describe("an orphaned WITH_CUSTOMER movement inserted directly, bypassing the service", () => {
+    test("still appears in the report even though location_id is NULL", async () => {
+      const prisma = ctx.app.get(PrismaService);
+      const admin = await prisma.user.findUniqueOrThrow({ where: { username: ADMIN_USERNAME } });
+
+      // POST /container-movements can never produce this row: the service's
+      // own guard requires a locationId whenever a movement touches
+      // WITH_CUSTOMER. This raw INSERT bypasses the service on purpose, to
+      // prove that if anything else ever produced a row like this, the
+      // reconciliation's LEFT JOIN surfaces it instead of an INNER JOIN
+      // silently dropping it for failing to resolve a NULL location_id.
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "container_movements" ("occurred_at", "type", "container_type_id", "quantity", "to_state", "location_id", "recorded_by") VALUES (now(), 'LOAN_DELIVERY', $1::uuid, 5, 'WITH_CUSTOMER', NULL, $2::uuid)`,
+        containerTypeB,
+        admin.id,
+      );
+
+      const response = await getReconciliation(adminToken).expect(200);
+
+      const orphan = (response.body.discrepancies as Discrepancy[]).find(
+        (d) => d.locationId === null && d.containerTypeId === containerTypeB,
+      );
+      expect(orphan).toMatchObject({
+        locationId: null,
+        locationName: null,
+        containerTypeId: containerTypeB,
+        ledgerQuantity: 5,
+        materializedQuantity: 0,
+        difference: 5,
+      });
     });
   });
 });

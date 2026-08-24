@@ -1,17 +1,26 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class ContainerReconciliationDiscrepancyDto {
-  @ApiProperty({ format: "uuid" })
-  locationId!: string;
+  /**
+   * Null means this discrepancy's location_id doesn't resolve to any
+   * customer_locations row — including a WITH_CUSTOMER movement recorded
+   * with a NULL location_id, which the public route can never produce but a
+   * bypass of it could. That IS the finding, not a formatting gap: this
+   * routine reports the orphan rather than hiding it behind a join that
+   * would silently drop the row.
+   */
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
+  locationId!: string | null;
 
-  @ApiProperty()
-  locationName!: string;
+  @ApiPropertyOptional({ nullable: true })
+  locationName!: string | null;
 
   @ApiProperty({ format: "uuid" })
   containerTypeId!: string;
 
-  @ApiProperty()
-  containerTypeName!: string;
+  /** Null means container_type_id doesn't resolve to any container_types row — same reasoning as locationName. */
+  @ApiPropertyOptional({ nullable: true })
+  containerTypeName!: string | null;
 
   /** Reconstructed straight from container_movements — never read from the materialized balance. */
   @ApiProperty({ example: 8 })
