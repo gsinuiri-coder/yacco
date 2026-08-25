@@ -5,6 +5,7 @@ import { PrismaModule } from "./prisma/prisma.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { UsersModule } from "./modules/users/users.module.js";
 import { ContainerMovementsModule } from "./modules/container-movements/container-movements.module.js";
+import { ContainerBalancesModule } from "./modules/container-balances/container-balances.module.js";
 import { ContainerCountsModule } from "./modules/container-counts/container-counts.module.js";
 import { ContainerReconciliationModule } from "./modules/container-reconciliation/container-reconciliation.module.js";
 import { ContainerTypesModule } from "./modules/container-types/container-types.module.js";
@@ -30,6 +31,7 @@ import { HealthModule } from "./modules/health/health.module.js";
     ProductsModule,
     ContainerTypesModule,
     ContainerMovementsModule,
+    ContainerBalancesModule,
     ContainerCountsModule,
     ContainerReconciliationModule,
     ProductionBatchesModule,
