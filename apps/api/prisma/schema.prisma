@@ -166,7 +166,7 @@ model UserRoleAssignment {
 
 model Zone {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String
+  name         String    @unique
   deliveryDays Weekday[] @map("delivery_days")
   active       Boolean   @default(true)
 

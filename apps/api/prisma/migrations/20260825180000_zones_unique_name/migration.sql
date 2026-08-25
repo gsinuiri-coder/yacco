@@ -1,0 +1,11 @@
+-- Zones become a catalog the office manages (POST/PATCH /zones), and a
+-- catalog needs a unique name: two zones called "Norte" would be two
+-- filters the owner cannot tell apart, and a rename onto an existing name
+-- must be refused with a clear message (P2002 -> BadRequest in
+-- ZonesService), the same treatment container_types.name already gets.
+--
+-- Done NOW, not later, because the table is EMPTY in production (0 rows,
+-- verified on Neon before writing this): a unique index added to an empty
+-- table cannot fail on existing duplicates. Once the owner has created
+-- zones, the same change would need a data check first.
+CREATE UNIQUE INDEX "zones_name_key" ON "zones"("name");
