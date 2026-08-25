@@ -50,6 +50,7 @@ function toCustomerResponse(customer: CustomerWithRelations): CustomerResponseDt
     debtBalance: customer.debtBalance.toFixed(2),
     active: customer.active,
     createdAt: customer.createdAt,
+    externalCode: customer.externalCode,
   };
 }
 

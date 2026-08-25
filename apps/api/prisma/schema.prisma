@@ -207,13 +207,22 @@ model PaymentMethod {
 // row and its primary location) that can silently drift apart. Credit limit
 // and debt stay here — spec: consolidated at the customer, never per location.
 model Customer {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  zoneId      String?  @map("zone_id") @db.Uuid
-  name        String
-  creditLimit Decimal? @map("credit_limit") @db.Decimal(10, 2)
-  debtBalance Decimal  @default(0) @map("debt_balance") @db.Decimal(10, 2)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zoneId       String?  @map("zone_id") @db.Uuid
+  name         String
+  creditLimit  Decimal? @map("credit_limit") @db.Decimal(10, 2)
+  debtBalance  Decimal  @default(0) @map("debt_balance") @db.Decimal(10, 2)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Set only by the roster loader (tools/firestore-export's output feeds
+  // it), never through the public API — see CreateCustomerDto/UpdateCustomerDto.
+  // Nullable: a customer created from the web has no external system to key
+  // off. @unique on a nullable column is enough on its own — Postgres excludes
+  // NULL from a UNIQUE constraint's duplicate check, so any number of
+  // web-created customers can share externalCode = NULL — no hand-written
+  // partial index needed here (contrast customer_locations_one_primary_per_customer
+  // below, which partials over a NOT NULL boolean and has no such shortcut).
+  externalCode String?  @unique @map("external_code")
 
   zone      Zone?              @relation(fields: [zoneId], references: [id], onDelete: Restrict)
   locations CustomerLocation[]
@@ -239,6 +248,9 @@ model CustomerLocation {
   isPrimary        Boolean  @default(false) @map("is_primary")
   active           Boolean  @default(true)
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Same reasoning as Customer.externalCode above: loader-only, nullable,
+  // and @unique alone already lets every web-created location share NULL.
+  externalCode     String?  @unique @map("external_code")
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
 

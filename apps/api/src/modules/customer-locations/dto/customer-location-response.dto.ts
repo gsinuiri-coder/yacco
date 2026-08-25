@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CustomerLocationResponseDto {
   @ApiProperty({ format: "uuid" })
@@ -21,4 +21,11 @@ export class CustomerLocationResponseDto {
 
   @ApiProperty()
   active!: boolean;
+
+  /**
+   * Read-only. Written only by the roster loader — never by a public write
+   * route, since this module has none yet. Null for a web-created location.
+   */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  externalCode!: string | null;
 }

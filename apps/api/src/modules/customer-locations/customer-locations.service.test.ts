@@ -49,6 +49,17 @@ describe("CustomerLocationsService", () => {
     expect(result).toEqual([buildLocation()]);
   });
 
+  it("selects externalCode, read-only: the loader writes it, this route only reads it", async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    prisma.customerLocation.findMany.mockResolvedValue([]);
+
+    await service.findAll(CUSTOMER_ID, {});
+
+    expect(prisma.customerLocation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ externalCode: true }) }),
+    );
+  });
+
   it("scopes the query to this customer and defaults to active-only", async () => {
     prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
     prisma.customerLocation.findMany.mockResolvedValue([]);
