@@ -10,7 +10,9 @@ import type { ListContainerBalancesQueryDto } from "./dto/list-container-balance
 
 /** Everything the row needs, and nothing else. */
 const LOCATION_INCLUDE = {
-  customer: { select: { id: true, name: true, zone: { select: { id: true, name: true } } } },
+  customer: {
+    select: { id: true, name: true, active: true, zone: { select: { id: true, name: true } } },
+  },
   balances: {
     select: {
       containerTypeId: true,
@@ -165,8 +167,12 @@ function toRow(
   }
 
   return {
-    customer: { id: location.customer.id, name: location.customer.name },
-    location: { id: location.id, name: location.name },
+    customer: {
+      id: location.customer.id,
+      name: location.customer.name,
+      active: location.customer.active,
+    },
+    location: { id: location.id, name: location.name, active: location.active },
     zone: location.customer.zone,
     totalQuantity: rows.reduce((sum, row) => sum + row.quantity, 0),
     lastCountedAt,

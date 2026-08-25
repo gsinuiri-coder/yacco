@@ -20,6 +20,8 @@ let untouched: { locationId: string };
 let twoTypes: { locationId: string };
 let negative: { locationId: string };
 let stale: { locationId: string };
+let inactiveCustomer: { locationId: string };
+let inactiveLocation: { locationId: string };
 
 function server() {
   return ctx.app.getHttpServer();
@@ -114,8 +116,8 @@ async function countAt(
 }
 
 interface Row {
-  customer: { id: string; name: string };
-  location: { id: string; name: string };
+  customer: { id: string; name: string; active: boolean };
+  location: { id: string; name: string; active: boolean };
   zone: { id: string; name: string } | null;
   totalQuantity: number;
   lastCountedAt: string | null;
@@ -174,6 +176,23 @@ beforeAll(async () => {
   stale = { locationId: await createLocation("Bodega Antigua", "987100004") };
   await deliver(stale.locationId, typeA.id, 4);
   await countAt(stale.locationId, typeA.id, 4, OLD_COUNT);
+
+  // Customer taken off the books while still holding containers: the most
+  // urgent case of the audit, and it must NOT vanish from the list.
+  inactiveCustomer = { locationId: await createLocation("Bodega Cerrada", "987100005") };
+  await deliver(inactiveCustomer.locationId, typeA.id, 3);
+  const closed = await prisma.customerLocation.findUniqueOrThrow({
+    where: { id: inactiveCustomer.locationId },
+  });
+  await prisma.customer.update({ where: { id: closed.customerId }, data: { active: false } });
+
+  // Active customer whose location was deactivated.
+  inactiveLocation = { locationId: await createLocation("Bodega Sucursal Cerrada", "987100006") };
+  await deliver(inactiveLocation.locationId, typeB.id, 1);
+  await prisma.customerLocation.update({
+    where: { id: inactiveLocation.locationId },
+    data: { active: false },
+  });
 }, 180000);
 
 afterAll(async () => {
@@ -225,6 +244,24 @@ describe("GET /api/v1/container-balances", () => {
     const a = row.containers.find((c) => c.containerType.id === typeA.id)!;
     expect(a.quantity).toBe(-1);
     expect(row.totalQuantity).toBe(0);
+  });
+
+  test("a deactivated customer's location still appears, with customer.active false", async () => {
+    const { data } = await fetchAll();
+
+    const row = rowOf(data, inactiveCustomer.locationId);
+    expect(row).toBeDefined();
+    expect(row!.customer.active).toBe(false);
+    expect(row!.location.active).toBe(true);
+    expect(row!.totalQuantity).toBe(3);
+  });
+
+  test("a deactivated location of an active customer reports customer.active true and location.active false", async () => {
+    const { data } = await fetchAll();
+
+    const row = rowOf(data, inactiveLocation.locationId)!;
+    expect(row.customer.active).toBe(true);
+    expect(row.location.active).toBe(false);
   });
 
   test("rows are ordered by customer name", async () => {

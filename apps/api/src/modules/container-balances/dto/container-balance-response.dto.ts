@@ -8,6 +8,19 @@ export class NamedReferenceDto {
   name!: string;
 }
 
+/**
+ * The list deliberately includes deactivated customers and locations: a
+ * customer taken off the books while still holding containers out on the
+ * street is the MOST urgent case of the audit, not one to hide. But seeing
+ * them mixed in without telling them apart is useless: an active customer
+ * gets counted on the next visit; an inactive one has to be chased down, or
+ * the containers written off as lost. The report informs; the owner decides.
+ */
+export class ActiveNamedReferenceDto extends NamedReferenceDto {
+  @ApiProperty()
+  active!: boolean;
+}
+
 export class LocationContainerBalanceDto {
   @ApiProperty({ type: NamedReferenceDto })
   containerType!: NamedReferenceDto;
@@ -28,11 +41,11 @@ export class LocationContainerBalanceDto {
  * it from the date.
  */
 export class ContainerBalanceRowDto {
-  @ApiProperty({ type: NamedReferenceDto })
-  customer!: NamedReferenceDto;
+  @ApiProperty({ type: ActiveNamedReferenceDto })
+  customer!: ActiveNamedReferenceDto;
 
-  @ApiProperty({ type: NamedReferenceDto })
-  location!: NamedReferenceDto;
+  @ApiProperty({ type: ActiveNamedReferenceDto })
+  location!: ActiveNamedReferenceDto;
 
   @ApiProperty({ type: NamedReferenceDto, nullable: true })
   zone!: NamedReferenceDto | null;
