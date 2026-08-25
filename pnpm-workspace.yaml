@@ -1,3 +1,6 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # One-off operator tools (e.g. the Firestore snapshot export). Not part of
+  # any deployable app; they share lint/typecheck/test with the rest.
+  - "tools/*"

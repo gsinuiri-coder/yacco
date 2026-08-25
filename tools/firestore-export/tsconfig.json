@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  // Typecheck program: src/ completo, tests incluidos, más la configuración
+  // de Vitest: un archivo fuera del programa de todo tsconfig lo indexa
+  // SonarCloud pero no lo analiza. La emisión va por tsconfig.build.json.
+  "include": ["src", "vitest.config.ts"]
+}
