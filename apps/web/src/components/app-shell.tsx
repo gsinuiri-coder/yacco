@@ -31,6 +31,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/container-movements" className="app-bar__link">
             Movimientos
           </NavLink>
+          <NavLink to="/container-types" className="app-bar__link">
+            Tipos de envase
+          </NavLink>
         </nav>
         <div className="app-bar__user">
           <span>{user?.username}</span>
