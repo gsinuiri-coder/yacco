@@ -13,7 +13,8 @@
     "prisma:validate": "prisma validate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "load:roster": "tsx src/cli/load-roster.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

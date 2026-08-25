@@ -1,0 +1,9 @@
+external_code,name,phone,zone,status,notes
+EJ-001,MARTA QUISPE - CASA REJA VERDE,987654321,Surco,ACTIVE,Recibe solo por las mananas
+EJ-002,BODEGA DON RAUL,912345678,Surco,ACTIVE,"Tiene local y deposito, dos direcciones"
+EJ-003,LUCIA HERRERA VECINA DE LA BOTICA,998877665,Chorrillos,ACTIVE,"Pago adelantado en julio, tiene saldo a favor"
+EJ-004,CARLOS MENDOZA,955443322,Chorrillos,ACTIVE,"No sabemos la direccion exacta, solo el mapa"
+EJ-005,RESTAURANTE EL SAZON,934567890,Barranco,INACTIVE,Dejo de pedir en junio pero quedo debiendo y con envases
+EJ-006,ANA TORRES,976543210,Barranco,ACTIVE,No estamos seguros de cuantos bidones tiene
+EJ-007,GIMNASIO FUERZA PERU,967890123,San Juan de Miraflores,ACTIVE,"Al dia, paga cada viernes"
+EJ-008,PEDRO CASTILLO ESQUINA DEL PARQUE,945678901,San Juan de Miraflores,ACTIVE,Mezcla bidones con cano y sin cano
