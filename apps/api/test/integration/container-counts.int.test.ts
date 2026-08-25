@@ -217,6 +217,40 @@ describe("POST /api/v1/container-counts", () => {
     expect(adjustments).toHaveLength(0);
   });
 
+  // A count is an observation; the office withdrawing a type does not take
+  // the containers off the customer's counter. Never blocked, in either
+  // direction — see the comment at assertContainerTypeExists in the service.
+  test("a count on a withdrawn type is accepted and emits its COUNT_ADJUSTMENT", async () => {
+    const prisma = ctx.app.get(PrismaService);
+    const withdrawn = await prisma.containerType.create({
+      data: { name: "Retirado conteo", active: false },
+    });
+
+    const response = await createCount(adminToken, {
+      containerTypeId: withdrawn.id,
+      countedQuantity: 3,
+    }).expect(201);
+    expect(response.body).toMatchObject({ countedQuantity: 3, expectedQuantity: 0 });
+    expect(response.body.adjustmentId).not.toBeNull();
+
+    const movement = await prisma.containerMovement.findUniqueOrThrow({
+      where: { id: response.body.adjustmentId },
+    });
+    expect(movement).toMatchObject({
+      type: "COUNT_ADJUSTMENT",
+      fromState: null,
+      toState: "WITH_CUSTOMER",
+      quantity: 3,
+      containerTypeId: withdrawn.id,
+    });
+
+    // The file's afterEach cleans by locationId; the type itself is ours.
+    await prisma.containerCount.deleteMany({ where: { containerTypeId: withdrawn.id } });
+    await prisma.containerMovement.deleteMany({ where: { containerTypeId: withdrawn.id } });
+    await prisma.customerContainerBalance.deleteMany({ where: { containerTypeId: withdrawn.id } });
+    await prisma.containerType.delete({ where: { id: withdrawn.id } });
+  });
+
   test("rejects an unknown container type", async () => {
     const response = await createCount(adminToken, {
       containerTypeId: MISSING_UUID,

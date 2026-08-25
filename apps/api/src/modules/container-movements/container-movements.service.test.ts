@@ -11,7 +11,7 @@ const USER_ID = "33333333-3333-4333-8333-333333333333";
 const MOVEMENT_ID = "44444444-4444-4444-8444-444444444444";
 
 function containerTypeRow(overrides: Record<string, unknown> = {}) {
-  return { id: CONTAINER_TYPE_ID, name: "Con caño", ...overrides };
+  return { id: CONTAINER_TYPE_ID, name: "Con caño", active: true, ...overrides };
 }
 
 function locationRow(overrides: Record<string, unknown> = {}) {
