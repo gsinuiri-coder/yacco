@@ -34,6 +34,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/container-types" className="app-bar__link">
             Tipos de envase
           </NavLink>
+          <NavLink to="/container-counts" className="app-bar__link">
+            Contar envases
+          </NavLink>
         </nav>
         <div className="app-bar__user">
           <span>{user?.username}</span>
