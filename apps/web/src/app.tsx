@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router";
 import { AuthProvider } from "./auth/auth-provider";
+import { ContainerCountsPage } from "./pages/container-counts-page";
 import { ContainerMovementsPage } from "./pages/container-movements-page";
 import { ContainerTypesPage } from "./pages/container-types-page";
 import { CustomerCreatePage } from "./pages/customer-create-page";
@@ -33,6 +34,7 @@ export function App() {
           <Route path="/production" element={<ProductionPage />} />
           <Route path="/container-movements" element={<ContainerMovementsPage />} />
           <Route path="/container-types" element={<ContainerTypesPage />} />
+          <Route path="/container-counts" element={<ContainerCountsPage />} />
         </Route>
       </Routes>
     </AuthProvider>
