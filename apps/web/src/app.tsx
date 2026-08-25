@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router";
 import { AuthProvider } from "./auth/auth-provider";
 import { ContainerMovementsPage } from "./pages/container-movements-page";
+import { ContainerTypesPage } from "./pages/container-types-page";
 import { CustomerCreatePage } from "./pages/customer-create-page";
 import { CustomerDetailPage } from "./pages/customer-detail-page";
 import { CustomerEditPage } from "./pages/customer-edit-page";
@@ -31,6 +32,7 @@ export function App() {
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/production" element={<ProductionPage />} />
           <Route path="/container-movements" element={<ContainerMovementsPage />} />
+          <Route path="/container-types" element={<ContainerTypesPage />} />
         </Route>
       </Routes>
     </AuthProvider>
