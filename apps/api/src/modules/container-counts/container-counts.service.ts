@@ -85,6 +85,14 @@ export class ContainerCountsService {
     const countedAt = options?.occurredAt ?? new Date();
 
     const created = await this.prisma.$transaction(async (tx) => {
+      // Existence only — deliberately NOT `active`. A physical count is an
+      // observation: if the customer has three containers of a withdrawn
+      // type, they have three, and the office withdrawing the type does not
+      // take them off the counter. The COUNT_ADJUSTMENT this emits crosses
+      // the fleet boundary (from null) and is therefore a record, not a
+      // delivery, so ContainerMovementsService lets it through as well. Do
+      // not "complete" this with an active check: it would make a withdrawn
+      // type impossible to count, and therefore impossible to ever settle.
       await assertContainerTypeExists(tx, dto.containerTypeId);
       await assertLocationExists(tx, dto.locationId);
 

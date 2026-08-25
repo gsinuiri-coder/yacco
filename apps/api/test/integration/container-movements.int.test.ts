@@ -1,5 +1,7 @@
 import request from "supertest";
+import { ContainerMovementType, ContainerState } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
+import { ContainerMovementsService } from "../../src/modules/container-movements/container-movements.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
@@ -264,6 +266,196 @@ describe("POST /api/v1/container-movements — customer-facing movements", () =>
       where: { locationId_containerTypeId: { locationId, containerTypeId } },
     });
     expect(balance.quantity).toBe(-3);
+  });
+});
+
+// Withdrawing a type means "no more of these go out", never "these never
+// existed": see assertContainerTypeDeliverable. Each test here builds its
+// own withdrawn type so the file's afterEach (keyed on the shared
+// containerTypeId) never has to know about it.
+describe("a withdrawn container type — asymmetric guard", () => {
+  let withdrawnTypeId: string;
+
+  async function createWithdrawnType(name: string): Promise<string> {
+    const prisma = ctx.app.get(PrismaService);
+    const created = await prisma.containerType.create({ data: { name, active: false } });
+    return created.id;
+  }
+
+  async function withdrawnBalance(): Promise<number> {
+    const prisma = ctx.app.get(PrismaService);
+    const balance = await prisma.customerContainerBalance.findUnique({
+      where: { locationId_containerTypeId: { locationId, containerTypeId: withdrawnTypeId } },
+    });
+    return balance?.quantity ?? 0;
+  }
+
+  /** Puts `quantity` of a still-active type with the customer, then withdraws the type. */
+  async function deliverThenWithdraw(name: string, quantity: number): Promise<void> {
+    const prisma = ctx.app.get(PrismaService);
+    const created = await prisma.containerType.create({ data: { name, active: true } });
+    withdrawnTypeId = created.id;
+    await createMovement(adminToken, {
+      type: "LOAN_DELIVERY",
+      containerTypeId: withdrawnTypeId,
+      fromState: "FULL_ON_ROUTE",
+      toState: "WITH_CUSTOMER",
+      locationId,
+      quantity,
+    }).expect(201);
+    await prisma.containerType.update({ where: { id: withdrawnTypeId }, data: { active: false } });
+  }
+
+  async function recordFromOutside(type: ContainerMovementType, quantity: number): Promise<void> {
+    const prisma = ctx.app.get(PrismaService);
+    const movements = ctx.app.get(ContainerMovementsService);
+    const admin = await prisma.user.findUniqueOrThrow({ where: { username: ADMIN_USERNAME } });
+    await prisma.$transaction((tx) =>
+      movements.createWithinTransaction(
+        tx,
+        {
+          type,
+          containerTypeId: withdrawnTypeId,
+          quantity,
+          toState: ContainerState.WITH_CUSTOMER,
+          locationId,
+        },
+        admin.id,
+      ),
+    );
+  }
+
+  afterEach(async () => {
+    const prisma = ctx.app.get(PrismaService);
+    await prisma.containerMovement.deleteMany({ where: { containerTypeId: withdrawnTypeId } });
+    await prisma.customerContainerBalance.deleteMany({
+      where: { containerTypeId: withdrawnTypeId },
+    });
+    await prisma.containerType.delete({ where: { id: withdrawnTypeId } });
+  });
+
+  test("a delivery to a customer is refused with a message that says the office withdrew the type", async () => {
+    withdrawnTypeId = await createWithdrawnType("Retirado entrega");
+
+    const response = await createMovement(adminToken, {
+      type: "LOAN_DELIVERY",
+      containerTypeId: withdrawnTypeId,
+      fromState: "FULL_ON_ROUTE",
+      toState: "WITH_CUSTOMER",
+      locationId,
+      quantity: 1,
+    });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain('"Retirado entrega" está retirado');
+    expect(messagesOf(response)).toContain("no entregar más envases de este tipo");
+    expect(await withdrawnBalance()).toBe(0);
+  });
+
+  test("a pickup from a customer is accepted and the balance goes down", async () => {
+    await deliverThenWithdraw("Retirado devolución", 4);
+
+    await createMovement(adminToken, {
+      type: "EMPTY_PICKUP",
+      containerTypeId: withdrawnTypeId,
+      fromState: "WITH_CUSTOMER",
+      toState: "EMPTY_ON_ROUTE",
+      locationId,
+      quantity: 3,
+    }).expect(201);
+
+    expect(await withdrawnBalance()).toBe(1);
+  });
+
+  test("a loss and a damage write-off are accepted", async () => {
+    await deliverThenWithdraw("Retirado bajas", 3);
+
+    await createMovement(adminToken, {
+      type: "LOSS_WRITE_OFF",
+      containerTypeId: withdrawnTypeId,
+      fromState: "WITH_CUSTOMER",
+      locationId,
+      quantity: 1,
+    }).expect(201);
+    await createMovement(adminToken, {
+      type: "DAMAGE_WRITE_OFF",
+      containerTypeId: withdrawnTypeId,
+      fromState: "WITH_CUSTOMER",
+      locationId,
+      quantity: 1,
+    }).expect(201);
+
+    expect(await withdrawnBalance()).toBe(1);
+  });
+
+  test("route load and unload are accepted — moving a withdrawn container inside the operation is how it comes home", async () => {
+    withdrawnTypeId = await createWithdrawnType("Retirado ruta");
+
+    await createMovement(adminToken, {
+      type: "ROUTE_LOAD",
+      containerTypeId: withdrawnTypeId,
+      fromState: "FULL_AT_PLANT",
+      toState: "FULL_ON_ROUTE",
+      quantity: 2,
+    }).expect(201);
+    await createMovement(adminToken, {
+      type: "EMPTY_UNLOAD",
+      containerTypeId: withdrawnTypeId,
+      fromState: "EMPTY_ON_ROUTE",
+      toState: "EMPTY_AT_PLANT",
+      quantity: 2,
+    }).expect(201);
+  });
+
+  // The case that was almost broken: a count that finds MORE than the books
+  // said emits COUNT_ADJUSTMENT into WITH_CUSTOMER. It crosses the fleet
+  // boundary (from null), so it is a record, not a delivery — and it must
+  // pass, or a withdrawn type could never be counted, and never settled.
+  test("a COUNT_ADJUSTMENT into WITH_CUSTOMER (the count found more) is accepted", async () => {
+    withdrawnTypeId = await createWithdrawnType("Retirado ajuste");
+
+    await recordFromOutside(ContainerMovementType.COUNT_ADJUSTMENT, 2);
+
+    expect(await withdrawnBalance()).toBe(2);
+  });
+
+  // Same reason: an opening balance records what the customer already held
+  // at cutover. Withdrawing the type afterwards does not make that false.
+  test("an OPENING_BALANCE is accepted", async () => {
+    withdrawnTypeId = await createWithdrawnType("Retirado apertura");
+
+    await recordFromOutside(ContainerMovementType.OPENING_BALANCE, 5);
+
+    expect(await withdrawnBalance()).toBe(5);
+  });
+
+  // The test that proves withdrawing is possible at all: twelve out, the
+  // type withdrawn, and every one of them comes back without a single
+  // operation failing, until the balance reads zero.
+  test("a withdrawn type empties out one by one and reaches zero without any operation failing", async () => {
+    await deliverThenWithdraw("Retirado (V)", 12);
+    expect(await withdrawnBalance()).toBe(12);
+
+    for (let returned = 1; returned <= 12; returned += 1) {
+      await createMovement(adminToken, {
+        type: "EMPTY_PICKUP",
+        containerTypeId: withdrawnTypeId,
+        fromState: "WITH_CUSTOMER",
+        toState: "EMPTY_ON_ROUTE",
+        locationId,
+        quantity: 1,
+      }).expect(201);
+      expect(await withdrawnBalance()).toBe(12 - returned);
+    }
+    await createMovement(adminToken, {
+      type: "EMPTY_UNLOAD",
+      containerTypeId: withdrawnTypeId,
+      fromState: "EMPTY_ON_ROUTE",
+      toState: "EMPTY_AT_PLANT",
+      quantity: 12,
+    }).expect(201);
+
+    expect(await withdrawnBalance()).toBe(0);
   });
 });
 

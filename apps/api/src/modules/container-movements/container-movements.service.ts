@@ -2,7 +2,11 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { isValidContainerTransition } from "./container-movement-transitions.js";
-import { assertContainerTypeExists, assertLocationExists } from "./container-reference-guards.js";
+import {
+  assertContainerTypeDeliverable,
+  assertContainerTypeExists,
+  assertLocationExists,
+} from "./container-reference-guards.js";
 import type { CreateContainerMovementDto } from "./dto/create-container-movement.dto.js";
 import type {
   ContainerInventoryItemDto,
@@ -139,7 +143,10 @@ export class ContainerMovementsService {
       throw new BadRequestException("La fecha del movimiento no puede ser futura");
     }
 
-    await assertContainerTypeExists(client, dto.containerTypeId);
+    const containerType = await assertContainerTypeExists(client, dto.containerTypeId);
+    // A withdrawn type may still come back from customers, never go out to
+    // them again — see assertContainerTypeDeliverable for the whole rule.
+    assertContainerTypeDeliverable(containerType, fromState, toState);
 
     const touchesCustomer =
       fromState === ContainerState.WITH_CUSTOMER || toState === ContainerState.WITH_CUSTOMER;
