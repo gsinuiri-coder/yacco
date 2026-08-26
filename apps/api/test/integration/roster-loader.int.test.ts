@@ -376,6 +376,20 @@ describe("CLI: load-roster main()", () => {
   test("dry-run: prints the summary and never touches exitCode", async () => {
     const { main } = await import("../../src/cli/load-roster.js");
 
+    await main(["--input", FIXTURES_DIR, "--cutover-date", CUTOVER_DATE]);
+
+    const printed = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(printed).toMatch(/DRY-RUN/);
+    expect(process.exitCode).toBeUndefined();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  // `--dir` predates `--input` (see load-roster.test.ts's parseArgs suite for
+  // why it was renamed) and is kept only as a backward-compatible alias —
+  // nothing else here exercises it, so a regression would go unnoticed.
+  test("--dir sigue funcionando como alias de --input", async () => {
+    const { main } = await import("../../src/cli/load-roster.js");
+
     await main(["--dir", FIXTURES_DIR, "--cutover-date", CUTOVER_DATE]);
 
     const printed = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
@@ -384,14 +398,14 @@ describe("CLI: load-roster main()", () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  test("missing --dir: prints usage to stderr and sets exitCode 1", async () => {
+  test("missing --input: prints usage to stderr and sets exitCode 1", async () => {
     const { main } = await import("../../src/cli/load-roster.js");
 
     await main(["--cutover-date", CUTOVER_DATE]);
 
     expect(process.exitCode).toBe(1);
     const printed = errorSpy.mock.calls.map((call) => String(call[0])).join("\n");
-    expect(printed).toMatch(/Falta --dir/);
+    expect(printed).toMatch(/Falta --input/);
   });
 
   test("errores de validación: se listan por archivo y línea en stderr, exitCode 1, nada escrito", async () => {
@@ -406,7 +420,7 @@ describe("CLI: load-roster main()", () => {
     const before = await countAll();
     const { main } = await import("../../src/cli/load-roster.js");
 
-    await main(["--dir", dir, "--cutover-date", CUTOVER_DATE, "--commit"]);
+    await main(["--input", dir, "--cutover-date", CUTOVER_DATE, "--commit"]);
 
     expect(process.exitCode).toBe(1);
     const printed = errorSpy.mock.calls.map((call) => String(call[0])).join("\n");
