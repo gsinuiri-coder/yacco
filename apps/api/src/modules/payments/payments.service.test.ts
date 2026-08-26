@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PaymentStatus, Prisma } from "@prisma/client";
 import { jest } from "@jest/globals";
@@ -12,6 +12,7 @@ const PAYMENT_METHOD_ID = "44444444-4444-4444-8444-444444444444";
 const RECORDED_BY_ID = "55555555-5555-4555-8555-555555555555";
 const ADMIN_ID = "66666666-6666-4666-8666-666666666666";
 const MISSING_ID = "00000000-0000-4000-8000-000000000000";
+const OTHER_CUSTOMER_ID = "77777777-7777-4777-8777-777777777777";
 
 function decimal(value: string): Prisma.Decimal {
   return new Prisma.Decimal(value);
@@ -54,10 +55,18 @@ function buildPrismaMock() {
       updateMany: jest.fn<() => Promise<unknown>>(),
       findUnique: jest.fn<() => Promise<unknown>>(),
       findUniqueOrThrow: jest.fn<() => Promise<unknown>>(),
+      create: jest.fn<() => Promise<unknown>>(),
     },
     customer: {
       update: jest.fn<() => Promise<unknown>>(),
+      findUnique: jest.fn<() => Promise<unknown>>(),
       findUniqueOrThrow: jest.fn<() => Promise<unknown>>(),
+    },
+    customerLocation: {
+      findUnique: jest.fn<() => Promise<unknown>>(),
+    },
+    paymentMethod: {
+      findUnique: jest.fn<() => Promise<unknown>>(),
     },
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
@@ -215,6 +224,190 @@ describe("PaymentsService", () => {
     });
   });
 
+  describe("createOfficePayment", () => {
+    function officeDto(overrides: Record<string, unknown> = {}) {
+      return {
+        customerId: CUSTOMER_ID,
+        paymentMethodId: PAYMENT_METHOD_ID,
+        amount: "25.00",
+        ...overrides,
+      };
+    }
+
+    function mockHappyPath(debtBalanceBefore: string) {
+      prisma.customer.findUnique.mockResolvedValue({
+        id: CUSTOMER_ID,
+        active: true,
+        debtBalance: decimal(debtBalanceBefore),
+      });
+      prisma.paymentMethod.findUnique.mockResolvedValue({
+        id: PAYMENT_METHOD_ID,
+        active: true,
+      });
+    }
+
+    it("a cash collection reduces debtBalance by exactly the amount and lands CONFIRMED with confirmedById from the actor", async () => {
+      mockHappyPath("25.00");
+      prisma.payment.create.mockResolvedValue(
+        paymentRow({
+          status: PaymentStatus.CONFIRMED,
+          confirmedById: ADMIN_ID,
+          confirmedBy: { id: ADMIN_ID, username: "admin" },
+          isOpeningBalance: false,
+        }),
+      );
+      prisma.customer.update.mockResolvedValue({ debtBalance: decimal("0.00") });
+
+      const result = await service.createOfficePayment(officeDto(), ADMIN_ID);
+
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: PaymentStatus.CONFIRMED,
+            confirmedById: ADMIN_ID,
+            recordedById: ADMIN_ID,
+            isOpeningBalance: false,
+            saleId: null,
+            stopId: null,
+          }) as unknown,
+        }),
+      );
+      expect(prisma.customer.update).toHaveBeenCalledWith({
+        where: { id: CUSTOMER_ID },
+        data: { debtBalance: { decrement: decimal("25.00") } },
+        select: { debtBalance: true },
+      });
+      expect(result.payment.status).toBe(PaymentStatus.CONFIRMED);
+      expect(result.debtBalance).toBe("0.00");
+      expect(result.exceedsDebt).toBe(false);
+    });
+
+    // The central decision of this PR: a method whose requiresConfirmation
+    // is true (Yape) still lands CONFIRMED when it's an office collection —
+    // the counter recording it IS the confirmation. The service never even
+    // reads requiresConfirmation off the row.
+    it("a Yape collection (requiresConfirmation: true) also lands CONFIRMED, not PENDING", async () => {
+      mockHappyPath("25.00");
+      prisma.payment.create.mockResolvedValue(
+        paymentRow({
+          paymentMethod: { id: PAYMENT_METHOD_ID, name: "Yape" },
+          status: PaymentStatus.CONFIRMED,
+          confirmedById: ADMIN_ID,
+        }),
+      );
+      prisma.customer.update.mockResolvedValue({ debtBalance: decimal("0.00") });
+
+      const result = await service.createOfficePayment(officeDto(), ADMIN_ID);
+
+      expect(prisma.payment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: PaymentStatus.CONFIRMED }) as unknown,
+        }),
+      );
+      expect(result.payment.status).toBe(PaymentStatus.CONFIRMED);
+    });
+
+    it("overpayment: debt of 40 paid with 50 leaves debtBalance at -10.00 and exceedsDebt true", async () => {
+      mockHappyPath("40.00");
+      prisma.payment.create.mockResolvedValue(paymentRow({ status: PaymentStatus.CONFIRMED }));
+      prisma.customer.update.mockResolvedValue({ debtBalance: decimal("-10.00") });
+
+      const result = await service.createOfficePayment(officeDto({ amount: "50.00" }), ADMIN_ID);
+
+      expect(result.debtBalance).toBe("-10.00");
+      expect(result.exceedsDebt).toBe(true);
+    });
+
+    it("an exact payment leaves exceedsDebt false", async () => {
+      mockHappyPath("25.00");
+      prisma.payment.create.mockResolvedValue(paymentRow({ status: PaymentStatus.CONFIRMED }));
+      prisma.customer.update.mockResolvedValue({ debtBalance: decimal("0.00") });
+
+      const result = await service.createOfficePayment(officeDto({ amount: "25.00" }), ADMIN_ID);
+
+      expect(result.exceedsDebt).toBe(false);
+    });
+
+    it('amount of "0.00" is rejected with 400 and never opens the transaction', async () => {
+      await expect(
+        service.createOfficePayment(officeDto({ amount: "0.00" }), ADMIN_ID),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("a future paidAt is rejected with 400", async () => {
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      await expect(
+        service.createOfficePayment(officeDto({ paidAt: future }), ADMIN_ID),
+      ).rejects.toThrow(/no puede ser futura/);
+    });
+
+    it("an unknown customer is rejected with 404", async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+
+      await expect(service.createOfficePayment(officeDto(), ADMIN_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it("an inactive customer is rejected with 400", async () => {
+      prisma.customer.findUnique.mockResolvedValue({
+        id: CUSTOMER_ID,
+        active: false,
+        debtBalance: decimal("0.00"),
+      });
+
+      await expect(service.createOfficePayment(officeDto(), ADMIN_ID)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.paymentMethod.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("a locationId belonging to a different customer is rejected with 400, not 404", async () => {
+      prisma.customer.findUnique.mockResolvedValue({
+        id: CUSTOMER_ID,
+        active: true,
+        debtBalance: decimal("0.00"),
+      });
+      prisma.customerLocation.findUnique.mockResolvedValue({ customerId: OTHER_CUSTOMER_ID });
+
+      await expect(
+        service.createOfficePayment(officeDto({ locationId: LOCATION_ID }), ADMIN_ID),
+      ).rejects.toThrow(/no pertenece a este cliente/);
+      expect(prisma.paymentMethod.findUnique).not.toHaveBeenCalled();
+    });
+
+    // Blocking on an inactive method is what keeps the synthetic "Apertura"
+    // row from ever being usable as a real office collection.
+    it("an inactive payment method (e.g. the synthetic Apertura) is rejected with 400", async () => {
+      prisma.customer.findUnique.mockResolvedValue({
+        id: CUSTOMER_ID,
+        active: true,
+        debtBalance: decimal("0.00"),
+      });
+      prisma.paymentMethod.findUnique.mockResolvedValue({ id: PAYMENT_METHOD_ID, active: false });
+
+      await expect(service.createOfficePayment(officeDto(), ADMIN_ID)).rejects.toThrow(
+        /no está activo/,
+      );
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+
+    it("an unknown payment method is rejected with 400", async () => {
+      prisma.customer.findUnique.mockResolvedValue({
+        id: CUSTOMER_ID,
+        active: true,
+        debtBalance: decimal("0.00"),
+      });
+      prisma.paymentMethod.findUnique.mockResolvedValue(null);
+
+      await expect(service.createOfficePayment(officeDto(), ADMIN_ID)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+  });
+
   describe("findAll", () => {
     it("filters by status/paymentMethodId/customerId/paidFrom/paidTo, and totals reflects the SAME where as the page", async () => {
       prisma.payment.count.mockResolvedValue(3);
@@ -238,6 +431,7 @@ describe("PaymentsService", () => {
         status: PaymentStatus.PENDING,
         paymentMethodId: PAYMENT_METHOD_ID,
         customerId: CUSTOMER_ID,
+        isOpeningBalance: false,
         paidAt: {
           gte: new Date("2026-08-01T00:00:00.000Z"),
           lte: new Date("2026-08-31T23:59:59.999Z"),
@@ -273,7 +467,10 @@ describe("PaymentsService", () => {
       await service.findAll({ page: 1, limit: 20, paidFrom: "2026-08-01T00:00:00.000Z" });
 
       expect(prisma.payment.count).toHaveBeenCalledWith({
-        where: { paidAt: { gte: new Date("2026-08-01T00:00:00.000Z") } },
+        where: {
+          isOpeningBalance: false,
+          paidAt: { gte: new Date("2026-08-01T00:00:00.000Z") },
+        },
       });
     });
 
@@ -285,7 +482,10 @@ describe("PaymentsService", () => {
       await service.findAll({ page: 1, limit: 20, paidTo: "2026-08-31T23:59:59.999Z" });
 
       expect(prisma.payment.count).toHaveBeenCalledWith({
-        where: { paidAt: { lte: new Date("2026-08-31T23:59:59.999Z") } },
+        where: {
+          isOpeningBalance: false,
+          paidAt: { lte: new Date("2026-08-31T23:59:59.999Z") },
+        },
       });
     });
 
@@ -298,6 +498,30 @@ describe("PaymentsService", () => {
           paidTo: "2026-08-01T00:00:00.000Z",
         }),
       ).rejects.toThrow(/no puede ser posterior/);
+    });
+
+    it("by default excludes isOpeningBalance rows from both the page and totals", async () => {
+      prisma.payment.count.mockResolvedValue(0);
+      prisma.payment.findMany.mockResolvedValue([]);
+      prisma.payment.aggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { amount: null } });
+
+      await service.findAll({ page: 1, limit: 20 });
+
+      expect(prisma.payment.count).toHaveBeenCalledWith({ where: { isOpeningBalance: false } });
+      expect(prisma.payment.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isOpeningBalance: false } }),
+      );
+    });
+
+    it("includeOpeningBalance=true drops the isOpeningBalance filter from both the page and totals", async () => {
+      prisma.payment.count.mockResolvedValue(0);
+      prisma.payment.findMany.mockResolvedValue([]);
+      prisma.payment.aggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { amount: null } });
+
+      await service.findAll({ page: 1, limit: 20, includeOpeningBalance: true });
+
+      expect(prisma.payment.count).toHaveBeenCalledWith({ where: {} });
+      expect(prisma.payment.aggregate).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
     });
   });
 });

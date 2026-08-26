@@ -147,6 +147,48 @@ async function customerDebtBalance(id: string): Promise<string> {
   return customer.debtBalance.toFixed(2);
 }
 
+/**
+ * A fresh customer with exactly `amount` of debt and no payment attached —
+ * a delivery with an authorized price override so the debt is an exact,
+ * arbitrary figure instead of a multiple of the refill's S/8.00 list price.
+ */
+async function createCustomerWithDebt(
+  amount: string,
+): Promise<{ customerId: string; locationId: string }> {
+  const { customerId, locationId } = await createFreshLocation();
+  const batchItemId = await createBatchItem(10);
+  const route = await request(server())
+    .post("/api/v1/routes")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ driverId, date: nextDate(), zoneId })
+    .expect(201);
+  const routeId = route.body.id;
+  await request(server())
+    .post(`/api/v1/routes/${routeId}/loads`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ batchItemId, quantity: 10 })
+    .expect(201);
+  const stop = await request(server())
+    .post(`/api/v1/routes/${routeId}/stops`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ origin: "VAN_SALE", locationId })
+    .expect(201);
+  await request(server())
+    .patch(`/api/v1/routes/${routeId}/start`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .expect(200);
+  await request(server())
+    .patch(`/api/v1/routes/${routeId}/stops/${stop.body.id}`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      status: "DELIVERED",
+      items: [{ productId: refillProductId, quantity: 1, unitPrice: amount }],
+      priceOverrideAuthorizedById: adminUserId,
+    })
+    .expect(200);
+  return { customerId, locationId };
+}
+
 beforeAll(async () => {
   ctx = await startTestApp();
   prisma = ctx.app.get(PrismaService);
@@ -182,6 +224,242 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await stopTestApp(ctx);
+});
+
+describe("POST /api/v1/payments — office collection (HU-18)", () => {
+  test("a cash collection reduces debtBalance by exactly the amount and lands CONFIRMED with confirmedBy from the token", async () => {
+    const { customerId } = await createCustomerWithDebt("25.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "25.00" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.payment.status).toBe(PaymentStatus.CONFIRMED);
+    expect(response.body.payment.confirmedBy.id).toBe(adminUserId);
+    expect(response.body.payment.recordedBy.id).toBe(adminUserId);
+    expect(response.body.payment.isOpeningBalance).toBe(false);
+    expect(response.body.payment.saleId).toBeNull();
+    expect(response.body.payment.stopId).toBeNull();
+    expect(response.body.debtBalance).toBe("0.00");
+    expect(response.body.exceedsDebt).toBe(false);
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+  });
+
+  // The central decision of this PR: a method that requires confirmation on
+  // the route path (Yape) still lands CONFIRMED here — the office IS the
+  // confirmation, unlike dispatch, where nobody has yet seen the money land.
+  test("a Yape collection (requiresConfirmation: true) also lands CONFIRMED, never PENDING", async () => {
+    const { customerId } = await createCustomerWithDebt("25.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: yapePaymentMethodId, amount: "25.00" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.payment.status).toBe(PaymentStatus.CONFIRMED);
+    expect(response.body.payment.confirmedAt).not.toBeNull();
+
+    const payment = await prisma.payment.findUniqueOrThrow({
+      where: { id: response.body.payment.id },
+    });
+    expect(payment.status).toBe(PaymentStatus.CONFIRMED);
+  });
+
+  test("overpayment: a debt of 40 paid with 50 leaves debtBalance at -10.00 and exceedsDebt true", async () => {
+    const { customerId } = await createCustomerWithDebt("40.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "50.00" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.debtBalance).toBe("-10.00");
+    expect(response.body.exceedsDebt).toBe(true);
+    expect(await customerDebtBalance(customerId)).toBe("-10.00");
+  });
+
+  test("an exact payment leaves exceedsDebt false", async () => {
+    const { customerId } = await createCustomerWithDebt("40.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "40.00" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.exceedsDebt).toBe(false);
+    expect(response.body.debtBalance).toBe("0.00");
+  });
+
+  test("a locationId is accepted and stored when it belongs to the customer", async () => {
+    const { customerId, locationId } = await createCustomerWithDebt("10.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, locationId, paymentMethodId: cashPaymentMethodId, amount: "10.00" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.payment.location.id).toBe(locationId);
+  });
+
+  test("a locationId belonging to a different customer is rejected with 400, not 404", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+    const other = await createFreshLocation();
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        locationId: other.locationId,
+        paymentMethodId: cashPaymentMethodId,
+        amount: "10.00",
+      });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("no pertenece a este cliente");
+  });
+
+  // Blocking on an inactive method is what keeps the synthetic "Apertura"
+  // method (loader-only, never a real collection) from being usable here —
+  // dispatch has no such gate, but office collection is an ADMIN/SELLER
+  // action, so CLAUDE.md's "alert, don't block" is for the driver only.
+  test("an inactive payment method (the synthetic Apertura) is rejected with 400", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+    const apertura = await prisma.paymentMethod.upsert({
+      where: { name: "Apertura" },
+      update: { active: false },
+      create: { name: "Apertura", active: false },
+    });
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: apertura.id, amount: "10.00" });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("no está activo");
+  });
+
+  test.each([
+    ["cero", "0.00"],
+    ["negativo", "-5.00"],
+    ["tres decimales", "10.005"],
+  ])("amount %s ('%s') is rejected with 400", async (_label, amount) => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("amount as a JSON number instead of a string is rejected with 400", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: 10 });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("a future paidAt is rejected with 400", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "10.00", paidAt: future });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("no puede ser futura");
+  });
+
+  test("an unknown customer is rejected with 404", async () => {
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId: MISSING_UUID, paymentMethodId: cashPaymentMethodId, amount: "10.00" });
+
+    expect(response.status).toBe(404);
+  });
+
+  test("an inactive customer is rejected with 400", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+    await request(server())
+      .patch(`/api/v1/customers/${customerId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ active: false })
+      .expect(200);
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "10.00" });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("the endpoint never accepts a status field in the body", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        paymentMethodId: cashPaymentMethodId,
+        amount: "10.00",
+        status: "PENDING",
+      });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("amount travels as a 2-decimal string end to end", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "10.00" });
+
+    expect(typeof response.body.payment.amount).toBe("string");
+    expect(response.body.payment.amount).toBe("10.00");
+    expect(typeof response.body.debtBalance).toBe("string");
+  });
+
+  test("a SELLER can register an office collection", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "10.00" });
+
+    expect(response.status).toBe(201);
+  });
+
+  test("a DRIVER is refused with 403", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "10.00" });
+
+    expect(response.status).toBe(403);
+  });
 });
 
 describe("dispatch creates a PENDING payment that does not touch debtBalance yet", () => {
@@ -460,6 +738,41 @@ describe("GET /api/v1/payments", () => {
 
     const ids = response.body.data.map((row: { id: string }) => row.id) as string[];
     expect(ids.indexOf(first.paymentId)).toBeLessThan(ids.indexOf(second.paymentId));
+  });
+
+  test("excludes opening-balance payments by default; includeOpeningBalance=true includes them and totals change accordingly", async () => {
+    const { customerId } = await createFreshLocation();
+    const openingAmount = "15.00";
+    const opening = await prisma.payment.create({
+      data: {
+        customerId,
+        locationId: null,
+        saleId: null,
+        stopId: null,
+        paymentMethodId: cashPaymentMethodId,
+        paidAt: new Date(),
+        amount: openingAmount,
+        status: PaymentStatus.CONFIRMED,
+        confirmedAt: new Date(),
+        confirmedById: adminUserId,
+        isOpeningBalance: true,
+        recordedById: adminUserId,
+      },
+    });
+
+    const withoutOpenings = await request(server())
+      .get(`/api/v1/payments?customerId=${customerId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(withoutOpenings.status).toBe(200);
+    expect(withoutOpenings.body.data).toHaveLength(0);
+    expect(withoutOpenings.body.totals).toEqual({ count: 0, amount: "0.00" });
+
+    const withOpenings = await request(server())
+      .get(`/api/v1/payments?customerId=${customerId}&includeOpeningBalance=true`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(withOpenings.status).toBe(200);
+    expect(withOpenings.body.data.map((row: { id: string }) => row.id)).toContain(opening.id);
+    expect(withOpenings.body.totals).toEqual({ count: 1, amount: openingAmount });
   });
 
   test("a DRIVER is refused with 403", async () => {

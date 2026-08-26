@@ -179,7 +179,7 @@ importar la matriz real en vez de solo auto-verificarse.
 
 ## Reparto de un pago global entre deudas del cliente
 
-**Estado:** abierto. **Disparador:** cuando exista el módulo de Payments.
+**Estado:** abierto. **Disparador:** HU-19 (reporte de deuda con antigüedad).
 
 Un pago sin `locationId` (Payment.locationId es opcional, spec: sin locación
 el principal paga a nivel del cliente consolidado) puede tener que saldar
@@ -189,9 +189,15 @@ antigua (FIFO por fecha de venta/deuda), con posibilidad de asignación manual
 por el usuario cuando el reparto automático no sea el que corresponde (p.ej.
 el cliente indica que ese pago es específicamente para una venta puntual).
 
-**Para cerrarla:** implementar esta regla en el servicio de Payments cuando
-se construya (aún no existe ningún módulo de Sales/Payments en `apps/api/src`),
-como parte de la lógica de creación de un pago sin `locationId`.
+`PaymentsService.createOfficePayment` (HU-18, cobranza de oficina) ya existe
+y ya acepta un pago sin `locationId`, pero decrementa `debtBalance` como un
+solo número consolidado — no reparte el monto entre las ventas/locaciones
+específicas que lo componen. Es determinista sobre fechas y montos, así que
+se puede reconstruir después: no bloqueó HU-18.
+
+**Para cerrarla:** cuando exista HU-19 (la antigüedad de cada deuda por
+cliente), implementar el reparto FIFO en `createOfficePayment` como parte de
+la lógica de un pago sin `locationId`.
 
 ## Certeza del saldo de apertura de envases en poder del cliente
 
@@ -483,3 +489,43 @@ probable es una espera sobre la segunda página que se resuelve antes de que
 el mock de la API cambie de respuesta, o un `findBy` con timeout justo. La
 salida es una espera explícita sobre el estado que el test necesita, no un
 `retry` ni un timeout más largo.
+
+## Doble envío del formulario de cobranza
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo.
+
+`POST /api/v1/payments` (HU-18, cobranza de oficina) no tiene clave de
+idempotencia — `Payment` no tiene ninguna columna para eso, a diferencia de
+`POST /sync/operations`, que sí exige un UUID generado en el dispositivo y
+descarta el duplicado sin reaplicarlo. Dos clics rápidos sobre "Registrar
+pago", o un reintento de red tras un timeout cuyo primer intento sí llegó a
+la base, crean dos filas de `Payment` idénticas y descuentan `debtBalance`
+dos veces por el mismo cobro real.
+
+**Razón:** hoy la única defensa es que la UI deshabilite el botón al
+enviarlo, que cubre el doble clic pero no el reintento de red — el cliente
+nunca sabe si el primer POST llegó a escribir antes de que la conexión se
+cortara, así que reintentar es la respuesta razonable y es justo lo que
+duplica el cobro.
+
+**Para cerrarla:** agregar una clave de idempotencia a `Payment` (mismo
+patrón que `sync_operations`: un UUID generado por el cliente, único, que
+permita responder con el pago ya creado en vez de crear uno nuevo) antes de
+que la cobranza de oficina se use con dinero real fuera de la demo.
+
+## HU-18 E1 solo verificada a medias: falta `GET .../account-statement`
+
+**Estado:** abierto. **Disparador:** cuando exista el estado de cuenta.
+
+El criterio de aceptación de HU-18 tiene dos cláusulas: "su deuda disminuye"
+y "el abono aparece en el estado de cuenta". Los tests de `POST /payments`
+(`payments.int.test.ts`) cubren la primera contra `debtBalance` y la
+respuesta del endpoint, pero `GET /customers/:id/account-statement` no
+existe todavía en `apps/api/src` —sigue siendo una fila de la tabla de
+endpoints previstos en `docs/yacco-documentacion.md`—, así que la segunda
+cláusula no tiene dónde verificarse. No es una brecha que introdujo este PR:
+ya faltaba antes de HU-18.
+
+**Para cerrarla:** cuando se construya `GET /customers/:id/account-statement`,
+agregar un test que confirme que un pago de oficina aparece ahí con su
+monto y fecha correctos.

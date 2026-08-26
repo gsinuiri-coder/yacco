@@ -639,6 +639,10 @@ model Payment {
   rejectedBy    User?             @relation("PaymentRejectedBy", fields: [rejectedById], references: [id], onDelete: Restrict)
 
   @@index([paidAt, paymentMethodId])
+  // The office collection screen (HU-18) loads a customer's recent payments
+  // the moment it's picked — without this, filtering GET /payments by
+  // customerId scans the whole table.
+  @@index([customerId, paidAt(sort: Desc)])
   @@map("payments")
 }
 
