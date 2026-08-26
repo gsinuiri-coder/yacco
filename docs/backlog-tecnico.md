@@ -529,3 +529,49 @@ ya faltaba antes de HU-18.
 **Para cerrarla:** cuando se construya `GET /customers/:id/account-statement`,
 agregar un test que confirme que un pago de oficina aparece ahí con su
 monto y fecha correctos.
+
+## `requiresConfirmation` usado como proxy de "es efectivo"
+
+**Estado:** abierto. **Disparador:** cuando aparezca un método de pago sin
+`requiresConfirmation` que no sea efectivo.
+
+`RouteSettlementService.computeExpected` calcula `totalCashCollected` como
+los pagos `CONFIRMED` cuyo método tiene `requiresConfirmation: false`. Hoy
+funciona porque Efectivo es el único método sembrado con ese valor — pero
+son conceptos distintos: `requiresConfirmation` dice "nadie necesita
+verificar que esto llegó", no "esto es plata física que el chofer puede
+contar". Si mañana la planta acepta un medio digital instantáneo que la
+oficina decida no verificar (por ejemplo, un QR con confirmación
+automática del banco), `totalCashCollected` lo contaría como si el chofer
+lo trajera en la mano.
+
+**Razón:** no había ningún método así al construir HU-17, así que separar
+los dos conceptos habría sido una columna especulando sobre un caso que
+todavía no existe — el mismo criterio que ya rige el resto del dominio.
+
+**Para cerrarla:** agregar una columna `isCash` a `PaymentMethod`
+(sembrada `true` solo en Efectivo) y que `computeExpected` filtre por ella
+en vez de por `requiresConfirmation`.
+
+## Una liquidación puede quedar desactualizada
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo.
+
+`RouteSettlementService.settle` persiste `totalCollected` y
+`totalPendingConfirmation` incluyendo los pagos `PENDING` de la ruta en el
+momento de liquidar. Si alguno de esos pagos se rechaza después
+(`POST /payments/:id/reject`), la liquidación ya escrita sigue afirmando un
+cobro que resultó no ser tal — nada la recalcula ni la marca como
+desactualizada.
+
+**Razón:** HU-17 pide conciliar al cierre, no mantener la conciliación
+sincronizada para siempre; recalcular en cada resolución de pago habría
+sido diseñar para un caso sin decidir con el dueño si una liquidación
+puede reabrirse (fuera de alcance de este PR: "reabrir o corregir una
+liquidación ya registrada").
+
+**Para cerrarla:** decidir con el dueño de la planta si una liquidación
+liquidada debe reabrirse cuando esto ocurre, o si basta con que el reporte
+de cobranza (`GET /reports/collections`, aún no construido) lea el estado
+de los pagos en vivo en vez de confiar en el número congelado de la
+liquidación.
