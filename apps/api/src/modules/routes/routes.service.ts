@@ -18,9 +18,12 @@ import {
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
+import type { RegisterStopDeliveryResult } from "../sales/sales.service.js";
+import { SalesService } from "../sales/sales.service.js";
 import type { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import type { CreateRouteDto } from "./dto/create-route.dto.js";
 import type { CreateRouteStopDto } from "./dto/create-route-stop.dto.js";
+import type { FindRouteQueryDto } from "./dto/find-route-query.dto.js";
 import type { ListRoutesQueryDto } from "./dto/list-routes-query.dto.js";
 import type { MarkRouteStopDto } from "./dto/mark-route-stop.dto.js";
 import type { ReorderRouteStopsDto } from "./dto/reorder-route-stops.dto.js";
@@ -67,7 +70,10 @@ type RouteWithRelations = Prisma.RouteGetPayload<{ include: typeof ROUTE_INCLUDE
 type StopWithRelations = Prisma.RouteStopGetPayload<{ include: typeof STOP_INCLUDE }>;
 type LoadWithRelations = Prisma.RouteLoadGetPayload<{ include: typeof LOAD_INCLUDE }>;
 
-function toStopResponse(stop: StopWithRelations): RouteStopResponseDto {
+function toStopResponse(
+  stop: StopWithRelations,
+  delivery?: RegisterStopDeliveryResult,
+): RouteStopResponseDto {
   return {
     id: stop.id,
     routeId: stop.routeId,
@@ -78,6 +84,13 @@ function toStopResponse(stop: StopWithRelations): RouteStopResponseDto {
     orderId: stop.orderId,
     status: stop.status,
     failureReason: stop.failureReason,
+    ...(delivery !== undefined
+      ? {
+          sale: delivery.sale,
+          payment: delivery.payment,
+          containerBalances: delivery.containerBalances,
+        }
+      : {}),
   };
 }
 
@@ -102,7 +115,7 @@ function toRouteResponse(route: RouteWithRelations): RouteResponseDto {
     status: route.status,
     createdById: route.createdById,
     createdAt: route.createdAt,
-    stops: route.stops.map(toStopResponse),
+    stops: route.stops.map((stop) => toStopResponse(stop)),
   };
 }
 
@@ -122,6 +135,7 @@ export class RoutesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly containerMovementsService: ContainerMovementsService,
+    private readonly salesService: SalesService,
   ) {}
 
   /**
@@ -209,13 +223,30 @@ export class RoutesService {
     };
   }
 
-  async findOne(id: string, actor: RouteActor): Promise<RouteResponseDto> {
+  /**
+   * `stopStatus` filters the returned `stops` array in memory rather than in
+   * the query (`ROUTE_INCLUDE.stops` has no `where`): with the idempotency
+   * guard on markStop making PENDING stops the office's actual work list,
+   * this is what lets `?stopStatus=PENDING` show only what's left to
+   * resolve, without a second endpoint or a second include shape.
+   */
+  async findOne(
+    id: string,
+    actor: RouteActor,
+    query?: FindRouteQueryDto,
+  ): Promise<RouteResponseDto> {
     const route = await this.prisma.route.findUnique({ where: { id }, include: ROUTE_INCLUDE });
     if (route === null) {
       throw new NotFoundException(`La ruta "${id}" no existe`);
     }
     assertCanAccessRoute(actor, route);
-    return toRouteResponse(route);
+    if (query?.stopStatus === undefined) {
+      return toRouteResponse(route);
+    }
+    return toRouteResponse({
+      ...route,
+      stops: route.stops.filter((stop) => stop.status === query.stopStatus),
+    });
   }
 
   /**
@@ -350,9 +381,12 @@ export class RoutesService {
   /**
    * DELIVERED or FAILED, and nothing else — never back to PENDING. Only
    * while the route is IN_PROGRESS: marking before the route starts or
-   * after it finished has no real-world counterpart. This endpoint changes
-   * only the stop's own status; it creates no sale and no container
-   * movement — that is the dispatch PR's job.
+   * after it finished has no real-world counterpart.
+   *
+   * FAILED stays a plain status flip. DELIVERED is not: it registers the
+   * whole delivery (sale, container movements, collection) in one
+   * transaction — see `markStopDelivered` and
+   * `SalesService.registerStopDeliveryWithinTransaction`.
    */
   async markStop(
     routeId: string,
@@ -367,30 +401,41 @@ export class RoutesService {
       );
     }
 
-    if (dto.status === StopStatus.FAILED && (dto.failureReason ?? "").trim().length === 0) {
-      throw new BadRequestException("Una parada fallida necesita un motivo");
+    if (dto.status === StopStatus.FAILED) {
+      if ((dto.failureReason ?? "").trim().length === 0) {
+        throw new BadRequestException("Una parada fallida necesita un motivo");
+      }
+      if (
+        dto.items !== undefined ||
+        dto.containersReturned !== undefined ||
+        dto.payment !== undefined ||
+        dto.priceOverrideAuthorizedById !== undefined
+      ) {
+        throw new BadRequestException("Una parada fallida no lleva datos de entrega");
+      }
+      return this.markStopFailed(routeId, stopId, dto.failureReason as string);
     }
-    if (dto.status === StopStatus.DELIVERED && dto.failureReason !== undefined) {
+
+    if (dto.failureReason !== undefined) {
       throw new BadRequestException("Una parada entregada no lleva motivo de falla");
     }
+    if (dto.items === undefined || dto.items.length === 0) {
+      throw new BadRequestException("La entrega debe indicar los ítems vendidos (items)");
+    }
+    return this.markStopDelivered(routeId, stopId, dto, actor);
+  }
 
+  private async markStopFailed(
+    routeId: string,
+    stopId: string,
+    failureReason: string,
+  ): Promise<RouteStopResponseDto> {
     const { count } = await this.prisma.routeStop.updateMany({
       where: { id: stopId, routeId, status: StopStatus.PENDING },
-      data: {
-        status: dto.status,
-        failureReason: dto.status === StopStatus.FAILED ? (dto.failureReason ?? null) : null,
-      },
+      data: { status: StopStatus.FAILED, failureReason },
     });
-
     if (count === 0) {
-      const existing = await this.prisma.routeStop.findFirst({
-        where: { id: stopId, routeId },
-        select: { status: true },
-      });
-      if (existing === null) {
-        throw new NotFoundException(`La parada "${stopId}" no existe en esta ruta`);
-      }
-      throw new ConflictException(`Esta parada ya está en estado ${existing.status}`);
+      await this.throwAlreadyMarkedConflict(this.prisma, routeId, stopId);
     }
 
     const stop = await this.prisma.routeStop.findUniqueOrThrow({
@@ -398,6 +443,86 @@ export class RoutesService {
       include: STOP_INCLUDE,
     });
     return toStopResponse(stop);
+  }
+
+  /**
+   * The RouteStop status flip and the whole delivery (Sale/SaleItems,
+   * container movements both ways, the Payment if any) commit or roll back
+   * together, in this one transaction. The flip is a plain UPDATE guarded by
+   * `WHERE status = 'PENDING'`, never a prior read-then-write: under two
+   * concurrent requests for the same stop, Postgres serializes them on that
+   * row, exactly one UPDATE affects a row, and the loser's `count === 0`
+   * aborts the transaction before SalesService writes anything — leaving no
+   * sale, no movement and no payment behind.
+   */
+  private async markStopDelivered(
+    routeId: string,
+    stopId: string,
+    dto: MarkRouteStopDto,
+    actor: RouteActor,
+  ): Promise<RouteStopResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.routeStop.updateMany({
+        where: { id: stopId, routeId, status: StopStatus.PENDING },
+        data: { status: StopStatus.DELIVERED },
+      });
+      if (count === 0) {
+        await this.throwAlreadyMarkedConflict(tx, routeId, stopId);
+      }
+
+      const stop = await tx.routeStop.findUniqueOrThrow({
+        where: { id: stopId },
+        include: STOP_INCLUDE,
+      });
+
+      const delivery = await this.salesService.registerStopDeliveryWithinTransaction(tx, {
+        routeId,
+        stopId,
+        locationId: stop.locationId,
+        items: dto.items ?? [],
+        containersReturned: dto.containersReturned ?? [],
+        recordedById: actor.id,
+        ...(dto.payment !== undefined ? { payment: dto.payment } : {}),
+        ...(dto.priceOverrideAuthorizedById !== undefined
+          ? { priceOverrideAuthorizedById: dto.priceOverrideAuthorizedById }
+          : {}),
+      });
+
+      return toStopResponse(stop, delivery);
+    });
+  }
+
+  /**
+   * Names what actually happened, per CLAUDE.md: naming the date and who
+   * recorded it is what stops the office and a driver from double-charging
+   * the same delivery. `soldAt` is a timestamptz (an instant, not a business
+   * date — CLAUDE.md's date-formatting rule doesn't apply here), so a plain
+   * ISO string is enough for a message nobody parses back.
+   */
+  private async throwAlreadyMarkedConflict(
+    client: Prisma.TransactionClient | PrismaService,
+    routeId: string,
+    stopId: string,
+  ): Promise<never> {
+    const existing = await client.routeStop.findFirst({
+      where: { id: stopId, routeId },
+      select: { status: true },
+    });
+    if (existing === null) {
+      throw new NotFoundException(`La parada "${stopId}" no existe en esta ruta`);
+    }
+    if (existing.status === StopStatus.DELIVERED) {
+      const sale = await client.sale.findFirst({
+        where: { stopId },
+        select: { soldAt: true, recordedBy: { select: { name: true } } },
+      });
+      if (sale !== null) {
+        throw new ConflictException(
+          `Esta entrega ya fue registrada el ${sale.soldAt.toISOString()} por ${sale.recordedBy.name}`,
+        );
+      }
+    }
+    throw new ConflictException(`Esta parada ya está en estado ${existing.status}`);
   }
 
   /**

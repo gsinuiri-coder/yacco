@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { RouteStatus, StopOrigin, StopStatus } from "@prisma/client";
+import { PaymentStatus, RouteStatus, StopOrigin, StopStatus } from "@prisma/client";
 
 export class RouteDriverDto {
   @ApiProperty({ format: "uuid" })
@@ -26,6 +26,54 @@ export class RouteStopLocationDto {
 
   @ApiProperty()
   address!: string;
+}
+
+export class RouteStopContainerTypeDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
+/** The delivery's sale, only present on a response for a stop just marked DELIVERED. */
+export class RouteStopSaleDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  /** 2-decimal string: a NUMERIC(10,2) never round-trips through a JSON number. */
+  @ApiProperty({ type: String, example: "25.00" })
+  total!: string;
+
+  @ApiProperty({
+    description:
+      "La venta supera el límite de crédito del cliente — se registra igual, nunca bloquea",
+  })
+  creditLimitExceeded!: boolean;
+}
+
+/** The delivery's collection, only present when the body carried a `payment`. */
+export class RouteStopPaymentDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty({ enum: PaymentStatus })
+  status!: PaymentStatus;
+
+  @ApiProperty({ type: String, example: "25.00" })
+  amount!: string;
+}
+
+/** Resulting container balance at the location, for each type the delivery touched. */
+export class RouteStopContainerBalanceDto {
+  @ApiProperty({ format: "uuid" })
+  containerTypeId!: string;
+
+  @ApiProperty({ type: RouteStopContainerTypeDto })
+  containerType!: RouteStopContainerTypeDto;
+
+  @ApiProperty({ example: 3 })
+  quantity!: number;
 }
 
 export class RouteStopResponseDto {
@@ -55,6 +103,15 @@ export class RouteStopResponseDto {
 
   @ApiPropertyOptional({ nullable: true })
   failureReason!: string | null;
+
+  @ApiPropertyOptional({ type: RouteStopSaleDto, nullable: true })
+  sale?: RouteStopSaleDto | null;
+
+  @ApiPropertyOptional({ type: RouteStopPaymentDto, nullable: true })
+  payment?: RouteStopPaymentDto | null;
+
+  @ApiPropertyOptional({ type: RouteStopContainerBalanceDto, isArray: true })
+  containerBalances?: RouteStopContainerBalanceDto[];
 }
 
 export class RouteResponseDto {

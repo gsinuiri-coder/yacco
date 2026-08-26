@@ -111,21 +111,23 @@ export class ContainerMovementsService {
    * and the balance diverge would make the system lie about what a customer
    * still owes in containers.
    *
-   * `batchId`, `routeId` and `occurredAt` are deliberately not part of
-   * `CreateContainerMovementDto`: all three are internal linkage only a
+   * `batchId`, `routeId`, `stopId` and `occurredAt` are deliberately not part
+   * of `CreateContainerMovementDto`: all four are internal linkage only a
    * trusted caller with an already-open transaction may set — `batchId` by a
    * production batch registering its FILLING movements, `routeId` by
-   * RoutesService registering a ROUTE_LOAD (or its FULL_RETURN reversal),
-   * `occurredAt` by the customer-roster loader backdating an OPENING_BALANCE
-   * entry to the roster's cutover date. None of the three is something a
-   * caller of the public POST /container-movements route should be able to
-   * fabricate by hand.
+   * RoutesService registering a ROUTE_LOAD (or its FULL_RETURN reversal) or
+   * a stop delivery, `stopId` by RoutesService/SalesService tagging the
+   * delivery/return movements of one specific stop, `occurredAt` by the
+   * customer-roster loader backdating an OPENING_BALANCE entry to the
+   * roster's cutover date. None of the four is something a caller of the
+   * public POST /container-movements route should be able to fabricate by
+   * hand.
    */
   async createWithinTransaction(
     client: Prisma.TransactionClient,
     dto: CreateContainerMovementDto,
     recordedById: string,
-    options?: { batchId?: string; routeId?: string; occurredAt?: Date },
+    options?: { batchId?: string; routeId?: string; stopId?: string; occurredAt?: Date },
   ): Promise<MovementWithRelations> {
     const fromState = dto.fromState ?? null;
     const toState = dto.toState ?? null;
@@ -170,6 +172,7 @@ export class ContainerMovementsService {
         locationId: dto.locationId ?? null,
         batchId: options?.batchId ?? null,
         routeId: options?.routeId ?? null,
+        stopId: options?.stopId ?? null,
         recordedById,
       },
       include: MOVEMENT_INCLUDE,
@@ -235,6 +238,34 @@ export class ContainerMovementsService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * How many fulls of this type are still physically on this truck: every
+   * ROUTE_LOAD tagged with `routeId` (fulls arriving on the truck) minus
+   * every LOAN_DELIVERY/FULL_SALE/FULL_RETURN tagged with the same
+   * `routeId` (fulls leaving it, sold or handed back) — read from the
+   * ledger inside the caller's own transaction, never a separately
+   * maintained counter, same reasoning as `inventory()`. Used by
+   * RoutesService/SalesService to block a delivery the truck cannot
+   * physically make.
+   */
+  async getRouteFullStock(
+    client: Prisma.TransactionClient,
+    routeId: string,
+    containerTypeId: string,
+  ): Promise<number> {
+    const [loaded, left] = await Promise.all([
+      client.containerMovement.aggregate({
+        where: { routeId, containerTypeId, toState: ContainerState.FULL_ON_ROUTE },
+        _sum: { quantity: true },
+      }),
+      client.containerMovement.aggregate({
+        where: { routeId, containerTypeId, fromState: ContainerState.FULL_ON_ROUTE },
+        _sum: { quantity: true },
+      }),
+    ]);
+    return (loaded._sum.quantity ?? 0) - (left._sum.quantity ?? 0);
   }
 
   /**

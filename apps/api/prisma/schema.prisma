@@ -108,6 +108,18 @@ enum SyncOperationStatus {
   @@map("sync_operation_status")
 }
 
+// A payment born from a method that doesn't require confirmation (cash) is
+// CONFIRMED immediately; one from a method that does (Yape, tomorrow Plin)
+// is PENDING until someone at the office confirms seeing it land. A PENDING
+// payment never reduces a customer's debt in any balance/report — the money
+// hasn't been verified yet.
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+
+  @@map("payment_status")
+}
+
 enum Weekday {
   MONDAY
   TUESDAY
@@ -130,18 +142,20 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  roles              UserRoleAssignment[]
-  productionBatches  ProductionBatch[]
-  containerMovements ContainerMovement[]
-  containerCounts    ContainerCount[]
-  orders             Order[]
-  routesAsDriver     Route[]              @relation("RouteDriver")
-  routesCreated      Route[]              @relation("RouteCreatedBy")
-  routeStopsAdded    RouteStop[]          @relation("RouteStopAddedBy")
-  sales              Sale[]
-  payments           Payment[]
-  routeSettlements   RouteSettlement[]
-  syncOperations     SyncOperation[]
+  roles                         UserRoleAssignment[]
+  productionBatches             ProductionBatch[]
+  containerMovements            ContainerMovement[]
+  containerCounts               ContainerCount[]
+  orders                        Order[]
+  routesAsDriver                Route[]              @relation("RouteDriver")
+  routesCreated                 Route[]              @relation("RouteCreatedBy")
+  routeStopsAdded               RouteStop[]          @relation("RouteStopAddedBy")
+  salesRecorded                 Sale[]               @relation("SaleRecordedBy")
+  salesPriceOverridesAuthorized Sale[]               @relation("SalePriceOverrideAuthorizedBy")
+  paymentsRecorded              Payment[]            @relation("PaymentRecordedBy")
+  paymentsConfirmed             Payment[]            @relation("PaymentConfirmedBy")
+  routeSettlements              RouteSettlement[]
+  syncOperations                SyncOperation[]
 
   @@map("users")
 }
@@ -193,9 +207,14 @@ model ContainerType {
 }
 
 model PaymentMethod {
-  id     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name   String  @unique
-  active Boolean @default(true)
+  id                   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String  @unique
+  active               Boolean @default(true)
+  // Cash is counted by the driver and is firm the moment it's collected; a
+  // Yape/Plin only the owner can see land on their phone, so it stays
+  // PENDING until someone at the office confirms it. A catalog field, not a
+  // hardcoded method name, so tomorrow's Plin needs no code change.
+  requiresConfirmation Boolean @default(false) @map("requires_confirmation")
 
   payments Payment[]
 
@@ -515,12 +534,12 @@ model RouteStop {
 // --- Sales & collections ----------------------------------------------------
 
 model Sale {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  locationId          String   @map("location_id") @db.Uuid
-  stopId              String?  @map("stop_id") @db.Uuid
-  soldAt              DateTime @map("sold_at") @db.Timestamptz(6)
-  total               Decimal  @db.Decimal(10, 2)
-  creditLimitExceeded Boolean  @default(false) @map("credit_limit_exceeded")
+  id                          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId                  String   @map("location_id") @db.Uuid
+  stopId                      String?  @map("stop_id") @db.Uuid
+  soldAt                      DateTime @map("sold_at") @db.Timestamptz(6)
+  total                       Decimal  @db.Decimal(10, 2)
+  creditLimitExceeded         Boolean  @default(false) @map("credit_limit_exceeded")
   // Marks the charge that carries the customer's debt from the paper ledger
   // into the system at cutover. It is not a sale: it has no items, because
   // nobody knows what was actually sold to produce that debt, and faking
@@ -529,20 +548,27 @@ model Sale {
   // reconciliation, a route settlement, or a products-sold report: that
   // money and those products moved before the system existed, and counting
   // them would throw off the day's own numbers.
-  isOpeningBalance    Boolean  @default(false) @map("is_opening_balance")
+  isOpeningBalance            Boolean  @default(false) @map("is_opening_balance")
   // Reference to the record in the system this row was imported from (the
   // roster loader's source). Unique when present — hand-written partial
   // index sales_external_id_key — so a second run of the loader finds the
   // charge it already created instead of creating it again. Null for every
   // sale the system itself registers: those come from no import.
-  externalId          String?  @map("external_id")
-  recordedById        String   @map("recorded_by") @db.Uuid
+  externalId                  String?  @map("external_id")
+  recordedById                String   @map("recorded_by") @db.Uuid
+  // Who authorized charging a price different from the one CustomerPrices
+  // would have resolved. Required by the service whenever the caller's
+  // unitPrice disagrees with the resolved one — the sale is never blocked,
+  // but an unauthorized override is (spec: alert without blocking is only
+  // for credit limit and container shortfalls, not for who OK'd a price).
+  priceOverrideAuthorizedById String?  @map("price_override_authorized_by") @db.Uuid
 
-  location   CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  stop       RouteStop?       @relation(fields: [stopId], references: [id], onDelete: Restrict)
-  recordedBy User             @relation(fields: [recordedById], references: [id], onDelete: Restrict)
-  items      SaleItem[]
-  payments   Payment[]
+  location                  CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  stop                      RouteStop?       @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  recordedBy                User             @relation("SaleRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  priceOverrideAuthorizedBy User?            @relation("SalePriceOverrideAuthorizedBy", fields: [priceOverrideAuthorizedById], references: [id], onDelete: Restrict)
+  items                     SaleItem[]
+  payments                  Payment[]
 
   @@map("sales")
 }
@@ -564,14 +590,22 @@ model SaleItem {
 // location, that branch's manager settles their own debt; without one, the
 // principal pays at the customer's consolidated level.
 model Payment {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId       String   @map("customer_id") @db.Uuid
-  locationId       String?  @map("location_id") @db.Uuid
-  saleId           String?  @map("sale_id") @db.Uuid
-  stopId           String?  @map("stop_id") @db.Uuid
-  paymentMethodId  String   @map("payment_method_id") @db.Uuid
-  paidAt           DateTime @map("paid_at") @db.Timestamptz(6)
-  amount           Decimal  @db.Decimal(10, 2)
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId       String        @map("customer_id") @db.Uuid
+  locationId       String?       @map("location_id") @db.Uuid
+  saleId           String?       @map("sale_id") @db.Uuid
+  stopId           String?       @map("stop_id") @db.Uuid
+  paymentMethodId  String        @map("payment_method_id") @db.Uuid
+  paidAt           DateTime      @map("paid_at") @db.Timestamptz(6)
+  amount           Decimal       @db.Decimal(10, 2)
+  // Cash lands CONFIRMED with confirmedAt = paidAt (the driver counted it,
+  // it's firm). A method with requiresConfirmation lands PENDING with both
+  // null, until the office confirms seeing it. Every balance/report that
+  // sums a customer's paid amount MUST filter status = CONFIRMED — a
+  // PENDING payment hasn't been verified and never reduces debt.
+  status           PaymentStatus @default(CONFIRMED)
+  confirmedAt      DateTime?     @map("confirmed_at") @db.Timestamptz(6)
+  confirmedById    String?       @map("confirmed_by") @db.Uuid
   // Marks the credit that carries the customer's favorable balance from the
   // paper ledger into the system at cutover — an advance or an un-returned
   // change, never a prepayment plan (decided with the plant owner). It is
@@ -580,15 +614,16 @@ model Payment {
   // real credit — but never in a cash reconciliation, a route settlement,
   // or a products-sold report, for the same reason as isOpeningBalance on
   // Sale.
-  isOpeningBalance Boolean  @default(false) @map("is_opening_balance")
-  recordedById     String   @map("recorded_by") @db.Uuid
+  isOpeningBalance Boolean       @default(false) @map("is_opening_balance")
+  recordedById     String        @map("recorded_by") @db.Uuid
 
   customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
   location      CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
   sale          Sale?             @relation(fields: [saleId], references: [id], onDelete: Restrict)
   stop          RouteStop?        @relation(fields: [stopId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod     @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
-  recordedBy    User              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  recordedBy    User              @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  confirmedBy   User?             @relation("PaymentConfirmedBy", fields: [confirmedById], references: [id], onDelete: Restrict)
 
   @@index([paidAt, paymentMethodId])
   @@map("payments")

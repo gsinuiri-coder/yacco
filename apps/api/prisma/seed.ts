@@ -81,11 +81,19 @@ async function main() {
     });
   }
 
-  for (const name of ["Efectivo", "Transferencia", "Yape", "Plin"]) {
+  // Cash the driver counts himself is firm on the spot; anything that lands
+  // on the owner's phone or bank app needs the office to confirm it saw it.
+  const paymentMethods: { name: string; requiresConfirmation: boolean }[] = [
+    { name: "Efectivo", requiresConfirmation: false },
+    { name: "Transferencia", requiresConfirmation: true },
+    { name: "Yape", requiresConfirmation: true },
+    { name: "Plin", requiresConfirmation: true },
+  ];
+  for (const { name, requiresConfirmation } of paymentMethods) {
     await prisma.paymentMethod.upsert({
       where: { name },
-      update: {},
-      create: { name },
+      update: { requiresConfirmation },
+      create: { name, requiresConfirmation },
     });
   }
 
