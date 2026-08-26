@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import request from "supertest";
@@ -196,6 +197,38 @@ describe("GET /api/v1/payment-methods/:id", () => {
     const response = await request(server()).get(`/api/v1/payment-methods/${cash.id}`);
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe("data migration: wallet payment methods require confirmation", () => {
+  // Reproduces the production discrepancy this migration fixed: Neon was
+  // seeded once before requiresConfirmation existed for these methods, and
+  // Render's build runs `db:deploy` but never `db:seed`, so a stale `false`
+  // never self-corrects. Proving the seed writes the right value on a fresh
+  // database (the test above) doesn't cover that case — this one corrupts
+  // the row first, the same starting state production had, then replays the
+  // migration itself and reads the database back, not the seed's output.
+  test("the migration corrects a stale false without touching Efectivo", async () => {
+    await prisma.paymentMethod.updateMany({
+      where: { name: { in: ["Transferencia", "Yape", "Plin"] } },
+      data: { requiresConfirmation: false },
+    });
+
+    const migrationPath = path.join(
+      __dirname,
+      "../../prisma/migrations/20260827180000_require_confirmation_wallet_payment_methods/migration.sql",
+    );
+    const migrationSql = await readFile(migrationPath, "utf-8");
+    await prisma.$executeRawUnsafe(migrationSql);
+
+    const methods = await prisma.paymentMethod.findMany({
+      where: { name: { in: ["Efectivo", "Transferencia", "Yape", "Plin"] } },
+    });
+    const byName = new Map(methods.map((method) => [method.name, method.requiresConfirmation]));
+    expect(byName.get("Efectivo")).toBe(false);
+    expect(byName.get("Transferencia")).toBe(true);
+    expect(byName.get("Yape")).toBe(true);
+    expect(byName.get("Plin")).toBe(true);
   });
 });
 
