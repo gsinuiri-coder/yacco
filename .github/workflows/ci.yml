@@ -84,6 +84,14 @@ jobs:
           --shadow-database-url "postgresql://shadow:shadow@localhost:5432/shadow"
           --exit-code
 
+      - name: Build
+        # Before the unit tests on purpose: apps/api's CLI subprocess tests
+        # (src/cli/load-roster.test.ts) exercise the COMPILED dist/, not tsx
+        # on the TS source — tsx/esbuild never emits emitDecoratorMetadata,
+        # so it's the only build that proves Nest's DI actually resolves,
+        # and it's what `pnpm load:roster` and production both run.
+        run: pnpm build
+
       - name: Unit tests
         # `pnpm -r test`: Jest en @yacco/api y Vitest en @yacco/web. Ambos dejan
         # su lcov en disco aquí, antes del scan de SonarCloud, que es quien lo
@@ -92,9 +100,6 @@ jobs:
 
       - name: Integration tests (Testcontainers)
         run: pnpm test:integration
-
-      - name: Build
-        run: pnpm build
 
       - name: Audit dependencies
         run: pnpm audit --audit-level=high
