@@ -432,6 +432,35 @@ indefinidamente, con todos los checks en verde.
 poder comparar lo desplegado contra el tip de `main` en segundos, sin
 depender de que el commit traiga migración. Es su propio PR.
 
+## Producción puede tener catálogos desincronizados del seed y nada lo detecta
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo.
+
+`payment_methods` en Neon quedó con `requires_confirmation = false` en
+Transferencia, Yape y Plin — el seed (`apps/api/prisma/seed.ts`, líneas
+86-91) ya los define en `true`, pero la base se sembró una vez, antes de que
+eso fuera así, y el `buildCommand` de Render corre `db:deploy` pero nunca
+`db:seed`, así que la desincronización no se corrige sola. Se encontró por
+casualidad mirando el catálogo por otro motivo y se corrigió con la
+migración de datos `20260827180000_require_confirmation_wallet_payment_methods`.
+
+`container_types`, `products` y `roles` podrían tener el mismo problema —sus
+filas también solo se escriben por el seed— y no hay forma de saberlo sin
+consultarlos uno por uno contra producción.
+
+El seed es idempotente (todo `upsert`, salvo `Product.create` en la línea 74,
+que es un `create` y fallaría en la segunda corrida) y no crea datos de
+demo, así que agregar `pnpm db:seed` al `buildCommand` de Render es una
+opción viable a evaluar para que esto deje de poder repetirse — con esa
+salvedad. El upsert del usuario admin tampoco pisa la contraseña ya
+rotada en producción (`update: {}`, ver "Password del admin de producción"
+arriba), así que un re-seed no revierte eso.
+
+**Para cerrarla:** decisión de infraestructura de Giancarlo: agregar
+`pnpm db:seed` al `buildCommand` de Render (arreglando antes el `create` de
+la línea 74 para que sea idempotente), o algún otro mecanismo que detecte
+un catálogo desincronizado sin depender de que alguien lo note a ojo.
+
 ## Test flaky en apps/web: customers-page falla bajo carga
 
 **Estado:** abierto. **Disparador:** antes del piloto de campo.

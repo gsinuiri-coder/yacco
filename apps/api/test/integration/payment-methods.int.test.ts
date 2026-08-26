@@ -199,6 +199,26 @@ describe("GET /api/v1/payment-methods/:id", () => {
   });
 });
 
+describe("data migration: wallet payment methods require confirmation", () => {
+  // Guards the production discrepancy migration
+  // 20260827180000_require_confirmation_wallet_payment_methods fixed: Neon
+  // was seeded once before requiresConfirmation existed for these methods,
+  // and Render's build runs `db:deploy` but never `db:seed`, so a stale
+  // `false` never self-corrected on its own. Reads straight off
+  // payment_methods (not the seed's output, not the controller's response)
+  // so it goes red if that migration is ever reverted or edited.
+  test("Transferencia, Yape and Plin require confirmation; Efectivo does not", async () => {
+    const methods = await prisma.paymentMethod.findMany({
+      where: { name: { in: ["Efectivo", "Transferencia", "Yape", "Plin"] } },
+    });
+    const byName = new Map(methods.map((method) => [method.name, method.requiresConfirmation]));
+    expect(byName.get("Efectivo")).toBe(false);
+    expect(byName.get("Transferencia")).toBe(true);
+    expect(byName.get("Yape")).toBe(true);
+    expect(byName.get("Plin")).toBe(true);
+  });
+});
+
 describe("the roster loader's synthetic Apertura method", () => {
   test("after the loader runs, Apertura exists but does not appear in the default (active-only) listing", async () => {
     const loader = ctx.app.get(RosterLoaderService);
