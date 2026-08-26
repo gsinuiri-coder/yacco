@@ -16,6 +16,7 @@ import { OrdersModule } from "./modules/orders/orders.module.js";
 import { ProductsModule } from "./modules/products/products.module.js";
 import { ProductionBatchesModule } from "./modules/production-batches/production-batches.module.js";
 import { RosterLoaderModule } from "./modules/roster-loader/roster-loader.module.js";
+import { PaymentsModule } from "./modules/payments/payments.module.js";
 import { RoutesModule } from "./modules/routes/routes.module.js";
 import { SalesModule } from "./modules/sales/sales.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
@@ -41,6 +42,7 @@ import { ZonesModule } from "./modules/zones/zones.module.js";
     RosterLoaderModule,
     RoutesModule,
     SalesModule,
+    PaymentsModule,
     HealthModule,
     ZonesModule,
   ],

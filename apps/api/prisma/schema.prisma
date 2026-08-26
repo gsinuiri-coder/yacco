@@ -112,10 +112,15 @@ enum SyncOperationStatus {
 // CONFIRMED immediately; one from a method that does (Yape, tomorrow Plin)
 // is PENDING until someone at the office confirms seeing it land. A PENDING
 // payment never reduces a customer's debt in any balance/report — the money
-// hasn't been verified yet.
+// hasn't been verified yet. REJECTED is the office's other resolution: they
+// checked and the money never landed — the driver misread the app, the
+// transfer bounced, whatever the reason. It has nothing to revert: a PENDING
+// payment never touched debtBalance in the first place, so rejecting one is
+// a pure record of the finding, not a correction.
 enum PaymentStatus {
   PENDING
   CONFIRMED
+  REJECTED
 
   @@map("payment_status")
 }
@@ -154,6 +159,7 @@ model User {
   salesPriceOverridesAuthorized Sale[]               @relation("SalePriceOverrideAuthorizedBy")
   paymentsRecorded              Payment[]            @relation("PaymentRecordedBy")
   paymentsConfirmed             Payment[]            @relation("PaymentConfirmedBy")
+  paymentsRejected              Payment[]            @relation("PaymentRejectedBy")
   routeSettlements              RouteSettlement[]
   syncOperations                SyncOperation[]
 
@@ -606,6 +612,12 @@ model Payment {
   status           PaymentStatus @default(CONFIRMED)
   confirmedAt      DateTime?     @map("confirmed_at") @db.Timestamptz(6)
   confirmedById    String?       @map("confirmed_by") @db.Uuid
+  // The office's other resolution for a PENDING payment: checked, and the
+  // money never landed. Nothing to revert — see the enum comment — so there
+  // is no balance-side effect here, only the record of when, who, and why.
+  rejectedAt       DateTime?     @map("rejected_at") @db.Timestamptz(6)
+  rejectedById     String?       @map("rejected_by") @db.Uuid
+  rejectionReason  String?       @map("rejection_reason")
   // Marks the credit that carries the customer's favorable balance from the
   // paper ledger into the system at cutover — an advance or an un-returned
   // change, never a prepayment plan (decided with the plant owner). It is
@@ -624,6 +636,7 @@ model Payment {
   paymentMethod PaymentMethod     @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
   recordedBy    User              @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
   confirmedBy   User?             @relation("PaymentConfirmedBy", fields: [confirmedById], references: [id], onDelete: Restrict)
+  rejectedBy    User?             @relation("PaymentRejectedBy", fields: [rejectedById], references: [id], onDelete: Restrict)
 
   @@index([paidAt, paymentMethodId])
   @@map("payments")
