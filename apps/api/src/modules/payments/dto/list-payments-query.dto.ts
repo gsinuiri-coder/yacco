@@ -1,12 +1,34 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
-import { IsDateString, IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
+import { Transform, Type } from "class-transformer";
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Max,
+  Min,
+} from "class-validator";
 import { PaymentStatus } from "@prisma/client";
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
   MAX_LIMIT,
 } from "../../customers/dto/list-customers-query.dto.js";
+
+/**
+ * Query params arrive as strings, so booleans need an explicit transform —
+ * `Boolean("false")` is `true`. Anything other than "true"/"false" is left
+ * untouched so @IsBoolean reports it instead of it silently becoming false.
+ * Copied rather than imported — see ListPaymentMethodsQueryDto's own copy of
+ * this same helper for why.
+ */
+function toOptionalBoolean({ value }: { value: unknown }): unknown {
+  if (value === "true" || value === true) return true;
+  if (value === "false" || value === false) return false;
+  return value;
+}
 
 /**
  * `paidFrom`/`paidTo` are instants (ISO-8601), not business dates: `paidAt`
@@ -53,4 +75,19 @@ export class ListPaymentsQueryDto {
   @IsOptional()
   @IsDateString({}, { message: "La fecha hasta debe ser un instante válido (ISO-8601)" })
   paidTo?: string;
+
+  /**
+   * An opening credit is real debt on the account statement, but it's money
+   * that moved before the system existed — showing it in a period's
+   * collection list would mix it with cash actually received today. Default
+   * false: whoever audits the day's cutoff has to ask for it explicitly.
+   */
+  @ApiPropertyOptional({
+    default: false,
+    description: "Incluye los abonos de apertura del padrón; por defecto se excluyen",
+  })
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean({ message: "El filtro de aperturas debe ser verdadero o falso" })
+  includeOpeningBalance?: boolean;
 }

@@ -976,38 +976,38 @@ Principio de diseño: la escritura del repartidor en campo (entregas, autoventas
 
 Endpoints principales previstos (prefijo `/api/v1`):
 
-| Método         | Endpoint                            | Descripción                                                                            | Roles                 |
-| -------------- | ----------------------------------- | -------------------------------------------------------------------------------------- | --------------------- |
-| POST           | `/auth/login`                       | Inicio de sesión; emite tokens JWT                                                     | Público               |
-| POST           | `/auth/refresh`                     | Renovación del token de acceso                                                         | Autenticado           |
-| GET/POST/PATCH | `/users`                            | Gestión de usuarios y sus roles                                                        | ADMIN                 |
-| GET/POST/PATCH | `/customers`                        | Alta, edición y consulta de clientes                                                   | ADMIN, SELLER         |
-| GET            | `/customers/:id/account-statement`  | Estado de cuenta (cargos y pagos)                                                      | ADMIN, SELLER         |
-| GET            | `/customers/:id/container-balances` | Saldo de envases por tipo                                                              | ADMIN, SELLER, DRIVER |
-| PUT            | `/customers/:id/prices`             | Precios personalizados                                                                 | ADMIN                 |
-| PUT            | `/customers/:id/credit-limit`       | Límite de crédito                                                                      | ADMIN                 |
-| GET/POST/PATCH | `/zones`                            | Zonas y sus días de reparto                                                            | ADMIN                 |
-| GET            | `/products`                         | Catálogo con precio aplicable                                                          | Autenticado           |
-| GET            | `/payment-methods`                  | Catálogo de métodos de pago, con `requiresConfirmation`                                | ADMIN, SELLER, DRIVER |
-| POST           | `/production-batches`               | Registro de lote con responsable                                                       | ADMIN                 |
-| GET            | `/inventory/containers`             | Stock del parque por estado y tipo                                                     | ADMIN, SELLER         |
-| POST           | `/containers/entries`               | Ingreso de envases nuevos al parque                                                    | ADMIN                 |
-| POST           | `/containers/write-offs`            | Bajas por daño o pérdida                                                               | ADMIN                 |
-| GET/POST/PATCH | `/orders`                           | Pedidos de preventa                                                                    | ADMIN, SELLER         |
-| POST           | `/routes`                           | Creación de ruta (fija por zona o por pedidos)                                         | ADMIN                 |
-| POST           | `/routes/:id/loads`                 | Carga de la ruta (asignación FIFO)                                                     | ADMIN                 |
-| GET            | `/routes/:id`                       | Detalle de la ruta con paradas y carga                                                 | ADMIN, DRIVER         |
-| POST           | `/routes/:id/settlement`            | Liquidación de la ruta                                                                 | ADMIN                 |
-| POST           | `/payments`                         | Registro de pagos fuera de ruta                                                        | ADMIN, SELLER         |
-| GET            | `/payments`                         | Bandeja de pagos, con filtros (incluido por estado) y totales sobre el filtro completo | ADMIN, SELLER         |
-| POST           | `/payments/:id/confirm`             | Confirma un pago PENDING: recién ahí baja la deuda del cliente                         | ADMIN                 |
-| POST           | `/payments/:id/reject`              | Rechaza un pago PENDING: el dinero nunca llegó, la deuda no se toca                    | ADMIN                 |
-| GET            | `/reports/debt`                     | Deuda por cliente y total                                                              | ADMIN                 |
-| GET            | `/reports/loaned-containers`        | Envases prestados por cliente y tipo                                                   | ADMIN                 |
-| GET            | `/reports/collections`              | Cobranza por medio de pago y periodo                                                   | ADMIN                 |
-| GET            | `/reports/production`               | Producción por periodo y lote                                                          | ADMIN                 |
-| POST           | `/sync/operations`                  | Aplicación idempotente de operaciones offline                                          | DRIVER                |
-| POST           | `/evidence/presign`                 | URL prefirmada para subir una evidencia                                                | DRIVER                |
+| Método         | Endpoint                            | Descripción                                                                                                                                            | Roles                 |
+| -------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| POST           | `/auth/login`                       | Inicio de sesión; emite tokens JWT                                                                                                                     | Público               |
+| POST           | `/auth/refresh`                     | Renovación del token de acceso                                                                                                                         | Autenticado           |
+| GET/POST/PATCH | `/users`                            | Gestión de usuarios y sus roles                                                                                                                        | ADMIN                 |
+| GET/POST/PATCH | `/customers`                        | Alta, edición y consulta de clientes                                                                                                                   | ADMIN, SELLER         |
+| GET            | `/customers/:id/account-statement`  | Estado de cuenta (cargos y pagos)                                                                                                                      | ADMIN, SELLER         |
+| GET            | `/customers/:id/container-balances` | Saldo de envases por tipo                                                                                                                              | ADMIN, SELLER, DRIVER |
+| PUT            | `/customers/:id/prices`             | Precios personalizados                                                                                                                                 | ADMIN                 |
+| PUT            | `/customers/:id/credit-limit`       | Límite de crédito                                                                                                                                      | ADMIN                 |
+| GET/POST/PATCH | `/zones`                            | Zonas y sus días de reparto                                                                                                                            | ADMIN                 |
+| GET            | `/products`                         | Catálogo con precio aplicable                                                                                                                          | Autenticado           |
+| GET            | `/payment-methods`                  | Catálogo de métodos de pago, con `requiresConfirmation`                                                                                                | ADMIN, SELLER, DRIVER |
+| POST           | `/production-batches`               | Registro de lote con responsable                                                                                                                       | ADMIN                 |
+| GET            | `/inventory/containers`             | Stock del parque por estado y tipo                                                                                                                     | ADMIN, SELLER         |
+| POST           | `/containers/entries`               | Ingreso de envases nuevos al parque                                                                                                                    | ADMIN                 |
+| POST           | `/containers/write-offs`            | Bajas por daño o pérdida                                                                                                                               | ADMIN                 |
+| GET/POST/PATCH | `/orders`                           | Pedidos de preventa                                                                                                                                    | ADMIN, SELLER         |
+| POST           | `/routes`                           | Creación de ruta (fija por zona o por pedidos)                                                                                                         | ADMIN                 |
+| POST           | `/routes/:id/loads`                 | Carga de la ruta (asignación FIFO)                                                                                                                     | ADMIN                 |
+| GET            | `/routes/:id`                       | Detalle de la ruta con paradas y carga                                                                                                                 | ADMIN, DRIVER         |
+| POST           | `/routes/:id/settlement`            | Liquidación de la ruta                                                                                                                                 | ADMIN                 |
+| POST           | `/payments`                         | Registro de pagos fuera de ruta                                                                                                                        | ADMIN, SELLER         |
+| GET            | `/payments`                         | Bandeja de pagos, con filtros (incluido por estado); excluye abonos de apertura salvo `includeOpeningBalance=true`, y totales sobre el filtro completo | ADMIN, SELLER         |
+| POST           | `/payments/:id/confirm`             | Confirma un pago PENDING: recién ahí baja la deuda del cliente                                                                                         | ADMIN                 |
+| POST           | `/payments/:id/reject`              | Rechaza un pago PENDING: el dinero nunca llegó, la deuda no se toca                                                                                    | ADMIN                 |
+| GET            | `/reports/debt`                     | Deuda por cliente y total                                                                                                                              | ADMIN                 |
+| GET            | `/reports/loaned-containers`        | Envases prestados por cliente y tipo                                                                                                                   | ADMIN                 |
+| GET            | `/reports/collections`              | Cobranza por medio de pago y periodo                                                                                                                   | ADMIN                 |
+| GET            | `/reports/production`               | Producción por periodo y lote                                                                                                                          | ADMIN                 |
+| POST           | `/sync/operations`                  | Aplicación idempotente de operaciones offline                                                                                                          | DRIVER                |
+| POST           | `/evidence/presign`                 | URL prefirmada para subir una evidencia                                                                                                                | DRIVER                |
 
 > Diseño previsto: el detalle campo a campo de cada petición y respuesta vivirá en la especificación OpenAPI generada, no en este documento.
 

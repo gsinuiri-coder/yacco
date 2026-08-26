@@ -7,10 +7,12 @@ import {
 import { PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type {
+  CreateOfficePaymentResponseDto,
   PaginatedPaymentsDto,
   PaymentActionResponseDto,
   PaymentRowDto,
 } from "./dto/payment-response.dto.js";
+import type { CreateOfficePaymentDto } from "./dto/create-office-payment.dto.js";
 import type { ListPaymentsQueryDto } from "./dto/list-payments-query.dto.js";
 import type { RejectPaymentDto } from "./dto/reject-payment.dto.js";
 
@@ -48,7 +50,7 @@ function toPaymentRow(payment: PaymentWithRelations): PaymentRowDto {
 }
 
 function buildPaymentFilter(query: ListPaymentsQueryDto): Prisma.PaymentWhereInput {
-  const { status, paymentMethodId, customerId, paidFrom, paidTo } = query;
+  const { status, paymentMethodId, customerId, paidFrom, paidTo, includeOpeningBalance } = query;
   const from = paidFrom === undefined ? undefined : new Date(paidFrom);
   const to = paidTo === undefined ? undefined : new Date(paidTo);
 
@@ -60,6 +62,9 @@ function buildPaymentFilter(query: ListPaymentsQueryDto): Prisma.PaymentWhereInp
     ...(status !== undefined ? { status } : {}),
     ...(paymentMethodId !== undefined ? { paymentMethodId } : {}),
     ...(customerId !== undefined ? { customerId } : {}),
+    // Default excludes opening credits: real debt, but money that moved
+    // before the system existed — see includeOpeningBalance's own doc.
+    ...(includeOpeningBalance === true ? {} : { isOpeningBalance: false }),
     ...(from !== undefined || to !== undefined
       ? {
           paidAt: {
@@ -71,9 +76,128 @@ function buildPaymentFilter(query: ListPaymentsQueryDto): Prisma.PaymentWhereInp
   };
 }
 
+/**
+ * Same reasoning as SalesService.assertPositiveAmount: the DTO's
+ * `@Matches(MONEY_PATTERN)` already rejects a comma decimal, three decimals,
+ * a negative sign or a JSON number before this runs, through the
+ * ValidationPipe — this only adds the one thing a regex can't express, that
+ * "0.00" is syntactically money but never a valid collection.
+ */
+function assertPositiveAmount(amount: string): Prisma.Decimal {
+  const parsed = new Prisma.Decimal(amount);
+  if (parsed.lte(0)) {
+    throw new BadRequestException("El monto debe ser mayor que 0");
+  }
+  return parsed;
+}
+
+function assertPaymentNotFuture(paidAt: Date): void {
+  if (paidAt.getTime() > Date.now()) {
+    throw new BadRequestException("La fecha del pago no puede ser futura");
+  }
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * HU-18: a collection made at the plant or by transfer, outside a route —
+   * the counter recording it IS the authority confirming the money landed,
+   * unlike a driver's dispatch collection (registerStopDeliveryWithinTransaction),
+   * where a method with requiresConfirmation lands PENDING because nobody
+   * has yet seen the money arrive. Here the person typing this in IS looking
+   * at the phone/account where it just landed; asking them to "confirm"
+   * afterward what they just witnessed would be an empty extra step. So this
+   * always lands CONFIRMED, regardless of the payment method's
+   * requiresConfirmation — that column keeps governing the route path only.
+   *
+   * Overpayment is allowed on purpose: debtBalance can go negative (a real
+   * advance/favor balance, same concept as SalesService's opening credit),
+   * and blocking it would fight the one thing that lets the screen show
+   * "queda a favor S/10" instead of a raw validation error.
+   */
+  async createOfficePayment(
+    dto: CreateOfficePaymentDto,
+    actorId: string,
+  ): Promise<CreateOfficePaymentResponseDto> {
+    const amount = assertPositiveAmount(dto.amount);
+    const now = new Date();
+    const paidAt = dto.paidAt !== undefined ? new Date(dto.paidAt) : now;
+    assertPaymentNotFuture(paidAt);
+
+    return this.prisma.$transaction(async (tx) => {
+      const customer = await tx.customer.findUnique({
+        where: { id: dto.customerId },
+        select: { id: true, active: true, debtBalance: true },
+      });
+      if (customer === null) {
+        throw new NotFoundException(`El cliente "${dto.customerId}" no existe`);
+      }
+      if (!customer.active) {
+        throw new BadRequestException(`El cliente "${dto.customerId}" no está activo`);
+      }
+
+      if (dto.locationId !== undefined) {
+        const location = await tx.customerLocation.findUnique({
+          where: { id: dto.locationId },
+          select: { customerId: true },
+        });
+        if (location === null) {
+          throw new BadRequestException(`La locación "${dto.locationId}" no existe`);
+        }
+        if (location.customerId !== dto.customerId) {
+          throw new BadRequestException(
+            `La locación "${dto.locationId}" no pertenece a este cliente`,
+          );
+        }
+      }
+
+      const paymentMethod = await tx.paymentMethod.findUnique({
+        where: { id: dto.paymentMethodId },
+        select: { id: true, active: true },
+      });
+      if (paymentMethod === null) {
+        throw new BadRequestException(`El método de pago "${dto.paymentMethodId}" no existe`);
+      }
+      // Office collection blocks on an inactive method — unlike dispatch,
+      // which has no such gate. This is the only thing that keeps the
+      // synthetic "Apertura" method from being usable as a real collection.
+      if (!paymentMethod.active) {
+        throw new BadRequestException(`El método de pago "${dto.paymentMethodId}" no está activo`);
+      }
+
+      const payment = await tx.payment.create({
+        data: {
+          customerId: dto.customerId,
+          locationId: dto.locationId ?? null,
+          saleId: null,
+          stopId: null,
+          paymentMethodId: dto.paymentMethodId,
+          paidAt,
+          amount,
+          status: PaymentStatus.CONFIRMED,
+          confirmedAt: now,
+          confirmedById: actorId,
+          isOpeningBalance: false,
+          recordedById: actorId,
+        },
+        include: PAYMENT_INCLUDE,
+      });
+
+      const updatedCustomer = await tx.customer.update({
+        where: { id: dto.customerId },
+        data: { debtBalance: { decrement: amount } },
+        select: { debtBalance: true },
+      });
+
+      return {
+        payment: toPaymentRow(payment),
+        debtBalance: updatedCustomer.debtBalance.toFixed(2),
+        exceedsDebt: amount.gt(customer.debtBalance),
+      };
+    });
+  }
 
   /**
    * The office's confirmation tray: every payment, oldest paidAt first — the

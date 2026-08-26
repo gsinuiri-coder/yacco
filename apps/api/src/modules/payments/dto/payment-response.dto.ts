@@ -121,3 +121,19 @@ export class PaymentActionResponseDto {
   @ApiProperty({ type: String, example: "40.00" })
   debtBalance!: string;
 }
+
+/**
+ * Response of POST /payments. `exceedsDebt` is never an error — the office
+ * collection screen uses it to show "queda a favor S/X", and it is the only
+ * signal that a S/500 typed instead of S/50 landed where it shouldn't have.
+ */
+export class CreateOfficePaymentResponseDto {
+  @ApiProperty({ type: PaymentRowDto })
+  payment!: PaymentRowDto;
+
+  @ApiProperty({ type: String, example: "-10.00" })
+  debtBalance!: string;
+
+  @ApiProperty({ description: "true si el monto pagado superaba la deuda previa del cliente" })
+  exceedsDebt!: boolean;
+}

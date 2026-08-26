@@ -25,8 +25,13 @@ import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
+import { CreateOfficePaymentDto } from "./dto/create-office-payment.dto.js";
 import { ListPaymentsQueryDto } from "./dto/list-payments-query.dto.js";
-import { PaginatedPaymentsDto, PaymentActionResponseDto } from "./dto/payment-response.dto.js";
+import {
+  CreateOfficePaymentResponseDto,
+  PaginatedPaymentsDto,
+  PaymentActionResponseDto,
+} from "./dto/payment-response.dto.js";
 import { RejectPaymentDto } from "./dto/reject-payment.dto.js";
 import { PaymentsService } from "./payments.service.js";
 
@@ -46,6 +51,24 @@ import { PaymentsService } from "./payments.service.js";
 @Controller("payments")
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
+
+  @ApiOperation({
+    summary: "Cobranza de oficina: un pago fuera de ruta nace CONFIRMED (ADMIN, SELLER)",
+  })
+  @ApiResponse({ status: 201, type: CreateOfficePaymentResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      "Invalid amount, inactive customer/method, or location belongs to another customer",
+  })
+  @ApiNotFoundResponse({ description: "Customer does not exist" })
+  @Post()
+  create(
+    @Body() dto: CreateOfficePaymentDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<CreateOfficePaymentResponseDto> {
+    // recordedById/confirmedById come from the access token, never the body.
+    return this.paymentsService.createOfficePayment(dto, request.user.sub);
+  }
 
   @ApiOperation({
     summary: "Bandeja de pagos, con filtros y totales sobre el filtro completo",
