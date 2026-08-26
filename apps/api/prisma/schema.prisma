@@ -649,18 +649,27 @@ model Payment {
 // A settlement with a mismatch still closes: the difference and its reason
 // are recorded in notes; it never blocks.
 model RouteSettlement {
-  routeId          String   @id @map("route_id") @db.Uuid
-  fullOut          Int      @map("full_out")
-  fullDelivered    Int      @map("full_delivered")
-  fullSold         Int      @map("full_sold")
-  fullReturned     Int      @map("full_returned")
-  emptiesCollected Int      @map("empties_collected")
-  totalSold        Decimal  @map("total_sold") @db.Decimal(10, 2)
-  totalCollected   Decimal  @map("total_collected") @db.Decimal(10, 2)
-  totalOnCredit    Decimal  @map("total_on_credit") @db.Decimal(10, 2)
-  notes            String?
-  settledById      String   @map("settled_by") @db.Uuid
-  settledAt        DateTime @map("settled_at") @db.Timestamptz(6)
+  routeId                  String   @id @map("route_id") @db.Uuid
+  fullOut                  Int      @map("full_out")
+  fullDelivered            Int      @map("full_delivered")
+  fullSold                 Int      @map("full_sold")
+  fullReturned             Int      @map("full_returned")
+  emptiesCollected         Int      @map("empties_collected")
+  totalSold                Decimal  @map("total_sold") @db.Decimal(10, 2)
+  // totalCollected predates PaymentStatus and keeps meaning the WHOLE amount
+  // collected — cash the driver holds plus any Yape that might still be
+  // unconfirmed — so HU-17's identity (totalSold = totalCollected +
+  // totalOnCredit) stays exact. Nobody can count cash against that number,
+  // which is why these two columns split it: totalCashCollected is what the
+  // driver hands over physically; totalPendingConfirmation is the slice that
+  // can still evaporate once the office resolves it (see #66).
+  totalCollected           Decimal  @map("total_collected") @db.Decimal(10, 2)
+  totalCashCollected       Decimal  @map("total_cash_collected") @db.Decimal(10, 2)
+  totalPendingConfirmation Decimal  @map("total_pending_confirmation") @db.Decimal(10, 2)
+  totalOnCredit            Decimal  @map("total_on_credit") @db.Decimal(10, 2)
+  notes                    String?
+  settledById              String   @map("settled_by") @db.Uuid
+  settledAt                DateTime @map("settled_at") @db.Timestamptz(6)
 
   route     Route @relation(fields: [routeId], references: [id], onDelete: Restrict)
   settledBy User  @relation(fields: [settledById], references: [id], onDelete: Restrict)
