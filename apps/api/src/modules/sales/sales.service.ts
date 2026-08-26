@@ -1,9 +1,69 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { Prisma, type Payment, type Sale } from "@prisma/client";
+import {
+  ContainerMovementType,
+  ContainerState,
+  PaymentStatus,
+  Prisma,
+  ProductType,
+  type Payment,
+  type Sale,
+} from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
 import { MONEY_MESSAGE, MONEY_PATTERN } from "../customers/dto/create-customer.dto.js";
 import type { CreateOpeningChargeDto } from "./dto/create-opening-charge.dto.js";
 import type { CreateOpeningCreditDto } from "./dto/create-opening-credit.dto.js";
+
+export interface StopDeliveryItemInput {
+  productId: string;
+  quantity: number;
+  unitPrice?: string;
+}
+
+export interface StopDeliveryContainerReturnInput {
+  containerTypeId: string;
+  quantity: number;
+}
+
+export interface StopDeliveryPaymentInput {
+  paymentMethodId: string;
+  amount: string;
+}
+
+export interface RegisterStopDeliveryParams {
+  routeId: string;
+  stopId: string;
+  locationId: string;
+  items: StopDeliveryItemInput[];
+  containersReturned: StopDeliveryContainerReturnInput[];
+  payment?: StopDeliveryPaymentInput;
+  priceOverrideAuthorizedById?: string;
+  recordedById: string;
+}
+
+export interface StopDeliverySaleResult {
+  id: string;
+  total: string;
+  creditLimitExceeded: boolean;
+}
+
+export interface StopDeliveryPaymentResult {
+  id: string;
+  status: PaymentStatus;
+  amount: string;
+}
+
+export interface StopDeliveryContainerBalanceResult {
+  containerTypeId: string;
+  containerType: { id: string; name: string };
+  quantity: number;
+}
+
+export interface RegisterStopDeliveryResult {
+  sale: StopDeliverySaleResult;
+  payment: StopDeliveryPaymentResult | null;
+  containerBalances: StopDeliveryContainerBalanceResult[];
+}
 
 function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
@@ -116,14 +176,13 @@ async function getPrimaryLocationId(
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly containerMovementsService: ContainerMovementsService,
+  ) {}
 
   /**
-   * Two write methods, nothing else: this PR only carries the debt/credit a
-   * customer already had when the system went live. S4 will extend this
-   * module with the normal sales path — it is not designed for that here.
-   *
-   * Neither method has a controller. Opening money enters only through the
+   * Neither opening method has a controller. Opening money enters only through the
    * customer-roster loader, the same reasoning as OPENING_BALANCE and
    * COUNT_ADJUSTMENT on the container side: if either could be registered by
    * hand, someone could invent debt on a customer or forgive it with no
@@ -223,6 +282,11 @@ export class SalesService {
             paymentMethodId: dto.paymentMethodId,
             paidAt: dto.paidAt,
             amount,
+            // This money moved months before the system existed — there is
+            // no confirmation step to wait on, only a fact to record.
+            status: PaymentStatus.CONFIRMED,
+            confirmedAt: dto.paidAt,
+            confirmedById: recordedById,
             isOpeningBalance: true,
             recordedById,
           },
@@ -242,5 +306,346 @@ export class SalesService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Marking a route stop DELIVERED is not a status flip: it registers the
+   * whole delivery in one transaction — the sale, the container movements in
+   * both directions, and the collection if there was one. RoutesService
+   * opens the transaction (it owns the idempotent RouteStop status flip,
+   * `WHERE status = 'PENDING'` at the very start) and hands it here, so
+   * everything commits or rolls back together with that flip: the losing
+   * side of a concurrent double-mark leaves no sale, no movement and no
+   * payment behind.
+   *
+   * Price resolution mirrors CustomerPricesService.findEffectivePrices'
+   * precedence exactly — location price (for THIS location) > customer-wide
+   * price > the product's own listPrice, "the only place this rule lives"
+   * per that service's comment. This re-implements it scoped to the handful
+   * of products in one delivery (and inside THIS transaction) rather than
+   * calling back into that service, which would run outside it.
+   *
+   * A caller's unitPrice that disagrees with the resolved one is NOT
+   * rejected — the sale records what was actually charged — but it DOES
+   * require `priceOverrideAuthorizedById`: the fact is recorded, not
+   * blocked, same spirit as the credit-limit and stock checks below.
+   *
+   * Stock: LOAN_DELIVERY (REFILL products) and FULL_SALE (CONTAINER_SALE
+   * products) both draw from the same physical FULL_ON_ROUTE pile per
+   * container type, so the check is aggregated across both BEFORE any
+   * movement is written — delivering part of what the truck doesn't have is
+   * not a bookkeeping error, it's impossible, so this one blocks.
+   *
+   * `debtBalance` moves by the full sale total, then back down by the
+   * payment's amount ONLY if it is born CONFIRMED: a PENDING payment (a
+   * method with `requiresConfirmation`) has not been verified and must not
+   * reduce debt in any balance or report until the office confirms it.
+   * `creditLimitExceeded` (HU-09: a sale "al fiado") is checked against that
+   * SAME net delta, not the gross total — a sale fully collected on the spot
+   * extends no credit at all, however large, and must never be flagged.
+   */
+  async registerStopDeliveryWithinTransaction(
+    tx: Prisma.TransactionClient,
+    params: RegisterStopDeliveryParams,
+  ): Promise<RegisterStopDeliveryResult> {
+    const location = await tx.customerLocation.findUnique({
+      where: { id: params.locationId },
+      select: {
+        id: true,
+        customerId: true,
+        customer: { select: { id: true, creditLimit: true, debtBalance: true } },
+      },
+    });
+    if (location === null) {
+      throw new BadRequestException(`La locación "${params.locationId}" no existe`);
+    }
+    const customer = location.customer;
+
+    const productIds = [...new Set(params.items.map((item) => item.productId))];
+    const products = await tx.product.findMany({
+      where: { id: { in: productIds } },
+      select: {
+        id: true,
+        name: true,
+        active: true,
+        type: true,
+        containerTypeId: true,
+        listPrice: true,
+      },
+    });
+    if (products.length !== productIds.length) {
+      const found = new Set(products.map((product) => product.id));
+      const missing = productIds.filter((id) => !found.has(id));
+      throw new BadRequestException(`No existen los productos: ${missing.join(", ")}`);
+    }
+    const inactive = products.filter((product) => !product.active);
+    if (inactive.length > 0) {
+      const names = inactive.map((product) => `"${product.name}"`).join(", ");
+      throw new BadRequestException(`Ya no están a la venta los productos: ${names}`);
+    }
+    const productById = new Map(products.map((product) => [product.id, product] as const));
+    function requireProduct(productId: string): (typeof products)[number] {
+      const product = productById.get(productId);
+      if (product === undefined) {
+        throw new BadRequestException(`El producto "${productId}" no existe`);
+      }
+      return product;
+    }
+
+    // Same precedence as CustomerPricesService.findEffectivePrices: a
+    // location-specific price for THIS location, else a customer-wide one,
+    // else the product's own listPrice.
+    const customerPrices = await tx.customerPrice.findMany({
+      where: {
+        customerId: location.customerId,
+        productId: { in: productIds },
+        OR: [{ locationId: null }, { locationId: params.locationId }],
+      },
+    });
+    function resolvePrice(productId: string): Prisma.Decimal {
+      const locationPrice = customerPrices.find(
+        (price) => price.productId === productId && price.locationId === params.locationId,
+      );
+      if (locationPrice !== undefined) return locationPrice.price;
+      const customerPrice = customerPrices.find(
+        (price) => price.productId === productId && price.locationId === null,
+      );
+      if (customerPrice !== undefined) return customerPrice.price;
+      return requireProduct(productId).listPrice;
+    }
+
+    let hasOverride = false;
+    let total = new Prisma.Decimal(0);
+    const saleItemsData: { productId: string; quantity: number; unitPrice: Prisma.Decimal }[] = [];
+    for (const item of params.items) {
+      const resolved = resolvePrice(item.productId);
+      let unitPrice = resolved;
+      if (item.unitPrice !== undefined) {
+        unitPrice = assertPositiveAmount(item.unitPrice);
+        if (!unitPrice.equals(resolved)) {
+          hasOverride = true;
+        }
+      }
+      saleItemsData.push({ productId: item.productId, quantity: item.quantity, unitPrice });
+      total = total.plus(unitPrice.times(item.quantity));
+    }
+
+    if (hasOverride && params.priceOverrideAuthorizedById === undefined) {
+      throw new BadRequestException(
+        "El precio cobrado difiere del precio pactado; falta quién lo autorizó (priceOverrideAuthorizedById)",
+      );
+    }
+    if (params.priceOverrideAuthorizedById !== undefined) {
+      const authorizer = await tx.user.findUnique({
+        where: { id: params.priceOverrideAuthorizedById },
+        select: { id: true },
+      });
+      if (authorizer === null) {
+        throw new BadRequestException(
+          `El usuario "${params.priceOverrideAuthorizedById}" no existe`,
+        );
+      }
+    }
+
+    // Stock check, aggregated per container type across REFILL and
+    // CONTAINER_SALE items alike (both draw fulls off the same truck) —
+    // BEFORE any movement is written.
+    const deliveredByContainerType = new Map<string, number>();
+    for (const item of params.items) {
+      const product = requireProduct(item.productId);
+      deliveredByContainerType.set(
+        product.containerTypeId,
+        (deliveredByContainerType.get(product.containerTypeId) ?? 0) + item.quantity,
+      );
+    }
+    for (const [containerTypeId, requested] of deliveredByContainerType) {
+      const available = await this.containerMovementsService.getRouteFullStock(
+        tx,
+        params.routeId,
+        containerTypeId,
+      );
+      if (available < requested) {
+        const containerType = await tx.containerType.findUnique({
+          where: { id: containerTypeId },
+          select: { name: true },
+        });
+        throw new BadRequestException(
+          `Stock insuficiente de "${containerType?.name ?? containerTypeId}" en el camión: hay ${available}, se pidió ${requested}`,
+        );
+      }
+    }
+
+    // Payment, if any: status comes from the method's requiresConfirmation,
+    // never from the caller.
+    let resolvedPayment: {
+      amount: Prisma.Decimal;
+      status: PaymentStatus;
+      paymentMethodId: string;
+    } | null = null;
+    if (params.payment !== undefined) {
+      const amount = assertPositiveAmount(params.payment.amount);
+      const paymentMethod = await tx.paymentMethod.findUnique({
+        where: { id: params.payment.paymentMethodId },
+        select: { id: true, active: true, requiresConfirmation: true },
+      });
+      if (paymentMethod === null) {
+        throw new BadRequestException(
+          `El método de pago "${params.payment.paymentMethodId}" no existe`,
+        );
+      }
+      if (!paymentMethod.active) {
+        throw new BadRequestException(
+          `El método de pago "${params.payment.paymentMethodId}" no está activo`,
+        );
+      }
+      resolvedPayment = {
+        amount,
+        status: paymentMethod.requiresConfirmation
+          ? PaymentStatus.PENDING
+          : PaymentStatus.CONFIRMED,
+        paymentMethodId: paymentMethod.id,
+      };
+    }
+
+    // debtBalance moves by the full sale total, then back down by the
+    // payment ONLY if it is born CONFIRMED — see the method doc.
+    const debtDelta =
+      resolvedPayment !== null && resolvedPayment.status === PaymentStatus.CONFIRMED
+        ? total.minus(resolvedPayment.amount)
+        : total;
+
+    // Alert, never block (CLAUDE.md). HU-09: the check is about a sale "al
+    // fiado" — computed from the NET increase to debtBalance (debtDelta),
+    // not the gross sale total: a sale collected in full on the spot (a
+    // CONFIRMED payment covering it) extends no credit at all, however big
+    // the total, and must not be flagged as exceeding the limit.
+    const creditLimitExceeded =
+      customer.creditLimit !== null &&
+      customer.debtBalance.plus(debtDelta).gt(customer.creditLimit);
+
+    await tx.customer.update({
+      where: { id: customer.id },
+      data: { debtBalance: { increment: debtDelta } },
+    });
+
+    const now = new Date();
+    const sale = await tx.sale.create({
+      data: {
+        locationId: params.locationId,
+        stopId: params.stopId,
+        soldAt: now,
+        total,
+        creditLimitExceeded,
+        priceOverrideAuthorizedById: params.priceOverrideAuthorizedById ?? null,
+        recordedById: params.recordedById,
+        items: { create: saleItemsData },
+      },
+    });
+
+    let paymentResult: StopDeliveryPaymentResult | null = null;
+    if (resolvedPayment !== null) {
+      const confirmed = resolvedPayment.status === PaymentStatus.CONFIRMED;
+      const payment = await tx.payment.create({
+        data: {
+          customerId: customer.id,
+          locationId: params.locationId,
+          saleId: sale.id,
+          stopId: params.stopId,
+          paymentMethodId: resolvedPayment.paymentMethodId,
+          paidAt: now,
+          amount: resolvedPayment.amount,
+          status: resolvedPayment.status,
+          confirmedAt: confirmed ? now : null,
+          confirmedById: confirmed ? params.recordedById : null,
+          recordedById: params.recordedById,
+        },
+      });
+      paymentResult = { id: payment.id, status: payment.status, amount: payment.amount.toFixed(2) };
+    }
+
+    // Envases entregados: REFILL sells the water and the container stays on
+    // loan (LOAN_DELIVERY, adds to the customer's container balance);
+    // CONTAINER_SALE sells the container outright (FULL_SALE, leaves the
+    // fleet, balance untouched) — see container-movement-transitions.ts and
+    // the spec glossary on FULL_SALE.
+    const balanceTouchedContainerTypeIds = new Set<string>();
+    const deliveryGroups = new Map<string, Map<ContainerMovementType, number>>();
+    for (const item of params.items) {
+      const product = requireProduct(item.productId);
+      const movementType =
+        product.type === ProductType.REFILL
+          ? ContainerMovementType.LOAN_DELIVERY
+          : ContainerMovementType.FULL_SALE;
+      const byType =
+        deliveryGroups.get(product.containerTypeId) ?? new Map<ContainerMovementType, number>();
+      byType.set(movementType, (byType.get(movementType) ?? 0) + item.quantity);
+      deliveryGroups.set(product.containerTypeId, byType);
+      if (movementType === ContainerMovementType.LOAN_DELIVERY) {
+        balanceTouchedContainerTypeIds.add(product.containerTypeId);
+      }
+    }
+    for (const [containerTypeId, byType] of deliveryGroups) {
+      for (const [movementType, quantity] of byType) {
+        await this.containerMovementsService.createWithinTransaction(
+          tx,
+          {
+            type: movementType,
+            containerTypeId,
+            quantity,
+            fromState: ContainerState.FULL_ON_ROUTE,
+            locationId: params.locationId,
+            // FULL_SALE has no toState (spec: it leaves the fleet entirely);
+            // the key must be OMITTED, not set to undefined, to satisfy
+            // exactOptionalPropertyTypes on CreateContainerMovementDto.
+            ...(movementType === ContainerMovementType.LOAN_DELIVERY
+              ? { toState: ContainerState.WITH_CUSTOMER }
+              : {}),
+          },
+          params.recordedById,
+          { routeId: params.routeId, stopId: params.stopId },
+        );
+      }
+    }
+
+    // Envases devueltos: applied in full even on a partial return — the
+    // resulting balance is reported below, never validated against
+    // anything (CLAUDE.md: alert, don't block).
+    for (const item of params.containersReturned) {
+      await this.containerMovementsService.createWithinTransaction(
+        tx,
+        {
+          type: ContainerMovementType.EMPTY_PICKUP,
+          containerTypeId: item.containerTypeId,
+          quantity: item.quantity,
+          fromState: ContainerState.WITH_CUSTOMER,
+          toState: ContainerState.EMPTY_ON_ROUTE,
+          locationId: params.locationId,
+        },
+        params.recordedById,
+        { routeId: params.routeId, stopId: params.stopId },
+      );
+      balanceTouchedContainerTypeIds.add(item.containerTypeId);
+    }
+
+    const balances =
+      balanceTouchedContainerTypeIds.size === 0
+        ? []
+        : await tx.customerContainerBalance.findMany({
+            where: {
+              locationId: params.locationId,
+              containerTypeId: { in: [...balanceTouchedContainerTypeIds] },
+            },
+            include: { containerType: { select: { id: true, name: true } } },
+          });
+
+    return {
+      sale: { id: sale.id, total: sale.total.toFixed(2), creditLimitExceeded },
+      payment: paymentResult,
+      containerBalances: balances.map((balance) => ({
+        containerTypeId: balance.containerTypeId,
+        containerType: balance.containerType,
+        quantity: balance.quantity,
+      })),
+    };
   }
 }

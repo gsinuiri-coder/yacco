@@ -30,6 +30,7 @@ import type { AuthenticatedRequest } from "../auth/types/authenticated-request.j
 import { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import { CreateRouteStopDto } from "./dto/create-route-stop.dto.js";
 import { CreateRouteDto } from "./dto/create-route.dto.js";
+import { FindRouteQueryDto } from "./dto/find-route-query.dto.js";
 import { ListRoutesQueryDto } from "./dto/list-routes-query.dto.js";
 import { MarkRouteStopDto } from "./dto/mark-route-stop.dto.js";
 import { ReorderRouteStopsDto } from "./dto/reorder-route-stops.dto.js";
@@ -92,15 +93,19 @@ export class RoutesController {
     return this.routesService.findAll(query, actorFrom(request));
   }
 
-  @ApiOperation({ summary: "Detalle de una ruta con sus paradas ordenadas" })
+  @ApiOperation({
+    summary: "Detalle de una ruta con sus paradas ordenadas",
+    description: "?stopStatus=PENDING muestra solo lo que le falta resolver a la oficina",
+  })
   @ApiResponse({ status: 200, type: RouteResponseDto })
   @ApiNotFoundResponse({ description: "Route id does not exist" })
   @Get(":id")
   findOne(
     @Param("id", ParseUUIDPipe) id: string,
+    @Query() query: FindRouteQueryDto,
     @Req() request: AuthenticatedRequest,
   ): Promise<RouteResponseDto> {
-    return this.routesService.findOne(id, actorFrom(request));
+    return this.routesService.findOne(id, actorFrom(request), query);
   }
 
   @ApiOperation({ summary: "Inicia la ruta: PLANNED -> IN_PROGRESS" })
@@ -162,12 +167,28 @@ export class RoutesController {
     return this.routesService.reorderStops(id, dto, actorFrom(request));
   }
 
-  @ApiOperation({ summary: "Marca una parada como entregada o fallida" })
+  // Known gap, accepted deliberately (not an oversight): spec §4.3 says field
+  // writes from a driver enter through ONE idempotent door, POST
+  // /sync/operations, never an individual endpoint — and HU-12/HU-13 (what
+  // DELIVERED now registers) are S6/S7 "móvil offline" stories, built on a
+  // sync module that doesn't exist yet. Until it does, this classic REST
+  // PATCH is the DRIVER's only way to register a delivery, same as it
+  // already was for the plain status flip before this PR. Revisit — tighten
+  // this to ADMIN/SELLER only, or move the write behind /sync/operations —
+  // once the sync module ships.
+  @ApiOperation({
+    summary: "Marca una parada como entregada o fallida",
+    description:
+      "DELIVERED registra la venta, los movimientos de envases en ambos sentidos y el cobro si lo hubo, todo en una transacción",
+  })
   @ApiResponse({ status: 200, type: RouteStopResponseDto })
   @ApiNotFoundResponse({ description: "Route or stop id does not exist" })
-  @ApiBadRequestResponse({ description: "FAILED with no reason, or DELIVERED with one" })
+  @ApiBadRequestResponse({
+    description:
+      "Validation failed, a product/payment method doesn't exist, or a price override with no authorizer",
+  })
   @ApiConflictResponse({
-    description: "Route is not IN_PROGRESS, or the stop is no longer PENDING",
+    description: "Route is not IN_PROGRESS, or the stop is no longer PENDING (already resolved)",
   })
   @Patch(":id/stops/:stopId")
   markStop(

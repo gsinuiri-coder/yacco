@@ -17,10 +17,14 @@ const ROUTE_DATE = "2026-08-25";
 
 // One route per driver per day, so tests that need several fresh routes for
 // the same driver each need a distinct date — sequential days starting well
-// past every fixed date literal used elsewhere in this file.
-let nextDay = 1;
+// past every fixed date literal used elsewhere in this file. Computed via
+// real date arithmetic (not string padding) so it rolls over past day 30
+// into December, January, etc. instead of ever emitting "2026-11-31".
+let nextDayOffset = 0;
 function nextDate(): string {
-  return `2026-11-${String(nextDay++).padStart(2, "0")}`;
+  const date = new Date(Date.UTC(2026, 10, 1) + nextDayOffset * 24 * 60 * 60 * 1000);
+  nextDayOffset += 1;
+  return date.toISOString().slice(0, 10);
 }
 
 let ctx: TestAppContext;
@@ -36,6 +40,9 @@ let customerId: string;
 let locationId: string;
 let refillProductId: string;
 let containerTypeId: string;
+let adminUserId: string;
+let cashPaymentMethodId: string;
+let yapePaymentMethodId: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -140,6 +147,70 @@ async function addLoad(
     .send({ batchItemId, quantity });
 }
 
+let dispatchCustomerSeq = 0;
+/** An independent customer+location per dispatch test, so debt/container
+ * balance assertions never depend on what an earlier test in this file did. */
+async function createFreshLocation(): Promise<{ customerId: string; locationId: string }> {
+  dispatchCustomerSeq += 1;
+  const customer = await request(server())
+    .post("/api/v1/customers")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: `Cliente Despacho ${dispatchCustomerSeq}`,
+      phone: `98600${String(dispatchCustomerSeq).padStart(4, "0")}`,
+      address: "Av. Despacho 1",
+      addressReference: "Reja verde",
+    })
+    .expect(201);
+  const location = await prisma.customerLocation.findFirstOrThrow({
+    where: { customerId: customer.body.id },
+  });
+  return { customerId: customer.body.id, locationId: location.id };
+}
+
+/** A fresh IN_PROGRESS route with one VAN_SALE stop and `loadedQty` fulls on the truck. */
+async function routeInProgressWithStock(
+  loadedQty: number,
+  stopLocationId: string,
+): Promise<{ routeId: string; stopId: string }> {
+  const batchItemId = await createBatchItem(loadedQty);
+  const routeId = await createRoute(adminToken, { date: nextDate() });
+  await addLoad(adminToken, routeId, batchItemId, loadedQty).then((r) =>
+    expect(r.status).toBe(201),
+  );
+  const stopResponse = await request(server())
+    .post(`/api/v1/routes/${routeId}/stops`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ origin: StopOrigin.VAN_SALE, locationId: stopLocationId })
+    .expect(201);
+  await startRoute(adminToken, routeId);
+  return { routeId, stopId: stopResponse.body.id };
+}
+
+async function deliverStop(
+  token: string,
+  routeId: string,
+  stopId: string,
+  body: Record<string, unknown>,
+): Promise<request.Test> {
+  return request(server())
+    .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: StopStatus.DELIVERED, ...body });
+}
+
+async function customerDebtBalance(id: string): Promise<string> {
+  const customer = await prisma.customer.findUniqueOrThrow({ where: { id } });
+  return customer.debtBalance.toFixed(2);
+}
+
+async function containerBalance(location: string): Promise<number> {
+  const balance = await prisma.customerContainerBalance.findUnique({
+    where: { locationId_containerTypeId: { locationId: location, containerTypeId } },
+  });
+  return balance?.quantity ?? 0;
+}
+
 beforeAll(async () => {
   ctx = await startTestApp();
   prisma = ctx.app.get(PrismaService);
@@ -185,6 +256,14 @@ beforeAll(async () => {
     },
   });
   refillProductId = product.id;
+
+  const admin = await prisma.user.findFirstOrThrow({ where: { username: ADMIN_USERNAME } });
+  adminUserId = admin.id;
+  cashPaymentMethodId = (
+    await prisma.paymentMethod.findFirstOrThrow({ where: { name: "Efectivo" } })
+  ).id;
+  yapePaymentMethodId = (await prisma.paymentMethod.findFirstOrThrow({ where: { name: "Yape" } }))
+    .id;
 }, 180000);
 
 afterAll(async () => {
@@ -640,8 +719,19 @@ describe("POST /api/v1/routes/:id/stops", () => {
 });
 
 describe("PATCH /api/v1/routes/:id/stops/:stopId", () => {
+  // Loaded with stock (unlike a bare PLANNED->IN_PROGRESS route) so a plain
+  // DELIVERED mark in this describe block — which now always registers a
+  // real delivery — has fulls on the truck to deliver. A function, not a
+  // plain const: `describe` bodies run at file-load time, before `beforeAll`
+  // has set `refillProductId`, so a value computed eagerly here would bake
+  // in `undefined`.
+  function oneItem() {
+    return [{ productId: refillProductId, quantity: 1 }];
+  }
   async function inProgressRouteWithStop(): Promise<{ routeId: string; stopId: string }> {
+    const batchItemId = await createBatchItem(10);
     const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addLoad(adminToken, routeId, batchItemId, 10).then((r) => expect(r.status).toBe(201));
     const stopId = await addVanSaleStop(adminToken, routeId);
     await startRoute(adminToken, routeId);
     return { routeId, stopId };
@@ -653,7 +743,7 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId", () => {
     const response = await request(server())
       .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
       .set("Authorization", `Bearer ${driverToken}`)
-      .send({ status: StopStatus.DELIVERED });
+      .send({ status: StopStatus.DELIVERED, items: oneItem() });
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe(StopStatus.DELIVERED);
@@ -713,7 +803,7 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId", () => {
     await request(server())
       .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
       .set("Authorization", `Bearer ${driverToken}`)
-      .send({ status: StopStatus.DELIVERED })
+      .send({ status: StopStatus.DELIVERED, items: oneItem() })
       .expect(200);
 
     const response = await request(server())
@@ -731,7 +821,7 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId", () => {
     const response = await request(server())
       .patch(`/api/v1/routes/${routeId}/stops/${MISSING_UUID}`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ status: StopStatus.DELIVERED });
+      .send({ status: StopStatus.DELIVERED, items: oneItem() });
 
     expect(response.status).toBe(404);
   });
@@ -1082,6 +1172,330 @@ describe("DELETE /api/v1/routes/:id/loads/:loadId", () => {
       .set("Authorization", `Bearer ${driverToken}`);
 
     expect(response.status).toBe(403);
+  });
+});
+
+// HU-12 §2.4 E1 (canje 1:1) and E2 (deuda de envases — devolución parcial):
+// "Dado una parada con 3 llenos a entregar, cuando registro 3 entregados y 3
+// vacíos recogidos, entonces el saldo del cliente no varía" (E1); una
+// devolución parcial deja el saldo a favor del envase (E2). HU-13 §2.4 E1
+// (cobro): "Dado un total de S/ 40, cuando registro un pago de S/ 25,
+// entonces se registra el abono y la deuda del cliente aumenta en S/ 15."
+// The idempotency guard below (a stop already DELIVERED cannot be
+// re-marked) is this PR's own addition, ahead of HU-16's sync-envelope
+// idempotency (S7) — see the PR description for why this ships as a
+// classic REST endpoint rather than through /sync/operations already.
+describe("PATCH /api/v1/routes/:id/stops/:stopId — DELIVERED registers the delivery", () => {
+  test("happy path: sale, LOAN_DELIVERY movement, cash payment CONFIRMED, debt reduced by the payment", async () => {
+    const { customerId: custId, locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "37.50" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe(StopStatus.DELIVERED);
+    expect(response.body.sale).toMatchObject({ total: "37.50", creditLimitExceeded: false });
+    expect(response.body.payment).toMatchObject({ status: "CONFIRMED", amount: "37.50" });
+
+    // Cash fully covers the sale: 37.50 (sale) - 37.50 (confirmed payment) = 0.
+    expect(await customerDebtBalance(custId)).toBe("0.00");
+    expect(await containerBalance(locId)).toBe(3);
+
+    const movement = await prisma.containerMovement.findFirstOrThrow({
+      where: { stopId, type: ContainerMovementType.LOAN_DELIVERY },
+    });
+    expect(movement.fromState).toBe(ContainerState.FULL_ON_ROUTE);
+    expect(movement.toState).toBe(ContainerState.WITH_CUSTOMER);
+    expect(movement.quantity).toBe(3);
+    expect(movement.routeId).toBe(routeId);
+
+    const sale = await prisma.sale.findFirstOrThrow({ where: { stopId } });
+    expect(sale.recordedById).toBeTruthy();
+  });
+
+  test("a Yape payment is born PENDING and does not reduce the customer's debt", async () => {
+    const { customerId: custId, locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 2 }],
+      payment: { paymentMethodId: yapePaymentMethodId, amount: "25.00" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.payment).toMatchObject({ status: "PENDING", amount: "25.00" });
+    // Debt reflects the full sale — the PENDING payment has not been verified yet.
+    expect(await customerDebtBalance(custId)).toBe("25.00");
+
+    const payment = await prisma.payment.findFirstOrThrow({ where: { stopId } });
+    expect(payment.confirmedAt).toBeNull();
+    expect(payment.confirmedById).toBeNull();
+  });
+
+  test("a price override with no priceOverrideAuthorizedById is rejected, and nothing is recorded", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1, unitPrice: "15.00" }],
+    });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("priceOverrideAuthorizedById");
+
+    const stop = await prisma.routeStop.findUniqueOrThrow({ where: { id: stopId } });
+    expect(stop.status).toBe(StopStatus.PENDING);
+    const sale = await prisma.sale.findFirst({ where: { stopId } });
+    expect(sale).toBeNull();
+  });
+
+  test("a price override WITH priceOverrideAuthorizedById is recorded at the charged price", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1, unitPrice: "15.00" }],
+      priceOverrideAuthorizedById: adminUserId,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.sale.total).toBe("15.00");
+    const sale = await prisma.sale.findFirstOrThrow({ where: { stopId } });
+    expect(sale.priceOverrideAuthorizedById).toBe(adminUserId);
+  });
+
+  test("a partial container return proceeds and reports the resulting balance", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+      containersReturned: [{ containerTypeId, quantity: 1 }],
+    });
+
+    expect(response.status).toBe(200);
+    // Delivered 3 (balance +3), returned only 1 (balance -1) => net +2.
+    expect(response.body.containerBalances).toEqual(
+      expect.arrayContaining([expect.objectContaining({ containerTypeId, quantity: 2 })]),
+    );
+    expect(await containerBalance(locId)).toBe(2);
+
+    const pickup = await prisma.containerMovement.findFirstOrThrow({
+      where: { stopId, type: ContainerMovementType.EMPTY_PICKUP },
+    });
+    expect(pickup.fromState).toBe(ContainerState.WITH_CUSTOMER);
+    expect(pickup.toState).toBe(ContainerState.EMPTY_ON_ROUTE);
+    expect(pickup.quantity).toBe(1);
+  });
+
+  test("HU-12 E1: delivering 3 and getting 3 back (a 1:1 exchange) leaves the customer's container balance unchanged", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+      containersReturned: [{ containerTypeId, quantity: 3 }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.containerBalances).toEqual(
+      expect.arrayContaining([expect.objectContaining({ containerTypeId, quantity: 0 })]),
+    );
+    expect(await containerBalance(locId)).toBe(0);
+  });
+
+  test("insufficient stock on the truck blocks the delivery, naming how much there is and how much was requested", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(2, locId);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 5 }],
+    });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("hay 2, se pidió 5");
+
+    const stop = await prisma.routeStop.findUniqueOrThrow({ where: { id: stopId } });
+    expect(stop.status).toBe(StopStatus.PENDING);
+    expect(await prisma.sale.findFirst({ where: { stopId } })).toBeNull();
+    expect(
+      await prisma.containerMovement.findFirst({
+        where: { stopId, type: ContainerMovementType.LOAN_DELIVERY },
+      }),
+    ).toBeNull();
+  });
+
+  test("double-marking the same stop is rejected, naming the date and who registered it", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    const items = [{ productId: refillProductId, quantity: 1 }];
+    await deliverStop(adminToken, routeId, stopId, { items }).then((r) =>
+      expect(r.status).toBe(200),
+    );
+
+    const response = await deliverStop(adminToken, routeId, stopId, { items });
+
+    expect(response.status).toBe(409);
+    expect(messagesOf(response)).toMatch(/ya fue registrada/);
+    // Exactly one sale/movement from the first call — the rejected retry left nothing.
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(1);
+  });
+
+  test("real concurrency: two requests marking the same stop — exactly one wins, the loser leaves no trace", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    const items = [{ productId: refillProductId, quantity: 1 }];
+
+    const [first, second] = await Promise.all([
+      deliverStop(adminToken, routeId, stopId, { items }),
+      deliverStop(adminToken, routeId, stopId, { items }),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(1);
+    expect(
+      await prisma.containerMovement.count({
+        where: { stopId, type: ContainerMovementType.LOAN_DELIVERY },
+      }),
+    ).toBe(1);
+  });
+
+  test("refuses to deliver a stop on a route that already FINISHED", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    });
+
+    expect(response.status).toBe(409);
+    expect(await prisma.sale.findFirst({ where: { stopId } })).toBeNull();
+  });
+
+  test("a DRIVER cannot deliver a stop on another driver's route", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await deliverStop(otherDriverToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    });
+
+    expect(response.status).toBe(403);
+    expect(await prisma.sale.findFirst({ where: { stopId } })).toBeNull();
+  });
+
+  test("the assigned DRIVER can deliver their own route's stop", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const batchItemId = await createBatchItem(10);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addLoad(adminToken, routeId, batchItemId, 10).then((r) => expect(r.status).toBe(201));
+    const stopResponse = await request(server())
+      .post(`/api/v1/routes/${routeId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.VAN_SALE, locationId: locId })
+      .expect(201);
+    await startRoute(driverToken, routeId);
+
+    const response = await deliverStop(driverToken, routeId, stopResponse.body.id, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  test("flags creditLimitExceeded without blocking the sale", async () => {
+    const customer = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        name: "Cliente Límite",
+        phone: "986999999",
+        address: "Av. Límite 1",
+        addressReference: "Portón rojo",
+        creditLimit: "10.00",
+      })
+      .expect(201);
+    const location = await prisma.customerLocation.findFirstOrThrow({
+      where: { customerId: customer.body.id },
+    });
+    const { routeId, stopId } = await routeInProgressWithStock(10, location.id);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 2 }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.sale.creditLimitExceeded).toBe(true);
+  });
+
+  test("regression: a sale fully covered by a same-visit cash payment is NOT flagged as exceeding the credit limit", async () => {
+    const customer = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        name: "Cliente Límite Cubierto",
+        phone: "986999998",
+        address: "Av. Límite 2",
+        addressReference: "Portón azul",
+        creditLimit: "10.00",
+      })
+      .expect(201);
+    const location = await prisma.customerLocation.findFirstOrThrow({
+      where: { customerId: customer.body.id },
+    });
+    const { routeId, stopId } = await routeInProgressWithStock(10, location.id);
+
+    // Sale total (25.00) alone exceeds the 10.00 limit, but cash covers it
+    // in full: no credit was ever extended, so this must NOT be flagged.
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 2 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "25.00" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.sale.creditLimitExceeded).toBe(false);
+    expect(await customerDebtBalance(customer.body.id)).toBe("0.00");
+  });
+
+  test("HU-13 E1: a partial cash payment (25 of 40) leaves exactly the residual (15) as the customer's debt", async () => {
+    const { customerId: custId, locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1, unitPrice: "40.00" }],
+      priceOverrideAuthorizedById: adminUserId,
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "25.00" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.sale.total).toBe("40.00");
+    expect(await customerDebtBalance(custId)).toBe("15.00");
+  });
+});
+
+describe("GET /api/v1/routes/:id?stopStatus filters the stops shown", () => {
+  test("only PENDING stops come back when filtering by stopStatus=PENDING", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    const secondStopId = await addVanSaleStop(adminToken, routeId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    const response = await request(server())
+      .get(`/api/v1/routes/${routeId}?stopStatus=PENDING`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.stops.map((stop: { id: string }) => stop.id)).toEqual([secondStopId]);
   });
 });
 

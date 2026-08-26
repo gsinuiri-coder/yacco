@@ -17,6 +17,8 @@ import {
 import { jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
+import { SalesService } from "../sales/sales.service.js";
+import type { RegisterStopDeliveryResult } from "../sales/sales.service.js";
 import { RoutesService } from "./routes.service.js";
 import type { RouteActor } from "./routes.service.js";
 import { DEFAULT_LIMIT, DEFAULT_PAGE } from "./dto/list-routes-query.dto.js";
@@ -144,6 +146,10 @@ function buildPrismaMock() {
     zone: { findUnique: jest.fn<() => Promise<unknown>>() },
     order: { findUnique: jest.fn<() => Promise<unknown>>() },
     customerLocation: { findUnique: jest.fn<() => Promise<unknown>>() },
+    // Only reached by throwAlreadyMarkedConflict, to name the date/who of an
+    // already-DELIVERED stop; defaults to "no sale on file" so every markStop
+    // test not concerned with that message keeps working unmodified.
+    sale: { findFirst: jest.fn<() => Promise<unknown>>() },
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
 }
@@ -152,10 +158,26 @@ function buildContainerMovementsMock() {
   return { createWithinTransaction: jest.fn<() => Promise<unknown>>() };
 }
 
+function buildSalesMock() {
+  return { registerStopDeliveryWithinTransaction: jest.fn<() => Promise<unknown>>() };
+}
+
+function buildDeliveryResult(
+  overrides: Partial<RegisterStopDeliveryResult> = {},
+): RegisterStopDeliveryResult {
+  return {
+    sale: { id: "sale-1", total: "12.50", creditLimitExceeded: false },
+    payment: null,
+    containerBalances: [],
+    ...overrides,
+  };
+}
+
 describe("RoutesService", () => {
   let service: RoutesService;
   let prisma: ReturnType<typeof buildPrismaMock>;
   let containerMovements: ReturnType<typeof buildContainerMovementsMock>;
+  let sales: ReturnType<typeof buildSalesMock>;
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
@@ -164,13 +186,16 @@ describe("RoutesService", () => {
     prisma.$transaction.mockImplementation((arg) =>
       Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => Promise<unknown>)(prisma),
     );
+    prisma.sale.findFirst.mockResolvedValue(null);
     containerMovements = buildContainerMovementsMock();
+    sales = buildSalesMock();
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         RoutesService,
         { provide: PrismaService, useValue: prisma },
         { provide: ContainerMovementsService, useValue: containerMovements },
+        { provide: SalesService, useValue: sales },
       ],
     }).compile();
 
@@ -337,6 +362,24 @@ describe("RoutesService", () => {
       await expect(service.findOne(ROUTE_ID, otherDriverActor)).rejects.toBeInstanceOf(
         ForbiddenException,
       );
+    });
+
+    it("filters stops by stopStatus, so the office sees what's left to resolve", async () => {
+      prisma.route.findUnique.mockResolvedValue(
+        buildRoute({
+          stops: [
+            buildStop({ id: STOP_ID, status: StopStatus.DELIVERED }),
+            buildStop({ id: OTHER_STOP_ID, status: StopStatus.PENDING }),
+          ],
+        }),
+      );
+
+      const result = await service.findOne(ROUTE_ID, adminActor, {
+        stopStatus: StopStatus.PENDING,
+      });
+
+      expect(result.stops).toHaveLength(1);
+      expect(result.stops[0]?.id).toBe(OTHER_STOP_ID);
     });
   });
 
@@ -571,25 +614,132 @@ describe("RoutesService", () => {
   });
 
   describe("markStop", () => {
-    it("marks a PENDING stop DELIVERED", async () => {
+    const deliveryItems = [{ productId: "product-1", quantity: 2 }];
+
+    it("marks a PENDING stop DELIVERED, delegating the whole delivery to SalesService", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
       prisma.routeStop.updateMany.mockResolvedValue({ count: 1 });
       prisma.routeStop.findUniqueOrThrow.mockResolvedValue(
         buildStop({ status: StopStatus.DELIVERED }),
       );
+      const delivery = buildDeliveryResult({
+        sale: { id: "sale-1", total: "25.00", creditLimitExceeded: false },
+      });
+      sales.registerStopDeliveryWithinTransaction.mockResolvedValue(delivery);
 
       const result = await service.markStop(
         ROUTE_ID,
         STOP_ID,
-        { status: StopStatus.DELIVERED },
+        { status: StopStatus.DELIVERED, items: deliveryItems },
         driverActor,
       );
 
       expect(prisma.routeStop.updateMany).toHaveBeenCalledWith({
         where: { id: STOP_ID, routeId: ROUTE_ID, status: StopStatus.PENDING },
-        data: { status: StopStatus.DELIVERED, failureReason: null },
+        data: { status: StopStatus.DELIVERED },
       });
+      expect(sales.registerStopDeliveryWithinTransaction).toHaveBeenCalledWith(
+        prisma,
+        expect.objectContaining({
+          routeId: ROUTE_ID,
+          stopId: STOP_ID,
+          locationId: LOCATION_ID,
+          items: deliveryItems,
+          containersReturned: [],
+          recordedById: DRIVER_ID,
+        }),
+      );
       expect(result.status).toBe(StopStatus.DELIVERED);
+      expect(result.sale).toEqual(delivery.sale);
+    });
+
+    it("rejects DELIVERED with no items", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+
+      await expect(
+        service.markStop(ROUTE_ID, STOP_ID, { status: StopStatus.DELIVERED }, driverActor),
+      ).rejects.toThrow("items");
+      expect(prisma.routeStop.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("rejects DELIVERED with an empty items array", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+
+      await expect(
+        service.markStop(
+          ROUTE_ID,
+          STOP_ID,
+          { status: StopStatus.DELIVERED, items: [] },
+          driverActor,
+        ),
+      ).rejects.toThrow("items");
+    });
+
+    it("passes containersReturned, payment and priceOverrideAuthorizedById through", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+      prisma.routeStop.updateMany.mockResolvedValue({ count: 1 });
+      prisma.routeStop.findUniqueOrThrow.mockResolvedValue(
+        buildStop({ status: StopStatus.DELIVERED }),
+      );
+      sales.registerStopDeliveryWithinTransaction.mockResolvedValue(buildDeliveryResult());
+
+      const containersReturned = [{ containerTypeId: CONTAINER_TYPE_ID, quantity: 1 }];
+      const payment = { paymentMethodId: "pm-1", amount: "12.50" };
+      await service.markStop(
+        ROUTE_ID,
+        STOP_ID,
+        {
+          status: StopStatus.DELIVERED,
+          items: deliveryItems,
+          containersReturned,
+          payment,
+          priceOverrideAuthorizedById: ADMIN_ID,
+        },
+        driverActor,
+      );
+
+      expect(sales.registerStopDeliveryWithinTransaction).toHaveBeenCalledWith(
+        prisma,
+        expect.objectContaining({
+          containersReturned,
+          payment,
+          priceOverrideAuthorizedById: ADMIN_ID,
+        }),
+      );
+    });
+
+    it("rejects FAILED carrying delivery data", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+
+      await expect(
+        service.markStop(
+          ROUTE_ID,
+          STOP_ID,
+          { status: StopStatus.FAILED, failureReason: "x", items: deliveryItems },
+          driverActor,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.routeStop.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("reports the date and who recorded it when a stop was already DELIVERED", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+      prisma.routeStop.updateMany.mockResolvedValue({ count: 0 });
+      prisma.routeStop.findFirst.mockResolvedValue({ status: StopStatus.DELIVERED });
+      prisma.sale.findFirst.mockResolvedValue({
+        soldAt: new Date("2026-08-25T15:00:00.000Z"),
+        recordedBy: { name: "Juan Chofer" },
+      });
+
+      await expect(
+        service.markStop(
+          ROUTE_ID,
+          STOP_ID,
+          { status: StopStatus.DELIVERED, items: deliveryItems },
+          driverActor,
+        ),
+      ).rejects.toThrow("Juan Chofer");
+      expect(sales.registerStopDeliveryWithinTransaction).not.toHaveBeenCalled();
     });
 
     it("marks a PENDING stop FAILED with a reason", async () => {
@@ -674,8 +824,14 @@ describe("RoutesService", () => {
       prisma.routeStop.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.markStop(ROUTE_ID, STOP_ID, { status: StopStatus.DELIVERED }, driverActor),
+        service.markStop(
+          ROUTE_ID,
+          STOP_ID,
+          { status: StopStatus.DELIVERED, items: deliveryItems },
+          driverActor,
+        ),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(sales.registerStopDeliveryWithinTransaction).not.toHaveBeenCalled();
     });
 
     it("refuses a driver marking a stop on another driver's route", async () => {
