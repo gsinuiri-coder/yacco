@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import request from "supertest";
@@ -201,26 +200,14 @@ describe("GET /api/v1/payment-methods/:id", () => {
 });
 
 describe("data migration: wallet payment methods require confirmation", () => {
-  // Reproduces the production discrepancy this migration fixed: Neon was
-  // seeded once before requiresConfirmation existed for these methods, and
-  // Render's build runs `db:deploy` but never `db:seed`, so a stale `false`
-  // never self-corrects. Proving the seed writes the right value on a fresh
-  // database (the test above) doesn't cover that case — this one corrupts
-  // the row first, the same starting state production had, then replays the
-  // migration itself and reads the database back, not the seed's output.
-  test("the migration corrects a stale false without touching Efectivo", async () => {
-    await prisma.paymentMethod.updateMany({
-      where: { name: { in: ["Transferencia", "Yape", "Plin"] } },
-      data: { requiresConfirmation: false },
-    });
-
-    const migrationPath = path.join(
-      __dirname,
-      "../../prisma/migrations/20260827180000_require_confirmation_wallet_payment_methods/migration.sql",
-    );
-    const migrationSql = await readFile(migrationPath, "utf-8");
-    await prisma.$executeRawUnsafe(migrationSql);
-
+  // Guards the production discrepancy migration
+  // 20260827180000_require_confirmation_wallet_payment_methods fixed: Neon
+  // was seeded once before requiresConfirmation existed for these methods,
+  // and Render's build runs `db:deploy` but never `db:seed`, so a stale
+  // `false` never self-corrected on its own. Reads straight off
+  // payment_methods (not the seed's output, not the controller's response)
+  // so it goes red if that migration is ever reverted or edited.
+  test("Transferencia, Yape and Plin require confirmation; Efectivo does not", async () => {
     const methods = await prisma.paymentMethod.findMany({
       where: { name: { in: ["Efectivo", "Transferencia", "Yape", "Plin"] } },
     });
