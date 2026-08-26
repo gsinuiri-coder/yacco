@@ -5,9 +5,18 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { OrderStatus, RouteStatus, StopOrigin, StopStatus, UserRole } from "@prisma/client";
+import {
+  ContainerMovementType,
+  ContainerState,
+  OrderStatus,
+  RouteStatus,
+  StopOrigin,
+  StopStatus,
+  UserRole,
+} from "@prisma/client";
 import { jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
 import { RoutesService } from "./routes.service.js";
 import type { RouteActor } from "./routes.service.js";
 import { DEFAULT_LIMIT, DEFAULT_PAGE } from "./dto/list-routes-query.dto.js";
@@ -30,6 +39,10 @@ const ORDER_ID = "88888888-8888-4888-8888-888888888888";
 const STOP_ID = "99999999-9999-4999-8999-999999999999";
 const OTHER_STOP_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const FOREIGN_STOP_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const BATCH_ITEM_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const CONTAINER_TYPE_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const BATCH_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const LOAD_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 
 const adminActor: RouteActor = { id: ADMIN_ID, roles: [UserRole.ADMIN] };
 const sellerActor: RouteActor = { id: SELLER_ID, roles: [UserRole.SELLER] };
@@ -78,6 +91,27 @@ function activeDriver(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildBatchItem(overrides: Record<string, unknown> = {}) {
+  return { id: BATCH_ITEM_ID, batchId: BATCH_ID, containerTypeId: CONTAINER_TYPE_ID, ...overrides };
+}
+
+function buildLoad(overrides: Record<string, unknown> = {}) {
+  return {
+    id: LOAD_ID,
+    routeId: ROUTE_ID,
+    batchItemId: BATCH_ITEM_ID,
+    quantity: 50,
+    batchItem: {
+      id: BATCH_ITEM_ID,
+      containerTypeId: CONTAINER_TYPE_ID,
+      containerType: { id: CONTAINER_TYPE_ID, name: "Bidón 20L" },
+      batchId: BATCH_ID,
+      batch: { id: BATCH_ID, code: "L-001" },
+    },
+    ...overrides,
+  };
+}
+
 function buildPrismaMock() {
   return {
     route: {
@@ -95,6 +129,17 @@ function buildPrismaMock() {
       updateMany: jest.fn<() => Promise<unknown>>(),
       update: jest.fn<() => Promise<unknown>>(),
     },
+    batchItem: {
+      findUnique: jest.fn<() => Promise<unknown>>(),
+      updateMany: jest.fn<() => Promise<unknown>>(),
+      update: jest.fn<() => Promise<unknown>>(),
+    },
+    routeLoad: {
+      create: jest.fn<() => Promise<unknown>>(),
+      findMany: jest.fn<() => Promise<unknown>>(),
+      findFirst: jest.fn<() => Promise<unknown>>(),
+      delete: jest.fn<() => Promise<unknown>>(),
+    },
     user: { findUnique: jest.fn<() => Promise<unknown>>() },
     zone: { findUnique: jest.fn<() => Promise<unknown>>() },
     order: { findUnique: jest.fn<() => Promise<unknown>>() },
@@ -103,19 +148,30 @@ function buildPrismaMock() {
   };
 }
 
+function buildContainerMovementsMock() {
+  return { createWithinTransaction: jest.fn<() => Promise<unknown>>() };
+}
+
 describe("RoutesService", () => {
   let service: RoutesService;
   let prisma: ReturnType<typeof buildPrismaMock>;
+  let containerMovements: ReturnType<typeof buildContainerMovementsMock>;
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
-    // create()'s try/catch and addStop() pass a callback; findAll()/reorderStops() pass an array.
+    // create()'s try/catch and addStop()/addLoad()/removeLoad() pass a
+    // callback; findAll()/reorderStops() pass an array.
     prisma.$transaction.mockImplementation((arg) =>
       Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => Promise<unknown>)(prisma),
     );
+    containerMovements = buildContainerMovementsMock();
 
     const moduleRef = await Test.createTestingModule({
-      providers: [RoutesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        RoutesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ContainerMovementsService, useValue: containerMovements },
+      ],
     }).compile();
 
     service = moduleRef.get(RoutesService);
@@ -698,6 +754,169 @@ describe("RoutesService", () => {
       await expect(
         service.reorderStops(ROUTE_ID, { stopIds: [STOP_ID] }, otherDriverActor),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe("addLoad", () => {
+    it("decrements availableQty atomically and records a ROUTE_LOAD movement with the route's id", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.batchItem.findUnique.mockResolvedValue(buildBatchItem());
+      prisma.batchItem.updateMany.mockResolvedValue({ count: 1 });
+      prisma.routeLoad.create.mockResolvedValue(buildLoad());
+
+      const result = await service.addLoad(
+        ROUTE_ID,
+        { batchItemId: BATCH_ITEM_ID, quantity: 50 },
+        adminActor,
+      );
+
+      expect(prisma.batchItem.updateMany).toHaveBeenCalledWith({
+        where: { id: BATCH_ITEM_ID, availableQty: { gte: 50 } },
+        data: { availableQty: { decrement: 50 } },
+      });
+      expect(containerMovements.createWithinTransaction).toHaveBeenCalledWith(
+        prisma,
+        {
+          type: ContainerMovementType.ROUTE_LOAD,
+          containerTypeId: CONTAINER_TYPE_ID,
+          quantity: 50,
+          fromState: ContainerState.FULL_AT_PLANT,
+          toState: ContainerState.FULL_ON_ROUTE,
+        },
+        ADMIN_ID,
+        { batchId: BATCH_ID, routeId: ROUTE_ID },
+      );
+      expect(result.quantity).toBe(50);
+    });
+
+    it("a second load of the same batchItem on the same route creates a NEW row, not an increment", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.batchItem.findUnique.mockResolvedValue(buildBatchItem());
+      prisma.batchItem.updateMany.mockResolvedValue({ count: 1 });
+      prisma.routeLoad.create.mockResolvedValue(
+        buildLoad({ id: "11111111-2222-4222-8222-333333333333" }),
+      );
+
+      await service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor);
+
+      expect(prisma.routeLoad.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { routeId: ROUTE_ID, batchItemId: BATCH_ITEM_ID, quantity: 10 },
+        }),
+      );
+    });
+
+    it("rejects insufficient stock via the guarded UPDATE, never a prior read-then-write", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.batchItem.findUnique.mockResolvedValue(buildBatchItem());
+      prisma.batchItem.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 999 }, adminActor),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.routeLoad.create).not.toHaveBeenCalled();
+      expect(containerMovements.createWithinTransaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects an unknown batchItemId", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.batchItem.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.batchItem.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("refuses to load a FINISHED route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.FINISHED }));
+
+      await expect(
+        service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.batchItem.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("listLoads", () => {
+    it("returns the route's loads", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.routeLoad.findMany.mockResolvedValue([buildLoad()]);
+
+      const result = await service.listLoads(ROUTE_ID, adminActor);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.batchItem.containerType.name).toBe("Bidón 20L");
+    });
+
+    it("lets the assigned driver read their own route's loads", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.routeLoad.findMany.mockResolvedValue([]);
+
+      await expect(service.listLoads(ROUTE_ID, driverActor)).resolves.toEqual([]);
+    });
+
+    it("refuses a driver reading another driver's route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+
+      await expect(service.listLoads(ROUTE_ID, otherDriverActor)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe("removeLoad", () => {
+    it("returns the stock to the batchItem and records the inverse FULL_RETURN movement", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.PLANNED }));
+      prisma.routeLoad.findFirst.mockResolvedValue(buildLoad());
+
+      await service.removeLoad(ROUTE_ID, LOAD_ID, adminActor);
+
+      expect(prisma.batchItem.update).toHaveBeenCalledWith({
+        where: { id: BATCH_ITEM_ID },
+        data: { availableQty: { increment: 50 } },
+      });
+      expect(containerMovements.createWithinTransaction).toHaveBeenCalledWith(
+        prisma,
+        {
+          type: ContainerMovementType.FULL_RETURN,
+          containerTypeId: CONTAINER_TYPE_ID,
+          quantity: 50,
+          fromState: ContainerState.FULL_ON_ROUTE,
+          toState: ContainerState.FULL_AT_PLANT,
+        },
+        ADMIN_ID,
+        { batchId: BATCH_ID, routeId: ROUTE_ID },
+      );
+      expect(prisma.routeLoad.delete).toHaveBeenCalledWith({ where: { id: LOAD_ID } });
+    });
+
+    it("refuses to correct a load once the route is no longer PLANNED", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+
+      await expect(service.removeLoad(ROUTE_ID, LOAD_ID, adminActor)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(prisma.routeLoad.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("throws NotFoundException for a load that does not belong to the route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.PLANNED }));
+      prisma.routeLoad.findFirst.mockResolvedValue(null);
+
+      await expect(service.removeLoad(ROUTE_ID, LOAD_ID, adminActor)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.batchItem.update).not.toHaveBeenCalled();
+    });
+
+    it("refuses a driver removing a load from another driver's route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.PLANNED }));
+
+      await expect(service.removeLoad(ROUTE_ID, LOAD_ID, otherDriverActor)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(prisma.routeLoad.findFirst).not.toHaveBeenCalled();
     });
   });
 });

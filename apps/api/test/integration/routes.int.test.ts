@@ -1,5 +1,11 @@
 import request from "supertest";
-import { RouteStatus, StopOrigin, StopStatus } from "@prisma/client";
+import {
+  ContainerMovementType,
+  ContainerState,
+  RouteStatus,
+  StopOrigin,
+  StopStatus,
+} from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
@@ -18,6 +24,7 @@ function nextDate(): string {
 }
 
 let ctx: TestAppContext;
+let prisma: PrismaService;
 let adminToken: string;
 let sellerToken: string;
 let driverToken: string;
@@ -28,6 +35,7 @@ let zoneId: string;
 let customerId: string;
 let locationId: string;
 let refillProductId: string;
+let containerTypeId: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -104,8 +112,37 @@ async function addVanSaleStop(token: string, routeId: string): Promise<string> {
   return response.body.id;
 }
 
+let batchCounter = 0;
+/** A fresh ProductionBatch with one item, so each test controls its own stock. */
+async function createBatchItem(producedQty: number): Promise<string> {
+  batchCounter += 1;
+  const response = await request(server())
+    .post("/api/v1/production-batches")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      code: `LOTE-RUTAS-${batchCounter}`,
+      date: "2026-08-01",
+      items: [{ containerTypeId, producedQty }],
+    })
+    .expect(201);
+  return response.body.items[0].id;
+}
+
+async function addLoad(
+  token: string,
+  routeId: string,
+  batchItemId: string,
+  quantity: number,
+): Promise<request.Test> {
+  return request(server())
+    .post(`/api/v1/routes/${routeId}/loads`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ batchItemId, quantity });
+}
+
 beforeAll(async () => {
   ctx = await startTestApp();
+  prisma = ctx.app.get(PrismaService);
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
   sellerToken = (await createUserAndLogin("vendedor-rutas", "SELLER")).token;
   const driver = await createUserAndLogin("repartidor-rutas", "DRIVER");
@@ -134,11 +171,11 @@ beforeAll(async () => {
     .expect(201);
   customerId = customer.body.id;
 
-  const prisma = ctx.app.get(PrismaService);
   const location = await prisma.customerLocation.findFirstOrThrow({ where: { customerId } });
   locationId = location.id;
 
   const containerType = await prisma.containerType.findFirstOrThrow();
+  containerTypeId = containerType.id;
   const product = await prisma.product.create({
     data: {
       containerTypeId: containerType.id,
@@ -781,6 +818,270 @@ describe("PATCH /api/v1/routes/:id/stops/reorder", () => {
       .send({ stopIds: [stopId] });
 
     expect(response.status).toBe(409);
+  });
+});
+
+describe("POST /api/v1/routes/:id/loads", () => {
+  test("loads units, decrements availableQty atomically, and records a ROUTE_LOAD movement tagged with the route", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    const response = await addLoad(adminToken, routeId, batchItemId, 30);
+
+    expect(response.status).toBe(201);
+    expect(response.body.quantity).toBe(30);
+    expect(response.body.batchItemId).toBe(batchItemId);
+    expect(response.body.batchItem.containerType.id).toBe(containerTypeId);
+
+    const batchItem = await prisma.batchItem.findUniqueOrThrow({ where: { id: batchItemId } });
+    expect(batchItem.availableQty).toBe(70);
+
+    const movement = await prisma.containerMovement.findFirstOrThrow({
+      where: { routeId, type: ContainerMovementType.ROUTE_LOAD },
+    });
+    expect(movement.fromState).toBe(ContainerState.FULL_AT_PLANT);
+    expect(movement.toState).toBe(ContainerState.FULL_ON_ROUTE);
+    expect(movement.quantity).toBe(30);
+    expect(movement.containerTypeId).toBe(containerTypeId);
+  });
+
+  test("loading the same batchItem twice on the same route sums via two rows, not a replace", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    await addLoad(adminToken, routeId, batchItemId, 20).then((r) => expect(r.status).toBe(201));
+    await addLoad(adminToken, routeId, batchItemId, 15).then((r) => expect(r.status).toBe(201));
+
+    const list = await request(server())
+      .get(`/api/v1/routes/${routeId}/loads`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(list.body).toHaveLength(2);
+    const total = list.body.reduce(
+      (sum: number, load: { quantity: number }) => sum + load.quantity,
+      0,
+    );
+    expect(total).toBe(35);
+
+    const batchItem = await prisma.batchItem.findUniqueOrThrow({ where: { id: batchItemId } });
+    expect(batchItem.availableQty).toBe(65);
+  });
+
+  test("rejects insufficient stock with a clear message, leaving availableQty untouched", async () => {
+    const batchItemId = await createBatchItem(10);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    const response = await addLoad(adminToken, routeId, batchItemId, 20);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("insuficiente");
+
+    const batchItem = await prisma.batchItem.findUniqueOrThrow({ where: { id: batchItemId } });
+    expect(batchItem.availableQty).toBe(10);
+  });
+
+  test("rejects an unknown batchItemId", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    const response = await addLoad(adminToken, routeId, MISSING_UUID, 10);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain(MISSING_UUID);
+  });
+
+  test("refuses to load a FINISHED route", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await startRoute(adminToken, routeId);
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const response = await addLoad(adminToken, routeId, batchItemId, 10);
+
+    expect(response.status).toBe(409);
+  });
+
+  test("a driver cannot load the truck: cargo is office work", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    const response = await addLoad(driverToken, routeId, batchItemId, 10);
+
+    expect(response.status).toBe(403);
+  });
+
+  test("two simultaneous routes loading the same containerType don't step on each other", async () => {
+    const sharedBatchItemId = await createBatchItem(200);
+    const routeADate = nextDate();
+    const routeAId = await createRoute(adminToken, { date: routeADate });
+    const routeBId = await createRoute(adminToken, { driverId: otherDriverId, date: routeADate });
+
+    await addLoad(adminToken, routeAId, sharedBatchItemId, 50).then((r) =>
+      expect(r.status).toBe(201),
+    );
+    await addLoad(adminToken, routeBId, sharedBatchItemId, 30).then((r) =>
+      expect(r.status).toBe(201),
+    );
+
+    const loadsA = await request(server())
+      .get(`/api/v1/routes/${routeAId}/loads`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    const loadsB = await request(server())
+      .get(`/api/v1/routes/${routeBId}/loads`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(loadsA.body).toHaveLength(1);
+    expect(loadsA.body[0].quantity).toBe(50);
+    expect(loadsB.body).toHaveLength(1);
+    expect(loadsB.body[0].quantity).toBe(30);
+
+    const movementsA = await prisma.containerMovement.findMany({
+      where: { routeId: routeAId, type: ContainerMovementType.ROUTE_LOAD },
+    });
+    const movementsB = await prisma.containerMovement.findMany({
+      where: { routeId: routeBId, type: ContainerMovementType.ROUTE_LOAD },
+    });
+    expect(movementsA).toHaveLength(1);
+    expect(movementsA[0]?.quantity).toBe(50);
+    expect(movementsB).toHaveLength(1);
+    expect(movementsB[0]?.quantity).toBe(30);
+
+    const batchItem = await prisma.batchItem.findUniqueOrThrow({
+      where: { id: sharedBatchItemId },
+    });
+    expect(batchItem.availableQty).toBe(120);
+  });
+
+  test("real concurrency: two loads racing for the same stock — only one wins", async () => {
+    const batchItemId = await createBatchItem(50);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    const [first, second] = await Promise.all([
+      addLoad(adminToken, routeId, batchItemId, 50),
+      addLoad(adminToken, routeId, batchItemId, 50),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([201, 400]);
+
+    const batchItem = await prisma.batchItem.findUniqueOrThrow({ where: { id: batchItemId } });
+    expect(batchItem.availableQty).toBe(0);
+
+    const loads = await prisma.routeLoad.findMany({ where: { routeId, batchItemId } });
+    expect(loads).toHaveLength(1);
+  });
+});
+
+describe("GET /api/v1/routes/:id/loads", () => {
+  test("a driver can read their own route's loads", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addLoad(adminToken, routeId, batchItemId, 10);
+
+    const response = await request(server())
+      .get(`/api/v1/routes/${routeId}/loads`)
+      .set("Authorization", `Bearer ${driverToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveLength(1);
+  });
+
+  test("a driver cannot read another driver's route's loads", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    const response = await request(server())
+      .get(`/api/v1/routes/${routeId}/loads`)
+      .set("Authorization", `Bearer ${otherDriverToken}`);
+
+    expect(response.status).toBe(403);
+  });
+
+  test("an unknown route id is rejected with 404", async () => {
+    const response = await request(server())
+      .get(`/api/v1/routes/${MISSING_UUID}/loads`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/v1/routes/:id/loads/:loadId", () => {
+  test("deletes the load, returns the stock, and records the inverse FULL_RETURN movement", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const created = await addLoad(adminToken, routeId, batchItemId, 40);
+    const loadId = created.body.id;
+
+    const response = await request(server())
+      .delete(`/api/v1/routes/${routeId}/loads/${loadId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(204);
+
+    const batchItem = await prisma.batchItem.findUniqueOrThrow({ where: { id: batchItemId } });
+    expect(batchItem.availableQty).toBe(100);
+
+    const reversal = await prisma.containerMovement.findFirstOrThrow({
+      where: { routeId, type: ContainerMovementType.FULL_RETURN },
+    });
+    expect(reversal.fromState).toBe(ContainerState.FULL_ON_ROUTE);
+    expect(reversal.toState).toBe(ContainerState.FULL_AT_PLANT);
+    expect(reversal.quantity).toBe(40);
+
+    // The original ROUTE_LOAD movement is never edited or deleted — only
+    // the RouteLoad "currently loaded" row is removed.
+    const original = await prisma.containerMovement.findFirstOrThrow({
+      where: { routeId, type: ContainerMovementType.ROUTE_LOAD },
+    });
+    expect(original.quantity).toBe(40);
+
+    const list = await request(server())
+      .get(`/api/v1/routes/${routeId}/loads`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(list.body).toHaveLength(0);
+  });
+
+  test("refuses to correct a load once the route is no longer PLANNED, leaving stock untouched", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const created = await addLoad(adminToken, routeId, batchItemId, 40);
+    const loadId = created.body.id;
+    await startRoute(adminToken, routeId);
+
+    const response = await request(server())
+      .delete(`/api/v1/routes/${routeId}/loads/${loadId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(409);
+
+    const batchItem = await prisma.batchItem.findUniqueOrThrow({ where: { id: batchItemId } });
+    expect(batchItem.availableQty).toBe(60);
+    const list = await request(server())
+      .get(`/api/v1/routes/${routeId}/loads`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(list.body).toHaveLength(1);
+  });
+
+  test("an unknown loadId is rejected with 404", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    const response = await request(server())
+      .delete(`/api/v1/routes/${routeId}/loads/${MISSING_UUID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  test("a driver cannot delete a load", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const created = await addLoad(adminToken, routeId, batchItemId, 10);
+
+    const response = await request(server())
+      .delete(`/api/v1/routes/${routeId}/loads/${created.body.id}`)
+      .set("Authorization", `Bearer ${driverToken}`);
+
+    expect(response.status).toBe(403);
   });
 });
 
