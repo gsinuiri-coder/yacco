@@ -1,0 +1,15 @@
+-- Data-only migration (no column/type changes): deactivates the synthetic
+-- "Apertura" payment method the customer-roster loader upserts (see
+-- roster-loader.service.ts, OPENING_PAYMENT_METHOD_NAME). It exists only to
+-- satisfy Payment.paymentMethodId's FK on an opening credit — a debt/credit
+-- the customer already carried at cutover, never a real collection anyone
+-- chose. Now that GET /payment-methods exists, an active "Apertura" would
+-- show up as a real way to charge a customer, which it must never be.
+--
+-- The loader upsert itself is fixed in this same PR to always write
+-- active = false going forward; this UPDATE is only for a database where an
+-- earlier run (or a hand-made row) already left it active. As of this PR,
+-- the loader has not yet run against production, so this may affect zero
+-- rows — it is here so no database that already has this row is left
+-- offering it.
+UPDATE "payment_methods" SET "active" = false WHERE "name" = 'Apertura' AND "active" = true;

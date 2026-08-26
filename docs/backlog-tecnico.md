@@ -114,6 +114,28 @@ cargado de ahí en vez del texto libre — el mismo patrón que `api/products.ts
 y el `<select>` de producto en `order-items-form.tsx`. Hasta entonces,
 `zoneId` solo se puede poblar por API.
 
+## No hay gestión del catálogo payment-methods
+
+**Estado:** abierto. **Disparador:** cuando aparezca un medio de cobro fuera
+de los cuatro sembrados (Efectivo, Transferencia, Yape, Plin), o cuando el
+dueño quiera cambiar el `requiresConfirmation` de alguno.
+
+`GET /api/v1/payment-methods` (solo lectura) existe, pero no hay
+`POST`/`PATCH`: los métodos solo se crean por el seed o por el upsert
+sintético de `roster-loader.service.ts` ("Apertura", nacido inactivo a
+propósito — nunca una forma de cobro real). Si la planta empieza a aceptar
+una billetera nueva, o si `requiresConfirmation` de un método existente
+estuvo mal decidido, hoy la única forma de corregirlo es una migración de
+datos a mano, el mismo patrón que
+`20260827170000_deactivate_opening_payment_method` — no un flujo pensado
+para repetirse.
+
+**Para cerrarla:** agregar `POST`/`PATCH /api/v1/payment-methods` (ADMIN),
+mismo patrón que `ZonesController`/`ContainerTypesController`: crear con
+nombre único, y editar solo `active`/`requiresConfirmation` (el nombre, una
+vez que un pago ya lo referencia, no debería poder cambiar en caliente sin
+pensar el impacto en reportes de cobranza por medio de pago).
+
 ## La matriz de transiciones de envases está duplicada
 
 **Estado:** abierto. **Disparador:** antes de tocar las transiciones de ruta

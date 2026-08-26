@@ -988,6 +988,7 @@ Endpoints principales previstos (prefijo `/api/v1`):
 | PUT            | `/customers/:id/credit-limit`       | Límite de crédito                                                                      | ADMIN                 |
 | GET/POST/PATCH | `/zones`                            | Zonas y sus días de reparto                                                            | ADMIN                 |
 | GET            | `/products`                         | Catálogo con precio aplicable                                                          | Autenticado           |
+| GET            | `/payment-methods`                  | Catálogo de métodos de pago, con `requiresConfirmation`                                | ADMIN, SELLER, DRIVER |
 | POST           | `/production-batches`               | Registro de lote con responsable                                                       | ADMIN                 |
 | GET            | `/inventory/containers`             | Stock del parque por estado y tipo                                                     | ADMIN, SELLER         |
 | POST           | `/containers/entries`               | Ingreso de envases nuevos al parque                                                    | ADMIN                 |
