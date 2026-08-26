@@ -23,6 +23,8 @@ import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import { CustomersService } from "./customers.service.js";
+import { AccountStatementQueryDto } from "./dto/account-statement-query.dto.js";
+import { AccountStatementResponseDto } from "./dto/account-statement-response.dto.js";
 import { CreateCustomerDto } from "./dto/create-customer.dto.js";
 import { CustomerResponseDto, PaginatedCustomersDto } from "./dto/customer-response.dto.js";
 import { ListCustomersQueryDto } from "./dto/list-customers-query.dto.js";
@@ -78,5 +80,20 @@ export class CustomersController {
     @Body() dto: UpdateCustomerDto,
   ): Promise<CustomerResponseDto> {
     return this.customersService.update(id, dto);
+  }
+
+  @ApiOperation({
+    summary: "Estado de cuenta: cargos y abonos intercalados, con saldo corriente",
+    description:
+      "Un abono PENDING o REJECTED aparece en la lista pero no mueve el saldo — solo un CONFIRMED lo hace",
+  })
+  @ApiResponse({ status: 200, type: AccountStatementResponseDto })
+  @ApiNotFoundResponse({ description: "Customer id does not exist" })
+  @Get(":id/account-statement")
+  getAccountStatement(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Query() query: AccountStatementQueryDto,
+  ): Promise<AccountStatementResponseDto> {
+    return this.customersService.getAccountStatement(id, query);
   }
 }

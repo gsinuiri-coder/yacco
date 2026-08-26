@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import type { AccountStatementQueryDto } from "./dto/account-statement-query.dto.js";
+import type {
+  AccountStatementEntryDto,
+  AccountStatementResponseDto,
+} from "./dto/account-statement-response.dto.js";
 import type { CreateCustomerDto } from "./dto/create-customer.dto.js";
 import type { CustomerResponseDto, PaginatedCustomersDto } from "./dto/customer-response.dto.js";
 import type { ListCustomersQueryDto } from "./dto/list-customers-query.dto.js";
@@ -8,6 +13,33 @@ import type { UpdateCustomerDto } from "./dto/update-customer.dto.js";
 
 function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+/**
+ * Lima has no DST and sits at UTC-5, so its midnight is always 05:00 UTC.
+ * `soldAt`/`paidAt` are timestamptz; a "from/to" filter on them is a business
+ * day (CLAUDE.md), so both ends are converted to their UTC instant boundary
+ * here rather than compared as naive dates. Copied rather than imported —
+ * same reasoning as ContainerMovementsService's own copy of this helper.
+ */
+function limaDayStartUtc(date: string): Date {
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, day, 5, 0, 0));
+}
+
+interface StatementMovement {
+  date: Date;
+  type: "CHARGE" | "PAYMENT";
+  amount: Prisma.Decimal;
+  /** Signed effect on the balance: +amount for a charge, -amount for a
+   * CONFIRMED payment, 0 for a PENDING or REJECTED one. */
+  effect: Prisma.Decimal;
+  isOpeningBalance: boolean;
+  saleId: string | null;
+  locationName: string | null;
+  paymentId: string | null;
+  paymentMethodName: string | null;
+  status: PaymentStatus | null;
 }
 
 /**
@@ -122,6 +154,164 @@ export class CustomersService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * HU-18 E1's second clause: a payment must be visible in the account
+   * statement, not just reflected in `debtBalance`. Reconstructs the ledger
+   * from `Sale`/`Payment` rather than trusting `debtBalance` directly — the
+   * whole point is a second opinion on that cached number, same spirit as
+   * the container-reconciliation report.
+   *
+   * `Sale` has no `customerId` column, only `locationId`, so it joins
+   * through `location: { customerId }`; `Payment` carries `customerId`
+   * directly, so it doesn't need the join — the two queries are NOT
+   * symmetric on purpose.
+   *
+   * A CONFIRMED payment subtracts its amount; a PENDING or REJECTED one
+   * shows up in `entries` (so "I registered my Yape and my debt didn't
+   * move" is visible, not silently hidden) but never touches the running
+   * balance — exactly the rule every other aggregate in this system already
+   * follows (`debtBalance`, route settlements, the confirmation tray).
+   *
+   * `openingBalance`/`closingBalance` are computed over every movement in
+   * the window, never truncated; `limit` only caps how many of the most
+   * recent `entries` are returned, so the two balances stay correct even
+   * when a customer's full history is longer than what the caller asked to
+   * see.
+   */
+  async getAccountStatement(
+    id: string,
+    query: AccountStatementQueryDto,
+  ): Promise<AccountStatementResponseDto> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id },
+      select: { id: true, name: true, debtBalance: true },
+    });
+    if (customer === null) {
+      throw new NotFoundException(`El cliente "${id}" no existe`);
+    }
+
+    const fromBoundary = query.from === undefined ? undefined : limaDayStartUtc(query.from);
+    // "Hasta" is inclusive of the whole calendar day, so the upper bound is
+    // the START of the FOLLOWING Lima day, compared with a strict `<`.
+    const toBoundary =
+      query.to === undefined
+        ? undefined
+        : new Date(limaDayStartUtc(query.to).getTime() + 24 * 60 * 60 * 1000);
+    if (fromBoundary !== undefined && toBoundary !== undefined && fromBoundary >= toBoundary) {
+      throw new BadRequestException("La fecha desde no puede ser posterior a la fecha hasta");
+    }
+
+    const [sales, payments] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: {
+          location: { customerId: id },
+          ...(toBoundary !== undefined ? { soldAt: { lt: toBoundary } } : {}),
+        },
+        select: {
+          id: true,
+          soldAt: true,
+          total: true,
+          isOpeningBalance: true,
+          location: { select: { name: true } },
+        },
+      }),
+      this.prisma.payment.findMany({
+        where: {
+          customerId: id,
+          ...(toBoundary !== undefined ? { paidAt: { lt: toBoundary } } : {}),
+        },
+        select: {
+          id: true,
+          paidAt: true,
+          amount: true,
+          status: true,
+          isOpeningBalance: true,
+          paymentMethod: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    const movements: StatementMovement[] = [
+      ...sales.map((sale): StatementMovement => ({
+        date: sale.soldAt,
+        type: "CHARGE",
+        amount: sale.total,
+        effect: sale.total,
+        isOpeningBalance: sale.isOpeningBalance,
+        saleId: sale.id,
+        locationName: sale.location.name,
+        paymentId: null,
+        paymentMethodName: null,
+        status: null,
+      })),
+      ...payments.map((payment): StatementMovement => ({
+        date: payment.paidAt,
+        type: "PAYMENT",
+        amount: payment.amount,
+        effect:
+          payment.status === PaymentStatus.CONFIRMED
+            ? payment.amount.negated()
+            : new Prisma.Decimal(0),
+        isOpeningBalance: payment.isOpeningBalance,
+        saleId: null,
+        locationName: null,
+        paymentId: payment.id,
+        paymentMethodName: payment.paymentMethod.name,
+        status: payment.status,
+      })),
+    ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    let runningTotal = new Prisma.Decimal(0);
+    let openingBalance = new Prisma.Decimal(0);
+    let openingCaptured = fromBoundary === undefined;
+    const entries: AccountStatementEntryDto[] = [];
+
+    for (const movement of movements) {
+      if (fromBoundary !== undefined && movement.date.getTime() < fromBoundary.getTime()) {
+        runningTotal = runningTotal.plus(movement.effect);
+        continue;
+      }
+      if (!openingCaptured) {
+        openingBalance = runningTotal;
+        openingCaptured = true;
+      }
+      runningTotal = runningTotal.plus(movement.effect);
+      entries.push({
+        date: movement.date,
+        type: movement.type,
+        amount: movement.amount.toFixed(2),
+        runningBalance: runningTotal.toFixed(2),
+        isOpeningBalance: movement.isOpeningBalance,
+        saleId: movement.saleId,
+        locationName: movement.locationName,
+        paymentId: movement.paymentId,
+        paymentMethodName: movement.paymentMethodName,
+        status: movement.status,
+      });
+    }
+    // Every movement was before `from` (or there were none at all): the
+    // window's opening balance is simply everything that happened.
+    if (!openingCaptured) {
+      openingBalance = runningTotal;
+    }
+
+    // Display-only cap: keeps the most recent entries, never the oldest —
+    // the balances above already reflect the FULL window regardless of it.
+    const visibleEntries =
+      entries.length > query.limit ? entries.slice(entries.length - query.limit) : entries;
+
+    return {
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        debtBalance: customer.debtBalance.toFixed(2),
+      },
+      openingBalance: openingBalance.toFixed(2),
+      entries: visibleEntries,
+      closingBalance: runningTotal.toFixed(2),
     };
   }
 
