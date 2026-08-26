@@ -111,19 +111,21 @@ export class ContainerMovementsService {
    * and the balance diverge would make the system lie about what a customer
    * still owes in containers.
    *
-   * `batchId` and `occurredAt` are deliberately not part of
-   * `CreateContainerMovementDto`: both are internal linkage only a trusted
-   * caller with an already-open transaction may set — `batchId` by a
-   * production batch registering its FILLING movements, `occurredAt` by the
-   * customer-roster loader backdating an OPENING_BALANCE entry to the
-   * roster's cutover date. Neither is something a caller of the public
-   * POST /container-movements route should be able to fabricate by hand.
+   * `batchId`, `routeId` and `occurredAt` are deliberately not part of
+   * `CreateContainerMovementDto`: all three are internal linkage only a
+   * trusted caller with an already-open transaction may set — `batchId` by a
+   * production batch registering its FILLING movements, `routeId` by
+   * RoutesService registering a ROUTE_LOAD (or its FULL_RETURN reversal),
+   * `occurredAt` by the customer-roster loader backdating an OPENING_BALANCE
+   * entry to the roster's cutover date. None of the three is something a
+   * caller of the public POST /container-movements route should be able to
+   * fabricate by hand.
    */
   async createWithinTransaction(
     client: Prisma.TransactionClient,
     dto: CreateContainerMovementDto,
     recordedById: string,
-    options?: { batchId?: string; occurredAt?: Date },
+    options?: { batchId?: string; routeId?: string; occurredAt?: Date },
   ): Promise<MovementWithRelations> {
     const fromState = dto.fromState ?? null;
     const toState = dto.toState ?? null;
@@ -167,6 +169,7 @@ export class ContainerMovementsService {
         toState,
         locationId: dto.locationId ?? null,
         batchId: options?.batchId ?? null,
+        routeId: options?.routeId ?? null,
         recordedById,
       },
       include: MOVEMENT_INCLUDE,

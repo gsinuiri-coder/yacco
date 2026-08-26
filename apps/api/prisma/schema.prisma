@@ -354,17 +354,25 @@ model ContainerMovement {
   toState         ContainerState?       @map("to_state")
   locationId      String?               @map("location_id") @db.Uuid
   batchId         String?               @map("batch_id") @db.Uuid
+  // Set only on ROUTE_LOAD (and its FULL_RETURN reversal, if the load is
+  // corrected before the truck leaves): a load isn't tied to any one stop,
+  // and with two routes running at once, `toState = FULL_ON_ROUTE` alone
+  // can't say which truck a given container is actually on. Every other
+  // movement type leaves this null.
+  routeId         String?               @map("route_id") @db.Uuid
   stopId          String?               @map("stop_id") @db.Uuid
   recordedById    String                @map("recorded_by") @db.Uuid
 
   containerType  ContainerType     @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
   location       CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
   batch          ProductionBatch?  @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  route          Route?            @relation(fields: [routeId], references: [id], onDelete: Restrict)
   stop           RouteStop?        @relation(fields: [stopId], references: [id], onDelete: Restrict)
   recordedBy     User              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
   containerCount ContainerCount?
 
   @@index([locationId, occurredAt])
+  @@index([routeId, occurredAt])
   @@map("container_movements")
 }
 
@@ -452,11 +460,12 @@ model Route {
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   createdById String      @map("created_by") @db.Uuid
 
-  driver     User             @relation("RouteDriver", fields: [driverId], references: [id], onDelete: Restrict)
-  createdBy  User             @relation("RouteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  zone       Zone?            @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  driver     User                @relation("RouteDriver", fields: [driverId], references: [id], onDelete: Restrict)
+  createdBy  User                @relation("RouteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  zone       Zone?               @relation(fields: [zoneId], references: [id], onDelete: Restrict)
   loads      RouteLoad[]
   stops      RouteStop[]
+  movements  ContainerMovement[]
   settlement RouteSettlement?
 
   // One route per driver per day: a second POST for the same pair is a

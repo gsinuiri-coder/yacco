@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -25,11 +27,13 @@ import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
+import { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import { CreateRouteStopDto } from "./dto/create-route-stop.dto.js";
 import { CreateRouteDto } from "./dto/create-route.dto.js";
 import { ListRoutesQueryDto } from "./dto/list-routes-query.dto.js";
 import { MarkRouteStopDto } from "./dto/mark-route-stop.dto.js";
 import { ReorderRouteStopsDto } from "./dto/reorder-route-stops.dto.js";
+import { RouteLoadResponseDto } from "./dto/route-load-response.dto.js";
 import {
   PaginatedRoutesDto,
   RouteResponseDto,
@@ -173,5 +177,50 @@ export class RoutesController {
     @Req() request: AuthenticatedRequest,
   ): Promise<RouteStopResponseDto> {
     return this.routesService.markStop(id, stopId, dto, actorFrom(request));
+  }
+
+  // Cargo is office work, same as planning: a DRIVER only ever reads what
+  // was loaded onto their own truck (see the class-level ownership note).
+  @ApiOperation({ summary: "Carga unidades de un ítem de lote al camión de la ruta" })
+  @ApiResponse({ status: 201, type: RouteLoadResponseDto })
+  @ApiNotFoundResponse({ description: "Route id does not exist" })
+  @ApiBadRequestResponse({
+    description: "Validation failed, the batch item is missing, or there isn't enough stock",
+  })
+  @ApiConflictResponse({ description: "Route is FINISHED" })
+  @Roles(UserRole.ADMIN, UserRole.SELLER)
+  @Post(":id/loads")
+  addLoad(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: CreateRouteLoadDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RouteLoadResponseDto> {
+    return this.routesService.addLoad(id, dto, actorFrom(request));
+  }
+
+  @ApiOperation({ summary: "Lista lo cargado en la ruta" })
+  @ApiResponse({ status: 200, type: RouteLoadResponseDto, isArray: true })
+  @ApiNotFoundResponse({ description: "Route id does not exist" })
+  @Get(":id/loads")
+  listLoads(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RouteLoadResponseDto[]> {
+    return this.routesService.listLoads(id, actorFrom(request));
+  }
+
+  @ApiOperation({ summary: "Corrige una carga mal ingresada (solo con la ruta PLANNED)" })
+  @ApiResponse({ status: 204, description: "La carga se borró y el stock volvió al lote" })
+  @ApiNotFoundResponse({ description: "Route or load id does not exist" })
+  @ApiConflictResponse({ description: "Route is no longer PLANNED" })
+  @Roles(UserRole.ADMIN, UserRole.SELLER)
+  @HttpCode(204)
+  @Delete(":id/loads/:loadId")
+  removeLoad(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("loadId", ParseUUIDPipe) loadId: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    return this.routesService.removeLoad(id, loadId, actorFrom(request));
   }
 }

@@ -5,14 +5,26 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { OrderStatus, Prisma, RouteStatus, StopOrigin, StopStatus, UserRole } from "@prisma/client";
+import {
+  ContainerMovementType,
+  ContainerState,
+  OrderStatus,
+  Prisma,
+  RouteStatus,
+  StopOrigin,
+  StopStatus,
+  UserRole,
+} from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
+import type { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import type { CreateRouteDto } from "./dto/create-route.dto.js";
 import type { CreateRouteStopDto } from "./dto/create-route-stop.dto.js";
 import type { ListRoutesQueryDto } from "./dto/list-routes-query.dto.js";
 import type { MarkRouteStopDto } from "./dto/mark-route-stop.dto.js";
 import type { ReorderRouteStopsDto } from "./dto/reorder-route-stops.dto.js";
+import type { RouteLoadResponseDto } from "./dto/route-load-response.dto.js";
 import type {
   PaginatedRoutesDto,
   RouteResponseDto,
@@ -39,8 +51,21 @@ const ROUTE_INCLUDE = {
   stops: { include: STOP_INCLUDE, orderBy: { position: "asc" } },
 } satisfies Prisma.RouteInclude;
 
+const LOAD_INCLUDE = {
+  batchItem: {
+    select: {
+      id: true,
+      containerTypeId: true,
+      containerType: { select: { id: true, name: true } },
+      batchId: true,
+      batch: { select: { id: true, code: true } },
+    },
+  },
+} satisfies Prisma.RouteLoadInclude;
+
 type RouteWithRelations = Prisma.RouteGetPayload<{ include: typeof ROUTE_INCLUDE }>;
 type StopWithRelations = Prisma.RouteStopGetPayload<{ include: typeof STOP_INCLUDE }>;
+type LoadWithRelations = Prisma.RouteLoadGetPayload<{ include: typeof LOAD_INCLUDE }>;
 
 function toStopResponse(stop: StopWithRelations): RouteStopResponseDto {
   return {
@@ -53,6 +78,16 @@ function toStopResponse(stop: StopWithRelations): RouteStopResponseDto {
     orderId: stop.orderId,
     status: stop.status,
     failureReason: stop.failureReason,
+  };
+}
+
+function toLoadResponse(load: LoadWithRelations): RouteLoadResponseDto {
+  return {
+    id: load.id,
+    routeId: load.routeId,
+    batchItemId: load.batchItemId,
+    batchItem: load.batchItem,
+    quantity: load.quantity,
   };
 }
 
@@ -84,7 +119,10 @@ function assertCanAccessRoute(actor: RouteActor, route: { driverId: string }): v
 
 @Injectable()
 export class RoutesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly containerMovementsService: ContainerMovementsService,
+  ) {}
 
   /**
    * Born PLANNED, always. `driverId` must name an active user with the
@@ -406,6 +444,135 @@ export class RoutesService {
     );
 
     return this.findOne(routeId, actor);
+  }
+
+  /**
+   * Registers one ContainerMovement (ROUTE_LOAD, FULL_AT_PLANT ->
+   * FULL_ON_ROUTE) through ContainerMovementsService — never a hand-written
+   * insert — in the SAME transaction as the RouteLoad row and the
+   * availableQty decrement. The decrement is a single UPDATE guarded by
+   * `WHERE available_qty >= quantity`, never a read-then-write: two trucks
+   * loading the same batchItem at once must have exactly one of them win,
+   * not both succeed against stock that only covers one.
+   *
+   * Loading the same batchItem twice on one route inserts a NEW RouteLoad
+   * row rather than incrementing an existing one ("suma, no reemplaza" is
+   * satisfied by summing the rows, not by a running total column): each
+   * POST is exactly one RouteLoad row paired with exactly one
+   * ContainerMovement, so DELETE /routes/:id/loads/:loadId always has one
+   * unambiguous row — and one movement — to reverse. An incrementing design
+   * would leave DELETE with no single movement to point the reversal at
+   * once two loads had merged into one row.
+   */
+  async addLoad(
+    routeId: string,
+    dto: CreateRouteLoadDto,
+    actor: RouteActor,
+  ): Promise<RouteLoadResponseDto> {
+    const route = await this.getOwnedRouteOrThrow(routeId, actor);
+    assertRouteIsTouchable(route.status, "cargar unidades");
+
+    const batchItem = await this.prisma.batchItem.findUnique({
+      where: { id: dto.batchItemId },
+      select: { id: true, batchId: true, containerTypeId: true },
+    });
+    if (batchItem === null) {
+      throw new BadRequestException(`El ítem de lote "${dto.batchItemId}" no existe`);
+    }
+
+    const load = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.batchItem.updateMany({
+        where: { id: dto.batchItemId, availableQty: { gte: dto.quantity } },
+        data: { availableQty: { decrement: dto.quantity } },
+      });
+      if (count === 0) {
+        throw new BadRequestException(
+          `Stock insuficiente en el ítem de lote "${dto.batchItemId}" para cargar ${dto.quantity} unidades`,
+        );
+      }
+
+      await this.containerMovementsService.createWithinTransaction(
+        tx,
+        {
+          type: ContainerMovementType.ROUTE_LOAD,
+          containerTypeId: batchItem.containerTypeId,
+          quantity: dto.quantity,
+          fromState: ContainerState.FULL_AT_PLANT,
+          toState: ContainerState.FULL_ON_ROUTE,
+        },
+        actor.id,
+        { batchId: batchItem.batchId, routeId },
+      );
+
+      return tx.routeLoad.create({
+        data: { routeId, batchItemId: dto.batchItemId, quantity: dto.quantity },
+        include: LOAD_INCLUDE,
+      });
+    });
+
+    return toLoadResponse(load);
+  }
+
+  async listLoads(routeId: string, actor: RouteActor): Promise<RouteLoadResponseDto[]> {
+    await this.getOwnedRouteOrThrow(routeId, actor);
+    const loads = await this.prisma.routeLoad.findMany({
+      where: { routeId },
+      include: LOAD_INCLUDE,
+    });
+    return loads.map(toLoadResponse);
+  }
+
+  /**
+   * Only while the route is still PLANNED: once the truck is out
+   * (IN_PROGRESS) or the route is done (FINISHED), a loading mistake is
+   * corrected at settlement, not erased here (CLAUDE.md — a settlement
+   * mismatch still closes, recording the difference). `route_loads` is not
+   * the ledger, so the row is genuinely deleted; `container_movements` is,
+   * so the correction appends a FULL_RETURN (FULL_ON_ROUTE ->
+   * FULL_AT_PLANT) undoing the original ROUTE_LOAD rather than touching it.
+   */
+  async removeLoad(routeId: string, loadId: string, actor: RouteActor): Promise<void> {
+    const route = await this.getOwnedRouteOrThrow(routeId, actor);
+    if (route.status !== RouteStatus.PLANNED) {
+      throw new ConflictException(
+        `Solo se puede corregir una carga mientras la ruta está planificada; esta está en ${route.status}`,
+      );
+    }
+
+    const load = await this.prisma.routeLoad.findFirst({
+      where: { id: loadId, routeId },
+      select: {
+        id: true,
+        batchItemId: true,
+        quantity: true,
+        batchItem: { select: { containerTypeId: true, batchId: true } },
+      },
+    });
+    if (load === null) {
+      throw new NotFoundException(`La carga "${loadId}" no existe en esta ruta`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.batchItem.update({
+        where: { id: load.batchItemId },
+        data: { availableQty: { increment: load.quantity } },
+      });
+
+      await this.containerMovementsService.createWithinTransaction(
+        tx,
+        {
+          type: ContainerMovementType.FULL_RETURN,
+          containerTypeId: load.batchItem.containerTypeId,
+          quantity: load.quantity,
+          fromState: ContainerState.FULL_ON_ROUTE,
+          toState: ContainerState.FULL_AT_PLANT,
+        },
+        actor.id,
+        { batchId: load.batchItem.batchId, routeId },
+      );
+
+      await tx.routeLoad.delete({ where: { id: loadId } });
+    });
   }
 
   private async getOwnedRouteOrThrow(
