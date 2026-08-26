@@ -515,20 +515,25 @@ que la cobranza de oficina se use con dinero real fuera de la demo.
 
 ## HU-18 E1 solo verificada a medias: falta `GET .../account-statement`
 
-**Estado:** abierto. **Disparador:** cuando exista el estado de cuenta.
+**Estado:** RESUELTA — `GET /api/v1/customers/:id/account-statement` existe
+desde el PR de estado de cuenta (rama `feat/customer-account-statement`). Se
+conserva la entrada como registro de por qué faltaba.
 
 El criterio de aceptación de HU-18 tiene dos cláusulas: "su deuda disminuye"
 y "el abono aparece en el estado de cuenta". Los tests de `POST /payments`
-(`payments.int.test.ts`) cubren la primera contra `debtBalance` y la
-respuesta del endpoint, pero `GET /customers/:id/account-statement` no
-existe todavía en `apps/api/src` —sigue siendo una fila de la tabla de
-endpoints previstos en `docs/yacco-documentacion.md`—, así que la segunda
-cláusula no tiene dónde verificarse. No es una brecha que introdujo este PR:
-ya faltaba antes de HU-18.
+(`payments.int.test.ts`) ya cubrían la primera contra `debtBalance`, pero
+`GET /customers/:id/account-statement` no existía en `apps/api/src` —era
+solo una fila de la tabla de endpoints previstos en
+`docs/yacco-documentacion.md`—, así que la segunda cláusula no tenía dónde
+verificarse.
 
-**Para cerrarla:** cuando se construya `GET /customers/:id/account-statement`,
-agregar un test que confirme que un pago de oficina aparece ahí con su
-monto y fecha correctos.
+**Cómo se cerró:** `CustomersService.getAccountStatement` reconstruye el
+libro desde `Sale`/`Payment` (nunca confía en `debtBalance` directamente) y
+`account-statement.int.test.ts` prueba justamente esa reconstrucción: el
+`closingBalance` sin filtros de fecha coincide exactamente con
+`customers.debtBalance` para un cliente con varias ventas y pagos —incluidos
+`PENDING`/`REJECTED`, que aparecen en la lista sin mover el saldo— y también
+que un pago de oficina aparece ahí con su monto y estado correctos.
 
 ## `requiresConfirmation` usado como proxy de "es efectivo"
 
@@ -575,3 +580,25 @@ liquidada debe reabrirse cuando esto ocurre, o si basta con que el reporte
 de cobranza (`GET /reports/collections`, aún no construido) lea el estado
 de los pagos en vivo en vez de confiar en el número congelado de la
 liquidación.
+
+## Falta índice en `sales (location_id, sold_at)`
+
+**Estado:** abierto. **Disparador:** en el piloto de campo.
+
+`sales` no tiene ningún índice sobre `location_id` ni `sold_at` — solo la
+PK y el índice parcial de `external_id`. `GET /customers/:id/account-statement`
+(`CustomersService.getAccountStatement`) recorre `sales` filtrando por
+`location: { customerId }`, un join sin índice de apoyo del lado de `sales`.
+
+**Razón:** con el volumen actual (planta con un solo cliente de referencia
+en desarrollo) el costo de un `sequential scan` es nulo, y agregar un
+índice especulando sobre un volumen que todavía no existe habría sido el
+mismo error que el proyecto evita en el resto del dominio. Este PR ya tenía
+bastante superficie (un endpoint nuevo que reconstruye dos tablas) como
+para sumarle una migración de índice sin necesidad demostrada.
+
+**Para cerrarla:** cuando el piloto de campo traiga volumen real de
+ventas, medir el plan de `GET .../account-statement` y agregar
+`@@index([locationId, soldAt])` en `Sale` si el `EXPLAIN` lo justifica —
+mismo criterio que ya aplicó `payments (customer_id, paid_at DESC)` en el
+PR de cobranza de oficina.

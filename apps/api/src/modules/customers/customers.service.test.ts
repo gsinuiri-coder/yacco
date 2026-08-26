@@ -1,10 +1,11 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { Prisma } from "@prisma/client";
+import { PaymentStatus, Prisma } from "@prisma/client";
 import type { Customer, CustomerLocation } from "@prisma/client";
 import { jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { CustomersService } from "./customers.service.js";
+import { ACCOUNT_STATEMENT_DEFAULT_LIMIT } from "./dto/account-statement-query.dto.js";
 import { DEFAULT_LIMIT, DEFAULT_PAGE } from "./dto/list-customers-query.dto.js";
 
 // Gherkin quoted from spec §2.4, HU-05:
@@ -75,6 +76,12 @@ function buildPrismaMock() {
       findUnique: jest.fn<() => Promise<unknown>>(),
       count: jest.fn<() => Promise<unknown>>(),
       update: jest.fn<() => Promise<unknown>>(),
+    },
+    sale: {
+      findMany: jest.fn<() => Promise<unknown>>(),
+    },
+    payment: {
+      findMany: jest.fn<() => Promise<unknown>>(),
     },
     $transaction: jest.fn<(operations: Promise<unknown>[]) => Promise<unknown[]>>(),
   };
@@ -435,6 +442,248 @@ describe("CustomersService", () => {
       await expect(service.update("customer-1", { active: false })).rejects.toThrow(
         "connection lost",
       );
+    });
+  });
+
+  describe("getAccountStatement", () => {
+    function sale(overrides: Record<string, unknown> = {}) {
+      const { total, ...rest } = overrides;
+      return {
+        id: "sale-1",
+        soldAt: new Date("2026-08-10T15:00:00.000Z"),
+        total: new Prisma.Decimal((total as string | undefined) ?? "24.99"),
+        isOpeningBalance: false,
+        location: { name: "Principal" },
+        ...rest,
+      };
+    }
+
+    function payment(overrides: Record<string, unknown> = {}) {
+      const { amount, ...rest } = overrides;
+      return {
+        id: "payment-1",
+        paidAt: new Date("2026-08-10T16:00:00.000Z"),
+        amount: new Prisma.Decimal((amount as string | undefined) ?? "24.99"),
+        status: PaymentStatus.CONFIRMED,
+        isOpeningBalance: false,
+        paymentMethod: { name: "Efectivo" },
+        ...rest,
+      };
+    }
+
+    it("an unknown customer is rejected with 404", async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.getAccountStatement("missing", { limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("a customer with no movements returns an empty statement at 0.00", async () => {
+      prisma.customer.findUnique.mockResolvedValue(
+        buildCustomer({ debtBalance: new Prisma.Decimal(0) }),
+      );
+      prisma.sale.findMany.mockResolvedValue([]);
+      prisma.payment.findMany.mockResolvedValue([]);
+
+      const result = await service.getAccountStatement("customer-1", {
+        limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+      });
+
+      expect(result.entries).toEqual([]);
+      expect(result.openingBalance).toBe("0.00");
+      expect(result.closingBalance).toBe("0.00");
+    });
+
+    it("queries Sale through location.customerId and Payment through customerId directly, bounded by `to`", async () => {
+      prisma.customer.findUnique.mockResolvedValue(buildCustomer());
+      prisma.sale.findMany.mockResolvedValue([]);
+      prisma.payment.findMany.mockResolvedValue([]);
+
+      await service.getAccountStatement("customer-1", {
+        to: "2026-08-31",
+        limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+      });
+
+      const toBoundary = new Date("2026-09-01T05:00:00.000Z");
+      expect(prisma.sale.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { location: { customerId: "customer-1" }, soldAt: { lt: toBoundary } },
+        }),
+      );
+      expect(prisma.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { customerId: "customer-1", paidAt: { lt: toBoundary } },
+        }),
+      );
+    });
+
+    it("a CONFIRMED payment reduces the running balance; PENDING and REJECTED do not, but both still appear", async () => {
+      prisma.customer.findUnique.mockResolvedValue(
+        buildCustomer({ debtBalance: new Prisma.Decimal("74.97") }),
+      );
+      prisma.sale.findMany.mockResolvedValue([
+        sale({ id: "sale-1", soldAt: new Date("2026-08-10T10:00:00.000Z"), total: "24.99" }),
+      ]);
+      prisma.payment.findMany.mockResolvedValue([
+        payment({
+          id: "payment-confirmed",
+          paidAt: new Date("2026-08-10T11:00:00.000Z"),
+          amount: "10.00",
+          status: PaymentStatus.CONFIRMED,
+        }),
+        payment({
+          id: "payment-pending",
+          paidAt: new Date("2026-08-10T12:00:00.000Z"),
+          amount: "5.00",
+          status: PaymentStatus.PENDING,
+        }),
+        payment({
+          id: "payment-rejected",
+          paidAt: new Date("2026-08-10T13:00:00.000Z"),
+          amount: "3.00",
+          status: PaymentStatus.REJECTED,
+        }),
+      ]);
+
+      const result = await service.getAccountStatement("customer-1", {
+        limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+      });
+
+      expect(result.entries).toHaveLength(4);
+      expect(result.entries.map((entry) => entry.runningBalance)).toEqual([
+        "24.99", // charge
+        "14.99", // 24.99 - 10.00 confirmed
+        "14.99", // pending: unchanged
+        "14.99", // rejected: unchanged
+      ]);
+      expect(result.entries[2]?.status).toBe(PaymentStatus.PENDING);
+      expect(result.entries[3]?.status).toBe(PaymentStatus.REJECTED);
+      expect(result.closingBalance).toBe("14.99");
+    });
+
+    it("entries from different tables interleave by instant, not grouped by type", async () => {
+      prisma.customer.findUnique.mockResolvedValue(buildCustomer());
+      prisma.sale.findMany.mockResolvedValue([
+        sale({ id: "sale-early", soldAt: new Date("2026-08-10T08:00:00.000Z"), total: "10.00" }),
+        sale({ id: "sale-late", soldAt: new Date("2026-08-10T12:00:00.000Z"), total: "10.00" }),
+      ]);
+      prisma.payment.findMany.mockResolvedValue([
+        payment({
+          id: "payment-middle",
+          paidAt: new Date("2026-08-10T10:00:00.000Z"),
+          amount: "5.00",
+        }),
+      ]);
+
+      const result = await service.getAccountStatement("customer-1", {
+        limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+      });
+
+      expect(result.entries.map((entry) => entry.saleId ?? entry.paymentId)).toEqual([
+        "sale-early",
+        "payment-middle",
+        "sale-late",
+      ]);
+    });
+
+    it("a `from` filter folds everything earlier into openingBalance", async () => {
+      prisma.customer.findUnique.mockResolvedValue(
+        buildCustomer({ debtBalance: new Prisma.Decimal("34.99") }),
+      );
+      prisma.sale.findMany.mockResolvedValue([
+        sale({ id: "sale-before", soldAt: new Date("2026-08-05T10:00:00.000Z"), total: "20.00" }),
+        sale({
+          id: "sale-in-window",
+          soldAt: new Date("2026-08-15T10:00:00.000Z"),
+          total: "14.99",
+        }),
+      ]);
+      prisma.payment.findMany.mockResolvedValue([]);
+
+      const result = await service.getAccountStatement("customer-1", {
+        from: "2026-08-10",
+        limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+      });
+
+      expect(result.openingBalance).toBe("20.00");
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0]?.saleId).toBe("sale-in-window");
+      expect(result.closingBalance).toBe("34.99");
+    });
+
+    it("rejects a `from` after `to` with 400", async () => {
+      prisma.customer.findUnique.mockResolvedValue(buildCustomer());
+
+      await expect(
+        service.getAccountStatement("customer-1", {
+          from: "2026-08-31",
+          to: "2026-08-01",
+          limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("limit caps `entries` to the most recent ones without affecting the balances", async () => {
+      prisma.customer.findUnique.mockResolvedValue(
+        buildCustomer({ debtBalance: new Prisma.Decimal("30.00") }),
+      );
+      prisma.sale.findMany.mockResolvedValue([
+        sale({ id: "sale-1", soldAt: new Date("2026-08-10T08:00:00.000Z"), total: "10.00" }),
+        sale({ id: "sale-2", soldAt: new Date("2026-08-10T09:00:00.000Z"), total: "10.00" }),
+        sale({ id: "sale-3", soldAt: new Date("2026-08-10T10:00:00.000Z"), total: "10.00" }),
+      ]);
+      prisma.payment.findMany.mockResolvedValue([]);
+
+      const result = await service.getAccountStatement("customer-1", { limit: 2 });
+
+      expect(result.entries).toHaveLength(2);
+      expect(result.entries.map((entry) => entry.saleId)).toEqual(["sale-2", "sale-3"]);
+      // The balances still reflect the FULL history, not just the visible page.
+      expect(result.openingBalance).toBe("0.00");
+      expect(result.closingBalance).toBe("30.00");
+    });
+
+    it("isOpeningBalance rows are included and add to the balance like any other movement", async () => {
+      prisma.customer.findUnique.mockResolvedValue(
+        buildCustomer({ debtBalance: new Prisma.Decimal("50.00") }),
+      );
+      prisma.sale.findMany.mockResolvedValue([
+        sale({ id: "opening-charge", total: "50.00", isOpeningBalance: true }),
+      ]);
+      prisma.payment.findMany.mockResolvedValue([]);
+
+      const result = await service.getAccountStatement("customer-1", {
+        limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+      });
+
+      expect(result.entries[0]?.isOpeningBalance).toBe(true);
+      expect(result.closingBalance).toBe("50.00");
+    });
+
+    it("closingBalance without any date filter matches customers.debtBalance exactly, with non-round decimals", async () => {
+      const customer = buildCustomer({ debtBalance: new Prisma.Decimal("12.99") });
+      prisma.customer.findUnique.mockResolvedValue(customer);
+      prisma.sale.findMany.mockResolvedValue([
+        sale({ id: "sale-1", soldAt: new Date("2026-08-01T10:00:00.000Z"), total: "8.33" }),
+        sale({ id: "sale-2", soldAt: new Date("2026-08-05T10:00:00.000Z"), total: "24.99" }),
+      ]);
+      prisma.payment.findMany.mockResolvedValue([
+        payment({
+          id: "payment-1",
+          paidAt: new Date("2026-08-06T10:00:00.000Z"),
+          amount: "20.33",
+          status: PaymentStatus.CONFIRMED,
+        }),
+      ]);
+
+      const result = await service.getAccountStatement("customer-1", {
+        limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+      });
+
+      // 8.33 + 24.99 - 20.33 = 12.99
+      expect(result.closingBalance).toBe(customer.debtBalance.toFixed(2));
+      expect(result.closingBalance).toBe("12.99");
     });
   });
 });
