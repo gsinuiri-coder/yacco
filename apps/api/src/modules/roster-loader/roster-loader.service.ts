@@ -375,10 +375,17 @@ export class RosterLoaderService {
 
     // Only needed if some customer has an opening credit, but cheap and
     // idempotent enough to always upsert up front rather than branch on it.
+    // Always active: false, on both branches — this is a synthetic method
+    // to satisfy Payment.paymentMethodId's FK for a debt/credit the customer
+    // already carried at cutover, never a real way anyone chooses to collect
+    // money. Now that GET /payment-methods exists, an active row here would
+    // show up as a real collection option; `update` forces it back to false
+    // even if a hand-made row (or an earlier version of this loader) left it
+    // active — see the standalone deactivation migration for existing rows.
     const openingPaymentMethod = await this.prisma.paymentMethod.upsert({
       where: { name: OPENING_PAYMENT_METHOD_NAME },
-      update: {},
-      create: { name: OPENING_PAYMENT_METHOD_NAME },
+      update: { active: false },
+      create: { name: OPENING_PAYMENT_METHOD_NAME, active: false },
     });
 
     for (const customer of roster.customers) {

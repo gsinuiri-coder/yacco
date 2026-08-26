@@ -309,6 +309,40 @@ describe("SalesService.createOpeningCredit", () => {
     expect(await customerDebtBalance(customerId)).toBe("-80.25");
   });
 
+  // The office can never withdraw a payment method through the app yet (no
+  // POST/PATCH on payment-methods, see docs/backlog-tecnico.md), but the
+  // roster loader's synthetic "Apertura" method is born inactive on
+  // purpose (it must never appear as a real way to collect money) and is
+  // exactly what an opening credit references. createOpeningCredit loads a
+  // debt/credit the customer ALREADY had at cutover, not a collection
+  // happening today, so — unlike registerStopDeliveryWithinTransaction,
+  // which rejects an inactive method for an in-progress collection — this
+  // path deliberately does not validate `active` at all; it only checks the
+  // FK exists (see the P2003 catch below it). This proves that asymmetry
+  // holds and stays working.
+  test("still works when the payment method is inactive (e.g. the loader's synthetic Apertura)", async () => {
+    const sales = ctx.app.get(SalesService);
+    const prisma = ctx.app.get(PrismaService);
+    const customerId = await createCustomer();
+    const inactiveMethod = await prisma.paymentMethod.upsert({
+      where: { name: "Apertura" },
+      update: { active: false },
+      create: { name: "Apertura", active: false },
+    });
+
+    await sales.createOpeningCredit(
+      creditDto({
+        customerId,
+        paymentMethodId: inactiveMethod.id,
+        amount: "50.00",
+        paidAt: new Date(),
+      }),
+      recordedById,
+    );
+
+    expect(await customerDebtBalance(customerId)).toBe("-50.00");
+  });
+
   test("a second opening credit for the same customer is rejected", async () => {
     const sales = ctx.app.get(SalesService);
     const customerId = await createCustomer();
