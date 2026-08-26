@@ -1,0 +1,10 @@
+location_code,customer_code,label,address,zone,maps_url,is_primary
+EJ-001-A,EJ-001,Casa,Jr. Los Alamos 145,Surco,,SI
+EJ-002-A,EJ-002,Bodega,Av. Caminos del Inca 2310,Surco,,SI
+EJ-002-B,EJ-002,Deposito,Jr. Monterrey 88,Surco,,NO
+EJ-003-A,EJ-003,Casa,Calle Las Gaviotas 512,Chorrillos,,SI
+EJ-004-A,EJ-004,Casa,,Chorrillos,https://maps.app.goo.gl/EJEMPLONOREAL,SI
+EJ-005-A,EJ-005,Local,Av. Grau 401,Barranco,,SI
+EJ-006-A,EJ-006,Casa,Jr. Union 233,Barranco,,SI
+EJ-007-A,EJ-007,Local,Av. Los Heroes 1290,San Juan de Miraflores,,SI
+EJ-008-A,EJ-008,Casa,Calle Ayacucho 67,San Juan de Miraflores,,SI
