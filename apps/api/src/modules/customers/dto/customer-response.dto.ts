@@ -52,6 +52,14 @@ export class CustomerResponseDto {
 
   @ApiProperty({ format: "date-time" })
   createdAt!: Date;
+
+  /**
+   * Read-only. Written only by the roster loader, keyed off the snapshot in
+   * tools/firestore-export's output — never by CreateCustomerDto or
+   * UpdateCustomerDto. Null for every customer created from the web.
+   */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  externalCode!: string | null;
 }
 
 export class PaginatedCustomersDto {

@@ -48,6 +48,7 @@ function buildCustomer(
     debtBalance: new Prisma.Decimal(0),
     active: true,
     createdAt: new Date("2026-08-21T15:00:00.000Z"),
+    externalCode: null,
     locations: locations ?? [buildPrimaryLocation()],
     ...customerOverrides,
   };
@@ -323,6 +324,14 @@ describe("CustomersService", () => {
       const result = await service.findOne("customer-1");
 
       expect(result.zone).toBeNull();
+    });
+
+    it("exposes externalCode read-only: null for a web-created customer, passed through when the loader set it", async () => {
+      prisma.customer.findUnique.mockResolvedValueOnce(buildCustomer());
+      expect((await service.findOne("customer-1")).externalCode).toBeNull();
+
+      prisma.customer.findUnique.mockResolvedValueOnce(buildCustomer({ externalCode: "FS-001" }));
+      expect((await service.findOne("customer-1")).externalCode).toBe("FS-001");
     });
 
     it("throws NotFoundException for an unknown id", async () => {

@@ -33,6 +33,7 @@ export class CustomerLocationsService {
         phone: true,
         isPrimary: true,
         active: true,
+        externalCode: true,
       },
     });
   }
