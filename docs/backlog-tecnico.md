@@ -630,3 +630,51 @@ ventas, medir el plan de `GET .../account-statement` y agregar
 `@@index([locationId, soldAt])` en `Sale` si el `EXPLAIN` lo justifica —
 mismo criterio que ya aplicó `payments (customer_id, paid_at DESC)` en el
 PR de cobranza de oficina.
+
+## `git status` reportó 27 archivos de `apps/api` modificados sin cambios reales
+
+**Estado:** RESUELTA. No hubo PR: es un diagnóstico local, sin tocar código.
+Se registra igual porque el síntoma es alarmante (27 archivos "modificados"
+en `auth`, `users`, `prisma`, `common` y `tsconfig.json`, justo las rutas
+sensibles a seguridad) y el diagnóstico no es obvio — y porque puede
+repetirse en esta misma máquina.
+
+`git status` mostraba esos 27 archivos como modificados de forma persistente
+—sobrevivía a `git checkout`, a `git update-index --refresh` y a corridas
+repetidas de `git status`—, pero `git diff`/`git diff --stat` no mostraban
+ninguna línea de cambio para ninguno de ellos: contradicción entre las dos
+señales.
+
+Se verificó por tres vías independientes que el contenido en disco era
+idéntico, byte a byte, al de `HEAD`, para los 27 archivos:
+
+- `git hash-object <archivo>` coincidía exactamente con el hash de blob que
+  `git ls-tree HEAD` tiene registrado.
+- Un `diff -u` de sistema operativo (no de git) entre `git show HEAD:<archivo>`
+  y el archivo en disco no encontró ninguna diferencia.
+- `git diff --no-ext-diff --numstat` (sin driver de diff externo, para
+  descartar que algún `.gitattributes` estuviera silenciando la salida —no
+  hay ninguno en este repo) reportó cero líneas cambiadas.
+
+**Razón:** `git ls-files --debug` mostró que el tamaño cacheado en el índice
+para `apps/api/tsconfig.json` (250 bytes) no coincidía con el tamaño real en
+disco (239 bytes, el mismo que `HEAD`). Es un índice con caché de stat
+(mtime/tamaño) desactualizado — el síntoma clásico de "racy git" — no un
+cambio de contenido real. Ya estaba así antes de empezar a investigarlo, así
+que el origen puntual (qué operación dejó el índice con ese caché) no se
+identificó.
+
+**Cómo se cerró:** `git update-index --really-refresh` (silencioso, sin
+`needs update`) dejó `git status`/`git diff --stat` limpios. Antes de eso se
+guardó el estado con `git stash push -u` como paso de seguridad reversible;
+`git stash show --stat` sobre ese stash confirmó que no contenía ningún
+diff real contra `HEAD`, así que se descartó con `git stash drop` sin
+pérdida de nada.
+
+**Si vuelve a pasar:** repetir la verificación de arriba (no asumir que un
+`git status` con muchos archivos modificados es un cambio real) y cerrar
+con `git update-index --really-refresh`. Si el síntoma es recurrente en esta
+máquina, vale la pena investigar la causa raíz (candidatos: resolución de
+reloj del filesystem, antivirus/sync tocando mtimes, o una interacción con
+`core.ignorecase`/rutas de Windows) en vez de repetir el diagnóstico cada
+vez.
