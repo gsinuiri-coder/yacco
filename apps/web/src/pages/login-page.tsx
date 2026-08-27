@@ -1,12 +1,16 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate, useLocation } from "react-router";
+import { SESSION_EXPIRED_MESSAGE } from "../api/errors";
 import { useAuth } from "../auth/use-auth";
 import { SlowRequestNotice } from "../components/slow-request-notice";
 import { useSlowRequest } from "../hooks/use-slow-request";
 
 interface LocationState {
   from?: string;
+  /** ProtectedRoute la manda cuando la sesión terminó por vencer, no por un
+   * logout manual — ver auth-provider.tsx. */
+  sessionExpired?: boolean;
 }
 
 export function LoginPage() {
@@ -17,9 +21,9 @@ export function LoginPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSlow = useSlowRequest(isSubmitting);
+  const state = location.state as LocationState | null;
 
   if (user) {
-    const state = location.state as LocationState | null;
     return <Navigate to={state?.from ?? "/"} replace />;
   }
 
@@ -52,6 +56,11 @@ export function LoginPage() {
             <h1>Yacco</h1>
           </div>
 
+          {state?.sessionExpired && (
+            <div className="notice notice--info" role="status">
+              {SESSION_EXPIRED_MESSAGE}
+            </div>
+          )}
           {errorMessage && (
             <div className="notice notice--error" role="alert">
               {errorMessage}
