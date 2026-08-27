@@ -10,6 +10,7 @@ import { CustomersPage } from "./pages/customers-page";
 import { DashboardPage } from "./pages/dashboard-page";
 import { InventoryPage } from "./pages/inventory-page";
 import { LoginPage } from "./pages/login-page";
+import { NotFoundPage } from "./pages/not-found-page";
 import { OrderCreatePage } from "./pages/order-create-page";
 import { OrderDetailPage } from "./pages/order-detail-page";
 import { OrdersPage } from "./pages/orders-page";
@@ -35,6 +36,7 @@ export function App() {
           <Route path="/container-movements" element={<ContainerMovementsPage />} />
           <Route path="/container-types" element={<ContainerTypesPage />} />
           <Route path="/container-counts" element={<ContainerCountsPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </AuthProvider>

@@ -1,9 +1,11 @@
-import { act, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SESSION_EXPIRED_MESSAGE } from "../api/errors";
 import { SLOW_REQUEST_MESSAGE } from "../api/timing";
+import { AuthProvider } from "../auth/auth-provider";
 import { API_BASE_URL } from "../config";
 import { renderWithProviders } from "../test/render";
 import { server } from "../test/server";
@@ -17,6 +19,21 @@ function renderLogin() {
       <Route path="/" element={<h1>Panel</h1>} />
     </Routes>,
     "/login",
+  );
+}
+
+/** A diferencia de renderLogin, deja fijar el `state` con el que se llega a
+ * /login — lo que ProtectedRoute manda al redirigir (ver protected-route.tsx). */
+function renderLoginWithState(state: unknown) {
+  return render(
+    <MemoryRouter initialEntries={[{ pathname: "/login", state }]}>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<h1>Panel</h1>} />
+        </Routes>
+      </AuthProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -134,6 +151,19 @@ describe("LoginPage", () => {
     await user.click(submit);
 
     expect(await screen.findByRole("alert")).toHaveClass("notice", "notice--error");
+  });
+
+  it("llega con la señal de sesión vencida y muestra el aviso", async () => {
+    renderLoginWithState({ from: "/customers", sessionExpired: true });
+
+    expect(await screen.findByText(SESSION_EXPIRED_MESSAGE)).toBeInTheDocument();
+  });
+
+  it("llega sin la señal de sesión vencida y NO muestra el aviso", async () => {
+    renderLoginWithState({ from: "/customers" });
+
+    await screen.findByLabelText("Usuario");
+    expect(screen.queryByText(SESSION_EXPIRED_MESSAGE)).not.toBeInTheDocument();
   });
 
   describe("arranque en frío de Render", () => {
