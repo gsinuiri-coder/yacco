@@ -14,6 +14,7 @@ import {
   businessDatesGoingBack,
   computeExpectedDebtByCustomer,
   deliveriesByDay,
+  findProductPriceMismatches,
   loadsNeededByDay,
   type ContainerTypeKey,
   type DemoDeliveryPlan,
@@ -70,6 +71,9 @@ interface LoginResponse {
 interface CatalogEntry {
   id: string;
   name: string;
+}
+interface ProductCatalogResponse extends CatalogEntry {
+  listPrice: string;
 }
 interface UserResponse {
   id: string;
@@ -183,6 +187,45 @@ export async function run(): Promise<void> {
   });
   const token = login.accessToken;
 
+  // Everything down to (not including) driver creation is a READ, on
+  // purpose: catalog resolution and the price check below can fail, and
+  // must do so before the script's first write.
+  const [containerTypes, products, paymentMethods] = await Promise.all([
+    apiFetch<CatalogEntry[]>("/container-types", token),
+    apiFetch<ProductCatalogResponse[]>("/products", token),
+    apiFetch<CatalogEntry[]>("/payment-methods", token),
+  ]);
+  const containerTypeIdByKey = resolveCatalogIds(
+    containerTypes,
+    CONTAINER_TYPE_NAMES,
+    "el tipo de envase",
+  );
+  const productIdByKey = resolveCatalogIds(products, PRODUCT_NAMES, "el producto");
+  const paymentMethodIdByKey = resolveCatalogIds(
+    paymentMethods,
+    PAYMENT_METHOD_NAMES,
+    "el método de pago",
+  );
+
+  // PRODUCT_UNIT_PRICE (seed-demo-plan.ts) mirrors seed.ts's listPrice, which
+  // seed.ts itself calls a provisional placeholder pending confirmation with
+  // the plant owner. If it ever changes there, the "Deuda esperada" summary
+  // below would silently go stale — so this checks the assumption against
+  // the real catalog and refuses to write anything on a mismatch, rather
+  // than print wrong numbers with no warning.
+  const priceMismatches = findProductPriceMismatches(products);
+  if (priceMismatches.length > 0) {
+    const lines = priceMismatches.map(
+      (mismatch) =>
+        `  - "${mismatch.name}": esperado ${mismatch.expected}, real ${mismatch.actual}`,
+    );
+    throw new Error(
+      "El precio real de estos productos ya no coincide con PRODUCT_UNIT_PRICE en " +
+        "seed-demo-plan.ts, así que la deuda esperada que este script imprime sería " +
+        `incorrecta. Actualizá esa constante antes de correr "pnpm demo:data":\n${lines.join("\n")}`,
+    );
+  }
+
   // Idempotency guard — see the file-level comment: this is the FIRST write,
   // deliberately, so a re-run aborts here instead of partway through.
   let driver: UserResponse;
@@ -209,23 +252,6 @@ export async function run(): Promise<void> {
   console.log(
     `Chofer creado: ${driver.username} (contraseña generada al azar; no se imprime y no hace ` +
       "falta dársela — el chofer nunca inicia sesión en este seed, ver CLAUDE.md).",
-  );
-
-  const [containerTypes, products, paymentMethods] = await Promise.all([
-    apiFetch<CatalogEntry[]>("/container-types", token),
-    apiFetch<CatalogEntry[]>("/products", token),
-    apiFetch<CatalogEntry[]>("/payment-methods", token),
-  ]);
-  const containerTypeIdByKey = resolveCatalogIds(
-    containerTypes,
-    CONTAINER_TYPE_NAMES,
-    "el tipo de envase",
-  );
-  const productIdByKey = resolveCatalogIds(products, PRODUCT_NAMES, "el producto");
-  const paymentMethodIdByKey = resolveCatalogIds(
-    paymentMethods,
-    PAYMENT_METHOD_NAMES,
-    "el método de pago",
   );
 
   const customerIdByKey = new Map<string, string>();

@@ -2,9 +2,12 @@ import {
   DEMO_CUSTOMERS,
   DEMO_DELIVERIES,
   DEMO_HISTORY_DAYS,
+  PRODUCT_NAMES,
+  PRODUCT_UNIT_PRICE,
   businessDatesGoingBack,
   computeExpectedDebtByCustomer,
   deliveriesByDay,
+  findProductPriceMismatches,
   loadsNeededByDay,
 } from "./seed-demo-plan.js";
 
@@ -113,6 +116,44 @@ describe("computeExpectedDebtByCustomer", () => {
     // pending_yape: 2 x R_SC (16.00) with a PENDING Yape payment of the same
     // amount — if PENDING wrongly reduced debt, this would be "0.00".
     expect(debts.get("pending_yape")).toBe("16.00");
+  });
+});
+
+describe("findProductPriceMismatches", () => {
+  const realCatalog = (Object.keys(PRODUCT_NAMES) as (keyof typeof PRODUCT_NAMES)[]).map((key) => ({
+    name: PRODUCT_NAMES[key],
+    listPrice: PRODUCT_UNIT_PRICE[key],
+  }));
+
+  test("no mismatches when the catalog agrees with the plan", () => {
+    expect(findProductPriceMismatches(realCatalog)).toEqual([]);
+  });
+
+  test("reports a product whose real listPrice disagrees with the plan", () => {
+    const catalog = realCatalog.map((product) =>
+      product.name === PRODUCT_NAMES.R_CC ? { ...product, listPrice: "9.50" } : product,
+    );
+
+    const mismatches = findProductPriceMismatches(catalog);
+    expect(mismatches).toEqual([
+      { key: "R_CC", name: PRODUCT_NAMES.R_CC, expected: PRODUCT_UNIT_PRICE.R_CC, actual: "9.50" },
+    ]);
+  });
+
+  test("reports every mismatched product, not just the first", () => {
+    const catalog = realCatalog.map((product) => ({ ...product, listPrice: "1.00" }));
+
+    const mismatches = findProductPriceMismatches(catalog);
+    expect(mismatches).toHaveLength(realCatalog.length);
+  });
+
+  test("a product missing from the catalog entirely is not reported here (CatalogIds' job)", () => {
+    expect(findProductPriceMismatches([])).toEqual([]);
+  });
+
+  test("an unrelated product in the catalog is ignored", () => {
+    const catalog = [...realCatalog, { name: "Otro producto", listPrice: "1.00" }];
+    expect(findProductPriceMismatches(catalog)).toEqual([]);
   });
 });
 

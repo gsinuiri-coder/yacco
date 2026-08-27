@@ -54,6 +54,43 @@ export const PRODUCT_UNIT_PRICE: Record<ProductKey, string> = {
   R_SC: "8.00",
 };
 
+export interface ProductCatalogEntry {
+  name: string;
+  listPrice: string;
+}
+
+export interface ProductPriceMismatch {
+  key: ProductKey;
+  name: string;
+  expected: string;
+  actual: string;
+}
+
+/**
+ * PRODUCT_UNIT_PRICE mirrors seed.ts's listPrice so the debt math below can
+ * be checked without a live server — but seed.ts's own comment calls those
+ * values "provisional placeholders, pending confirmation with the plant
+ * owner". If one changes there, this plan's expected debt goes silently
+ * stale unless something compares the two. seed-demo.ts calls this against
+ * a real GET /products response, before writing anything, and aborts on any
+ * mismatch — never averages, ignores, or "uses whichever is right" for you.
+ */
+export function findProductPriceMismatches(catalog: ProductCatalogEntry[]): ProductPriceMismatch[] {
+  const listPriceByName = new Map(catalog.map((product) => [product.name, product.listPrice]));
+  const mismatches: ProductPriceMismatch[] = [];
+  for (const key of Object.keys(PRODUCT_NAMES) as ProductKey[]) {
+    const name = PRODUCT_NAMES[key];
+    const actual = listPriceByName.get(name);
+    const expected = PRODUCT_UNIT_PRICE[key];
+    // A missing product is CatalogIds' job to report (a clearer, different
+    // message); this only speaks up when the product exists but disagrees.
+    if (actual !== undefined && actual !== expected) {
+      mismatches.push({ key, name, expected, actual });
+    }
+  }
+  return mismatches;
+}
+
 export const DEMO_HISTORY_DAYS = 5;
 export const DEMO_DRIVER_USERNAME = "chofer.demo";
 export const DEMO_DRIVER_NAME = "Julio Ramírez (Demo)";
