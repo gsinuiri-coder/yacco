@@ -20,6 +20,7 @@
     "db:seed": "pnpm --filter @yacco/api db:seed",
     "db:deploy": "pnpm --filter @yacco/api db:deploy",
     "demo:up": "docker compose up -d --wait postgres && pnpm db:deploy && pnpm db:seed",
+    "demo:data": "pnpm --filter @yacco/api demo:data",
     "prepare": "husky"
   },
   "devDependencies": {
