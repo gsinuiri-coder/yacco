@@ -6,6 +6,7 @@ import { ApiError } from "../api/errors";
 import { SLOW_REQUEST_MESSAGE } from "../api/timing";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
+import { CustomerAccountStatementSection } from "../components/customer-account-statement-section";
 import { CustomerPaymentSection } from "../components/customer-payment-section";
 import { CustomerPricesSection } from "../components/customer-prices-section";
 import { useSlowRequest } from "../hooks/use-slow-request";
@@ -164,6 +165,8 @@ export function CustomerDetailPage() {
           />
 
           <CustomerPricesSection customerId={customer.id} isAdmin={isAdmin} />
+
+          <CustomerAccountStatementSection customerId={customer.id} />
         </>
       ) : null}
     </AppShell>

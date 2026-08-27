@@ -68,6 +68,25 @@ function stubPaymentMethods(): void {
   );
 }
 
+/**
+ * CustomerAccountStatementSection loads on mount, on every render of the
+ * page. `closingBalance` is intentionally "0.00" (not tied to `debtBalance`
+ * in these fixtures) so it never collides with the "Deuda actual" money
+ * strings these tests assert on.
+ */
+function stubAccountStatement(): void {
+  server.use(
+    http.get(`${API_BASE_URL}/customers/${CUSTOMER_ID}/account-statement`, () =>
+      HttpResponse.json({
+        customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa", debtBalance: "40.50" },
+        openingBalance: "0.00",
+        entries: [],
+        closingBalance: "0.00",
+      }),
+    ),
+  );
+}
+
 function renderDetail(id = CUSTOMER_ID) {
   return renderWithProviders(
     <Routes>
@@ -89,6 +108,7 @@ describe("CustomerDetailPage", () => {
     stubGetCustomer(buildCustomer());
     stubManagementPrices();
     stubPaymentMethods();
+    stubAccountStatement();
 
     renderDetail();
 
@@ -115,6 +135,7 @@ describe("CustomerDetailPage", () => {
     );
     stubManagementPrices();
     stubPaymentMethods();
+    stubAccountStatement();
 
     renderDetail();
 
@@ -136,6 +157,7 @@ describe("CustomerDetailPage", () => {
     );
     stubManagementPrices();
     stubPaymentMethods();
+    stubAccountStatement();
 
     renderDetail();
 
@@ -166,6 +188,7 @@ describe("CustomerDetailPage", () => {
     stubGetCustomer(buildCustomer());
     stubEffectivePrices();
     stubPaymentMethods();
+    stubAccountStatement();
 
     renderDetail();
 
@@ -180,6 +203,7 @@ describe("CustomerDetailPage", () => {
     stubGetCustomer(buildCustomer({ debtBalance: "40.50" }));
     stubManagementPrices();
     stubPaymentMethods();
+    stubAccountStatement();
     server.use(
       http.post(`${API_BASE_URL}/payments`, () =>
         HttpResponse.json(
