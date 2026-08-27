@@ -16,7 +16,8 @@
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:deploy": "prisma migrate deploy",
-    "load:roster": "pnpm build && node dist/cli/load-roster.js"
+    "load:roster": "pnpm build && node dist/cli/load-roster.js",
+    "demo:data": "pnpm build && node dist/cli/seed-demo.js"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
