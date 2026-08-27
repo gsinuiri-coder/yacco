@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { Route, Routes } from "react-router";
@@ -68,6 +68,25 @@ function stubPaymentMethods(): void {
   );
 }
 
+/**
+ * CustomerAccountStatementSection loads on mount, on every render of the
+ * page. `closingBalance` is intentionally "0.00" (not tied to `debtBalance`
+ * in these fixtures) so it never collides with the "Deuda actual" money
+ * strings these tests assert on.
+ */
+function stubAccountStatement(): void {
+  server.use(
+    http.get(`${API_BASE_URL}/customers/${CUSTOMER_ID}/account-statement`, () =>
+      HttpResponse.json({
+        customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa", debtBalance: "40.50" },
+        openingBalance: "0.00",
+        entries: [],
+        closingBalance: "0.00",
+      }),
+    ),
+  );
+}
+
 function renderDetail(id = CUSTOMER_ID) {
   return renderWithProviders(
     <Routes>
@@ -89,6 +108,7 @@ describe("CustomerDetailPage", () => {
     stubGetCustomer(buildCustomer());
     stubManagementPrices();
     stubPaymentMethods();
+    stubAccountStatement();
 
     renderDetail();
 
@@ -115,6 +135,7 @@ describe("CustomerDetailPage", () => {
     );
     stubManagementPrices();
     stubPaymentMethods();
+    stubAccountStatement();
 
     renderDetail();
 
@@ -136,6 +157,7 @@ describe("CustomerDetailPage", () => {
     );
     stubManagementPrices();
     stubPaymentMethods();
+    stubAccountStatement();
 
     renderDetail();
 
@@ -166,6 +188,7 @@ describe("CustomerDetailPage", () => {
     stubGetCustomer(buildCustomer());
     stubEffectivePrices();
     stubPaymentMethods();
+    stubAccountStatement();
 
     renderDetail();
 
@@ -180,6 +203,7 @@ describe("CustomerDetailPage", () => {
     stubGetCustomer(buildCustomer({ debtBalance: "40.50" }));
     stubManagementPrices();
     stubPaymentMethods();
+    stubAccountStatement();
     server.use(
       http.post(`${API_BASE_URL}/payments`, () =>
         HttpResponse.json(
@@ -205,5 +229,90 @@ describe("CustomerDetailPage", () => {
 
     expect(await screen.findByText("S/ 20.50")).toBeInTheDocument();
     expect(screen.queryByText("S/ 40.50")).not.toBeInTheDocument();
+  });
+
+  // Regresión: CustomerAccountStatementSection tiene su propio reloadToken
+  // (para su botón "Reintentar"), pero antes no se enteraba de un cobro
+  // registrado en CustomerPaymentSection — la ficha subía "Deuda actual" y
+  // el estado de cuenta debajo se quedaba con la lista y el saldo viejos.
+  it("registrar un cobro también recarga el estado de cuenta, no solo 'Deuda actual'", async () => {
+    const user = userEvent.setup();
+    signIn(["ADMIN"]);
+    stubGetCustomer(buildCustomer({ debtBalance: "40.50" }));
+    stubManagementPrices();
+    stubPaymentMethods();
+
+    const chargeEntry = {
+      date: "2026-08-20T15:00:00.000Z",
+      type: "CHARGE",
+      amount: "40.50",
+      runningBalance: "40.50",
+      isOpeningBalance: false,
+      saleId: "s1",
+      locationName: "Principal",
+      paymentId: null,
+      paymentMethodName: null,
+      status: null,
+    };
+    const newPaymentEntry = {
+      date: "2026-08-27T12:00:00.000Z",
+      type: "PAYMENT",
+      amount: "20.00",
+      runningBalance: "20.50",
+      isOpeningBalance: false,
+      saleId: null,
+      locationName: null,
+      paymentId: "77777777-7777-4777-8777-777777777777",
+      paymentMethodName: "Efectivo",
+      status: "CONFIRMED",
+    };
+    let statementCalls = 0;
+    server.use(
+      http.get(`${API_BASE_URL}/customers/${CUSTOMER_ID}/account-statement`, () => {
+        statementCalls += 1;
+        return HttpResponse.json({
+          customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa", debtBalance: "40.50" },
+          openingBalance: "0.00",
+          entries: statementCalls === 1 ? [chargeEntry] : [chargeEntry, newPaymentEntry],
+          closingBalance: statementCalls === 1 ? "40.50" : "20.50",
+        });
+      }),
+      http.post(`${API_BASE_URL}/payments`, () =>
+        HttpResponse.json(
+          {
+            payment: { id: "77777777-7777-4777-8777-777777777777", status: "CONFIRMED" },
+            debtBalance: "20.50",
+            exceedsDebt: false,
+          },
+          { status: 201 },
+        ),
+      ),
+    );
+
+    renderDetail();
+    await screen.findByRole("heading", { name: "Bodega Santa Rosa" });
+
+    const tableBefore = await screen.findByRole("table");
+    expect(within(tableBefore).getAllByRole("row")).toHaveLength(2); // header + 1 cargo
+    expect(within(tableBefore).queryByText("Efectivo")).not.toBeInTheDocument();
+    expect(statementCalls).toBe(1);
+
+    await user.selectOptions(await screen.findByLabelText("Método de pago"), [
+      "66666666-6666-4666-8666-666666666666",
+    ]);
+    await user.type(screen.getByLabelText("Monto"), "20.00");
+    await user.click(screen.getByRole("button", { name: "Registrar cobro" }));
+
+    // "Deuda actual" se actualiza (ya cubierto arriba); lo nuevo es que el
+    // estado de cuenta también recarga, sin que el dueño tenga que hacer nada.
+    await waitFor(() => expect(statementCalls).toBe(2));
+
+    const tableAfter = await screen.findByRole("table");
+    const rowsAfter = within(tableAfter).getAllByRole("row");
+    expect(rowsAfter).toHaveLength(3); // header + cargo + el abono nuevo
+
+    const lastRow = rowsAfter[rowsAfter.length - 1];
+    expect(lastRow?.textContent).toContain("Efectivo");
+    expect(lastRow?.textContent).toContain("20.50");
   });
 });

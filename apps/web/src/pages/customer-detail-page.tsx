@@ -6,6 +6,7 @@ import { ApiError } from "../api/errors";
 import { SLOW_REQUEST_MESSAGE } from "../api/timing";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
+import { CustomerAccountStatementSection } from "../components/customer-account-statement-section";
 import { CustomerPaymentSection } from "../components/customer-payment-section";
 import { CustomerPricesSection } from "../components/customer-prices-section";
 import { useSlowRequest } from "../hooks/use-slow-request";
@@ -22,6 +23,11 @@ export function CustomerDetailPage() {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const isSlowLoad = useSlowRequest(isLoading);
+  // Sube cada vez que se registra un cobro, para que
+  // CustomerAccountStatementSection recargue: un pago nuevo puede agregar
+  // una fila y mover closingBalance, y esa sección no tiene otra forma de
+  // enterarse (ver la nota en su propio archivo).
+  const [accountStatementRefreshSignal, setAccountStatementRefreshSignal] = useState(0);
 
   useEffect(() => {
     if (!customerId) return;
@@ -50,6 +56,7 @@ export function CustomerDetailPage() {
 
   function handlePaymentRegistered(debtBalance: string) {
     setCustomer((current) => (current ? { ...current, debtBalance } : current));
+    setAccountStatementRefreshSignal((token) => token + 1);
   }
 
   return (
@@ -164,6 +171,11 @@ export function CustomerDetailPage() {
           />
 
           <CustomerPricesSection customerId={customer.id} isAdmin={isAdmin} />
+
+          <CustomerAccountStatementSection
+            customerId={customer.id}
+            refreshSignal={accountStatementRefreshSignal}
+          />
         </>
       ) : null}
     </AppShell>
