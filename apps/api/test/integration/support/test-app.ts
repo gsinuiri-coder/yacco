@@ -1,7 +1,8 @@
 import { execSync } from "node:child_process";
-import { INestApplication, RequestMethod, ValidationPipe } from "@nestjs/common";
+import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { configureApp } from "../../../src/config/configure-app.js";
 
 export interface TestAppContext {
   app: INestApplication;
@@ -38,16 +39,7 @@ export async function startTestApp(): Promise<TestAppContext> {
   const { AppModule } = await import("../../../src/app.module.js");
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
-  // Mirrors main.ts's exclude list (health checks stay unversioned there too).
-  app.setGlobalPrefix("api/v1", {
-    exclude: [
-      { path: "health", method: RequestMethod.GET },
-      { path: "health/db", method: RequestMethod.GET },
-    ],
-  });
-  app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-  );
+  configureApp(app);
   await app.init();
 
   return { app, container };

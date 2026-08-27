@@ -1,19 +1,12 @@
 import "reflect-metadata";
 import { pathToFileURL } from "node:url";
-import { INestApplication, RequestMethod, ValidationPipe } from "@nestjs/common";
+import { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module.js";
+import { configureApp } from "./config/configure-app.js";
 import { parseWebOrigins } from "./config/env.validation.js";
 import { reportBootstrapFailure } from "./config/report-bootstrap-failure.js";
-
-// Kept outside the versioned prefix on purpose: Render's health check and
-// manual DB diagnostics are infra concerns, not a domain REST resource, and
-// Render's own config (render.yaml) points at the unversioned /health path.
-const GLOBAL_PREFIX_EXCLUDE = [
-  { path: "health", method: RequestMethod.GET },
-  { path: "health/db", method: RequestMethod.GET },
-];
 
 export async function bootstrap(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule);
@@ -29,10 +22,7 @@ export async function bootstrap(): Promise<INestApplication> {
   // fails the boot if it parses to an empty list, so this is never [].
   app.enableCors({ origin: parseWebOrigins(process.env.WEB_ORIGIN), credentials: true });
 
-  app.setGlobalPrefix("api/v1", { exclude: GLOBAL_PREFIX_EXCLUDE });
-  app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-  );
+  configureApp(app);
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle("Yacco API")
