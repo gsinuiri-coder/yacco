@@ -304,7 +304,9 @@ export function ContainerMovementsPage() {
 
       <section className="card">
         <div className="card__body">
-          <h2>Registrar movimiento</h2>
+          <div className="page-header">
+            <h2>Registrar movimiento</h2>
+          </div>
 
           {successMessage && (
             <div className="notice notice--info" role="status">

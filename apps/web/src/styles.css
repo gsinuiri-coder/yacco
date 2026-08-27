@@ -695,6 +695,13 @@ select:disabled {
   padding: var(--space-5);
 }
 
+/* place-items: center gives the child auto width; with inputs at
+   width: 100% the card would otherwise collapse to its minimum content
+   width instead of reading as a form. */
+.centered-page > * {
+  width: min(100%, 22rem);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

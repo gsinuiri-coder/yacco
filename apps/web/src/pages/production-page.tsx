@@ -181,7 +181,9 @@ export function ProductionPage() {
       {isAdmin && (
         <section className="card">
           <div className="card__body">
-            <h2>Registrar lote</h2>
+            <div className="page-header">
+              <h2>Registrar lote</h2>
+            </div>
 
             {successResult && (
               <div className="notice notice--info" role="status">

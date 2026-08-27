@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate, useLocation } from "react-router";
-import { SLOW_REQUEST_MESSAGE } from "../api/timing";
 import { useAuth } from "../auth/use-auth";
+import { SlowRequestNotice } from "../components/slow-request-notice";
 import { useSlowRequest } from "../hooks/use-slow-request";
 
 interface LocationState {
@@ -45,37 +45,57 @@ export function LoginPage() {
   }
 
   return (
-    <main>
-      <h1>Yacco</h1>
-      <form onSubmit={handleSubmit} noValidate>
-        <label htmlFor="username">Usuario</label>
-        <input
-          id="username"
-          name="username"
-          autoComplete="username"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          disabled={isSubmitting}
-        />
+    <main className="centered-page">
+      <form className="card" onSubmit={handleSubmit} noValidate>
+        <div className="card__body">
+          <h1>Yacco</h1>
 
-        <label htmlFor="password">Contraseña</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          disabled={isSubmitting}
-        />
+          {errorMessage && (
+            <div className="notice notice--error" role="alert">
+              {errorMessage}
+            </div>
+          )}
+          <SlowRequestNotice show={isSlow} />
 
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Ingresando…" : "Ingresar"}
-        </button>
+          <div className="form-grid">
+            <div className="field form-grid__full">
+              <label className="field__label" htmlFor="username">
+                Usuario
+              </label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="field form-grid__full">
+              <label className="field__label" htmlFor="password">
+                Contraseña
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                disabled={isSubmitting}
+              />
+            </div>
+          </div>
+
+          <div className="form-actions">
+            <button type="submit" className="button button--primary" disabled={isSubmitting}>
+              {isSubmitting ? "Ingresando…" : "Ingresar"}
+            </button>
+          </div>
+        </div>
       </form>
-
-      {isSlow && <p role="status">{SLOW_REQUEST_MESSAGE}</p>}
-      {errorMessage && <p role="alert">{errorMessage}</p>}
     </main>
   );
 }
