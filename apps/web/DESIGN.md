@@ -191,7 +191,11 @@ dejado en "Pendiente" ya están cerrados en el código:
   `customer-form.tsx`. La lógica (validación, `useAuth`, `Navigate` cuando ya
   hay sesión) no cambió, solo el marcado. El ancho de la card lo resuelve
   `.centered-page > *` en `styles.css` (ver la convención de `.centered-page`
-  arriba).
+  arriba). El `<h1>Yacco</h1>` va envuelto en `.page-header`, por la misma
+  razón que los `<h2>` de sección de abajo: un heading suelto dentro de
+  `.card__body` no tiene espaciado propio (`h1,h2,h3{margin:0}`), así que sin
+  ese envoltorio tocaba la etiqueta "Usuario" en el estado normal y el
+  `.notice--error` en el estado de error.
 - **`container-movements-page.tsx` y `production-page.tsx` envuelven su
   `<h2>` de sección en `.page-header`** — mismo patrón que ya usaba
   `customer-prices-section.tsx` — así que el título tiene el margen inferior

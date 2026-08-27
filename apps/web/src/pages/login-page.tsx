@@ -48,7 +48,9 @@ export function LoginPage() {
     <main className="centered-page">
       <form className="card" onSubmit={handleSubmit} noValidate>
         <div className="card__body">
-          <h1>Yacco</h1>
+          <div className="page-header">
+            <h1>Yacco</h1>
+          </div>
 
           {errorMessage && (
             <div className="notice notice--error" role="alert">
