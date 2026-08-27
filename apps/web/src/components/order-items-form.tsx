@@ -253,7 +253,7 @@ export function OrderItemsForm({
 
       <div className="table-scroll">
         <table className="table">
-          <caption className="visually-hidden">Ítems del pedido</caption>
+          <caption className="visually-hidden">Productos del pedido</caption>
           <thead>
             <tr>
               <th scope="col">Producto</th>
@@ -274,7 +274,7 @@ export function OrderItemsForm({
                 <tr key={item.key}>
                   <td>
                     <select
-                      aria-label={`Producto (ítem ${index + 1})`}
+                      aria-label={`Producto ${index + 1}`}
                       value={item.productId}
                       disabled={disabled || isLoading || noCustomer}
                       onChange={(event) => handleProductChange(index, event.target.value)}
@@ -295,7 +295,7 @@ export function OrderItemsForm({
                   </td>
                   <td>
                     <input
-                      aria-label={`Cantidad (ítem ${index + 1})`}
+                      aria-label={`Cantidad del producto ${index + 1}`}
                       type="number"
                       min={1}
                       max={MAX_ITEM_QUANTITY}
@@ -307,7 +307,7 @@ export function OrderItemsForm({
                   </td>
                   <td>
                     <input
-                      aria-label={`Precio unitario (ítem ${index + 1})`}
+                      aria-label={`Precio unitario del producto ${index + 1}`}
                       type="text"
                       inputMode="decimal"
                       placeholder="12.50"
@@ -328,7 +328,7 @@ export function OrderItemsForm({
                       className="button button--ghost"
                       disabled={disabled || items.length <= 1}
                       onClick={() => handleRemove(index)}
-                      aria-label={`Quitar ítem ${index + 1}`}
+                      aria-label={`Quitar producto ${index + 1}`}
                     >
                       Quitar
                     </button>
@@ -346,7 +346,7 @@ export function OrderItemsForm({
             (item, index) =>
               errors[index] && (
                 <li key={item.key} className="field__error">
-                  Ítem {index + 1}: {errors[index]}
+                  Producto {index + 1}: {errors[index]}
                 </li>
               ),
           )}
@@ -360,7 +360,7 @@ export function OrderItemsForm({
           disabled={disabled || isLoading || noCustomer}
           onClick={handleAdd}
         >
-          Agregar ítem
+          Agregar producto
         </button>
         <div className="order-items__total">
           <span>Total</span>

@@ -172,7 +172,7 @@ export function OrderDetailPage() {
 
           <div className="table-scroll">
             <table className="table">
-              <caption className="visually-hidden">Ítems del pedido</caption>
+              <caption className="visually-hidden">Productos del pedido</caption>
               <thead>
                 <tr>
                   <th scope="col">Producto</th>

@@ -123,8 +123,8 @@ describe("OrderItemsForm", () => {
     renderWithProviders(<Harness initial={[emptyOrderItem(0)]} customerId={null} />);
 
     expect(await screen.findByText("Elige un cliente para ver sus precios.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Producto (ítem 1)")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Agregar ítem" })).toBeDisabled();
+    expect(screen.getByLabelText("Producto 1")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar producto" })).toBeDisabled();
   });
 
   it("elegir producto prellena con el precio PACTADO, no el de lista", async () => {
@@ -136,9 +136,9 @@ describe("OrderItemsForm", () => {
     ]);
 
     renderWithProviders(<Harness initial={[emptyOrderItem(0)]} customerId={CUSTOMER_ID} />);
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
 
-    expect(screen.getByLabelText("Precio unitario (ítem 1)")).toHaveValue("9.90");
+    expect(screen.getByLabelText("Precio unitario del producto 1")).toHaveValue("9.90");
     expect(screen.getByText("Pactado")).toBeInTheDocument();
   });
 
@@ -151,9 +151,9 @@ describe("OrderItemsForm", () => {
     ]);
 
     renderWithProviders(<Harness initial={[emptyOrderItem(0)]} customerId={CUSTOMER_ID} />);
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
 
-    expect(screen.getByLabelText("Precio unitario (ítem 1)")).toHaveValue(product.listPrice);
+    expect(screen.getByLabelText("Precio unitario del producto 1")).toHaveValue(product.listPrice);
     expect(screen.queryByText("Pactado")).not.toBeInTheDocument();
   });
 
@@ -166,11 +166,11 @@ describe("OrderItemsForm", () => {
     ]);
 
     renderWithProviders(<Harness initial={[emptyOrderItem(0)]} customerId={CUSTOMER_ID} />);
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
-    await user.clear(screen.getByLabelText("Precio unitario (ítem 1)"));
-    await user.type(screen.getByLabelText("Precio unitario (ítem 1)"), "9.99");
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
+    await user.clear(screen.getByLabelText("Precio unitario del producto 1"));
+    await user.type(screen.getByLabelText("Precio unitario del producto 1"), "9.99");
 
-    expect(screen.getByLabelText("Precio unitario (ítem 1)")).toHaveValue("9.99");
+    expect(screen.getByLabelText("Precio unitario del producto 1")).toHaveValue("9.99");
   });
 
   it("cambiar de cliente repreciar las líneas prellenadas, pero no pisa una editada a mano", async () => {
@@ -211,13 +211,13 @@ describe("OrderItemsForm", () => {
     }
 
     renderWithProviders(<ChangingHarness />);
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), productA.id);
-    expect(screen.getByLabelText("Precio unitario (ítem 1)")).toHaveValue("9.90");
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), productA.id);
+    expect(screen.getByLabelText("Precio unitario del producto 1")).toHaveValue("9.90");
 
-    // Ítem 2: precio de lista prellenado, luego editado a mano.
-    await user.selectOptions(screen.getByLabelText("Producto (ítem 2)"), productB.id);
-    await user.clear(screen.getByLabelText("Precio unitario (ítem 2)"));
-    await user.type(screen.getByLabelText("Precio unitario (ítem 2)"), "20.00");
+    // Producto 2: precio de lista prellenado, luego editado a mano.
+    await user.selectOptions(screen.getByLabelText("Producto 2"), productB.id);
+    await user.clear(screen.getByLabelText("Precio unitario del producto 2"));
+    await user.type(screen.getByLabelText("Precio unitario del producto 2"), "20.00");
 
     server.use(
       http.get(
@@ -239,10 +239,10 @@ describe("OrderItemsForm", () => {
     );
     await user.click(screen.getByRole("button", { name: "Cambiar cliente" }));
 
-    // Ítem 1 (prellenado) se repreció con el nuevo cliente...
+    // Producto 1 (prellenado) se repreció con el nuevo cliente...
     expect(await screen.findByDisplayValue("7.00")).toBeInTheDocument();
-    // ...pero el ítem 2, editado a mano, conserva lo que el vendedor escribió.
-    expect(screen.getByLabelText("Precio unitario (ítem 2)")).toHaveValue("20.00");
+    // ...pero el producto 2, editado a mano, conserva lo que el vendedor escribió.
+    expect(screen.getByLabelText("Precio unitario del producto 2")).toHaveValue("20.00");
   });
 
   it("si falla la carga de precios pactados, el formulario sigue usable con precios de lista y avisa", async () => {
@@ -258,8 +258,8 @@ describe("OrderItemsForm", () => {
     renderWithProviders(<Harness initial={[emptyOrderItem(0)]} customerId={CUSTOMER_ID} />);
     expect(await screen.findByRole("status")).toHaveTextContent("Base de datos no disponible");
 
-    await user.selectOptions(screen.getByLabelText("Producto (ítem 1)"), product.id);
-    expect(screen.getByLabelText("Precio unitario (ítem 1)")).toHaveValue(product.listPrice);
+    await user.selectOptions(screen.getByLabelText("Producto 1"), product.id);
+    expect(screen.getByLabelText("Precio unitario del producto 1")).toHaveValue(product.listPrice);
   });
 
   it("agrega y quita líneas, pero nunca deja la lista vacía", async () => {
@@ -268,17 +268,17 @@ describe("OrderItemsForm", () => {
     stubEffectivePrices([]);
 
     renderWithProviders(<Harness initial={[emptyOrderItem(0)]} customerId={CUSTOMER_ID} />);
-    await screen.findByLabelText("Producto (ítem 1)");
+    await screen.findByLabelText("Producto 1");
 
-    expect(screen.getByRole("button", { name: "Quitar ítem 1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quitar producto 1" })).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "Agregar ítem" }));
-    expect(screen.getByLabelText("Producto (ítem 2)")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Quitar ítem 1" })).not.toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Agregar producto" }));
+    expect(screen.getByLabelText("Producto 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar producto 1" })).not.toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "Quitar ítem 2" }));
-    expect(screen.queryByLabelText("Producto (ítem 2)")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Quitar ítem 1" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Quitar producto 2" }));
+    expect(screen.queryByLabelText("Producto 2")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar producto 1" })).toBeDisabled();
   });
 
   it("muestra un error de catálogo con reintento", async () => {
@@ -296,6 +296,6 @@ describe("OrderItemsForm", () => {
     stubProducts([buildProduct()]);
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
 
-    expect(await screen.findByLabelText("Producto (ítem 1)")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Producto 1")).toBeInTheDocument();
   });
 });

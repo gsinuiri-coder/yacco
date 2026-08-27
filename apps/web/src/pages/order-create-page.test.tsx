@@ -137,14 +137,14 @@ describe("OrderCreatePage", () => {
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
 
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), products[0]!.id);
-    await user.clear(screen.getByLabelText("Cantidad (ítem 1)"));
-    await user.type(screen.getByLabelText("Cantidad (ítem 1)"), "3");
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), products[0]!.id);
+    await user.clear(screen.getByLabelText("Cantidad del producto 1"));
+    await user.type(screen.getByLabelText("Cantidad del producto 1"), "3");
 
-    await user.click(screen.getByRole("button", { name: "Agregar ítem" }));
-    await user.selectOptions(screen.getByLabelText("Producto (ítem 2)"), products[1]!.id);
-    await user.clear(screen.getByLabelText("Cantidad (ítem 2)"));
-    await user.type(screen.getByLabelText("Cantidad (ítem 2)"), "2");
+    await user.click(screen.getByRole("button", { name: "Agregar producto" }));
+    await user.selectOptions(screen.getByLabelText("Producto 2"), products[1]!.id);
+    await user.clear(screen.getByLabelText("Cantidad del producto 2"));
+    await user.type(screen.getByLabelText("Cantidad del producto 2"), "2");
 
     await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
@@ -177,9 +177,9 @@ describe("OrderCreatePage", () => {
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
 
-    expect(screen.getByLabelText("Precio unitario (ítem 1)")).toHaveValue("9.90");
+    expect(screen.getByLabelText("Precio unitario del producto 1")).toHaveValue("9.90");
     expect(screen.getByText("Pactado")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
@@ -200,16 +200,16 @@ describe("OrderCreatePage", () => {
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
 
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
-    await user.clear(screen.getByLabelText("Cantidad (ítem 1)"));
-    await user.type(screen.getByLabelText("Cantidad (ítem 1)"), "3");
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
+    await user.clear(screen.getByLabelText("Cantidad del producto 1"));
+    await user.type(screen.getByLabelText("Cantidad del producto 1"), "3");
     // Una sola línea: el subtotal y el total coinciden, ambos en pantalla.
     expect(await screen.findAllByText("S/ 30.00")).toHaveLength(2);
 
-    await user.click(screen.getByRole("button", { name: "Agregar ítem" }));
-    await user.selectOptions(screen.getByLabelText("Producto (ítem 2)"), product.id);
-    await user.clear(screen.getByLabelText("Cantidad (ítem 2)"));
-    await user.type(screen.getByLabelText("Cantidad (ítem 2)"), "2");
+    await user.click(screen.getByRole("button", { name: "Agregar producto" }));
+    await user.selectOptions(screen.getByLabelText("Producto 2"), product.id);
+    await user.clear(screen.getByLabelText("Cantidad del producto 2"));
+    await user.type(screen.getByLabelText("Cantidad del producto 2"), "2");
 
     // línea 1: 30.00, línea 2: 20.00, total: 50.00 — tres valores distintos.
     expect(screen.getByText("S/ 20.00")).toBeInTheDocument();
@@ -229,11 +229,11 @@ describe("OrderCreatePage", () => {
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
 
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
-    expect(screen.getByLabelText("Precio unitario (ítem 1)")).toHaveValue("12.50");
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
+    expect(screen.getByLabelText("Precio unitario del producto 1")).toHaveValue("12.50");
 
-    await user.clear(screen.getByLabelText("Precio unitario (ítem 1)"));
-    await user.type(screen.getByLabelText("Precio unitario (ítem 1)"), "11.00");
+    await user.clear(screen.getByLabelText("Precio unitario del producto 1"));
+    await user.type(screen.getByLabelText("Precio unitario del producto 1"), "11.00");
 
     await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
@@ -247,11 +247,11 @@ describe("OrderCreatePage", () => {
     stubCustomerSearch([]);
     // Sin handler de POST: si el formulario llamara a la API, MSW haría fallar el test.
     // Sin cliente, el producto está deshabilitado — no hay forma de completar
-    // el ítem, así que el error de cliente es el único camino de validación.
+    // esa línea, así que el error de cliente es el único camino de validación.
 
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
-    expect(screen.getByLabelText("Producto (ítem 1)")).toBeDisabled();
+    expect(screen.getByLabelText("Producto 1")).toBeDisabled();
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Registrar pedido" }));
 
@@ -290,25 +290,25 @@ describe("OrderCreatePage", () => {
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
-    await user.clear(screen.getByLabelText("Precio unitario (ítem 1)"));
-    await user.type(screen.getByLabelText("Precio unitario (ítem 1)"), "mucho");
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
+    await user.clear(screen.getByLabelText("Precio unitario del producto 1"));
+    await user.type(screen.getByLabelText("Precio unitario del producto 1"), "mucho");
 
-    await user.click(screen.getByRole("button", { name: "Agregar ítem" }));
-    await user.selectOptions(screen.getByLabelText("Producto (ítem 2)"), product.id);
-    await user.clear(screen.getByLabelText("Precio unitario (ítem 2)"));
-    await user.type(screen.getByLabelText("Precio unitario (ítem 2)"), "también-mucho");
+    await user.click(screen.getByRole("button", { name: "Agregar producto" }));
+    await user.selectOptions(screen.getByLabelText("Producto 2"), product.id);
+    await user.clear(screen.getByLabelText("Precio unitario del producto 2"));
+    await user.type(screen.getByLabelText("Precio unitario del producto 2"), "también-mucho");
 
     await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
-    expect(await screen.findByText(/Ítem 1: El precio unitario/)).toBeInTheDocument();
-    expect(screen.getByText(/Ítem 2: El precio unitario/)).toBeInTheDocument();
+    expect(await screen.findByText(/Producto 1: El precio unitario/)).toBeInTheDocument();
+    expect(screen.getByText(/Producto 2: El precio unitario/)).toBeInTheDocument();
 
-    // Corrige solo el ítem 1, sin volver a enviar.
-    await user.clear(screen.getByLabelText("Precio unitario (ítem 1)"));
-    await user.type(screen.getByLabelText("Precio unitario (ítem 1)"), "9.99");
+    // Corrige solo el producto 1, sin volver a enviar.
+    await user.clear(screen.getByLabelText("Precio unitario del producto 1"));
+    await user.type(screen.getByLabelText("Precio unitario del producto 1"), "9.99");
 
-    expect(screen.queryByText(/Ítem 1: El precio unitario/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Ítem 2: El precio unitario/)).toBeInTheDocument();
+    expect(screen.queryByText(/Producto 1: El precio unitario/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Producto 2: El precio unitario/)).toBeInTheDocument();
   });
 
   it("no permite quitar la última línea", async () => {
@@ -318,7 +318,7 @@ describe("OrderCreatePage", () => {
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
 
-    expect(await screen.findByRole("button", { name: "Quitar ítem 1" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Quitar producto 1" })).toBeDisabled();
   });
 
   it("un precio unitario inválido bloquea el envío", async () => {
@@ -334,14 +334,14 @@ describe("OrderCreatePage", () => {
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
 
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
-    await user.clear(screen.getByLabelText("Precio unitario (ítem 1)"));
-    await user.type(screen.getByLabelText("Precio unitario (ítem 1)"), "mucho");
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
+    await user.clear(screen.getByLabelText("Precio unitario del producto 1"));
+    await user.type(screen.getByLabelText("Precio unitario del producto 1"), "mucho");
 
     await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
     expect(
-      await screen.findByText(/Ítem 1: El precio unitario debe ser un monto/),
+      await screen.findByText(/Producto 1: El precio unitario debe ser un monto/),
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Nuevo pedido" })).toBeInTheDocument();
   });
@@ -358,7 +358,7 @@ describe("OrderCreatePage", () => {
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
 
     await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
@@ -367,7 +367,7 @@ describe("OrderCreatePage", () => {
     );
     // Sigue en el formulario, con lo ya elegido intacto.
     expect(screen.getByText(customer.name)).toBeInTheDocument();
-    expect(screen.getByLabelText("Producto (ítem 1)")).toHaveValue(product.id);
+    expect(screen.getByLabelText("Producto 1")).toHaveValue(product.id);
   });
 
   it("un doble clic en enviar dispara un solo POST", async () => {
@@ -389,7 +389,7 @@ describe("OrderCreatePage", () => {
     renderCreate();
     await screen.findByRole("heading", { name: "Nuevo pedido" });
     await pickCustomer(user, customer);
-    await user.selectOptions(await screen.findByLabelText("Producto (ítem 1)"), product.id);
+    await user.selectOptions(await screen.findByLabelText("Producto 1"), product.id);
 
     const submit = screen.getByRole("button", { name: "Registrar pedido" });
     await user.click(submit);
