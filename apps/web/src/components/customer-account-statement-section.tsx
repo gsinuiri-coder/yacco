@@ -8,6 +8,15 @@ import { ErrorState } from "./error-state";
 
 export interface CustomerAccountStatementSectionProps {
   customerId: string;
+  /**
+   * La ficha sube este contador cada vez que registra un cobro
+   * (CustomerPaymentSection.onPaymentRegistered) para forzar una recarga:
+   * un pago nuevo puede agregar una fila y mover closingBalance, y esta
+   * sección no tiene otra forma de enterarse. Mismo mecanismo que
+   * `reloadToken` de abajo, solo que ese lo dispara el propio botón
+   * "Reintentar" de esta sección.
+   */
+  refreshSignal?: number;
 }
 
 const ENTRY_TYPE_LABELS: Record<AccountStatementEntry["type"], string> = {
@@ -50,6 +59,7 @@ const PAYMENT_STATUS_BADGE_CLASS: Record<NonNullPaymentStatus, string> = {
  */
 export function CustomerAccountStatementSection({
   customerId,
+  refreshSignal,
 }: CustomerAccountStatementSectionProps) {
   const { apiClient } = useAuth();
 
@@ -84,7 +94,7 @@ export function CustomerAccountStatementSection({
     return () => {
       ignore = true;
     };
-  }, [apiClient, customerId, reloadToken]);
+  }, [apiClient, customerId, reloadToken, refreshSignal]);
 
   return (
     <section className="card">

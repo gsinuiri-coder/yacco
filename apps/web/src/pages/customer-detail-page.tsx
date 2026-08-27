@@ -23,6 +23,11 @@ export function CustomerDetailPage() {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const isSlowLoad = useSlowRequest(isLoading);
+  // Sube cada vez que se registra un cobro, para que
+  // CustomerAccountStatementSection recargue: un pago nuevo puede agregar
+  // una fila y mover closingBalance, y esa sección no tiene otra forma de
+  // enterarse (ver la nota en su propio archivo).
+  const [accountStatementRefreshSignal, setAccountStatementRefreshSignal] = useState(0);
 
   useEffect(() => {
     if (!customerId) return;
@@ -51,6 +56,7 @@ export function CustomerDetailPage() {
 
   function handlePaymentRegistered(debtBalance: string) {
     setCustomer((current) => (current ? { ...current, debtBalance } : current));
+    setAccountStatementRefreshSignal((token) => token + 1);
   }
 
   return (
@@ -166,7 +172,10 @@ export function CustomerDetailPage() {
 
           <CustomerPricesSection customerId={customer.id} isAdmin={isAdmin} />
 
-          <CustomerAccountStatementSection customerId={customer.id} />
+          <CustomerAccountStatementSection
+            customerId={customer.id}
+            refreshSignal={accountStatementRefreshSignal}
+          />
         </>
       ) : null}
     </AppShell>
