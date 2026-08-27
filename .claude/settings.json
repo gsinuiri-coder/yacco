@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pnpm exec prettier --write $CLAUDE_FILE_PATHS && pnpm exec eslint --fix $CLAUDE_FILE_PATHS"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-edited.sh\""
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/guard-dangerous.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous.sh\""
           }
         ]
       }

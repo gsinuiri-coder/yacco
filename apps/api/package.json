@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/main.ts",
+    "dev": "pnpm build && node dist/main.js",
+    "dev:tsc": "tsc -p tsconfig.json --watch",
+    "dev:node": "node --watch dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json",
