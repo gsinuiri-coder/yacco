@@ -25,6 +25,22 @@ if [ -z "$file_path" ]; then
   exit 0
 fi
 
-cd "$CLAUDE_PROJECT_DIR"
-pnpm exec prettier --write "$file_path"
-pnpm exec eslint --fix "$file_path"
+# Not set when the script runs outside a Claude Code hook invocation (e.g.
+# manual testing); "." is the repo root in that case, same as cwd already is.
+cd "${CLAUDE_PROJECT_DIR:-.}"
+
+# Mirrors package.json's "lint-staged" — the source of truth for which
+# extensions get which tool. Keep the two in sync by hand; there is no way to
+# have a bash hook read lint-staged's config directly.
+case "$file_path" in
+  *.ts | *.tsx | *.js | *.jsx | *.cjs | *.mjs)
+    pnpm exec prettier --write "$file_path"
+    pnpm exec eslint --fix "$file_path"
+    ;;
+  *.json | *.md | *.yml | *.yaml)
+    pnpm exec prettier --write "$file_path"
+    ;;
+  *)
+    exit 0
+    ;;
+esac

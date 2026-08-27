@@ -19,8 +19,12 @@ spec disagree, STOP and ask before proceeding.
 
 ## Commands
 
-- `pnpm demo:up` — starts Docker Compose, applies migrations, seeds. One shot,
-  no interaction; safe to run with the plant owner watching the screen.
+- `pnpm demo:up` — starts Postgres via Docker Compose and waits for its
+  healthcheck, applies migrations, seeds. Naming `postgres` scopes `up` to
+  that service alone, so MinIO is NOT started by this command — nothing in
+  the demo needs S3 evidence uploads. Bring MinIO up yourself
+  (`docker compose up -d minio`) if you need it. One shot, no interaction;
+  safe to run with the plant owner watching the screen.
 - `pnpm dev:api` / `pnpm dev:web` — local dev, after `demo:up`. The API
   compiles first and runs the `dist/` build (`tsx` doesn't emit
   `emitDecoratorMetadata`, which Nest's DI needs). For a watch loop instead,
