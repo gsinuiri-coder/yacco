@@ -288,6 +288,33 @@ describe("ContainerMovementsPage", () => {
     expect(screen.queryByLabelText("Ubicación")).not.toBeInTheDocument();
   });
 
+  it("un error al cargar las ubicaciones se muestra con opción de reintentar", async () => {
+    const user = userEvent.setup();
+    const customer = buildCustomer();
+    stubCustomerSearch([customer]);
+    server.use(
+      http.get(`${API_BASE_URL}/customers/${customer.id}/locations`, () =>
+        HttpResponse.json({ message: "Base de datos no disponible" }, { status: 500 }),
+      ),
+    );
+
+    renderPage();
+    await user.selectOptions(
+      await screen.findByLabelText("Operación", { selector: "#movementType" }),
+      "LOSS_WRITE_OFF",
+    );
+    await pickCustomer(user, customer);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Base de datos no disponible");
+
+    stubLocations(customer.id, []);
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+
+    expect(
+      await screen.findByText("Este cliente no tiene ubicaciones registradas."),
+    ).toBeInTheDocument();
+  });
+
   it("un 400 de transición inválida se muestra con su mensaje del backend", async () => {
     const user = userEvent.setup();
     stubCreate(400, {

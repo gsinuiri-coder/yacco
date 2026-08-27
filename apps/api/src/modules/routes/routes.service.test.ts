@@ -540,6 +540,19 @@ describe("RoutesService", () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it("rejects a VAN_SALE locationId that does not exist", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.customerLocation.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.addStop(
+          ROUTE_ID,
+          { origin: StopOrigin.VAN_SALE, locationId: LOCATION_ID },
+          adminActor,
+        ),
+      ).rejects.toThrow(`La ubicación "${LOCATION_ID}" no existe`);
+    });
+
     it("refuses an order that is not PENDING", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute());
       prisma.order.findUnique.mockResolvedValue({
