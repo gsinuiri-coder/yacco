@@ -127,7 +127,7 @@ export function ContainerMovementsPage() {
       .catch((error: unknown) => {
         if (cancelled) return;
         setLocationsError(
-          error instanceof Error ? error.message : "No se pudieron cargar las locaciones.",
+          error instanceof Error ? error.message : "No se pudieron cargar las ubicaciones.",
         );
       })
       .finally(() => {
@@ -178,7 +178,7 @@ export function ContainerMovementsPage() {
       requiresOriginChoice && originChoice === "" ? "Elige el estado de origen" : undefined;
     const nextCustomerError = touchesCustomer && customer === null ? "Elige un cliente" : undefined;
     const nextLocationError =
-      touchesCustomer && customer !== null && locationId === "" ? "Elige una locación" : undefined;
+      touchesCustomer && customer !== null && locationId === "" ? "Elige una ubicación" : undefined;
 
     setTypeError(nextTypeError);
     setContainerTypeError(nextContainerTypeError);
@@ -230,7 +230,7 @@ export function ContainerMovementsPage() {
       })
       .catch((error: unknown) => {
         // The API's 400 names the concrete problem (transición inválida,
-        // locación ajena); shown verbatim so it never drifts from the
+        // ubicación ajena); shown verbatim so it never drifts from the
         // backend's own message.
         setSubmitError(
           error instanceof Error ? error.message : "No se pudo registrar el movimiento.",
@@ -425,7 +425,7 @@ export function ContainerMovementsPage() {
                   {customer && (
                     <div className="field">
                       <label className="field__label" htmlFor="movementLocation">
-                        Locación
+                        Ubicación
                       </label>
                       {locationsError ? (
                         <ErrorState
@@ -438,7 +438,7 @@ export function ContainerMovementsPage() {
                         </select>
                       ) : locations.length === 0 ? (
                         <p className="field__error" id="movementLocation">
-                          Este cliente no tiene locaciones registradas.
+                          Este cliente no tiene ubicaciones registradas.
                         </p>
                       ) : (
                         <>
@@ -451,7 +451,7 @@ export function ContainerMovementsPage() {
                               setLocationError(undefined);
                             }}
                           >
-                            <option value="">Selecciona una locación</option>
+                            <option value="">Selecciona una ubicación</option>
                             {locations.map((location) => (
                               <option key={location.id} value={location.id}>
                                 {location.name} ({location.address})

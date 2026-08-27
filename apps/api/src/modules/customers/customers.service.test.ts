@@ -351,7 +351,7 @@ describe("CustomersService", () => {
     it("throws if the customer somehow has no primary location", async () => {
       prisma.customer.findUnique.mockResolvedValue(buildCustomer({ locations: [] }));
 
-      await expect(service.findOne("customer-1")).rejects.toThrow("locación principal");
+      await expect(service.findOne("customer-1")).rejects.toThrow("ubicación principal");
     });
   });
 

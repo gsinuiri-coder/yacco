@@ -67,7 +67,7 @@ function toCustomerResponse(customer: CustomerWithRelations): CustomerResponseDt
     // Would mean the invariant "every customer has a primary location" was
     // violated somewhere else; surfacing it loudly beats returning a
     // half-built response with an undefined address.
-    throw new Error(`El cliente "${customer.id}" no tiene una locación principal`);
+    throw new Error(`El cliente "${customer.id}" no tiene una ubicación principal`);
   }
 
   return {

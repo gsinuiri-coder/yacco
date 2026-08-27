@@ -124,7 +124,7 @@ export class OrdersService {
       });
       if (primaryLocation === null) {
         throw new BadRequestException(
-          `El cliente "${customer.name}" no tiene una locación principal`,
+          `El cliente "${customer.name}" no tiene una ubicación principal`,
         );
       }
 

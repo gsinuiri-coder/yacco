@@ -199,11 +199,11 @@ export class PaymentsService {
             select: { customerId: true },
           });
           if (location === null) {
-            throw new BadRequestException(`La locación "${dto.locationId}" no existe`);
+            throw new BadRequestException(`La ubicación "${dto.locationId}" no existe`);
           }
           if (location.customerId !== dto.customerId) {
             throw new BadRequestException(
-              `La locación "${dto.locationId}" no pertenece a este cliente`,
+              `La ubicación "${dto.locationId}" no pertenece a este cliente`,
             );
           }
         }

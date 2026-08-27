@@ -21,6 +21,6 @@ export class CreateRouteStopDto {
 
   @ApiPropertyOptional({ format: "uuid", description: "Obligatorio cuando origin=VAN_SALE" })
   @IsOptional()
-  @IsUUID("4", { message: "La locación debe ser un identificador válido" })
+  @IsUUID("4", { message: "La ubicación debe ser un identificador válido" })
   locationId?: string;
 }

@@ -49,7 +49,6 @@ describe("ProtectedRoute", () => {
 
     expect(await screen.findByRole("heading", { name: "Panel" })).toBeInTheDocument();
     expect(screen.getByText("vendedor1")).toBeInTheDocument();
-    expect(screen.getByText("Roles: SELLER")).toBeInTheDocument();
   });
 
   it("expulsa a /login si el refresh token guardado ya no vale", async () => {

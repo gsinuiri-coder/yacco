@@ -92,6 +92,6 @@ export async function assertLocationExists(
     select: { id: true },
   });
   if (location === null) {
-    throw new BadRequestException(`La locación "${locationId}" no existe`);
+    throw new BadRequestException(`La ubicación "${locationId}" no existe`);
   }
 }

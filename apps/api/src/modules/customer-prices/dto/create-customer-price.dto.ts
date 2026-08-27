@@ -11,7 +11,7 @@ export class CreateCustomerPriceDto {
   // applies only to that one branch — see CustomerPricesService's precedence.
   @ApiPropertyOptional({ format: "uuid", nullable: true })
   @IsOptional()
-  @IsUUID("4", { message: "La locación debe ser un identificador válido" })
+  @IsUUID("4", { message: "La ubicación debe ser un identificador válido" })
   locationId?: string;
 
   @ApiProperty({ type: String, example: "12.50", description: "Monto en soles (S/)" })

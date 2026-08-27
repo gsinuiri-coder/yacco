@@ -155,7 +155,7 @@ export class ContainerMovementsService {
     const touchesCustomer =
       fromState === ContainerState.WITH_CUSTOMER || toState === ContainerState.WITH_CUSTOMER;
     if (touchesCustomer && dto.locationId === undefined) {
-      throw new BadRequestException('Un movimiento hacia o desde "en cliente" exige una locación');
+      throw new BadRequestException('Un movimiento hacia o desde "en cliente" exige una ubicación');
     }
     if (dto.locationId !== undefined) {
       await assertLocationExists(client, dto.locationId);

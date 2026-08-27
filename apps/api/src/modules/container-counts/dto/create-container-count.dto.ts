@@ -11,7 +11,7 @@ import { IsInt, IsUUID, Min } from "class-validator";
  */
 export class CreateContainerCountDto {
   @ApiProperty({ format: "uuid" })
-  @IsUUID("4", { message: "La locación debe ser un identificador válido" })
+  @IsUUID("4", { message: "La ubicación debe ser un identificador válido" })
   locationId!: string;
 
   @ApiProperty({ format: "uuid" })

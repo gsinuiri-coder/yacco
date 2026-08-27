@@ -45,7 +45,7 @@ export class ListContainerMovementsQueryDto {
 
   @ApiPropertyOptional({ format: "uuid" })
   @IsOptional()
-  @IsUUID("4", { message: "La locación debe ser un identificador válido" })
+  @IsUUID("4", { message: "La ubicación debe ser un identificador válido" })
   locationId?: string;
 
   @ApiPropertyOptional({ example: "2026-08-01", description: "Desde (inclusive, America/Lima)" })

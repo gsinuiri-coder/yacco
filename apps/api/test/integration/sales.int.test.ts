@@ -214,7 +214,7 @@ describe("SalesService.createOpeningCharge", () => {
         chargeDto({ customerId, amount: "50.00", soldAt: new Date() }),
         recordedById,
       ),
-    ).rejects.toThrow(/locación principal/);
+    ).rejects.toThrow(/ubicación principal/);
   });
 
   test("rejects an unknown customer", async () => {

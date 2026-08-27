@@ -30,7 +30,7 @@ import { ListCustomerLocationsQueryDto } from "./dto/list-customer-locations-que
 export class CustomerLocationsController {
   constructor(private readonly customerLocationsService: CustomerLocationsService) {}
 
-  @ApiOperation({ summary: "Lista las locaciones de un cliente (sin paginar)" })
+  @ApiOperation({ summary: "Lista las ubicaciones de un cliente (sin paginar)" })
   @ApiResponse({ status: 200, type: CustomerLocationResponseDto, isArray: true })
   @ApiNotFoundResponse({ description: "Customer id does not exist" })
   @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })

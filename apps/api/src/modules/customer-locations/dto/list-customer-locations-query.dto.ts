@@ -15,7 +15,7 @@ function toOptionalBoolean({ value }: { value: unknown }): unknown {
 
 export class ListCustomerLocationsQueryDto {
   @ApiPropertyOptional({
-    description: "Filtra por locaciones activas o retiradas; por defecto solo las activas",
+    description: "Filtra por ubicaciones activas o retiradas; por defecto solo las activas",
   })
   @IsOptional()
   @Transform(toOptionalBoolean)

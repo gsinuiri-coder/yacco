@@ -7,9 +7,9 @@ import { CustomerPricesService } from "./customer-prices.service.js";
 import { PriceSource } from "./dto/effective-price-response.dto.js";
 
 // Gherkin-style, spec HU-05/HU-08: "El precio efectivo de un producto para
-// una locación se resuelve: precio de esa locación > precio del cliente (sin
-// locación) > listPrice del producto. El acuerdo comercial es con el
-// cliente; la locación es una excepción para esa sucursal."
+// una ubicación se resuelve: precio de esa ubicación > precio del cliente (sin
+// ubicación) > listPrice del producto. El acuerdo comercial es con el
+// cliente; la ubicación es una excepción para esa sucursal."
 
 const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_CUSTOMER_ID = "99999999-9999-4999-8999-999999999999";
@@ -231,7 +231,7 @@ describe("CustomerPricesService", () => {
       });
 
       await expect(attempt).rejects.toBeInstanceOf(ConflictException);
-      await expect(attempt).rejects.toThrow("locación");
+      await expect(attempt).rejects.toThrow("ubicación");
     });
   });
 
