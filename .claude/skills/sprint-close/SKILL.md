@@ -11,18 +11,19 @@ Run through these in order. Don't skip a step to save time — a sprint that
 isn't actually closed (no tag, no updated doc) is technical debt on the
 process itself, not just the code.
 
-1. **CI green.** Confirm the full pipeline (lint, typecheck, unit,
-   integration with Testcontainers, `prisma validate`, invariants test,
-   build, gitleaks, audit) is green on `main` at the commit being tagged.
-2. **Estado por módulo.** Regenerate `docs/estado-por-modulo.md` from the
+1. **Estado por módulo.** Regenerate `docs/estado-por-modulo.md` from the
    code, not from memory: walk `apps/api/src/modules/**/*.controller.ts` for
    endpoints, `apps/web/src/app.tsx` + `apps/web/src/pages/` +
    `apps/web/src/api/` for which screens exist and consume them. This is the
-   commit being tagged, so it's the last moment the table can reflect this
-   sprint's real code before that code stops moving. If a domain's state
-   changed since the last regeneration, or the code disagrees with this doc
-   or any other, that's a real finding for this sprint — carry it into the
-   acta (step 7) and validation issues (step 8); don't quietly edit it away.
+   last moment the table can reflect this sprint's real code, so it runs
+   before the commit is tagged: regenerate first, then verify CI (step 2) on
+   the now-complete commit, then tag (step 3). If a domain's state changed
+   since the last regeneration, or the code disagrees with this doc or any
+   other, that's a real finding for this sprint — carry it into the acta
+   (step 7) and validation issues (step 8); don't quietly edit it away.
+2. **CI green.** Confirm the full pipeline (lint, typecheck, unit,
+   integration with Testcontainers, `prisma validate`, invariants test,
+   build, gitleaks, audit) is green on `main` at the commit being tagged.
 3. **Tag.** Create the semver tag for this sprint (`v0.1.0-alpha`, `v0.2.0`,
    …) per the schedule in the execution plan §4.
 4. **Changelog.** Generate it from the Conventional Commits merged this
