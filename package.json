@@ -19,6 +19,7 @@
     "prisma:migrate": "pnpm --filter @yacco/api prisma:migrate",
     "db:seed": "pnpm --filter @yacco/api db:seed",
     "db:deploy": "pnpm --filter @yacco/api db:deploy",
+    "demo:up": "docker compose up -d --wait postgres && pnpm db:deploy && pnpm db:seed",
     "prepare": "husky"
   },
   "devDependencies": {

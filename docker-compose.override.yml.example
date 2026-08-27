@@ -1,0 +1,12 @@
+# Plantilla versionada. Copiala a docker-compose.override.yml (ignorado por
+# git, ver .gitignore) si el 5432 de tu máquina ya está ocupado por un
+# Postgres nativo — es machine-specific, por eso no se versiona el archivo
+# real, solo este ejemplo.
+#
+# Si la usás, cambiá también el puerto de DATABASE_URL y DIRECT_URL en tu
+# .env local de 5432 a 5433 (ver el comentario junto a esas dos variables en
+# .env.example).
+services:
+  postgres:
+    ports: !override
+      - "5433:5432"
