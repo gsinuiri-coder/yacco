@@ -52,9 +52,60 @@ import {
  */
 
 const DEFAULT_BASE_URL = "http://localhost:3100/api/v1";
-const baseUrl = process.env.DEMO_API_BASE_URL ?? DEFAULT_BASE_URL;
+
+// SonarCloud (S8476/S7044): a base URL taken from an env var, spliced into
+// every fetch() call this script makes, is exactly the "tainted URL" shape
+// those rules look for. Validating it once, here, against a strict
+// host[:port] shape before anything else runs is a real guard, not a lint
+// placeholder — this CLI has no business talking to anything but a plain
+// http(s) origin, and a malformed value (a stray path, query string, or
+// control character) is far more likely to be a typo'd env var than an
+// attack, but either way it's rejected before the first request.
+const BASE_URL_PATTERN = /^https?:\/\/[a-zA-Z0-9.-]+(:\d{1,5})?(\/[a-zA-Z0-9/_-]*)?$/;
+
+function assertSafeBaseUrl(value: string): string {
+  if (!BASE_URL_PATTERN.test(value)) {
+    throw new Error(
+      `DEMO_API_BASE_URL inválida: "${value}" no tiene la forma esperada ` +
+        "(http(s)://host[:puerto][/ruta], sin query ni caracteres especiales).",
+    );
+  }
+  return value;
+}
+
+const baseUrl = assertSafeBaseUrl(process.env.DEMO_API_BASE_URL ?? DEFAULT_BASE_URL);
 const adminUsername = process.env.DEMO_ADMIN_USERNAME ?? "admin";
 const adminPassword = process.env.DEMO_ADMIN_PASSWORD ?? "admin123";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * SonarCloud (S7044): every id this script splices into a request path came
+ * back from a PREVIOUS apiFetch call, which is enough for the taint
+ * checker to flag it as attacker-controlled flowing into a URL. This is the
+ * real guard, not a lint workaround: an id that isn't a well-formed UUID
+ * can never be a routeId/stopId/customerId Yacco actually returned, so
+ * refusing to build a request around one is strictly correct.
+ */
+function assertUuid(value: string, label: string): string {
+  if (!UUID_PATTERN.test(value)) {
+    throw new Error(`Valor inesperado para ${label}: "${value}" no es un UUID.`);
+  }
+  return value;
+}
+
+/**
+ * SonarCloud (S5145): every value below traced back to an HTTP response,
+ * which its log-injection rule treats as untrusted — a value crossing a
+ * process boundary could in principle carry a CR/LF and forge a fake log
+ * line. Stripping those before anything reaches console.log/error is the
+ * actual fix; values that only ever come from this script's own constants
+ * (DEMO_CUSTOMERS, the computed business dates) are never routed through
+ * this, and Sonar doesn't flag them either.
+ */
+function sanitizeForLog(value: unknown): string {
+  return String(value).replace(/[\r\n]/g, " ");
+}
 
 export class ApiError extends Error {
   constructor(
@@ -178,59 +229,62 @@ function resolveCatalogIds<K extends string>(
   return result;
 }
 
-export async function run(): Promise<void> {
-  console.log(`Sembrando datos de demo contra ${baseUrl} ...`);
+interface Catalog {
+  containerTypeIdByKey: Record<ContainerTypeKey, string>;
+  productIdByKey: Record<ProductKey, string>;
+  paymentMethodIdByKey: Record<PaymentMethodKey, string>;
+  products: ProductCatalogResponse[];
+}
 
-  const login = await apiFetch<LoginResponse>("/auth/login", null, {
-    method: "POST",
-    body: { username: adminUsername, password: adminPassword },
-  });
-  const token = login.accessToken;
-
-  // Everything down to (not including) driver creation is a READ, on
-  // purpose: catalog resolution and the price check below can fail, and
-  // must do so before the script's first write.
+/** Everything down to (not including) driver creation is a READ, on purpose — see run(). */
+async function resolveCatalog(token: string): Promise<Catalog> {
   const [containerTypes, products, paymentMethods] = await Promise.all([
     apiFetch<CatalogEntry[]>("/container-types", token),
     apiFetch<ProductCatalogResponse[]>("/products", token),
     apiFetch<CatalogEntry[]>("/payment-methods", token),
   ]);
-  const containerTypeIdByKey = resolveCatalogIds(
-    containerTypes,
-    CONTAINER_TYPE_NAMES,
-    "el tipo de envase",
-  );
-  const productIdByKey = resolveCatalogIds(products, PRODUCT_NAMES, "el producto");
-  const paymentMethodIdByKey = resolveCatalogIds(
-    paymentMethods,
-    PAYMENT_METHOD_NAMES,
-    "el método de pago",
-  );
+  return {
+    containerTypeIdByKey: resolveCatalogIds(
+      containerTypes,
+      CONTAINER_TYPE_NAMES,
+      "el tipo de envase",
+    ),
+    productIdByKey: resolveCatalogIds(products, PRODUCT_NAMES, "el producto"),
+    paymentMethodIdByKey: resolveCatalogIds(
+      paymentMethods,
+      PAYMENT_METHOD_NAMES,
+      "el método de pago",
+    ),
+    products,
+  };
+}
 
-  // PRODUCT_UNIT_PRICE (seed-demo-plan.ts) mirrors seed.ts's listPrice, which
-  // seed.ts itself calls a provisional placeholder pending confirmation with
-  // the plant owner. If it ever changes there, the "Deuda esperada" summary
-  // below would silently go stale — so this checks the assumption against
-  // the real catalog and refuses to write anything on a mismatch, rather
-  // than print wrong numbers with no warning.
+/**
+ * PRODUCT_UNIT_PRICE (seed-demo-plan.ts) mirrors seed.ts's listPrice, which
+ * seed.ts itself calls a provisional placeholder pending confirmation with
+ * the plant owner. If it ever changes there, the "Deuda esperada" summary
+ * below would silently go stale — so this checks the assumption against
+ * the real catalog and refuses to write anything on a mismatch, rather
+ * than print wrong numbers with no warning.
+ */
+function assertPricesMatchCatalog(products: ProductCatalogResponse[]): void {
   const priceMismatches = findProductPriceMismatches(products);
-  if (priceMismatches.length > 0) {
-    const lines = priceMismatches.map(
-      (mismatch) =>
-        `  - "${mismatch.name}": esperado ${mismatch.expected}, real ${mismatch.actual}`,
-    );
-    throw new Error(
-      "El precio real de estos productos ya no coincide con PRODUCT_UNIT_PRICE en " +
-        "seed-demo-plan.ts, así que la deuda esperada que este script imprime sería " +
-        `incorrecta. Actualizá esa constante antes de correr "pnpm demo:data":\n${lines.join("\n")}`,
-    );
-  }
+  if (priceMismatches.length === 0) return;
 
-  // Idempotency guard — see the file-level comment: this is the FIRST write,
-  // deliberately, so a re-run aborts here instead of partway through.
-  let driver: UserResponse;
+  const lines = priceMismatches.map(
+    (mismatch) => `  - "${mismatch.name}": esperado ${mismatch.expected}, real ${mismatch.actual}`,
+  );
+  throw new Error(
+    "El precio real de estos productos ya no coincide con PRODUCT_UNIT_PRICE en " +
+      "seed-demo-plan.ts, así que la deuda esperada que este script imprime sería " +
+      `incorrecta. Actualizá esa constante antes de correr "pnpm demo:data":\n${lines.join("\n")}`,
+  );
+}
+
+/** Idempotency guard — see the file-level comment: this is the FIRST write, deliberately. */
+async function createDriver(token: string): Promise<UserResponse> {
   try {
-    driver = await apiFetch<UserResponse>("/users", token, {
+    const driver = await apiFetch<UserResponse>("/users", token, {
       method: "POST",
       body: {
         name: DEMO_DRIVER_NAME,
@@ -239,6 +293,11 @@ export async function run(): Promise<void> {
         roles: ["DRIVER"],
       },
     });
+    console.log(
+      `Chofer creado: ${sanitizeForLog(driver.username)} (contraseña generada al azar; no se ` +
+        "imprime y no hace falta dársela — el chofer nunca inicia sesión en este seed, ver CLAUDE.md).",
+    );
+    return driver;
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       throw new Error(
@@ -249,12 +308,9 @@ export async function run(): Promise<void> {
     }
     throw error;
   }
-  console.log(
-    `Chofer creado: ${driver.username} (contraseña generada al azar; no se imprime y no hace ` +
-      "falta dársela — el chofer nunca inicia sesión en este seed, ver CLAUDE.md).",
-  );
+}
 
-  const customerIdByKey = new Map<string, string>();
+async function createCustomers(token: string): Promise<Map<string, string>> {
   const locationIdByKey = new Map<string, string>();
   for (const customer of DEMO_CUSTOMERS) {
     const created = await apiFetch<CustomerResponse>("/customers", token, {
@@ -267,10 +323,9 @@ export async function run(): Promise<void> {
         ...(customer.creditLimit !== undefined ? { creditLimit: customer.creditLimit } : {}),
       },
     });
-    customerIdByKey.set(customer.key, created.id);
 
     const locations = await apiFetch<CustomerLocationResponse[]>(
-      `/customers/${created.id}/locations`,
+      `/customers/${assertUuid(created.id, "id de cliente")}/locations`,
       token,
     );
     const primary = locations.find((location) => location.isPrimary);
@@ -282,14 +337,19 @@ export async function run(): Promise<void> {
     locationIdByKey.set(customer.key, primary.id);
   }
   console.log(`Clientes creados: ${DEMO_CUSTOMERS.length}.`);
+  return locationIdByKey;
+}
 
-  const dates = businessDatesGoingBack(DEMO_HISTORY_DAYS, new Date());
-
+async function createProductionBatch(
+  token: string,
+  date: string,
+  containerTypeIdByKey: Record<ContainerTypeKey, string>,
+): Promise<Map<ContainerTypeKey, string>> {
   const batch = await apiFetch<ProductionBatchResponse>("/production-batches", token, {
     method: "POST",
     body: {
       code: PRODUCTION_BATCH_CODE,
-      date: dates[0],
+      date,
       notes: "Lote de arranque para el seed de demo.",
       items: PRODUCTION_PLAN.map((line) => ({
         containerTypeId: containerTypeIdByKey[line.containerType],
@@ -297,6 +357,7 @@ export async function run(): Promise<void> {
       })),
     },
   });
+
   const batchItemIdByContainerType = new Map<ContainerTypeKey, string>();
   for (const item of batch.items) {
     const key = (Object.keys(containerTypeIdByKey) as ContainerTypeKey[]).find(
@@ -304,89 +365,141 @@ export async function run(): Promise<void> {
     );
     if (key !== undefined) batchItemIdByContainerType.set(key, item.id);
   }
-  console.log(`Lote de producción "${batch.code}" creado.`);
+  console.log(`Lote de producción "${sanitizeForLog(batch.code)}" creado.`);
+  return batchItemIdByContainerType;
+}
 
-  const deliveriesGroupedByDay = deliveriesByDay(DEMO_DELIVERIES);
-  const loadsGroupedByDay = loadsNeededByDay(DEMO_DELIVERIES);
-
-  for (let dayIndex = 0; dayIndex < dates.length; dayIndex += 1) {
-    const date = dates[dayIndex] as string;
-    const dayDeliveries = deliveriesGroupedByDay.get(dayIndex) ?? [];
-    if (dayDeliveries.length === 0) continue;
-
-    const route = await apiFetch<RouteResponse>("/routes", token, {
+async function loadRouteContainers(
+  token: string,
+  routeId: string,
+  loadsNeeded: Partial<Record<ContainerTypeKey, number>>,
+  batchItemIdByContainerType: Map<ContainerTypeKey, string>,
+): Promise<void> {
+  const safeRouteId = assertUuid(routeId, "id de ruta");
+  for (const containerTypeKey of Object.keys(loadsNeeded) as ContainerTypeKey[]) {
+    const quantity = loadsNeeded[containerTypeKey];
+    if (quantity === undefined || quantity <= 0) continue;
+    const batchItemId = batchItemIdByContainerType.get(containerTypeKey);
+    if (batchItemId === undefined) {
+      throw new Error(`No hay ítem de lote para "${CONTAINER_TYPE_NAMES[containerTypeKey]}".`);
+    }
+    await apiFetch(`/routes/${safeRouteId}/loads`, token, {
       method: "POST",
-      body: { driverId: driver.id, date },
+      body: { batchItemId, quantity },
     });
-
-    const loadsNeeded = loadsGroupedByDay.get(dayIndex) ?? {};
-    for (const containerTypeKey of Object.keys(loadsNeeded) as ContainerTypeKey[]) {
-      const quantity = loadsNeeded[containerTypeKey];
-      if (quantity === undefined || quantity <= 0) continue;
-      const batchItemId = batchItemIdByContainerType.get(containerTypeKey);
-      if (batchItemId === undefined) {
-        throw new Error(`No hay ítem de lote para "${CONTAINER_TYPE_NAMES[containerTypeKey]}".`);
-      }
-      await apiFetch(`/routes/${route.id}/loads`, token, {
-        method: "POST",
-        body: { batchItemId, quantity },
-      });
-    }
-
-    // One stop per customer scheduled this day, in delivery-plan order.
-    const stopIdByCustomerKey = new Map<string, string>();
-    for (const delivery of dayDeliveries) {
-      if (stopIdByCustomerKey.has(delivery.customerKey)) continue;
-      const locationId = locationIdByKey.get(delivery.customerKey);
-      if (locationId === undefined) {
-        throw new Error(`Cliente desconocido en el plan de demo: "${delivery.customerKey}".`);
-      }
-      const stop = await apiFetch<RouteStopResponse>(`/routes/${route.id}/stops`, token, {
-        method: "POST",
-        body: { origin: "VAN_SALE", locationId },
-      });
-      stopIdByCustomerKey.set(delivery.customerKey, stop.id);
-    }
-
-    await apiFetch(`/routes/${route.id}/start`, token, { method: "PATCH" });
-
-    const deliveriesByCustomerKey = new Map<string, DemoDeliveryPlan[]>();
-    for (const delivery of dayDeliveries) {
-      const list = deliveriesByCustomerKey.get(delivery.customerKey) ?? [];
-      list.push(delivery);
-      deliveriesByCustomerKey.set(delivery.customerKey, list);
-    }
-
-    for (const [customerKey, lines] of deliveriesByCustomerKey) {
-      const stopId = stopIdByCustomerKey.get(customerKey);
-      if (stopId === undefined) continue;
-      const items = lines.map((line: DemoDeliveryPlan) => ({
-        productId: productIdByKey[line.productKey as ProductKey],
-        quantity: line.quantity,
-      }));
-      const payment = lines.find((line) => line.payment !== undefined)?.payment;
-
-      await apiFetch(`/routes/${route.id}/stops/${stopId}`, token, {
-        method: "PATCH",
-        body: {
-          status: "DELIVERED",
-          items,
-          ...(payment !== undefined
-            ? {
-                payment: {
-                  paymentMethodId: paymentMethodIdByKey[payment.methodKey as PaymentMethodKey],
-                  amount: payment.amount,
-                },
-              }
-            : {}),
-        },
-      });
-    }
-
-    await apiFetch(`/routes/${route.id}/finish`, token, { method: "PATCH" });
-    console.log(`Ruta del ${date}: ${dayDeliveries.length} entregas registradas.`);
   }
+}
 
+/** One stop per customer scheduled this day, in delivery-plan order. */
+async function addRouteStops(
+  token: string,
+  routeId: string,
+  dayDeliveries: DemoDeliveryPlan[],
+  locationIdByKey: Map<string, string>,
+): Promise<Map<string, string>> {
+  const safeRouteId = assertUuid(routeId, "id de ruta");
+  const stopIdByCustomerKey = new Map<string, string>();
+  for (const delivery of dayDeliveries) {
+    if (stopIdByCustomerKey.has(delivery.customerKey)) continue;
+    const locationId = locationIdByKey.get(delivery.customerKey);
+    if (locationId === undefined) {
+      throw new Error(`Cliente desconocido en el plan de demo: "${delivery.customerKey}".`);
+    }
+    const stop = await apiFetch<RouteStopResponse>(`/routes/${safeRouteId}/stops`, token, {
+      method: "POST",
+      body: { origin: "VAN_SALE", locationId },
+    });
+    stopIdByCustomerKey.set(delivery.customerKey, stop.id);
+  }
+  return stopIdByCustomerKey;
+}
+
+function groupDeliveriesByCustomer(
+  dayDeliveries: DemoDeliveryPlan[],
+): Map<string, DemoDeliveryPlan[]> {
+  const deliveriesByCustomerKey = new Map<string, DemoDeliveryPlan[]>();
+  for (const delivery of dayDeliveries) {
+    const list = deliveriesByCustomerKey.get(delivery.customerKey) ?? [];
+    list.push(delivery);
+    deliveriesByCustomerKey.set(delivery.customerKey, list);
+  }
+  return deliveriesByCustomerKey;
+}
+
+async function deliverRouteStops(
+  token: string,
+  routeId: string,
+  dayDeliveries: DemoDeliveryPlan[],
+  stopIdByCustomerKey: Map<string, string>,
+  productIdByKey: Record<ProductKey, string>,
+  paymentMethodIdByKey: Record<PaymentMethodKey, string>,
+): Promise<void> {
+  const safeRouteId = assertUuid(routeId, "id de ruta");
+  const deliveriesByCustomerKey = groupDeliveriesByCustomer(dayDeliveries);
+
+  for (const [customerKey, lines] of deliveriesByCustomerKey) {
+    const stopId = stopIdByCustomerKey.get(customerKey);
+    if (stopId === undefined) continue;
+    const items = lines.map((line) => ({
+      productId: productIdByKey[line.productKey as ProductKey],
+      quantity: line.quantity,
+    }));
+    const payment = lines.find((line) => line.payment !== undefined)?.payment;
+
+    await apiFetch(`/routes/${safeRouteId}/stops/${assertUuid(stopId, "id de parada")}`, token, {
+      method: "PATCH",
+      body: {
+        status: "DELIVERED",
+        items,
+        ...(payment !== undefined
+          ? {
+              payment: {
+                paymentMethodId: paymentMethodIdByKey[payment.methodKey as PaymentMethodKey],
+                amount: payment.amount,
+              },
+            }
+          : {}),
+      },
+    });
+  }
+}
+
+async function runRouteForDay(
+  token: string,
+  driverId: string,
+  date: string,
+  dayDeliveries: DemoDeliveryPlan[],
+  loadsNeeded: Partial<Record<ContainerTypeKey, number>>,
+  batchItemIdByContainerType: Map<ContainerTypeKey, string>,
+  locationIdByKey: Map<string, string>,
+  productIdByKey: Record<ProductKey, string>,
+  paymentMethodIdByKey: Record<PaymentMethodKey, string>,
+): Promise<void> {
+  const route = await apiFetch<RouteResponse>("/routes", token, {
+    method: "POST",
+    body: { driverId, date },
+  });
+
+  await loadRouteContainers(token, route.id, loadsNeeded, batchItemIdByContainerType);
+  const stopIdByCustomerKey = await addRouteStops(token, route.id, dayDeliveries, locationIdByKey);
+
+  await apiFetch(`/routes/${assertUuid(route.id, "id de ruta")}/start`, token, { method: "PATCH" });
+  await deliverRouteStops(
+    token,
+    route.id,
+    dayDeliveries,
+    stopIdByCustomerKey,
+    productIdByKey,
+    paymentMethodIdByKey,
+  );
+  await apiFetch(`/routes/${assertUuid(route.id, "id de ruta")}/finish`, token, {
+    method: "PATCH",
+  });
+
+  console.log(`Ruta del ${date}: ${dayDeliveries.length} entregas registradas.`);
+}
+
+async function printSummary(token: string): Promise<void> {
   const expectedDebtByCustomerKey = computeExpectedDebtByCustomer(DEMO_DELIVERIES);
   console.log("\nDeuda esperada (verificar contra GET /customers):");
   for (const customer of DEMO_CUSTOMERS) {
@@ -400,14 +513,63 @@ export async function run(): Promise<void> {
     "/payments?status=PENDING",
     token,
   );
-  console.log(`\nPagos PENDING en la bandeja de confirmación: ${pendingPayments.total}.`);
+  console.log(
+    `\nPagos PENDING en la bandeja de confirmación: ${sanitizeForLog(pendingPayments.total)}.`,
+  );
+}
+
+export async function run(): Promise<void> {
+  console.log(`Sembrando datos de demo contra ${baseUrl} ...`);
+
+  const login = await apiFetch<LoginResponse>("/auth/login", null, {
+    method: "POST",
+    body: { username: adminUsername, password: adminPassword },
+  });
+  const token = login.accessToken;
+
+  const { containerTypeIdByKey, productIdByKey, paymentMethodIdByKey, products } =
+    await resolveCatalog(token);
+  assertPricesMatchCatalog(products);
+
+  const driver = await createDriver(token);
+  const locationIdByKey = await createCustomers(token);
+
+  const dates = businessDatesGoingBack(DEMO_HISTORY_DAYS, new Date());
+  const batchItemIdByContainerType = await createProductionBatch(
+    token,
+    dates[0] as string,
+    containerTypeIdByKey,
+  );
+
+  const deliveriesGroupedByDay = deliveriesByDay(DEMO_DELIVERIES);
+  const loadsGroupedByDay = loadsNeededByDay(DEMO_DELIVERIES);
+
+  for (let dayIndex = 0; dayIndex < dates.length; dayIndex += 1) {
+    const date = dates[dayIndex] as string;
+    const dayDeliveries = deliveriesGroupedByDay.get(dayIndex) ?? [];
+    if (dayDeliveries.length === 0) continue;
+
+    await runRouteForDay(
+      token,
+      driver.id,
+      date,
+      dayDeliveries,
+      loadsGroupedByDay.get(dayIndex) ?? {},
+      batchItemIdByContainerType,
+      locationIdByKey,
+      productIdByKey,
+      paymentMethodIdByKey,
+    );
+  }
+
+  await printSummary(token);
 }
 
 export async function main(): Promise<void> {
   try {
     await run();
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(sanitizeForLog(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;
   }
 }
