@@ -115,6 +115,27 @@ describe("LoginPage", () => {
     expect(await screen.findByRole("heading", { name: "Panel" })).toBeInTheDocument();
   });
 
+  it("usa el sistema de diseño: .centered-page, botón primario y notice de error", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post(`${API_BASE_URL}/auth/login`, () =>
+        HttpResponse.json({ message: "Invalid credentials" }, { status: 401 }),
+      ),
+    );
+
+    const { container } = renderLogin();
+    expect(container.querySelector(".centered-page")).not.toBeNull();
+
+    const submit = screen.getByRole("button", { name: "Ingresar" });
+    expect(submit).toHaveClass("button", "button--primary");
+
+    await user.type(screen.getByLabelText("Usuario"), "admin");
+    await user.type(screen.getByLabelText("Contraseña"), "incorrecta");
+    await user.click(submit);
+
+    expect(await screen.findByRole("alert")).toHaveClass("notice", "notice--error");
+  });
+
   describe("arranque en frío de Render", () => {
     beforeEach(() => {
       vi.useFakeTimers({ shouldAdvanceTime: true });

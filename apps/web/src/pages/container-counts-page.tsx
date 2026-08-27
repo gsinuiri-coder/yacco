@@ -365,9 +365,22 @@ function BalanceRow({
               {row.containers.map((container, index) => (
                 <span key={container.containerType.id}>
                   {index > 0 && " · "}
-                  <span className={container.quantity < 0 ? "table__cell--negative" : undefined}>
-                    {container.quantity} {container.containerType.name}
-                  </span>
+                  {/* Different meaning than inventory-page's negative: this is a
+                      customer's container balance, not plant fill/empty stock —
+                      the aria-label says what it actually means here, not a
+                      copy of the other screen's text. */}
+                  {container.quantity < 0 ? (
+                    <span
+                      className="table__cell--negative"
+                      aria-label={`${container.quantity} ${container.containerType.name}: el cliente devolvió más envases de los que se le registraron, falta registrar una entrega`}
+                    >
+                      {container.quantity} {container.containerType.name}
+                    </span>
+                  ) : (
+                    <span>
+                      {container.quantity} {container.containerType.name}
+                    </span>
+                  )}
                 </span>
               ))}
             </div>

@@ -112,6 +112,11 @@ una inconsistencia, no una variación válida.
 - **Botón** — `--primary` (acción principal, una por vista), `--secondary`
   (border, sin relleno) y `--ghost` (sin borde, para acciones de bajo énfasis
   dentro de una fila).
+- **`.centered-page`** — página de un solo bloque centrado (hoy solo login).
+  `place-items: center` le da ancho automático a su hijo directo, así que
+  `.centered-page > * { width: min(100%, 22rem) }` fija ese ancho en la hoja
+  de estilos — no en el componente — para que la card no colapse al ancho
+  mínimo de su contenido cuando los inputs internos ya son `width: 100%`.
 
 ## Accesibilidad de color
 
@@ -172,45 +177,43 @@ La auditoría no encontró otro problema arreglable solo con una variable de
 - `font-variant-numeric: tabular-nums` se aplica sin excepciones a toda
   columna numérica/monto de toda tabla y `.stat`.
 
-## Pendiente (no entra en este PR)
+## Resuelto: los tres hallazgos no-P3 de la auditoría
+
+Los tres puntos P1/P2 que la auditoría de `chore/design-baseline` había
+dejado en "Pendiente" ya están cerrados en el código:
+
+- **Login usa el sistema de diseño.** `pages/login-page.tsx` renderiza
+  `<main className="centered-page">` > `<form className="card">` >
+  `.card__body` con `.field`/`.field__label` para usuario y contraseña,
+  `.notice--error` para el error de credenciales, `SlowRequestNotice` (en vez
+  de un `<p role="status">` propio) para el aviso de arranque en frío, y
+  `.button.button--primary` en el submit — mismo patrón que
+  `customer-form.tsx`. La lógica (validación, `useAuth`, `Navigate` cuando ya
+  hay sesión) no cambió, solo el marcado. El ancho de la card lo resuelve
+  `.centered-page > *` en `styles.css` (ver la convención de `.centered-page`
+  arriba). El `<h1>Yacco</h1>` va envuelto en `.page-header`, por la misma
+  razón que los `<h2>` de sección de abajo: un heading suelto dentro de
+  `.card__body` no tiene espaciado propio (`h1,h2,h3{margin:0}`), así que sin
+  ese envoltorio tocaba la etiqueta "Usuario" en el estado normal y el
+  `.notice--error` en el estado de error.
+- **`container-movements-page.tsx` y `production-page.tsx` envuelven su
+  `<h2>` de sección en `.page-header`** — mismo patrón que ya usaba
+  `customer-prices-section.tsx` — así que el título tiene el margen inferior
+  del sistema en vez de tocar la primera fila del formulario.
+- **El negativo de `container-counts-page.tsx` lleva `aria-label`**, con un
+  texto propio de esta pantalla (el cliente devolvió más envases de los que
+  se le registraron como entregados) — no el mismo texto que
+  `inventory-page.tsx`, que describe un negativo distinto (más envases
+  llenados que vacíos registrados en planta). Un comentario en el código
+  marca por qué los dos textos no son intercambiables.
+
+## Pendiente (no entra en este PR) — solo quedan hallazgos P3
 
 Criterio de esta lista: todo lo que requiere tocar un componente, marcado o
 clase queda acá para decidirse aparte, en vez de entrar en un PR de solo
 `:root`. Orden por severidad.
 
-1. **[P1] Login no usa el sistema de diseño** — `pages/login-page.tsx:47-81`.
-   No usa `.centered-page` (que existe en `styles.css` específicamente para
-   login, según su propio comentario de cabecera), ni `.card`, ni
-   `.field`/`.field__label`, ni `.button--primary` en el submit, ni
-   `.notice--error`/`.notice--info` en los mensajes de estado. Es la única
-   pantalla que ve todo usuario todos los días y es la que menos se parece al
-   resto. _Categoría: consistencia, jerarquía. Requiere: reescribir el
-   marcado de `login-page.tsx`._
-
-2. **[P2] Encabezado de sección sin espaciado propio** —
-   `pages/container-movements-page.tsx:307-320` y
-   `pages/production-page.tsx:182-214`. El `<h2>` va suelto dentro de
-   `.card__body`; como `h1,h2,h3{margin:0}` (`styles.css:73-79`) y no hay
-   regla de espaciado después de un `h2` suelto, cuando no hay aviso visible
-   (el caso normal) el título toca la primera fila del formulario sin aire.
-   `components/customer-prices-section.tsx:183-184` resuelve el mismo caso
-   envolviendo su `<h2>` en `.page-header`, que sí trae margen. Mismo rol,
-   dos resultados distintos. _Categoría: espaciado, consistencia. Requiere:
-   envolver en `.page-header` o agregar una regla de espaciado — no es un
-   cambio de `:root`._
-
-3. **[P2] Negativo sin `aria-label` en conteos** —
-   `pages/container-counts-page.tsx:368-370`, comparado con
-   `pages/inventory-page.tsx:150-159`. Ambos usan `.table__cell--negative`
-   para el mismo caso documentado en `styles.css:432-433` (una diferencia
-   negativa es una señal real, no se oculta). `inventory-page.tsx` explica el
-   negativo con `aria-label`; `container-counts-page.tsx` no, así que un
-   lector de pantalla solo lee el número sin contexto de qué significa.
-   _Categoría: accesibilidad de color, consistencia. Requiere: agregar
-   `aria-label` al span de `container-counts-page.tsx`, igual que
-   `inventory-page.tsx`._
-
-4. **[P3] `.page-header__subtitle` usado como utilidad de texto muted** —
+1. **[P3] `.page-header__subtitle` usado como utilidad de texto muted** —
    se repite en `container-movements-page.tsx:482`,
    `container-counts-page.tsx:170,235`, `inventory-page.tsx:120` y
    `dashboard-page.tsx:12-15,25-27` (esta última fuera de alcance para
@@ -220,14 +223,14 @@ clase queda acá para decidirse aparte, en vez de entrar en un PR de solo
    3+ archivos. _Categoría: consistencia, tipografía. Requiere: crear
    `.text-muted` y migrar estos usos._
 
-5. **[P3] `.field__hint` sin campo asociado** —
+2. **[P3] `.field__hint` sin campo asociado** —
    `components/order-items-form.tsx:246`. Es un mensaje instructivo suelto
    ("Elige un cliente para ver sus precios"), no un hint de un input
    específico, que es como se usa `.field__hint` en el resto del código.
    _Categoría: consistencia, tipografía. Requiere: usar `.notice--info` o un
    párrafo muted en vez de `.field__hint`._
 
-6. **[P3] Error de fila lejos de la fila** —
+3. **[P3] Error de fila lejos de la fila** —
    `pages/container-types-page.tsx` y
    `components/customer-prices-section.tsx`: los errores de renombrar/dar de
    baja/editar se muestran una sola vez arriba de la card, no junto a la fila
