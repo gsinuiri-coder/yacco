@@ -76,7 +76,7 @@ export class CustomerPricesService {
       if (isPrismaKnownError(error, "P2002")) {
         throw new ConflictException(
           dto.locationId !== undefined
-            ? "Ya existe un precio pactado para este cliente, este producto y esta locación"
+            ? "Ya existe un precio pactado para este cliente, este producto y esta ubicación"
             : "Ya existe un precio pactado para este cliente y este producto",
         );
       }
@@ -212,10 +212,10 @@ export class CustomerPricesService {
       select: { customerId: true },
     });
     if (location === null) {
-      throw new BadRequestException(`La locación "${locationId}" no existe`);
+      throw new BadRequestException(`La ubicación "${locationId}" no existe`);
     }
     if (location.customerId !== customerId) {
-      throw new BadRequestException(`La locación "${locationId}" no pertenece a este cliente`);
+      throw new BadRequestException(`La ubicación "${locationId}" no pertenece a este cliente`);
     }
   }
 }

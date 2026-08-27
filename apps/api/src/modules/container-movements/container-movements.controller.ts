@@ -53,7 +53,7 @@ export class ContainerMovementsController {
 
   @ApiOperation({
     summary:
-      "Lista el libro de movimientos, paginado y filtrable por tipo, tipo de envase, locación y fecha",
+      "Lista el libro de movimientos, paginado y filtrable por tipo, tipo de envase, ubicación y fecha",
   })
   @ApiResponse({ status: 200, type: PaginatedContainerMovementsDto })
   @Get()

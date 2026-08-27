@@ -344,7 +344,7 @@ export class RoutesService {
         select: { id: true },
       });
       if (location === null) {
-        throw new BadRequestException(`La locación "${dto.locationId}" no existe`);
+        throw new BadRequestException(`La ubicación "${dto.locationId}" no existe`);
       }
       locationId = dto.locationId;
       orderId = null;

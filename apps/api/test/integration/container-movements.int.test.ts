@@ -173,7 +173,7 @@ describe("POST /api/v1/container-movements — customer-facing movements", () =>
     });
 
     expect(response.status).toBe(400);
-    expect(messagesOf(response)).toContain("locación");
+    expect(messagesOf(response)).toContain("ubicación");
   });
 
   test("rejects a location that does not exist", async () => {

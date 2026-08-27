@@ -169,7 +169,7 @@ async function getPrimaryLocationId(
     select: { id: true },
   });
   if (location === null) {
-    throw new BadRequestException(`El cliente "${customerId}" no tiene una locación principal`);
+    throw new BadRequestException(`El cliente "${customerId}" no tiene una ubicación principal`);
   }
   return location.id;
 }
@@ -357,7 +357,7 @@ export class SalesService {
       },
     });
     if (location === null) {
-      throw new BadRequestException(`La locación "${params.locationId}" no existe`);
+      throw new BadRequestException(`La ubicación "${params.locationId}" no existe`);
     }
     const customer = location.customer;
 

@@ -152,7 +152,7 @@ describe("customer_locations.external_code", () => {
     const prisma = ctx.app.get(PrismaService);
     const customer = await prisma.customer.create({
       data: {
-        name: "Cliente Dos Locaciones",
+        name: "Cliente Dos Ubicaciones",
         locations: {
           create: {
             name: "Principal",
@@ -192,7 +192,7 @@ describe("customer_locations.external_code", () => {
     const prisma = ctx.app.get(PrismaService);
     const customer = await prisma.customer.create({
       data: {
-        name: "Cliente Locaciones Duplicadas",
+        name: "Cliente Ubicaciones Duplicadas",
         locations: {
           create: {
             name: "Principal",
@@ -234,7 +234,7 @@ describe("customer_locations.external_code", () => {
     const prisma = ctx.app.get(PrismaService);
     const customer = await prisma.customer.create({
       data: {
-        name: "Cliente Locación Visible",
+        name: "Cliente Ubicación Visible",
         locations: {
           create: {
             name: "Principal",

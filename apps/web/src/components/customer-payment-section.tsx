@@ -23,7 +23,7 @@ function describeSubmitError(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) {
     return (
       "Este cobro no se pudo registrar porque ya se había intentado antes con otro cliente " +
-      "o otro monto. Revisá el historial de pagos antes de volver a intentarlo."
+      "o otro monto. Revisa el historial de pagos antes de volver a intentarlo."
     );
   }
   return error instanceof Error ? error.message : "No se pudo registrar el cobro.";

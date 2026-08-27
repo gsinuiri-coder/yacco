@@ -47,6 +47,6 @@ export class CreateContainerMovementDto {
     description: 'Obligatoria cuando el origen o el destino es "en cliente"',
   })
   @IsOptional()
-  @IsUUID("4", { message: "La locación debe ser un identificador válido" })
+  @IsUUID("4", { message: "La ubicación debe ser un identificador válido" })
   locationId?: string;
 }

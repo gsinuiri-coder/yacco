@@ -12,7 +12,6 @@ export function DashboardPage() {
           <p className="page-header__subtitle">
             Sesión iniciada como <strong>{user?.username}</strong>
           </p>
-          <p className="page-header__subtitle">Roles: {user?.roles.join(", ")}</p>
         </div>
         <button type="button" className="button button--secondary" onClick={logout}>
           Cerrar sesión

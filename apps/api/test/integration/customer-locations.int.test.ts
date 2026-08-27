@@ -39,14 +39,14 @@ async function createUserAndLogin(username: string, role: string): Promise<strin
 beforeAll(async () => {
   ctx = await startTestApp();
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
-  sellerToken = await createUserAndLogin("vendedor-locaciones", "SELLER");
-  driverToken = await createUserAndLogin("repartidor-locaciones", "DRIVER");
+  sellerToken = await createUserAndLogin("vendedor-ubicaciones", "SELLER");
+  driverToken = await createUserAndLogin("repartidor-ubicaciones", "DRIVER");
 
   const created = await request(server())
     .post("/api/v1/customers")
     .set("Authorization", `Bearer ${adminToken}`)
     .send({
-      name: "Bodega Con Locaciones",
+      name: "Bodega Con Ubicaciones",
       phone: "987654321",
       address: "Av. Los Alamos 452",
       addressReference: "Portón azul",
@@ -66,7 +66,7 @@ afterAll(async () => {
 });
 
 describe("GET /api/v1/customers/:customerId/locations", () => {
-  test("devuelve al menos la locación principal creada con el cliente", async () => {
+  test("devuelve al menos la ubicación principal creada con el cliente", async () => {
     const response = await request(server())
       .get(`/api/v1/customers/${customerId}/locations`)
       .set("Authorization", `Bearer ${sellerToken}`);
@@ -87,7 +87,7 @@ describe("GET /api/v1/customers/:customerId/locations", () => {
     });
   });
 
-  test("una segunda locación del mismo cliente también aparece, ordenada tras la principal", async () => {
+  test("una segunda ubicación del mismo cliente también aparece, ordenada tras la principal", async () => {
     const prisma = ctx.app.get(PrismaService);
     const second = await prisma.customerLocation.create({
       data: {
@@ -112,12 +112,12 @@ describe("GET /api/v1/customers/:customerId/locations", () => {
     await prisma.customerLocation.delete({ where: { id: second.id } });
   });
 
-  test("no devuelve locaciones de otro cliente", async () => {
+  test("no devuelve ubicaciones de otro cliente", async () => {
     const otherCustomer = await request(server())
       .post("/api/v1/customers")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
-        name: "Otro Cliente Con Locaciones",
+        name: "Otro Cliente Con Ubicaciones",
         phone: "987654323",
         address: "Jr. Otro 1",
         addressReference: "Al lado",

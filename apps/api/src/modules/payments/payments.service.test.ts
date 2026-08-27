@@ -366,6 +366,20 @@ describe("PaymentsService", () => {
       expect(prisma.paymentMethod.findUnique).not.toHaveBeenCalled();
     });
 
+    it("a locationId that does not exist at all is rejected with 400", async () => {
+      prisma.customer.findUnique.mockResolvedValue({
+        id: CUSTOMER_ID,
+        active: true,
+        debtBalance: decimal("0.00"),
+      });
+      prisma.customerLocation.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.createOfficePayment(officeDto({ locationId: LOCATION_ID }), ADMIN_ID),
+      ).rejects.toThrow(`La ubicación "${LOCATION_ID}" no existe`);
+      expect(prisma.paymentMethod.findUnique).not.toHaveBeenCalled();
+    });
+
     it("a locationId belonging to a different customer is rejected with 400, not 404", async () => {
       prisma.customer.findUnique.mockResolvedValue({
         id: CUSTOMER_ID,

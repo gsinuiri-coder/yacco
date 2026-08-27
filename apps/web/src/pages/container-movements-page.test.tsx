@@ -229,7 +229,7 @@ describe("ContainerMovementsPage", () => {
     });
   });
 
-  it("baja por pérdida: el POST lleva el locationId de la locación elegida, no el id del cliente", async () => {
+  it("baja por pérdida: el POST lleva el locationId de la ubicación elegida, no el id del cliente", async () => {
     const user = userEvent.setup();
     const customer = buildCustomer();
     const location = buildLocation({ id: "location-not-customer-id" });
@@ -252,7 +252,7 @@ describe("ContainerMovementsPage", () => {
     expect(screen.queryByLabelText("¿De dónde sale?")).not.toBeInTheDocument();
 
     await pickCustomer(user, customer);
-    await user.selectOptions(await screen.findByLabelText("Locación"), location.id);
+    await user.selectOptions(await screen.findByLabelText("Ubicación"), location.id);
 
     await user.click(screen.getByRole("button", { name: "Registrar movimiento" }));
 
@@ -269,7 +269,7 @@ describe("ContainerMovementsPage", () => {
     });
   });
 
-  it("un cliente sin locaciones muestra su propio mensaje, no un desplegable vacío", async () => {
+  it("un cliente sin ubicaciones muestra su propio mensaje, no un desplegable vacío", async () => {
     const user = userEvent.setup();
     const customer = buildCustomer();
     stubCustomerSearch([customer]);
@@ -283,9 +283,36 @@ describe("ContainerMovementsPage", () => {
     await pickCustomer(user, customer);
 
     expect(
-      await screen.findByText("Este cliente no tiene locaciones registradas."),
+      await screen.findByText("Este cliente no tiene ubicaciones registradas."),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Locación")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Ubicación")).not.toBeInTheDocument();
+  });
+
+  it("un error al cargar las ubicaciones se muestra con opción de reintentar", async () => {
+    const user = userEvent.setup();
+    const customer = buildCustomer();
+    stubCustomerSearch([customer]);
+    server.use(
+      http.get(`${API_BASE_URL}/customers/${customer.id}/locations`, () =>
+        HttpResponse.json({ message: "Base de datos no disponible" }, { status: 500 }),
+      ),
+    );
+
+    renderPage();
+    await user.selectOptions(
+      await screen.findByLabelText("Operación", { selector: "#movementType" }),
+      "LOSS_WRITE_OFF",
+    );
+    await pickCustomer(user, customer);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Base de datos no disponible");
+
+    stubLocations(customer.id, []);
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+
+    expect(
+      await screen.findByText("Este cliente no tiene ubicaciones registradas."),
+    ).toBeInTheDocument();
   });
 
   it("un 400 de transición inválida se muestra con su mensaje del backend", async () => {

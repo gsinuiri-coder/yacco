@@ -331,7 +331,7 @@ async function createCustomers(token: string): Promise<Map<string, string>> {
     const primary = locations.find((location) => location.isPrimary);
     if (primary === undefined) {
       throw new Error(
-        `El cliente "${customer.name}" no tiene locación principal (no debería pasar).`,
+        `El cliente "${customer.name}" no tiene ubicación principal (no debería pasar).`,
       );
     }
     locationIdByKey.set(customer.key, primary.id);

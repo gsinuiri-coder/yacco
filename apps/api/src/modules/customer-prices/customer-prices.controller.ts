@@ -60,7 +60,7 @@ export class CustomerPricesController {
   }
 
   @ApiOperation({
-    summary: "Pacta un precio para un cliente, opcionalmente solo para una locación",
+    summary: "Pacta un precio para un cliente, opcionalmente solo para una ubicación",
   })
   @ApiResponse({ status: 201, type: CustomerPriceResponseDto })
   @ApiBadRequestResponse({ description: "Validation failed, or product/location invalid" })
@@ -108,7 +108,7 @@ export class CustomerPricesController {
 
   @ApiOperation({
     summary:
-      "Precio efectivo de cada producto activo para un cliente (y, opcionalmente, una locación), con su origen",
+      "Precio efectivo de cada producto activo para un cliente (y, opcionalmente, una ubicación), con su origen",
   })
   @ApiResponse({ status: 200, type: EffectivePriceResponseDto, isArray: true })
   @ApiBadRequestResponse({
