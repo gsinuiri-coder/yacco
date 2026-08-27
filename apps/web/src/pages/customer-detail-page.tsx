@@ -6,6 +6,7 @@ import { ApiError } from "../api/errors";
 import { SLOW_REQUEST_MESSAGE } from "../api/timing";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
+import { CustomerPaymentSection } from "../components/customer-payment-section";
 import { CustomerPricesSection } from "../components/customer-prices-section";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatMoney, formatOptionalMoney, isPositiveMoney } from "../lib/money";
@@ -46,6 +47,10 @@ export function CustomerDetailPage() {
   }, [apiClient, customerId, reloadToken]);
 
   const notFound = loadError instanceof ApiError && loadError.status === 404;
+
+  function handlePaymentRegistered(debtBalance: string) {
+    setCustomer((current) => (current ? { ...current, debtBalance } : current));
+  }
 
   return (
     <AppShell>
@@ -152,6 +157,11 @@ export function CustomerDetailPage() {
               </div>
             </div>
           </section>
+
+          <CustomerPaymentSection
+            customerId={customer.id}
+            onPaymentRegistered={handlePaymentRegistered}
+          />
 
           <CustomerPricesSection customerId={customer.id} isAdmin={isAdmin} />
         </>

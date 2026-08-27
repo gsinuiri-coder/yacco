@@ -52,6 +52,22 @@ function stubEffectivePrices(): void {
   );
 }
 
+/** CustomerPaymentSection loads the catalog on mount, on every render of the page. */
+function stubPaymentMethods(): void {
+  server.use(
+    http.get(`${API_BASE_URL}/payment-methods`, () =>
+      HttpResponse.json([
+        {
+          id: "66666666-6666-4666-8666-666666666666",
+          name: "Efectivo",
+          active: true,
+          requiresConfirmation: false,
+        },
+      ]),
+    ),
+  );
+}
+
 function renderDetail(id = CUSTOMER_ID) {
   return renderWithProviders(
     <Routes>
@@ -72,6 +88,7 @@ describe("CustomerDetailPage", () => {
     signIn(["ADMIN"]);
     stubGetCustomer(buildCustomer());
     stubManagementPrices();
+    stubPaymentMethods();
 
     renderDetail();
 
@@ -97,6 +114,7 @@ describe("CustomerDetailPage", () => {
       }),
     );
     stubManagementPrices();
+    stubPaymentMethods();
 
     renderDetail();
 
@@ -117,6 +135,7 @@ describe("CustomerDetailPage", () => {
       }),
     );
     stubManagementPrices();
+    stubPaymentMethods();
 
     renderDetail();
 
@@ -146,11 +165,45 @@ describe("CustomerDetailPage", () => {
     signIn(["SELLER"]);
     stubGetCustomer(buildCustomer());
     stubEffectivePrices();
+    stubPaymentMethods();
 
     renderDetail();
 
     await screen.findByRole("heading", { name: "Bodega Santa Rosa" });
     expect(await screen.findByText("Precios pactados")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Agregar precio" })).not.toBeInTheDocument();
+  });
+
+  it("registrar un cobro actualiza la 'Deuda actual' que ya muestra la ficha", async () => {
+    const user = userEvent.setup();
+    signIn(["ADMIN"]);
+    stubGetCustomer(buildCustomer({ debtBalance: "40.50" }));
+    stubManagementPrices();
+    stubPaymentMethods();
+    server.use(
+      http.post(`${API_BASE_URL}/payments`, () =>
+        HttpResponse.json(
+          {
+            payment: { id: "77777777-7777-4777-8777-777777777777", status: "CONFIRMED" },
+            debtBalance: "20.50",
+            exceedsDebt: false,
+          },
+          { status: 201 },
+        ),
+      ),
+    );
+
+    renderDetail();
+    await screen.findByRole("heading", { name: "Bodega Santa Rosa" });
+    expect(screen.getByText("S/ 40.50")).toBeInTheDocument();
+
+    await user.selectOptions(await screen.findByLabelText("Método de pago"), [
+      "66666666-6666-4666-8666-666666666666",
+    ]);
+    await user.type(screen.getByLabelText("Monto"), "20.00");
+    await user.click(screen.getByRole("button", { name: "Registrar cobro" }));
+
+    expect(await screen.findByText("S/ 20.50")).toBeInTheDocument();
+    expect(screen.queryByText("S/ 40.50")).not.toBeInTheDocument();
   });
 });
