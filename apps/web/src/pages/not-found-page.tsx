@@ -9,7 +9,7 @@ export function NotFoundPage() {
     <AppShell>
       <div className="state card">
         <p className="state__title">Esta página no existe</p>
-        <p>Revisá la dirección o volvé al Panel.</p>
+        <p>Revisa la dirección o vuelve al Panel.</p>
         <div className="state__actions">
           <Link to="/" className="button button--primary">
             Volver al Panel
