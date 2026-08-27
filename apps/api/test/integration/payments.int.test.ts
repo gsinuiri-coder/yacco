@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { PaymentStatus } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
@@ -459,6 +460,185 @@ describe("POST /api/v1/payments — office collection (HU-18)", () => {
       .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "10.00" });
 
     expect(response.status).toBe(403);
+  });
+});
+
+describe("POST /api/v1/payments — idempotencyKey", () => {
+  test("without a key, two identical POSTs create two separate rows, as always", async () => {
+    const { customerId } = await createCustomerWithDebt("50.00");
+    const body = { customerId, paymentMethodId: cashPaymentMethodId, amount: "25.00" };
+
+    const first = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+    const second = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(first.body.payment.id).not.toBe(second.body.payment.id);
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+  });
+
+  test("a new key creates the payment and responds 201", async () => {
+    const { customerId } = await createCustomerWithDebt("25.00");
+    const idempotencyKey = randomUUID();
+
+    const response = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "25.00", idempotencyKey });
+
+    expect(response.status).toBe(201);
+    expect(response.body.payment.status).toBe(PaymentStatus.CONFIRMED);
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+  });
+
+  test("the same key sent twice: the second call responds 200 with the SAME id, and only one row exists", async () => {
+    const { customerId } = await createCustomerWithDebt("25.00");
+    const idempotencyKey = randomUUID();
+    const body = {
+      customerId,
+      paymentMethodId: cashPaymentMethodId,
+      amount: "25.00",
+      idempotencyKey,
+    };
+
+    const first = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+    const second = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(200);
+    expect(second.body.payment.id).toBe(first.body.payment.id);
+
+    const rows = await prisma.payment.findMany({ where: { idempotencyKey } });
+    expect(rows).toHaveLength(1);
+  });
+
+  // The point of re-reading rather than reconstructing: this simulates
+  // something changing the row between the two calls (a raw UPDATE, since
+  // an office payment is born CONFIRMED and this endpoint's own confirm/
+  // reject rules never let it get here on their own) and checks the retry
+  // reports THAT, not the CONFIRMED snapshot the first call produced.
+  test("the same key sent twice, with the payment changed in between: the reply reflects the NEW state, not the original", async () => {
+    const { customerId } = await createCustomerWithDebt("25.00");
+    const idempotencyKey = randomUUID();
+    const body = {
+      customerId,
+      paymentMethodId: cashPaymentMethodId,
+      amount: "25.00",
+      idempotencyKey,
+    };
+
+    const first = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+    expect(first.status).toBe(201);
+
+    // Also clears confirmed_at/confirmed_by: a real REJECTED row never has
+    // them set (reject() only ever fires from PENDING), and this row's own
+    // CHECK constraints enforce exactly that — this simulates the shape a
+    // legitimately-rejected row would have, not just its status column.
+    await prisma.$executeRawUnsafe(
+      `UPDATE "payments" SET "status" = 'REJECTED', "confirmed_at" = null, "confirmed_by" = null, "rejected_at" = now(), "rejected_by" = $1::uuid, "rejection_reason" = 'Simulado por el test' WHERE "id" = $2::uuid`,
+      adminUserId,
+      first.body.payment.id,
+    );
+
+    const second = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(second.status).toBe(200);
+    expect(second.body.payment.id).toBe(first.body.payment.id);
+    expect(second.body.payment.status).toBe(PaymentStatus.REJECTED);
+    expect(second.body.payment.rejectionReason).toBe("Simulado por el test");
+  });
+
+  test("the same key with a different customerId responds 409, and does not touch the original payment", async () => {
+    const { customerId } = await createCustomerWithDebt("25.00");
+    const other = await createCustomerWithDebt("25.00");
+    const idempotencyKey = randomUUID();
+
+    const first = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "25.00", idempotencyKey });
+    expect(first.status).toBe(201);
+
+    const second = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        customerId: other.customerId,
+        paymentMethodId: cashPaymentMethodId,
+        amount: "25.00",
+        idempotencyKey,
+      });
+
+    expect(second.status).toBe(409);
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+    // The conflict must not have touched the other customer's debt either.
+    expect(await customerDebtBalance(other.customerId)).toBe("25.00");
+  });
+
+  test("the same key with a different amount responds 409", async () => {
+    const { customerId } = await createCustomerWithDebt("50.00");
+    const idempotencyKey = randomUUID();
+
+    const first = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "25.00", idempotencyKey });
+    expect(first.status).toBe(201);
+
+    const second = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ customerId, paymentMethodId: cashPaymentMethodId, amount: "30.00", idempotencyKey });
+
+    expect(second.status).toBe(409);
+  });
+
+  test("a retry never discounts the customer's debt twice", async () => {
+    const { customerId } = await createCustomerWithDebt("25.00");
+    const idempotencyKey = randomUUID();
+    const body = {
+      customerId,
+      paymentMethodId: cashPaymentMethodId,
+      amount: "25.00",
+      idempotencyKey,
+    };
+
+    await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+    // A network-retry storm: several more identical POSTs land after the
+    // first one already committed.
+    await Promise.all(
+      Array.from({ length: 3 }, () =>
+        request(server())
+          .post("/api/v1/payments")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send(body),
+      ),
+    );
+
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+    const rows = await prisma.payment.findMany({ where: { idempotencyKey } });
+    expect(rows).toHaveLength(1);
   });
 });
 

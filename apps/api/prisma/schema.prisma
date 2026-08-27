@@ -628,6 +628,15 @@ model Payment {
   // Sale.
   isOpeningBalance Boolean       @default(false) @map("is_opening_balance")
   recordedById     String        @map("recorded_by") @db.Uuid
+  // Client-generated UUID v4, set only by POST /payments when the caller
+  // sends one, so a network retry replays the same row instead of creating
+  // a second one. Optional and unique: existing rows have none, and a
+  // markStop-created payment doesn't need one — that write is already
+  // idempotent through RouteStop's own `WHERE status = 'PENDING'` guard
+  // (see RoutesService.markStopDelivered). Postgres excludes NULL from a
+  // UNIQUE constraint's duplicate check, so any number of keyless payments
+  // coexist with the keyed ones.
+  idempotencyKey   String?       @unique @map("idempotency_key") @db.Uuid
 
   customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
   location      CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)

@@ -13,6 +13,7 @@ const RECORDED_BY_ID = "55555555-5555-4555-8555-555555555555";
 const ADMIN_ID = "66666666-6666-4666-8666-666666666666";
 const MISSING_ID = "00000000-0000-4000-8000-000000000000";
 const OTHER_CUSTOMER_ID = "77777777-7777-4777-8777-777777777777";
+const IDEMPOTENCY_KEY = "88888888-8888-4888-8888-888888888888";
 
 function decimal(value: string): Prisma.Decimal {
   return new Prisma.Decimal(value);
@@ -277,9 +278,10 @@ describe("PaymentsService", () => {
         data: { debtBalance: { decrement: decimal("25.00") } },
         select: { debtBalance: true },
       });
-      expect(result.payment.status).toBe(PaymentStatus.CONFIRMED);
-      expect(result.debtBalance).toBe("0.00");
-      expect(result.exceedsDebt).toBe(false);
+      expect(result.response.payment.status).toBe(PaymentStatus.CONFIRMED);
+      expect(result.response.debtBalance).toBe("0.00");
+      expect(result.response.exceedsDebt).toBe(false);
+      expect(result.created).toBe(true);
     });
 
     // The central decision of this PR: a method whose requiresConfirmation
@@ -304,7 +306,7 @@ describe("PaymentsService", () => {
           data: expect.objectContaining({ status: PaymentStatus.CONFIRMED }) as unknown,
         }),
       );
-      expect(result.payment.status).toBe(PaymentStatus.CONFIRMED);
+      expect(result.response.payment.status).toBe(PaymentStatus.CONFIRMED);
     });
 
     it("overpayment: debt of 40 paid with 50 leaves debtBalance at -10.00 and exceedsDebt true", async () => {
@@ -314,8 +316,8 @@ describe("PaymentsService", () => {
 
       const result = await service.createOfficePayment(officeDto({ amount: "50.00" }), ADMIN_ID);
 
-      expect(result.debtBalance).toBe("-10.00");
-      expect(result.exceedsDebt).toBe(true);
+      expect(result.response.debtBalance).toBe("-10.00");
+      expect(result.response.exceedsDebt).toBe(true);
     });
 
     it("an exact payment leaves exceedsDebt false", async () => {
@@ -325,7 +327,7 @@ describe("PaymentsService", () => {
 
       const result = await service.createOfficePayment(officeDto({ amount: "25.00" }), ADMIN_ID);
 
-      expect(result.exceedsDebt).toBe(false);
+      expect(result.response.exceedsDebt).toBe(false);
     });
 
     it('amount of "0.00" is rejected with 400 and never opens the transaction', async () => {
@@ -405,6 +407,165 @@ describe("PaymentsService", () => {
       await expect(service.createOfficePayment(officeDto(), ADMIN_ID)).rejects.toBeInstanceOf(
         BadRequestException,
       );
+    });
+
+    describe("idempotencyKey", () => {
+      it("without a key, behavior is unchanged: never checks for an existing payment", async () => {
+        mockHappyPath("25.00");
+        prisma.payment.create.mockResolvedValue(paymentRow({ status: PaymentStatus.CONFIRMED }));
+        prisma.customer.update.mockResolvedValue({ debtBalance: decimal("0.00") });
+
+        const result = await service.createOfficePayment(officeDto(), ADMIN_ID);
+
+        expect(prisma.payment.findUnique).not.toHaveBeenCalled();
+        expect(result.created).toBe(true);
+      });
+
+      it("a brand-new key creates the payment, storing the key, and responds created: true", async () => {
+        prisma.payment.findUnique.mockResolvedValue(null);
+        mockHappyPath("25.00");
+        prisma.payment.create.mockResolvedValue(
+          paymentRow({ status: PaymentStatus.CONFIRMED, idempotencyKey: IDEMPOTENCY_KEY }),
+        );
+        prisma.customer.update.mockResolvedValue({ debtBalance: decimal("0.00") });
+
+        const result = await service.createOfficePayment(
+          officeDto({ idempotencyKey: IDEMPOTENCY_KEY }),
+          ADMIN_ID,
+        );
+
+        expect(prisma.payment.findUnique).toHaveBeenCalledWith({
+          where: { idempotencyKey: IDEMPOTENCY_KEY },
+          include: expect.anything() as unknown,
+        });
+        expect(prisma.payment.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ idempotencyKey: IDEMPOTENCY_KEY }) as unknown,
+          }),
+        );
+        expect(result.created).toBe(true);
+        expect(result.response.payment.id).toBe(PAYMENT_ID);
+      });
+
+      it("a repeated key returns the EXISTING row (created: false), never creates a second one", async () => {
+        prisma.payment.findUnique.mockResolvedValue(
+          paymentRow({
+            status: PaymentStatus.CONFIRMED,
+            idempotencyKey: IDEMPOTENCY_KEY,
+            amount: decimal("25.00"),
+          }),
+        );
+        prisma.customer.findUniqueOrThrow.mockResolvedValue({ debtBalance: decimal("0.00") });
+
+        const result = await service.createOfficePayment(
+          officeDto({ idempotencyKey: IDEMPOTENCY_KEY }),
+          ADMIN_ID,
+        );
+
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(prisma.payment.create).not.toHaveBeenCalled();
+        expect(result.created).toBe(false);
+        expect(result.response.payment.id).toBe(PAYMENT_ID);
+      });
+
+      // The point of re-reading rather than reconstructing: whatever changed
+      // on the row between the first call and the retry is what the caller
+      // sees — never the CONFIRMED snapshot the first call would have made.
+      it("a replay reflects the CURRENT state of the row, not the state at the original write", async () => {
+        prisma.payment.findUnique.mockResolvedValue(
+          paymentRow({
+            status: PaymentStatus.REJECTED,
+            idempotencyKey: IDEMPOTENCY_KEY,
+            amount: decimal("25.00"),
+            rejectedById: ADMIN_ID,
+            rejectedBy: { id: ADMIN_ID, username: "admin" },
+            rejectionReason: "Duplicado detectado a mano",
+          }),
+        );
+        prisma.customer.findUniqueOrThrow.mockResolvedValue({ debtBalance: decimal("25.00") });
+
+        const result = await service.createOfficePayment(
+          officeDto({ idempotencyKey: IDEMPOTENCY_KEY }),
+          ADMIN_ID,
+        );
+
+        expect(result.response.payment.status).toBe(PaymentStatus.REJECTED);
+        expect(result.response.payment.rejectionReason).toBe("Duplicado detectado a mano");
+        expect(result.created).toBe(false);
+      });
+
+      it("the same key with a different customerId is rejected with 409, without touching the existing row", async () => {
+        prisma.payment.findUnique.mockResolvedValue(
+          paymentRow({
+            customerId: CUSTOMER_ID,
+            idempotencyKey: IDEMPOTENCY_KEY,
+            amount: decimal("25.00"),
+          }),
+        );
+
+        await expect(
+          service.createOfficePayment(
+            officeDto({ idempotencyKey: IDEMPOTENCY_KEY, customerId: OTHER_CUSTOMER_ID }),
+            ADMIN_ID,
+          ),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+      });
+
+      it("the same key with a different amount is rejected with 409", async () => {
+        prisma.payment.findUnique.mockResolvedValue(
+          paymentRow({
+            customerId: CUSTOMER_ID,
+            idempotencyKey: IDEMPOTENCY_KEY,
+            amount: decimal("25.00"),
+          }),
+        );
+
+        await expect(
+          service.createOfficePayment(
+            officeDto({ idempotencyKey: IDEMPOTENCY_KEY, amount: "99.00" }),
+            ADMIN_ID,
+          ),
+        ).rejects.toBeInstanceOf(ConflictException);
+      });
+
+      // The pre-check (findUnique) is the common-case fast path; the unique
+      // index is the actual guarantee under a race. Two concurrent requests
+      // with the SAME brand-new key both pass the pre-check as "not found",
+      // and only one insert can win — the loser must recover, not 500.
+      it("a P2002 race on the unique key falls back to reading the winner's row, not an error", async () => {
+        prisma.payment.findUnique.mockResolvedValueOnce(null);
+        mockHappyPath("25.00");
+        prisma.$transaction.mockImplementationOnce(() =>
+          Promise.reject(Object.assign(new Error("Unique constraint failed"), { code: "P2002" })),
+        );
+        prisma.payment.findUniqueOrThrow.mockResolvedValue(
+          paymentRow({
+            status: PaymentStatus.CONFIRMED,
+            idempotencyKey: IDEMPOTENCY_KEY,
+            amount: decimal("25.00"),
+          }),
+        );
+        prisma.customer.findUniqueOrThrow.mockResolvedValue({ debtBalance: decimal("0.00") });
+
+        const result = await service.createOfficePayment(
+          officeDto({ idempotencyKey: IDEMPOTENCY_KEY }),
+          ADMIN_ID,
+        );
+
+        expect(result.created).toBe(false);
+        expect(result.response.payment.id).toBe(PAYMENT_ID);
+      });
+
+      it("a non-P2002 error from the transaction is rethrown as-is, not swallowed as a replay", async () => {
+        prisma.payment.findUnique.mockResolvedValueOnce(null);
+        mockHappyPath("25.00");
+        prisma.$transaction.mockImplementationOnce(() => Promise.reject(new Error("boom")));
+
+        await expect(
+          service.createOfficePayment(officeDto({ idempotencyKey: IDEMPOTENCY_KEY }), ADMIN_ID),
+        ).rejects.toThrow("boom");
+      });
     });
   });
 
