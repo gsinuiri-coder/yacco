@@ -97,6 +97,37 @@ function assertPaymentNotFuture(paidAt: Date): void {
   }
 }
 
+function isPrismaKnownError(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+/**
+ * `exceedsDebt` means exactly one thing: the customer's debtBalance AFTER
+ * this payment is negative (a favor/advance, not a coincidence of how the
+ * payment was computed). It is NOT "amount paid was more than debt owed
+ * before this payment" — that reads as the same thing but is a different
+ * quantity once a payment can be reported twice (create, then an
+ * idempotencyKey replay): the create path knows the pre-payment balance
+ * from the read it already did; a replay only has the CURRENT (already
+ * post-payment) balance to work with, and re-deriving "what it must have
+ * been before" would mean trusting the request's amount over the database.
+ * `amount > previousBalance` and `previousBalance - amount < 0` (i.e.
+ * `resultingBalance < 0`) are the same inequality — subtracting `amount`
+ * from both sides of a `>` doesn't flip it — so computing it this way,
+ * against the balance this response already reports, gives create and
+ * replay identical results without either branch needing the other's data.
+ */
+function exceedsDebt(resultingDebtBalance: Prisma.Decimal): boolean {
+  return resultingDebtBalance.lt(0);
+}
+
+/** What POST /payments returns, plus whether it actually wrote a new row. */
+export interface CreateOfficePaymentResult {
+  response: CreateOfficePaymentResponseDto;
+  /** false when an idempotencyKey replay found the payment already made. */
+  created: boolean;
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -116,87 +147,164 @@ export class PaymentsService {
    * advance/favor balance, same concept as SalesService's opening credit),
    * and blocking it would fight the one thing that lets the screen show
    * "queda a favor S/10" instead of a raw validation error.
+   *
+   * `idempotencyKey` (optional): a network retry of this exact POST must
+   * never charge the same collection twice. Without a key, behavior is
+   * unchanged — every call creates a row. With one: a first call creates and
+   * returns `created: true`; a retry with the SAME key returns the payment
+   * as it stands in the database RIGHT NOW (never rebuilt from this
+   * request's body) with `created: false` — so if something else touched it
+   * between the two calls, the retry sees that, not a stale snapshot. The
+   * key is checked with a plain read first (the common case, one query), but
+   * the actual guarantee against a concurrent duplicate is the column's
+   * unique index: two requests racing on a brand-new key both pass that read
+   * and both attempt the insert, and only one of them can win it — the loser
+   * catches the resulting P2002 and re-reads instead of erroring.
    */
   async createOfficePayment(
     dto: CreateOfficePaymentDto,
     actorId: string,
-  ): Promise<CreateOfficePaymentResponseDto> {
+  ): Promise<CreateOfficePaymentResult> {
     const amount = assertPositiveAmount(dto.amount);
     const now = new Date();
     const paidAt = dto.paidAt !== undefined ? new Date(dto.paidAt) : now;
     assertPaymentNotFuture(paidAt);
 
-    return this.prisma.$transaction(async (tx) => {
-      const customer = await tx.customer.findUnique({
-        where: { id: dto.customerId },
-        select: { id: true, active: true, debtBalance: true },
-      });
-      if (customer === null) {
-        throw new NotFoundException(`El cliente "${dto.customerId}" no existe`);
-      }
-      if (!customer.active) {
-        throw new BadRequestException(`El cliente "${dto.customerId}" no está activo`);
-      }
-
-      if (dto.locationId !== undefined) {
-        const location = await tx.customerLocation.findUnique({
-          where: { id: dto.locationId },
-          select: { customerId: true },
-        });
-        if (location === null) {
-          throw new BadRequestException(`La locación "${dto.locationId}" no existe`);
-        }
-        if (location.customerId !== dto.customerId) {
-          throw new BadRequestException(
-            `La locación "${dto.locationId}" no pertenece a este cliente`,
-          );
-        }
-      }
-
-      const paymentMethod = await tx.paymentMethod.findUnique({
-        where: { id: dto.paymentMethodId },
-        select: { id: true, active: true },
-      });
-      if (paymentMethod === null) {
-        throw new BadRequestException(`El método de pago "${dto.paymentMethodId}" no existe`);
-      }
-      // Office collection blocks on an inactive method — unlike dispatch,
-      // which has no such gate. This is the only thing that keeps the
-      // synthetic "Apertura" method from being usable as a real collection.
-      if (!paymentMethod.active) {
-        throw new BadRequestException(`El método de pago "${dto.paymentMethodId}" no está activo`);
-      }
-
-      const payment = await tx.payment.create({
-        data: {
-          customerId: dto.customerId,
-          locationId: dto.locationId ?? null,
-          saleId: null,
-          stopId: null,
-          paymentMethodId: dto.paymentMethodId,
-          paidAt,
-          amount,
-          status: PaymentStatus.CONFIRMED,
-          confirmedAt: now,
-          confirmedById: actorId,
-          isOpeningBalance: false,
-          recordedById: actorId,
-        },
+    if (dto.idempotencyKey !== undefined) {
+      const existing = await this.prisma.payment.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
         include: PAYMENT_INCLUDE,
       });
+      if (existing !== null) {
+        return this.buildReplayResult(existing, dto, amount);
+      }
+    }
 
-      const updatedCustomer = await tx.customer.update({
-        where: { id: dto.customerId },
-        data: { debtBalance: { decrement: amount } },
-        select: { debtBalance: true },
+    try {
+      const response = await this.prisma.$transaction(async (tx) => {
+        const customer = await tx.customer.findUnique({
+          where: { id: dto.customerId },
+          select: { id: true, active: true, debtBalance: true },
+        });
+        if (customer === null) {
+          throw new NotFoundException(`El cliente "${dto.customerId}" no existe`);
+        }
+        if (!customer.active) {
+          throw new BadRequestException(`El cliente "${dto.customerId}" no está activo`);
+        }
+
+        if (dto.locationId !== undefined) {
+          const location = await tx.customerLocation.findUnique({
+            where: { id: dto.locationId },
+            select: { customerId: true },
+          });
+          if (location === null) {
+            throw new BadRequestException(`La locación "${dto.locationId}" no existe`);
+          }
+          if (location.customerId !== dto.customerId) {
+            throw new BadRequestException(
+              `La locación "${dto.locationId}" no pertenece a este cliente`,
+            );
+          }
+        }
+
+        const paymentMethod = await tx.paymentMethod.findUnique({
+          where: { id: dto.paymentMethodId },
+          select: { id: true, active: true },
+        });
+        if (paymentMethod === null) {
+          throw new BadRequestException(`El método de pago "${dto.paymentMethodId}" no existe`);
+        }
+        // Office collection blocks on an inactive method — unlike dispatch,
+        // which has no such gate. This is the only thing that keeps the
+        // synthetic "Apertura" method from being usable as a real collection.
+        if (!paymentMethod.active) {
+          throw new BadRequestException(
+            `El método de pago "${dto.paymentMethodId}" no está activo`,
+          );
+        }
+
+        const payment = await tx.payment.create({
+          data: {
+            customerId: dto.customerId,
+            locationId: dto.locationId ?? null,
+            saleId: null,
+            stopId: null,
+            paymentMethodId: dto.paymentMethodId,
+            paidAt,
+            amount,
+            status: PaymentStatus.CONFIRMED,
+            confirmedAt: now,
+            confirmedById: actorId,
+            isOpeningBalance: false,
+            recordedById: actorId,
+            idempotencyKey: dto.idempotencyKey ?? null,
+          },
+          include: PAYMENT_INCLUDE,
+        });
+
+        const updatedCustomer = await tx.customer.update({
+          where: { id: dto.customerId },
+          data: { debtBalance: { decrement: amount } },
+          select: { debtBalance: true },
+        });
+
+        return {
+          payment: toPaymentRow(payment),
+          debtBalance: updatedCustomer.debtBalance.toFixed(2),
+          exceedsDebt: exceedsDebt(updatedCustomer.debtBalance),
+        };
       });
 
-      return {
-        payment: toPaymentRow(payment),
-        debtBalance: updatedCustomer.debtBalance.toFixed(2),
-        exceedsDebt: amount.gt(customer.debtBalance),
-      };
+      return { response, created: true };
+    } catch (error) {
+      // payments_idempotency_key_key: lost a create race against a
+      // concurrent request carrying the same brand-new key. The winner's row
+      // is now there to read — same outcome as finding it existed already.
+      if (dto.idempotencyKey !== undefined && isPrismaKnownError(error, "P2002")) {
+        const existing = await this.prisma.payment.findUniqueOrThrow({
+          where: { idempotencyKey: dto.idempotencyKey },
+          include: PAYMENT_INCLUDE,
+        });
+        return this.buildReplayResult(existing, dto, amount);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * `existing` is trusted as-is — read fresh, never merged with `dto` — so
+   * the caller sees whatever is true right now, even if it diverges from
+   * what the original request produced. Only customerId/amount gate the
+   * replay: a key reused for a different customer or a different amount is
+   * the caller's bug, not a legitimate retry, so it 409s instead of quietly
+   * returning someone else's payment.
+   */
+  private async buildReplayResult(
+    existing: PaymentWithRelations,
+    dto: CreateOfficePaymentDto,
+    amount: Prisma.Decimal,
+  ): Promise<CreateOfficePaymentResult> {
+    if (existing.customerId !== dto.customerId || !existing.amount.equals(amount)) {
+      throw new ConflictException(
+        `La clave de idempotencia "${dto.idempotencyKey}" ya se usó para un pago con otro ` +
+          "cliente o un monto distinto. Generá una clave nueva para este cobro.",
+      );
+    }
+
+    const customer = await this.prisma.customer.findUniqueOrThrow({
+      where: { id: existing.customerId },
+      select: { debtBalance: true },
     });
+
+    return {
+      response: {
+        payment: toPaymentRow(existing),
+        debtBalance: customer.debtBalance.toFixed(2),
+        exceedsDebt: exceedsDebt(customer.debtBalance),
+      },
+      created: false,
+    };
   }
 
   /**

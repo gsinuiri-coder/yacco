@@ -3,11 +3,13 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -21,6 +23,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
+import type { Response } from "express";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
@@ -54,20 +57,52 @@ export class PaymentsController {
 
   @ApiOperation({
     summary: "Cobranza de oficina: un pago fuera de ruta nace CONFIRMED (ADMIN, SELLER)",
+    description:
+      "idempotencyKey (opcional, UUID v4): protege contra un reintento de red sobre este " +
+      "mismo POST. Sin ella, cada llamada crea un pago nuevo, como siempre. Con ella: la " +
+      "primera vez crea y responde 201; un reintento con la MISMA clave no crea nada — " +
+      "responde 200 con el pago tal como está HOY en la base (nunca reconstruido del " +
+      "request), así que si alguien lo confirmó, rechazó o algo más cambió entre el primer " +
+      "intento y el reintento, el llamador ve ese estado real. Si la clave ya se usó con otro " +
+      "cliente o otro monto, responde 409: eso es un error de quien llama, no un reintento " +
+      "legítimo, y nunca se devuelve el pago de otro.",
   })
-  @ApiResponse({ status: 201, type: CreateOfficePaymentResponseDto })
+  @ApiResponse({
+    status: 201,
+    type: CreateOfficePaymentResponseDto,
+    description: "Pago nuevo creado (sin idempotencyKey, o con una que no existía todavía).",
+  })
+  @ApiResponse({
+    status: 200,
+    type: CreateOfficePaymentResponseDto,
+    description:
+      "Reintento: la idempotencyKey ya tenía un pago. No se creó nada; el pago devuelto es " +
+      "el existente, releído de la base.",
+  })
   @ApiBadRequestResponse({
     description:
       "Invalid amount, inactive customer/method, or location belongs to another customer",
   })
   @ApiNotFoundResponse({ description: "Customer does not exist" })
+  @ApiConflictResponse({
+    description: "idempotencyKey already used for a different customerId or amount",
+  })
   @Post()
-  create(
+  async create(
     @Body() dto: CreateOfficePaymentDto,
     @Req() request: AuthenticatedRequest,
+    // passthrough: true keeps Nest's normal DTO serialization for the return
+    // value; only the status code is set by hand here, because it depends on
+    // created vs replayed (200/201) and no interceptor for that exists yet.
+    @Res({ passthrough: true }) res: Response,
   ): Promise<CreateOfficePaymentResponseDto> {
     // recordedById/confirmedById come from the access token, never the body.
-    return this.paymentsService.createOfficePayment(dto, request.user.sub);
+    const { response, created } = await this.paymentsService.createOfficePayment(
+      dto,
+      request.user.sub,
+    );
+    res.status(created ? HttpStatus.CREATED : HttpStatus.OK);
+    return response;
   }
 
   @ApiOperation({

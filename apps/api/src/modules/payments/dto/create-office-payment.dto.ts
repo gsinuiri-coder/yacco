@@ -34,4 +34,19 @@ export class CreateOfficePaymentDto {
   @IsOptional()
   @IsDateString({}, { message: "La fecha del pago debe ser un instante válido (ISO-8601)" })
   paidAt?: string;
+
+  @ApiPropertyOptional({
+    format: "uuid",
+    description:
+      "Clave de idempotencia (UUID v4) generada por quien llama, para que un reintento de " +
+      "red sobre este mismo POST nunca duplique el cobro. Sin ella, el comportamiento es el " +
+      "de siempre: cada POST crea un pago nuevo. Con ella: la primera vez crea el pago y " +
+      "responde 201; un reintento con la MISMA clave responde 200 con ese pago tal como está " +
+      "hoy en la base (no lo reconstruye del request), aunque alguien ya lo haya confirmado o " +
+      "rechazado entre medio; y si la clave ya se usó para otro cliente o con otro monto, " +
+      "responde 409 — eso es un error de quien llama, no un reintento legítimo.",
+  })
+  @IsOptional()
+  @IsUUID("4", { message: "La clave de idempotencia debe ser un UUID v4" })
+  idempotencyKey?: string;
 }

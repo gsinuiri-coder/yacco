@@ -492,26 +492,54 @@ salida es una espera explícita sobre el estado que el test necesita, no un
 
 ## Doble envío del formulario de cobranza
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA — `Payment.idempotencyKey` existe desde el PR de
+idempotencia de pagos (rama `feat/payment-idempotency`). Se conserva la
+entrada como registro de por qué faltaba, con una corrección: la
+comparación con `sync_operations` de más abajo decía que `POST
+/sync/operations` "sí exige un UUID generado en el dispositivo" — ese
+endpoint no existe, solo la tabla `sync_operations`, modelada por
+adelantado sin controller ni servicio. La forma de esa tabla (un UUID
+generado por el cliente como PK) tampoco era trasladable a `Payment`, cuya
+PK ya es `gen_random_uuid()` y ya tiene filas con dinero — ver cómo se
+cerró.
 
-`POST /api/v1/payments` (HU-18, cobranza de oficina) no tiene clave de
-idempotencia — `Payment` no tiene ninguna columna para eso, a diferencia de
-`POST /sync/operations`, que sí exige un UUID generado en el dispositivo y
-descarta el duplicado sin reaplicarlo. Dos clics rápidos sobre "Registrar
-pago", o un reintento de red tras un timeout cuyo primer intento sí llegó a
-la base, crean dos filas de `Payment` idénticas y descuentan `debtBalance`
-dos veces por el mismo cobro real.
+`POST /api/v1/payments` (HU-18, cobranza de oficina) no tenía clave de
+idempotencia — `Payment` no tenía ninguna columna para eso. Dos clics
+rápidos sobre "Registrar pago", o un reintento de red tras un timeout cuyo
+primer intento sí llegó a la base, creaban dos filas de `Payment`
+idénticas y descontaban `debtBalance` dos veces por el mismo cobro real.
 
-**Razón:** hoy la única defensa es que la UI deshabilite el botón al
+**Razón:** la única defensa era que la UI deshabilite el botón al
 enviarlo, que cubre el doble clic pero no el reintento de red — el cliente
 nunca sabe si el primer POST llegó a escribir antes de que la conexión se
-cortara, así que reintentar es la respuesta razonable y es justo lo que
-duplica el cobro.
+cortara, así que reintentar es la respuesta razonable y era justo lo que
+duplicaba el cobro.
 
-**Para cerrarla:** agregar una clave de idempotencia a `Payment` (mismo
-patrón que `sync_operations`: un UUID generado por el cliente, único, que
-permita responder con el pago ya creado en vez de crear uno nuevo) antes de
-que la cobranza de oficina se use con dinero real fuera de la demo.
+**Cómo se cerró:** columna nueva `Payment.idempotencyKey` (`String?
+@unique @db.Uuid`, nullable porque las filas existentes no la tienen y
+porque un pago creado por `RoutesService.markStop` no la necesita — esa
+parada ya es idempotente por su propio `UPDATE ... WHERE status =
+'PENDING'`). `POST /payments` acepta `idempotencyKey` opcional (UUID v4)
+en el body:
+
+- Sin clave: sin cambios, cada POST crea un pago nuevo.
+- Con clave nueva: crea el pago, responde 201.
+- Con clave repetida: no crea nada, responde 200 con el pago RELEÍDO de la
+  base (nunca reconstruido del request) — si algo lo cambió entre el
+  primer intento y el reintento, el llamador ve ese estado real, no el de
+  la creación original.
+- Con la misma clave pero otro `customerId` o otro monto: 409, sin tocar
+  el pago existente — eso es un error de quien llama, no un reintento
+  legítimo.
+- Bajo una carrera (dos requests concurrentes con la MISMA clave nueva),
+  la garantía real es el índice único de la columna, no la lectura previa:
+  el que pierde la inserción atrapa el `P2002` y relee en vez de fallar.
+
+`PaymentsService.createOfficePayment` y
+`test/integration/payments.int.test.ts` (describe
+`idempotencyKey`) cubren los seis casos de aceptación, incluida la
+concurrencia y que la deuda del cliente baja una sola vez tras un
+reintento.
 
 ## HU-18 E1 solo verificada a medias: falta `GET .../account-statement`
 
