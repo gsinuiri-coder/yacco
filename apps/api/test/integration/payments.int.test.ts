@@ -463,6 +463,93 @@ describe("POST /api/v1/payments — office collection (HU-18)", () => {
   });
 });
 
+describe("POST /api/v1/payments — idempotencyKey and exceedsDebt agree on both attempts", () => {
+  // exceedsDebt must mean the same thing on the create and on the replay: the
+  // resulting debtBalance went negative. A partial payment (debt 30, paid
+  // 20) is the exact bug case — computing it against the wrong balance on
+  // replay flips a real "still owes 10.00" into a false "credit in favor".
+  test("a partial payment (debt 30.00, paid 20.00): exceedsDebt is false on both the create and the replay", async () => {
+    const { customerId } = await createCustomerWithDebt("30.00");
+    const idempotencyKey = randomUUID();
+    const body = {
+      customerId,
+      paymentMethodId: cashPaymentMethodId,
+      amount: "20.00",
+      idempotencyKey,
+    };
+
+    const first = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+    const second = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(first.status).toBe(201);
+    expect(first.body.exceedsDebt).toBe(false);
+    expect(first.body.debtBalance).toBe("10.00");
+    expect(second.status).toBe(200);
+    expect(second.body.exceedsDebt).toBe(false);
+    expect(second.body.debtBalance).toBe("10.00");
+  });
+
+  test("an overpayment (debt 10.00, paid 20.00): exceedsDebt is true on both the create and the replay", async () => {
+    const { customerId } = await createCustomerWithDebt("10.00");
+    const idempotencyKey = randomUUID();
+    const body = {
+      customerId,
+      paymentMethodId: cashPaymentMethodId,
+      amount: "20.00",
+      idempotencyKey,
+    };
+
+    const first = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+    const second = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(first.status).toBe(201);
+    expect(first.body.exceedsDebt).toBe(true);
+    expect(first.body.debtBalance).toBe("-10.00");
+    expect(second.status).toBe(200);
+    expect(second.body.exceedsDebt).toBe(true);
+    expect(second.body.debtBalance).toBe("-10.00");
+  });
+
+  test("an exact payment (debt 20.00, paid 20.00): exceedsDebt is false on both the create and the replay", async () => {
+    const { customerId } = await createCustomerWithDebt("20.00");
+    const idempotencyKey = randomUUID();
+    const body = {
+      customerId,
+      paymentMethodId: cashPaymentMethodId,
+      amount: "20.00",
+      idempotencyKey,
+    };
+
+    const first = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+    const second = await request(server())
+      .post("/api/v1/payments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(first.status).toBe(201);
+    expect(first.body.exceedsDebt).toBe(false);
+    expect(first.body.debtBalance).toBe("0.00");
+    expect(second.status).toBe(200);
+    expect(second.body.exceedsDebt).toBe(false);
+    expect(second.body.debtBalance).toBe("0.00");
+  });
+});
+
 describe("POST /api/v1/payments — idempotencyKey", () => {
   test("without a key, two identical POSTs create two separate rows, as always", async () => {
     const { customerId } = await createCustomerWithDebt("50.00");

@@ -101,6 +101,26 @@ function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
+/**
+ * `exceedsDebt` means exactly one thing: the customer's debtBalance AFTER
+ * this payment is negative (a favor/advance, not a coincidence of how the
+ * payment was computed). It is NOT "amount paid was more than debt owed
+ * before this payment" — that reads as the same thing but is a different
+ * quantity once a payment can be reported twice (create, then an
+ * idempotencyKey replay): the create path knows the pre-payment balance
+ * from the read it already did; a replay only has the CURRENT (already
+ * post-payment) balance to work with, and re-deriving "what it must have
+ * been before" would mean trusting the request's amount over the database.
+ * `amount > previousBalance` and `previousBalance - amount < 0` (i.e.
+ * `resultingBalance < 0`) are the same inequality — subtracting `amount`
+ * from both sides of a `>` doesn't flip it — so computing it this way,
+ * against the balance this response already reports, gives create and
+ * replay identical results without either branch needing the other's data.
+ */
+function exceedsDebt(resultingDebtBalance: Prisma.Decimal): boolean {
+  return resultingDebtBalance.lt(0);
+}
+
 /** What POST /payments returns, plus whether it actually wrote a new row. */
 export interface CreateOfficePaymentResult {
   response: CreateOfficePaymentResponseDto;
@@ -232,7 +252,7 @@ export class PaymentsService {
         return {
           payment: toPaymentRow(payment),
           debtBalance: updatedCustomer.debtBalance.toFixed(2),
-          exceedsDebt: amount.gt(customer.debtBalance),
+          exceedsDebt: exceedsDebt(updatedCustomer.debtBalance),
         };
       });
 
@@ -281,7 +301,7 @@ export class PaymentsService {
       response: {
         payment: toPaymentRow(existing),
         debtBalance: customer.debtBalance.toFixed(2),
-        exceedsDebt: amount.gt(customer.debtBalance),
+        exceedsDebt: exceedsDebt(customer.debtBalance),
       },
       created: false,
     };
