@@ -518,6 +518,15 @@ el mock de la API cambie de respuesta, o un `findBy` con timeout justo. La
 salida es una espera explícita sobre el estado que el test necesita, no un
 `retry` ni un timeout más largo.
 
+**Evidencia acumulada (28/08/2026):** volvió a fallar cuatro veces durante el
+módulo de rutas y el trabajo que le siguió, siempre el mismo caso y siempre
+pasando en la corrida inmediatamente posterior sin tocar nada. Cada vez costó
+una re-corrida completa de la suite para distinguirlo de un fallo real. La
+entrada sigue con el mismo disparador —antes del piloto—, pero ya no es
+teórico: es el único test del repo que obliga a preguntarse si el rojo es
+verdadero, y por ahora no llegó a fallar en CI solo por suerte de
+programación.
+
 ## Doble envío del formulario de cobranza
 
 **Estado:** RESUELTA — `Payment.idempotencyKey` existe desde el PR de

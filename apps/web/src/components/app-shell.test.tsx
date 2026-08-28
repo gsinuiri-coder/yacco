@@ -15,6 +15,7 @@ const NAV_LINKS = [
   "Movimientos",
   "Tipos de envase",
   "Contar envases",
+  "Cuadre de envases",
   "Zonas",
   "Usuarios",
 ];
@@ -65,6 +66,27 @@ describe("AppShell", () => {
     const pagos = within(nav).getByRole("link", { name: "Pagos" });
 
     expect(pagos.closest(".app-bar__nav-group")).toBeNull();
+  });
+
+  // Único enlace condicionado por rol: la pantalla a la que lleva es
+  // ADMIN-only de punta a punta, así que para un vendedor sería un enlace
+  // muerto.
+  it("«Cuadre de envases» solo aparece para un administrador", async () => {
+    localStorage.clear();
+    signIn(["SELLER"]);
+
+    renderWithProviders(
+      <AppShell>
+        <p>Contenido</p>
+      </AppShell>,
+    );
+
+    const nav = await screen.findByRole("navigation", { name: "Principal" });
+    expect(within(nav).getByRole("link", { name: "Contar envases" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Cuadre de envases" })).not.toBeInTheDocument();
+    // Usuarios sí lo ve: leer la lista es ADMIN y SELLER; lo que se le
+    // esconde adentro son los controles de gestión.
+    expect(within(nav).getByRole("link", { name: "Usuarios" })).toBeInTheDocument();
   });
 
   it("«Zonas» y «Usuarios» cierran la barra, fuera del grupo de envases", async () => {
