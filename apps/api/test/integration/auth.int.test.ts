@@ -196,6 +196,58 @@ test("refresh: a user deactivated after issuing a refresh token loses access on 
     .expect(401);
 });
 
+// The sibling of the test above, and the reason it exists is a UI promise: the
+// web users screen tells the plant owner, in those words, that resetting
+// someone's password does NOT close that person's open session. That is true
+// only because `refreshAccessToken` checks the signature and `active` and
+// nothing else — there is no `tokenVersion` or `jti` in the schema (see
+// docs/backlog-tecnico.md, "No hay forma de invalidar un token ya emitido").
+// Pin the fact here, not just the sentence: the day someone adds token
+// invalidation, this test goes red and the on-screen text has to change with
+// it, instead of quietly starting to lie.
+test("refresh: resetting a user's password does NOT invalidate a refresh token already issued", async () => {
+  const adminLogin = await request(server())
+    .post("/api/v1/auth/login")
+    .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
+    .expect(200);
+  const adminToken = adminLogin.body.accessToken as string;
+
+  const created = await request(server())
+    .post("/api/v1/users")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: "Le Reponen La Clave",
+      username: "password-reset-after-refresh",
+      password: "throwaway-password",
+      roles: ["DRIVER"],
+    })
+    .expect(201);
+
+  const driverLogin = await request(server())
+    .post("/api/v1/auth/login")
+    .send({ username: "password-reset-after-refresh", password: "throwaway-password" })
+    .expect(200);
+  const driverRefreshToken = driverLogin.body.refreshToken as string;
+
+  await request(server())
+    .patch(`/api/v1/users/${created.body.id}`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ password: "the-admin-dictated-this-one" })
+    .expect(200);
+
+  // The old password stops working at the door...
+  await request(server())
+    .post("/api/v1/auth/login")
+    .send({ username: "password-reset-after-refresh", password: "throwaway-password" })
+    .expect(401);
+
+  // ...but whoever was already inside stays inside.
+  await request(server())
+    .post("/api/v1/auth/refresh")
+    .set("Authorization", `Bearer ${driverRefreshToken}`)
+    .expect(200);
+});
+
 // The strategies' `type` claim check is defense-in-depth beyond secret
 // separation: forge a token with the RIGHT secret for its guard but the
 // WRONG `type`, so the request only fails at the strategy's own check.
