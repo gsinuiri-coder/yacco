@@ -83,6 +83,13 @@ Estas son las convenciones que el código ya sigue — usarlas es "seguir el
 sistema"; una pantalla nueva que reinventa una de estas en vez de reusarla es
 una inconsistencia, no una variación válida.
 
+- **`.app-bar__nav-group`** — agrupa un subconjunto de enlaces dentro del
+  mismo `<nav>` de `.app-bar__nav` con un borde izquierdo sutil (`--border`)
+  y su propio espaciado; nunca parte el `<nav>` en dos elementos, para no
+  romper la navegación por landmark (`aria-label="Principal"` sigue
+  describiendo un único `<nav>`). Hoy agrupa los tres enlaces de envases
+  (Movimientos, Tipos de envase, Contar envases), separándolos de los cinco
+  de peso general.
 - **`.card`** — contenedor de superficie elevada (`--surface` + `--border` +
   `--shadow-sm`); `.card__body` da el padding interno (`--space-5`). Toolbar,
   tabla y paginación son secciones dentro de una card, separadas por
@@ -101,6 +108,14 @@ una inconsistencia, no una variación válida.
   `--error`, `--info`, `--warning`. No existe `.notice--success`.
 - **`.state`** — bloque centrado de página vacía/error, con `.state__title` y
   `.state__actions` opcional.
+- **`.combobox`** — buscador con resultados flotantes (`CustomerSelect`,
+  `CustomerQuickSearch`). El resaltado de teclado NO puede apoyarse en
+  `:focus`/`:focus-visible`: el foco real se queda en el `<input>`
+  (`aria-activedescendant` apunta a la opción resaltada), así que
+  `.combobox__result[aria-selected="true"]` lleva su propia regla, igual
+  que `:hover`. Un error de red dentro del desplegable usa `.notice--error`
+  con `role="alert"` y un botón `Reintentar` — nunca `ErrorState`, pensado
+  para el bloque de una página entera, no para un panel flotante de 260px.
 - **Tabla** (`.table` dentro de `.table-scroll`) — encabezado en
   `--surface-sunken` con texto `--text-subtle`; `.cell-primary` /
   `.cell-secondary` para la jerarquía dentro de una celda;
@@ -215,13 +230,15 @@ clase queda acá para decidirse aparte, en vez de entrar en un PR de solo
 
 1. **[P3] `.page-header__subtitle` usado como utilidad de texto muted** —
    se repite en `container-movements-page.tsx:482`,
-   `container-counts-page.tsx:170,235`, `inventory-page.tsx:120` y
-   `dashboard-page.tsx:12-15,25-27` (esta última fuera de alcance para
-   tocar en esta rama). No existe una clase `.text-muted` genérica, así que
-   estas pantallas reusan una clase pensada para el subtítulo de
-   `.page-header` fuera de ese contexto. Es el único patrón que se repite en
-   3+ archivos. _Categoría: consistencia, tipografía. Requiere: crear
-   `.text-muted` y migrar estos usos._
+   `container-counts-page.tsx:170,235` y `inventory-page.tsx:120`.
+   `dashboard-page.tsx` salió de esta lista: el Panel se reescribió como
+   buscador de clientes (punto 4 de la cola de navegación) y su único
+   subtítulo ahora vive dentro de un `.page-header`, el uso correcto de la
+   clase. No existe una clase `.text-muted` genérica, así que las pantallas
+   que quedan reusan una clase pensada para el subtítulo de `.page-header`
+   fuera de ese contexto. Es el único patrón que se repite en 3 archivos.
+   _Categoría: consistencia, tipografía. Requiere: crear `.text-muted` y
+   migrar estos usos._
 
 2. **[P3] `.field__hint` sin campo asociado** —
    `components/order-items-form.tsx:246`. Es un mensaje instructivo suelto

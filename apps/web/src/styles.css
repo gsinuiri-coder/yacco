@@ -120,6 +120,14 @@ h2 {
   flex: 1;
 }
 
+.app-bar__nav-group {
+  display: flex;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  margin-left: var(--space-2);
+  border-left: 1px solid var(--border);
+}
+
 .app-bar__link {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
@@ -567,7 +575,8 @@ select:disabled {
 }
 
 .combobox__result:hover,
-.combobox__result:focus-visible {
+.combobox__result:focus-visible,
+.combobox__result[aria-selected="true"] {
   background: var(--brand-soft);
 }
 

@@ -28,15 +28,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/production" className="app-bar__link">
             Producción
           </NavLink>
-          <NavLink to="/container-movements" className="app-bar__link">
-            Movimientos
-          </NavLink>
-          <NavLink to="/container-types" className="app-bar__link">
-            Tipos de envase
-          </NavLink>
-          <NavLink to="/container-counts" className="app-bar__link">
-            Contar envases
-          </NavLink>
+          <span className="app-bar__nav-group">
+            <NavLink to="/container-movements" className="app-bar__link">
+              Movimientos
+            </NavLink>
+            <NavLink to="/container-types" className="app-bar__link">
+              Tipos de envase
+            </NavLink>
+            <NavLink to="/container-counts" className="app-bar__link">
+              Contar envases
+            </NavLink>
+          </span>
         </nav>
         <div className="app-bar__user">
           <span>{user?.username}</span>
