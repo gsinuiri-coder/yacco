@@ -143,9 +143,18 @@ test("role guard: a SELLER-only user is denied ADMIN-only endpoints, and no toke
     .send({ username: "seller-only", password: "seller-password" })
     .expect(200);
 
+  // POST /users sigue siendo solo ADMIN — GET /users ya no sirve como
+  // ejemplo genérico de endpoint ADMIN-only porque este PR lo abre a SELLER
+  // (necesario para el select de chofer al planificar rutas).
   await request(server())
-    .get("/api/v1/users")
+    .post("/api/v1/users")
     .set("Authorization", `Bearer ${sellerLogin.body.accessToken}`)
+    .send({
+      name: "Rechazado",
+      username: "seller-cannot-create",
+      password: "seller-cannot-create-password",
+      roles: ["DRIVER"],
+    })
     .expect(403);
 
   await request(server()).get("/api/v1/users").expect(401);

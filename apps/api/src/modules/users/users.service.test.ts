@@ -106,11 +106,43 @@ describe("UsersService", () => {
         },
       ]);
 
-      const users = await service.findAll();
+      const users = await service.findAll({});
 
       expect(users).toHaveLength(1);
       expect(users[0]).not.toHaveProperty("passwordHash");
       expect(users[0]?.roles).toEqual([UserRole.ADMIN]);
+    });
+
+    it("without filters, defaults the where to active: true and no roles clause", async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.findAll({});
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { active: true } }),
+      );
+    });
+
+    it("role=DRIVER filters by the roles.some clause", async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.findAll({ role: UserRole.DRIVER });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { active: true, roles: { some: { role: { name: UserRole.DRIVER } } } },
+        }),
+      );
+    });
+
+    it("active=false overrides the default and lists deactivated users", async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.findAll({ active: false });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { active: false } }),
+      );
     });
   });
 
