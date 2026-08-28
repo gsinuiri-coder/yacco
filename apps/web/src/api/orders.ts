@@ -63,6 +63,13 @@ export interface OrderListParams {
   customerId?: string;
   deliveryDateFrom?: string;
   deliveryDateTo?: string;
+  /**
+   * `false`: solo pedidos sin parada asignada. Omitido no filtra, que es lo
+   * que la bandeja de pedidos necesita. El selector de paradas de una ruta lo
+   * pide junto a `status: "PENDING"`: esas dos condiciones juntas son
+   * exactamente las que `POST /routes/:id/stops` acepta.
+   */
+  hasRouteStop?: boolean;
 }
 
 /** Matches MAX_LIMIT in the API's list-orders-query.dto.ts. */
@@ -93,6 +100,10 @@ function buildListQuery(params: OrderListParams): string {
   if (params.customerId) query.set("customerId", params.customerId);
   if (params.deliveryDateFrom) query.set("deliveryDateFrom", params.deliveryDateFrom);
   if (params.deliveryDateTo) query.set("deliveryDateTo", params.deliveryDateTo);
+  // `!== undefined` y no truthiness: `false` es el valor que importa mandar.
+  if (params.hasRouteStop !== undefined) {
+    query.set("hasRouteStop", String(params.hasRouteStop));
+  }
   return query.toString();
 }
 

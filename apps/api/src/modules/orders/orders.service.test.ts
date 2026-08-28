@@ -456,6 +456,40 @@ describe("OrdersService", () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    // Lo que el selector de paradas de una ruta necesita: `addStop` con
+    // origin=ORDER rechaza con 400 un pedido que no esté PENDING o que ya
+    // tenga parada, así que ofrecer otra cosa sería construir un error.
+    it("hasRouteStop=false brings only orders with no stop assigned", async () => {
+      prisma.order.count.mockResolvedValue(0);
+      prisma.order.findMany.mockResolvedValue([]);
+
+      await service.findAll({
+        page: DEFAULT_PAGE,
+        limit: DEFAULT_LIMIT,
+        status: OrderStatus.PENDING,
+        hasRouteStop: false,
+      });
+
+      expect(prisma.order.count).toHaveBeenCalledWith({
+        where: { status: OrderStatus.PENDING, routeStop: { is: null } },
+      });
+    });
+
+    it("hasRouteStop=true brings only orders already on a route", async () => {
+      prisma.order.count.mockResolvedValue(0);
+      prisma.order.findMany.mockResolvedValue([]);
+
+      await service.findAll({
+        page: DEFAULT_PAGE,
+        limit: DEFAULT_LIMIT,
+        hasRouteStop: true,
+      });
+
+      expect(prisma.order.count).toHaveBeenCalledWith({
+        where: { routeStop: { isNot: null } },
+      });
+    });
+
     it("applies no filter when only pagination is given", async () => {
       prisma.order.count.mockResolvedValue(0);
       prisma.order.findMany.mockResolvedValue([]);

@@ -1,5 +1,5 @@
 import request from "supertest";
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, StopOrigin } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
@@ -463,6 +463,82 @@ describe("GET /api/v1/orders", () => {
 
     expect(response.status).toBe(400);
     expect(messagesOf(response)).toContain("createdById");
+  });
+});
+
+// El selector de paradas de una ruta ofrece exactamente lo que
+// `RoutesService.addStop` acepta: PENDING y sin parada asignada. Sin este
+// filtro, la lista mostraría opciones que fallan con 400 al hacer clic —
+// un pedido asignado a una parada sigue en PENDING (ver el backlog técnico).
+describe("GET /api/v1/orders?hasRouteStop", () => {
+  let assignedOrderId: string;
+  let freeOrderId: string;
+
+  beforeAll(async () => {
+    const drivers = await request(server())
+      .get("/api/v1/users?role=DRIVER")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    const driverId = drivers.body.find(
+      (user: { username: string }) => user.username === "repartidor-pedidos",
+    ).id;
+
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: "2026-09-20" })
+      .expect(201);
+
+    assignedOrderId = await createOrder(adminToken, { deliveryDate: "2026-09-20" });
+    freeOrderId = await createOrder(adminToken, { deliveryDate: "2026-09-20" });
+
+    await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId: assignedOrderId })
+      .expect(201);
+  });
+
+  test("hasRouteStop=false leaves out an order already assigned to a stop", async () => {
+    const response = await request(server())
+      .get("/api/v1/orders?status=PENDING&hasRouteStop=false&limit=100")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    const ids = response.body.data.map((order: { id: string }) => order.id);
+    expect(ids).toContain(freeOrderId);
+    expect(ids).not.toContain(assignedOrderId);
+  });
+
+  test("hasRouteStop=true brings only the orders already on a route", async () => {
+    const response = await request(server())
+      .get("/api/v1/orders?hasRouteStop=true&limit=100")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    const ids = response.body.data.map((order: { id: string }) => order.id);
+    expect(ids).toContain(assignedOrderId);
+    expect(ids).not.toContain(freeOrderId);
+  });
+
+  test("omitted, the bandeja keeps listing both", async () => {
+    const response = await request(server())
+      .get("/api/v1/orders?limit=100")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    const ids = response.body.data.map((order: { id: string }) => order.id);
+    expect(ids).toContain(assignedOrderId);
+    expect(ids).toContain(freeOrderId);
+  });
+
+  test("a value that is not a boolean is rejected with 400 and the Spanish message", async () => {
+    const response = await request(server())
+      .get("/api/v1/orders?hasRouteStop=quizas")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("El filtro de parada asignada");
   });
 });
 
