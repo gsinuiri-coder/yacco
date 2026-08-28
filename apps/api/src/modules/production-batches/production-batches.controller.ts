@@ -78,6 +78,12 @@ export class ProductionBatchesController {
     return this.productionBatchesService.findAll(query);
   }
 
+  // Sin consumidor en apps/web, y así se queda: pasa por el mismo
+  // BATCH_INCLUDE y el mismo toBatchResponse que el listado, así que devuelve
+  // exactamente un elemento de esa lista — la pantalla de producción ya tiene
+  // el lote entero, con sus líneas, sin pedirlo de nuevo. Quien lo va a
+  // necesitar es el móvil, que carga el camión contra un lote puntual (spec
+  // §4.3, POST /sync/operations). Ver docs/estado-por-modulo.md.
   @ApiOperation({ summary: "Lote de producción con sus líneas" })
   @ApiResponse({ status: 200, type: ProductionBatchResponseDto })
   @ApiNotFoundResponse({ description: "Batch id does not exist" })

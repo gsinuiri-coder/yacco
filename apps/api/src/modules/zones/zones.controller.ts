@@ -66,6 +66,13 @@ export class ZonesController {
     return this.zonesService.findAll(query);
   }
 
+  // Sin consumidor en apps/web, y así se queda. Devuelve exactamente el mismo
+  // ZoneResponseDto que un elemento del listado (los dos usan ZONE_SELECT),
+  // y la API embebe {id, name} en toda referencia a zona, así que la web
+  // nunca tiene un id suelto que resolver. Quien lo va a necesitar es el
+  // móvil: mantiene su copia local del catálogo y resuelve un id de a uno
+  // cuando esa copia quedó vieja (spec §4.3, POST /sync/operations). Ver
+  // docs/estado-por-modulo.md, "Qué cuenta como capacidad faltante".
   @ApiOperation({ summary: "Una zona por id" })
   @ApiResponse({ status: 200, type: ZoneResponseDto })
   @ApiNotFoundResponse({ description: "Zone id does not exist" })
