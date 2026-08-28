@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { MIN_PASSWORD_LENGTH, createUser, listUsers, updateUser } from "../api/users";
 import type { User, UserListParams, UserRole } from "../api/users";
@@ -89,6 +89,13 @@ export function UsersPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const isSlow = useSlowRequest(isLoading);
+  /**
+   * Cuántas veces se cargó la lista. No se muestra: sirve para preguntar
+   * "¿la lista de abajo sigue siendo la misma que cuando mandé esto?" desde
+   * una respuesta que llega tarde. Un `useRef` y no un estado, porque leerlo
+   * no tiene que redibujar nada.
+   */
+  const listRunRef = useRef(0);
 
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -113,6 +120,7 @@ export function UsersPage() {
 
   useEffect(() => {
     let cancelled = false;
+    listRunRef.current += 1;
     setIsLoading(true);
     setLoadError(null);
 
@@ -237,10 +245,15 @@ export function UsersPage() {
     if (isResetting || resetTarget === null) return;
     if (resetPassword.length < MIN_PASSWORD_LENGTH) return setResetError(PASSWORD_TOO_SHORT);
 
-    // Mientras el PATCH viaja, la fila no deja abrir otra reposición (los
+    // Mientras el PATCH viaja, la fila no deja abrir otra operación (sus
     // botones se deshabilitan con `isResetting`), así que al volver la
     // respuesta `target` sigue siendo de quien se está viendo en el bloque.
+    // Lo que eso NO garantiza es que esa persona siga en la lista de abajo:
+    // los filtros quedan vivos a propósito —mirar otra lista no es motivo
+    // para congelar la pantalla durante una escritura ajena— y cambiarlos
+    // recarga la tabla. De ahí el número de carga, que se compara al volver.
     const target = resetTarget;
+    const listRunAtSubmit = listRunRef.current;
     setIsResetting(true);
     setResetError(null);
     // Solo `password`: renombrar y activar/desactivar son otras operaciones y
@@ -249,7 +262,12 @@ export function UsersPage() {
       .then(() => {
         setResetTarget(null);
         setResetPassword("");
-        setResetDone(target.name);
+        // El aviso nombra una fila de la tabla, así que solo se pone si la
+        // tabla sigue siendo aquella. Si el administrador se fue a mirar otra
+        // lista mientras esto viajaba, se pierde el aviso —la misma regla que
+        // ya aplica el efecto de carga, que lo borra en cada recarga— y no se
+        // deja uno huérfano nombrando a alguien que ahí no está.
+        if (listRunRef.current === listRunAtSubmit) setResetDone(target.name);
         // Sin recargar: nada de lo que muestra la tabla cambió. `password`
         // tampoco vuelve en la respuesta — `UserResponseDto` no lo tiene.
       })

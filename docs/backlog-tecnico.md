@@ -117,25 +117,40 @@ y el `<select>` de producto en `order-items-form.tsx`. Hasta entonces,
 ## La gestión de usuarios no cambia contraseñas ni roles
 
 **Estado:** resuelta a medias, y por eso se parte en dos. La mitad de la
-contraseña se cerró; la de los roles sigue abierta en «La gestión de usuarios
-no cambia roles», acá abajo.
+contraseña se cerró **en código**, con sus decisiones de forma todavía sin
+validar con el dueño de la planta (ver abajo); la de los roles sigue abierta
+en «La gestión de usuarios no cambia roles», acá abajo.
 
 **Cómo se cerró la mitad de la contraseña:** `users-page.tsx` cambia la
 contraseña desde un bloque aparte, abierto con «Cambiar contraseña» en la
-fila. Las tres preguntas que la entrada dejaba sin decidir se decidieron con
-el dueño de la planta:
+fila.
 
-- **Quién y cómo:** el administrador la elige y se la dicta a la persona. No
-  hay contraseña temporal que la persona cambie al entrar, porque no existe
-  pantalla de «cambiar mi contraseña» en `apps/web/src/pages`: esa temporal no
-  tendría a dónde ir.
-- **El administrador sí puede cambiarse la suya**, y es la forma prevista de
-  rotar `admin123` (ver «Password del admin de producción»). La guarda de
-  `isSelf` que sí tiene «Desactivar» no aplica acá.
-- **Qué pasa con la sesión abierta:** nada, y la pantalla lo dice con esas
-  palabras en vez de callarlo. Sigue siendo cierto que nada invalida un token
-  ya emitido — eso es ahora su propia entrada, «No hay forma de invalidar un
-  token ya emitido».
+Las tres preguntas que la entrada dejaba sin decidir se resolvieron **entre
+Giancarlo y la capa arquitectónica, como supuestos de trabajo. El dueño de la
+planta todavía no vio esta pantalla y no validó ninguna de las tres.** Se
+anotan como supuestos y no como decisiones suyas a propósito: el día que diga
+que prefiere otra cosa, este documento tiene que mostrar que nunca se lo
+preguntamos, no que dijo que sí.
+
+- **Quién y cómo (supuesto, a validar):** el administrador la elige y se la
+  dicta a la persona. No hay contraseña temporal que la persona cambie al
+  entrar, porque no existe pantalla de «cambiar mi contraseña» en
+  `apps/web/src/pages`: esa temporal no tendría a dónde ir. Si el dueño
+  prefiere dictar una temporal, lo que falta primero es esa pantalla, no un
+  campo más en esta.
+- **El administrador puede cambiarse la suya (supuesto, a validar):** es la
+  forma prevista de rotar `admin123` (ver «Password del admin de
+  producción»). La guarda de `isSelf` que sí tiene «Desactivar» no aplica acá.
+- **Qué pasa con la sesión abierta (verificado, pero la reacción es supuesto):**
+  no se cierra — eso es un hecho del código, fijado por un test en
+  `auth.int.test.ts` y explicado en «No hay forma de invalidar un token ya
+  emitido». Lo que es supuesto es que decírselo en pantalla alcance: si al
+  dueño le resulta inaceptable que alguien siga adentro después del cambio, lo
+  que hace falta es la invalidación de tokens, no otra redacción.
+
+**Para validarlas:** mostrarle la pantalla en la primera demo en que aparezca
+gestión de usuarios, y anotar acá qué dijo de cada una — confirmándolas o
+abriendo la entrada que corresponda.
 
 ## La gestión de usuarios no cambia roles
 
@@ -208,13 +223,23 @@ nada impide que su resultado —o su registro— llegue después del cambio.
 
 Las dos apariciones:
 
-- **`users-page.tsx`, cambiar contraseña.** Sin guard: los botones de la fila
-  se deshabilitaban con `isSavingAction` y no con `isResetting`, así que se
-  podía abrir el bloque de otra persona con el PATCH de la primera todavía en
-  vuelo; al volver, la respuesta cerraba el formulario recién abierto y
-  anunciaba éxito con el nombre equivocado. Arreglado acá deshabilitando
-  también las acciones de la fila mientras dura la petición — un parche por
-  pantalla, deliberadamente el más chico que cierra el agujero.
+- **`users-page.tsx`, cambiar contraseña.** Tuvo el defecto por dos puertas
+  distintas, y necesitó dos arreglos de naturaleza distinta — que es
+  justamente lo que hace que valga la pena tener esto escrito.
+  1. _Por la fila:_ sus botones se deshabilitaban con `isSavingAction` y no
+     con `isResetting`, así que se podía abrir el bloque de otra persona con
+     el PATCH de la primera en vuelo; al volver, la respuesta cerraba el
+     formulario recién abierto y anunciaba éxito con el nombre equivocado.
+     Se cerró deshabilitando también las acciones de la fila mientras dura la
+     petición.
+  2. _Por los filtros:_ esos no se deshabilitan —mirar otra lista no es
+     motivo para congelar la pantalla durante una escritura ajena—, y
+     cambiarlos recarga la tabla; la respuesta llegaba después y dejaba el
+     aviso de éxito nombrando a alguien que ya no estaba en la lista visible.
+     Acá **no** se agregó otro `disabled`: la página cuenta sus cargas de
+     lista (`listRunRef`) y la respuesta tardía solo pone el aviso si la tabla
+     sigue siendo la misma que cuando se envió. Es la versión chica de lo que
+     haría la pieza compartida.
 - **`customers-page.tsx`, paginación.** Con guard: el efecto de listado usa
   una bandera `cancelled` que descarta la respuesta vieja, y eso cubre el
   estado. Lo que no cubre es que `page` tenga dos escritores —el clic en
@@ -227,15 +252,18 @@ Las dos apariciones:
 
 **Por qué importa que esté escrito junto:** con una sola aparición, el arreglo
 del flaky es un parche local y se decide en su propio PR. Con dos en pantallas
-sin código común, la pregunta cambia: si la tercera aparece, lo que falta no es
-otro parche sino una pieza compartida —un hook de petición con `AbortController`
-y un solo dueño del objetivo— y conviene saberlo antes de escribir el tercer
-parche, no después.
+sin código común, la pregunta cambia: lo que falta empieza a parecerse a una
+pieza compartida —un hook de petición con `AbortController` y un solo dueño del
+objetivo— y conviene saberlo antes de escribir el tercer parche, no después.
+Que `users-page` haya necesitado dos arreglos distintos para el mismo defecto
+es parte de la evidencia: el segundo (contar cargas y comparar al volver) es
+exactamente el trabajo que la pieza compartida haría una sola vez.
 
 **Para cerrarla:** al tocar el flaky de `customers-page`, decidir explícitamente
 entre parche por pantalla y pieza compartida, y anotar acá cuál se eligió y por
-qué. Si sale pieza compartida, `users-page.tsx` es su primer cliente y el
-`disabled={... || isResetting}` de las acciones de fila se puede retirar.
+qué. Si sale pieza compartida, `users-page.tsx` es su primer cliente: se le
+retiran tanto el `disabled={... || isResetting}` de las acciones de fila como
+el `listRunRef`.
 
 ## No hay gestión del catálogo payment-methods
 
