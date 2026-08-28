@@ -6,6 +6,7 @@
  * see lib/business-date.ts. `createdAt` is the opposite: an instant.
  */
 import type { ApiClient } from "./api-client";
+import type { PaymentStatus } from "./payments";
 
 /** Enum RouteStatus en Prisma. */
 export type RouteStatus = "PLANNED" | "IN_PROGRESS" | "FINISHED" | "SETTLED";
@@ -42,7 +43,40 @@ export interface RouteStopLocation {
   customer: RouteStopCustomer;
 }
 
-/** RouteStopResponseDto. */
+/** RouteStopSaleDto: solo llega en la respuesta de marcar una parada. */
+export interface RouteStopSale {
+  id: string;
+  total: string;
+  /**
+   * La venta superó el límite de crédito del cliente. Se registra igual:
+   * advierte, nunca bloquea.
+   */
+  creditLimitExceeded: boolean;
+}
+
+/** RouteStopPaymentDto: solo llega cuando el cuerpo trajo un cobro. */
+export interface RouteStopPayment {
+  id: string;
+  status: PaymentStatus;
+  amount: string;
+}
+
+/** RouteStopContainerBalanceDto: el saldo que le queda al cliente por tipo. */
+export interface RouteStopContainerBalance {
+  containerTypeId: string;
+  containerType: RouteStopContainerType;
+  quantity: number;
+}
+
+export interface RouteStopContainerType {
+  id: string;
+  name: string;
+}
+
+/**
+ * RouteStopResponseDto. `sale`, `payment` y `containerBalances` solo vienen
+ * en la respuesta de `PATCH .../stops/:stopId`, nunca al listar la ruta.
+ */
 export interface RouteStop {
   id: string;
   routeId: string;
@@ -53,6 +87,9 @@ export interface RouteStop {
   orderId: string | null;
   status: StopStatus;
   failureReason: string | null;
+  sale?: RouteStopSale | null;
+  payment?: RouteStopPayment | null;
+  containerBalances?: RouteStopContainerBalance[];
 }
 
 /** RouteResponseDto. Trae siempre sus paradas ordenadas por `position`. */
@@ -182,6 +219,54 @@ export function startRoute(apiClient: ApiClient, routeId: string): Promise<Route
 /** Sin cuerpo: la única transición que permite es IN_PROGRESS -> FINISHED. */
 export function finishRoute(apiClient: ApiClient, routeId: string): Promise<Route> {
   return apiClient.request<Route>(`/routes/${routeId}/finish`, { method: "PATCH" });
+}
+
+/**
+ * DeliverySaleItemDto. `unitPrice` es opcional a propósito: el camino normal
+ * deja que la API resuelva el precio pactado. Solo va cuando se cobró algo
+ * distinto, y entonces `priceOverrideAuthorizedById` es obligatorio.
+ */
+export interface DeliverySaleItemBody {
+  productId: string;
+  quantity: number;
+  unitPrice?: string;
+}
+
+/** ContainerReturnDto: envases vacíos que devolvió el cliente, por tipo. */
+export interface ContainerReturnBody {
+  containerTypeId: string;
+  quantity: number;
+}
+
+/** DeliveryPaymentDto: el cobro de esta parada, si lo hubo. */
+export interface DeliveryPaymentBody {
+  paymentMethodId: string;
+  amount: string;
+}
+
+/**
+ * MarkRouteStopDto. Solo los dos estados terminales: una parada nace PENDING
+ * y nunca vuelve. `failureReason` va con FAILED; el resto, con DELIVERED.
+ */
+export interface MarkRouteStopBody {
+  status: "DELIVERED" | "FAILED";
+  failureReason?: string;
+  items?: DeliverySaleItemBody[];
+  containersReturned?: ContainerReturnBody[];
+  payment?: DeliveryPaymentBody;
+  priceOverrideAuthorizedById?: string;
+}
+
+export function markRouteStop(
+  apiClient: ApiClient,
+  routeId: string,
+  stopId: string,
+  body: MarkRouteStopBody,
+): Promise<RouteStop> {
+  return apiClient.request<RouteStop>(`/routes/${routeId}/stops/${stopId}`, {
+    method: "PATCH",
+    body,
+  });
 }
 
 /** RouteLoadContainerTypeDto. */

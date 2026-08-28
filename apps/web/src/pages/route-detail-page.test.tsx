@@ -766,6 +766,17 @@ describe("RouteDetailPage", () => {
       expect(called).toBe(false);
     });
 
+    it("solo ofrece registrar la parada con la ruta en curso", async () => {
+      stubRoute(buildRoute({ status: "PLANNED", stops: [stop({ position: 1 })] }));
+
+      renderPage();
+
+      expect(await screen.findByText("Bodega Central")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Registrar la parada de Bodega Central" }),
+      ).not.toBeInTheDocument();
+    });
+
     it("muestra el error del backend al quitar una parada", async () => {
       const user = userEvent.setup();
       stubRoute(buildRoute({ stops: [stop({ position: 1 })] }));
@@ -787,6 +798,165 @@ describe("RouteDetailPage", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent(
         "Solo se puede quitar una parada pendiente",
       );
+    });
+  });
+
+  describe("registrar lo que pasó en la parada", () => {
+    const CUSTOMER_ID = "cus-1";
+    const RECARGA = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const BIDON = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+    /** Los catálogos que abre el formulario de registrar una parada. */
+    function stubMarkFormCatalogs(): void {
+      server.use(
+        http.get(`${API_BASE_URL}/products`, () =>
+          HttpResponse.json([
+            {
+              id: RECARGA,
+              name: "Recarga 20L",
+              type: "REFILL",
+              containerType: { id: BIDON, name: "Bidón 20L" },
+              listPrice: "12.50",
+              active: true,
+            },
+          ]),
+        ),
+        http.get(`${API_BASE_URL}/payment-methods`, () => HttpResponse.json([])),
+        http.get(`${API_BASE_URL}/users`, () => HttpResponse.json([])),
+        http.get(`${API_BASE_URL}/customers/${CUSTOMER_ID}/effective-prices`, () =>
+          HttpResponse.json([]),
+        ),
+      );
+    }
+
+    async function markFirstStop(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(
+        await screen.findByRole("button", { name: "Registrar la parada de Bodega Central" }),
+      );
+      await user.selectOptions(await screen.findByLabelText("Producto 1"), RECARGA);
+      await user.click(screen.getByRole("button", { name: "Registrar la parada" }));
+    }
+
+    it("registra la entrega y resume venta, cobro y saldo de envases", async () => {
+      const user = userEvent.setup();
+      const inProgress = buildRoute({ status: "IN_PROGRESS", stops: [stop({ position: 1 })] });
+      stubRouteSequence(inProgress, {
+        ...inProgress,
+        stops: [stop({ position: 1, status: "DELIVERED" })],
+      });
+      stubMarkFormCatalogs();
+      server.use(
+        http.patch(`${API_BASE_URL}/routes/${ROUTE_ID}/stops/stop-1`, () =>
+          HttpResponse.json({
+            ...stop({ position: 1, status: "DELIVERED" }),
+            sale: { id: "sale-1", total: "37.50", creditLimitExceeded: false },
+            payment: { id: "pay-1", status: "CONFIRMED", amount: "20.00" },
+            containerBalances: [
+              {
+                containerTypeId: BIDON,
+                containerType: { id: BIDON, name: "Bidón 20L" },
+                quantity: 2,
+              },
+            ],
+          }),
+        ),
+      );
+
+      renderPage();
+      await markFirstStop(user);
+
+      const notice = await screen.findByText(/Entrega de Bodega Central registrada/);
+      expect(notice).toHaveTextContent("por S/ 37.50");
+      expect(notice).toHaveTextContent("Cobro de S/ 20.00 (confirmado)");
+      expect(notice).toHaveTextContent("Envases en poder del cliente: 2 × Bidón 20L");
+    });
+
+    // HU-13 E2: la advertencia se muestra y nunca bloquea — para cuando se ve,
+    // la venta ya quedó registrada.
+    it("avisa del límite de crédito superado sin haber bloqueado nada", async () => {
+      const user = userEvent.setup();
+      const inProgress = buildRoute({ status: "IN_PROGRESS", stops: [stop({ position: 1 })] });
+      stubRouteSequence(inProgress, {
+        ...inProgress,
+        stops: [stop({ position: 1, status: "DELIVERED" })],
+      });
+      stubMarkFormCatalogs();
+      server.use(
+        http.patch(`${API_BASE_URL}/routes/${ROUTE_ID}/stops/stop-1`, () =>
+          HttpResponse.json({
+            ...stop({ position: 1, status: "DELIVERED" }),
+            sale: { id: "sale-1", total: "500.00", creditLimitExceeded: true },
+            payment: null,
+            containerBalances: [],
+          }),
+        ),
+      );
+
+      renderPage();
+      await markFirstStop(user);
+
+      expect(
+        await screen.findByText(
+          "Esta venta superó el límite de crédito de Bodega Central. Quedó registrada igual.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Entrega de Bodega Central registrada/)).toHaveTextContent(
+        "No se cobró nada: queda al fiado",
+      );
+    });
+
+    it("una parada fallida se resume con su motivo", async () => {
+      const user = userEvent.setup();
+      const inProgress = buildRoute({ status: "IN_PROGRESS", stops: [stop({ position: 1 })] });
+      stubRouteSequence(inProgress, {
+        ...inProgress,
+        stops: [stop({ position: 1, status: "FAILED", failureReason: "Estaba cerrado" })],
+      });
+      stubMarkFormCatalogs();
+      server.use(
+        http.patch(`${API_BASE_URL}/routes/${ROUTE_ID}/stops/stop-1`, () =>
+          HttpResponse.json(
+            stop({ position: 1, status: "FAILED", failureReason: "Estaba cerrado" }),
+          ),
+        ),
+      );
+
+      renderPage();
+      await user.click(
+        await screen.findByRole("button", { name: "Registrar la parada de Bodega Central" }),
+      );
+      await user.selectOptions(await screen.findByLabelText("¿Qué pasó en esta parada?"), "FAILED");
+      await user.type(screen.getByLabelText("¿Por qué no se pudo entregar?"), "Estaba cerrado");
+      await user.click(screen.getByRole("button", { name: "Registrar la parada" }));
+
+      expect(
+        await screen.findByText(
+          "La parada de Bodega Central quedó registrada como no entregada: Estaba cerrado.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("«Cancelar» cierra el formulario sin registrar nada", async () => {
+      const user = userEvent.setup();
+      stubRoute(buildRoute({ status: "IN_PROGRESS", stops: [stop({ position: 1 })] }));
+      stubMarkFormCatalogs();
+      let called = false;
+      server.use(
+        http.patch(`${API_BASE_URL}/routes/${ROUTE_ID}/stops/stop-1`, () => {
+          called = true;
+          return HttpResponse.json(stop({ position: 1, status: "DELIVERED" }));
+        }),
+      );
+
+      renderPage();
+      await user.click(
+        await screen.findByRole("button", { name: "Registrar la parada de Bodega Central" }),
+      );
+      await screen.findByLabelText("Producto 1");
+      await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+      expect(screen.queryByLabelText("Producto 1")).not.toBeInTheDocument();
+      expect(called).toBe(false);
     });
   });
 });
