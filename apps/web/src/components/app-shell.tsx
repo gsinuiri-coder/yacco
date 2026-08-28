@@ -5,6 +5,7 @@ import { useAuth } from "../auth/use-auth";
 /** Top bar plus the centred content column shared by the signed-in pages. */
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const isAdmin = user?.roles.includes("ADMIN") ?? false;
 
   return (
     <div className="app-shell">
@@ -44,6 +45,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             <NavLink to="/container-counts" className="app-bar__link">
               Contar envases
             </NavLink>
+            {/* Único enlace condicionado por rol de la barra, y por una razón
+                concreta: GET /container-reconciliation es ADMIN, así que para
+                un vendedor sería un enlace a una pantalla que no puede usar.
+                Los demás enlaces llevan a pantallas que todos pueden leer, y
+                el gateo de esas vive adentro de cada una. */}
+            {isAdmin && (
+              <NavLink to="/container-reconciliation" className="app-bar__link">
+                Cuadre de envases
+              </NavLink>
+            )}
           </span>
           <NavLink to="/zones" className="app-bar__link">
             Zonas

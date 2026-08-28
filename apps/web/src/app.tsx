@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router";
 import { AuthProvider } from "./auth/auth-provider";
 import { ContainerCountsPage } from "./pages/container-counts-page";
 import { ContainerMovementsPage } from "./pages/container-movements-page";
+import { ContainerReconciliationPage } from "./pages/container-reconciliation-page";
 import { ContainerTypesPage } from "./pages/container-types-page";
 import { CustomerCreatePage } from "./pages/customer-create-page";
 import { CustomerDetailPage } from "./pages/customer-detail-page";
@@ -47,6 +48,7 @@ export function App() {
           <Route path="/container-movements" element={<ContainerMovementsPage />} />
           <Route path="/container-types" element={<ContainerTypesPage />} />
           <Route path="/container-counts" element={<ContainerCountsPage />} />
+          <Route path="/container-reconciliation" element={<ContainerReconciliationPage />} />
           <Route path="/zones" element={<ZonesPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

@@ -15,6 +15,7 @@ const NAV_LINKS = [
   "Movimientos",
   "Tipos de envase",
   "Contar envases",
+  "Cuadre de envases",
   "Zonas",
 ];
 
@@ -24,7 +25,7 @@ describe("AppShell", () => {
     signIn();
   });
 
-  it("muestra los once enlaces dentro de un único <nav aria-label='Principal'>", async () => {
+  it("muestra los doce enlaces dentro de un único <nav aria-label='Principal'>", async () => {
     renderWithProviders(
       <AppShell>
         <p>Contenido</p>
@@ -64,6 +65,24 @@ describe("AppShell", () => {
     const pagos = within(nav).getByRole("link", { name: "Pagos" });
 
     expect(pagos.closest(".app-bar__nav-group")).toBeNull();
+  });
+
+  // Único enlace condicionado por rol: la pantalla a la que lleva es
+  // ADMIN-only de punta a punta, así que para un vendedor sería un enlace
+  // muerto.
+  it("«Cuadre de envases» solo aparece para un administrador", async () => {
+    localStorage.clear();
+    signIn(["SELLER"]);
+
+    renderWithProviders(
+      <AppShell>
+        <p>Contenido</p>
+      </AppShell>,
+    );
+
+    const nav = await screen.findByRole("navigation", { name: "Principal" });
+    expect(within(nav).getByRole("link", { name: "Contar envases" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Cuadre de envases" })).not.toBeInTheDocument();
   });
 
   it("«Zonas» va al final, fuera del grupo de envases", async () => {
