@@ -162,10 +162,26 @@ function renderPage() {
   );
 }
 
+/**
+ * La sección de carga vive dentro de esta pantalla y pide sus propios datos.
+ * Los tests de aquí no ejercitan la carga (tiene su propio archivo), pero MSW
+ * falla ante una petición no declarada, así que se declaran vacías.
+ */
+function stubEmptyLoads(): void {
+  server.use(
+    http.get(`${API_BASE_URL}/routes/${ROUTE_ID}/loads`, () => HttpResponse.json([])),
+    http.get(`${API_BASE_URL}/production-batches`, () =>
+      HttpResponse.json({ data: [], total: 0, page: 1, limit: 100, totalPages: 0 }),
+    ),
+    http.get(`${API_BASE_URL}/container-types`, () => HttpResponse.json([])),
+  );
+}
+
 describe("RouteDetailPage", () => {
   beforeEach(() => {
     localStorage.clear();
     signIn(["ADMIN"]);
+    stubEmptyLoads();
   });
 
   it("muestra el día, el chofer, el estado y la zona de la ruta", async () => {

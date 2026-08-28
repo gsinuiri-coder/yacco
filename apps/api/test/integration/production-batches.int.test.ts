@@ -372,6 +372,78 @@ describe("GET /api/v1/production-batches", () => {
 
     expect(response.status).toBe(200);
   });
+
+  // Lo que necesita la carga de ruta: el listado va de la fecha más antigua a
+  // la más nueva, que es el orden FIFO de consumo, así que sin este filtro la
+  // primera página son los lotes viejos que ya se consumieron enteros.
+  describe("?withStock", () => {
+    let emptiedBatchId: string;
+    let stockedBatchId: string;
+
+    // beforeEach y no beforeAll: el afterEach de este archivo borra todos los
+    // lotes entre tests, así que un fixture creado una sola vez solo
+    // sobreviviría al primero.
+    beforeEach(async () => {
+      const emptied = await createBatch(adminToken, {
+        date: "2026-07-01",
+        items: [{ containerTypeId: containerTypeA, producedQty: 5 }],
+      }).expect(201);
+      emptiedBatchId = emptied.body.id;
+      const prisma = ctx.app.get(PrismaService);
+      await prisma.batchItem.updateMany({
+        where: { batchId: emptiedBatchId },
+        data: { availableQty: 0 },
+      });
+
+      const stocked = await createBatch(adminToken, {
+        date: "2026-07-02",
+        items: [{ containerTypeId: containerTypeA, producedQty: 7 }],
+      }).expect(201);
+      stockedBatchId = stocked.body.id;
+    });
+
+    test("withStock=true deja fuera el lote ya consumido", async () => {
+      const response = await request(server())
+        .get("/api/v1/production-batches?withStock=true&limit=100")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      const ids = response.body.data.map((batch: { id: string }) => batch.id);
+      expect(ids).toContain(stockedBatchId);
+      expect(ids).not.toContain(emptiedBatchId);
+    });
+
+    test("withStock=false deja solo los ya consumidos", async () => {
+      const response = await request(server())
+        .get("/api/v1/production-batches?withStock=false&limit=100")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      const ids = response.body.data.map((batch: { id: string }) => batch.id);
+      expect(ids).toContain(emptiedBatchId);
+      expect(ids).not.toContain(stockedBatchId);
+    });
+
+    test("sin el filtro, el historial sigue mostrando los dos", async () => {
+      const response = await request(server())
+        .get("/api/v1/production-batches?limit=100")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      const ids = response.body.data.map((batch: { id: string }) => batch.id);
+      expect(ids).toContain(emptiedBatchId);
+      expect(ids).toContain(stockedBatchId);
+    });
+
+    test("un valor que no es booleano es rechazado con 400 y su mensaje en español", async () => {
+      const response = await request(server())
+        .get("/api/v1/production-batches?withStock=quizas")
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(response.body.message)).toContain("El filtro de stock");
+    });
+  });
 });
 
 describe("GET /api/v1/production-batches/:id", () => {

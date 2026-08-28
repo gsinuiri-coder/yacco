@@ -65,7 +65,11 @@ export class ProductionBatchesController {
     return this.productionBatchesService.create(dto, request.user.sub);
   }
 
-  @ApiOperation({ summary: "Lista lotes de producción paginados, con filtro por rango de fechas" })
+  @ApiOperation({
+    summary: "Lista lotes de producción paginados, con filtro por rango de fechas y por stock",
+    description:
+      "Ordenados por fecha ascendente, que es el orden FIFO de consumo; ?withStock=true es lo que la carga de ruta necesita",
+  })
   @ApiResponse({ status: 200, type: PaginatedProductionBatchesDto })
   @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
   @Roles(UserRole.ADMIN, UserRole.SELLER)

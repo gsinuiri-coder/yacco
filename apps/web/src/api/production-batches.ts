@@ -55,6 +55,14 @@ export interface ProductionBatchListParams {
   limit?: number;
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * `true`: solo lotes con alguna línea disponible. Omitido no filtra, que es
+   * lo que la pantalla de producción necesita — es un historial. La carga de
+   * ruta sí lo pide: el listado va de la fecha más antigua a la más nueva (el
+   * orden FIFO de consumo), así que sin el filtro la primera página son los
+   * lotes viejos que ya se consumieron enteros.
+   */
+  withStock?: boolean;
 }
 
 /** Matches DEFAULT_LIMIT in the API's list-production-batches-query.dto.ts. */
@@ -97,6 +105,8 @@ function buildListQuery(params: ProductionBatchListParams): string {
   if (params.limit !== undefined) query.set("limit", String(params.limit));
   if (params.dateFrom) query.set("dateFrom", params.dateFrom);
   if (params.dateTo) query.set("dateTo", params.dateTo);
+  // `!== undefined` y no truthiness: `false` también es un filtro real.
+  if (params.withStock !== undefined) query.set("withStock", String(params.withStock));
   return query.toString();
 }
 
