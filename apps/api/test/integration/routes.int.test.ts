@@ -928,6 +928,102 @@ describe("PATCH /api/v1/routes/:id/stops/reorder", () => {
   });
 });
 
+describe("DELETE /api/v1/routes/:id/stops/:stopId", () => {
+  test("removes a pending stop and recompacts the positions of the rest", async () => {
+    const routeId = await createRoute(adminToken, { date: "2026-10-25" });
+    const firstStopId = await addVanSaleStop(adminToken, routeId);
+    const secondStopId = await addVanSaleStop(adminToken, routeId);
+    const thirdStopId = await addVanSaleStop(adminToken, routeId);
+
+    await request(server())
+      .delete(`/api/v1/routes/${routeId}/stops/${firstStopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(204);
+
+    const route = await request(server())
+      .get(`/api/v1/routes/${routeId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const positions = new Map(
+      route.body.stops.map((stop: { id: string; position: number }) => [stop.id, stop.position]),
+    );
+    expect(positions.has(firstStopId)).toBe(false);
+    expect(positions.get(secondStopId)).toBe(1);
+    expect(positions.get(thirdStopId)).toBe(2);
+  });
+
+  // Sacar un pedido del camión tiene que devolverlo a la bandeja: si el
+  // pedido quedara ocupado, no habría forma de reasignarlo a otra ruta.
+  test("frees the order of an ORDER stop, so it can be assigned again", async () => {
+    const routeId = await createRoute(adminToken, { date: "2026-10-26" });
+    const orderId = await createPendingOrder(adminToken);
+    const stopResponse = await request(server())
+      .post(`/api/v1/routes/${routeId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+
+    await request(server())
+      .delete(`/api/v1/routes/${routeId}/stops/${stopResponse.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(204);
+
+    const listed = await request(server())
+      .get("/api/v1/orders?status=PENDING&hasRouteStop=false&limit=100")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(listed.body.data.map((order: { id: string }) => order.id)).toContain(orderId);
+
+    const otherRouteId = await createRoute(adminToken, {
+      driverId: otherDriverId,
+      date: "2026-10-26",
+    });
+    await request(server())
+      .post(`/api/v1/routes/${otherRouteId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+  });
+
+  test("refuses to remove a stop that was already delivered", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(5, locId);
+    const delivered = await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    });
+    expect(delivered.status).toBe(200);
+
+    const response = await request(server())
+      .delete(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(409);
+    expect(messagesOf(response)).toContain("pendiente");
+  });
+
+  test("an unknown stop id on a real route is 404", async () => {
+    const routeId = await createRoute(adminToken, { date: "2026-10-27" });
+
+    const response = await request(server())
+      .delete(`/api/v1/routes/${routeId}/stops/${MISSING_UUID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  test("a driver cannot remove a stop from another driver's route", async () => {
+    const routeId = await createRoute(adminToken, { date: "2026-10-28" });
+    const stopId = await addVanSaleStop(adminToken, routeId);
+
+    const response = await request(server())
+      .delete(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${otherDriverToken}`);
+
+    expect(response.status).toBe(403);
+  });
+});
+
 describe("POST /api/v1/routes/:id/loads", () => {
   test("loads units, decrements availableQty atomically, and records a ROUTE_LOAD movement tagged with the route", async () => {
     const batchItemId = await createBatchItem(100);
