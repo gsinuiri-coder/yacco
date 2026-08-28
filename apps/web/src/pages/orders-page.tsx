@@ -10,6 +10,7 @@ import { ErrorState } from "../components/error-state";
 import { ORDER_STATUS_LABELS, OrderStatusBadge } from "../components/order-status-badge";
 import { PaginationNav } from "../components/pagination-nav";
 import { SlowRequestNotice } from "../components/slow-request-notice";
+import { StatusFilterSelect } from "../components/status-filter-select";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatBusinessDate } from "../lib/business-date";
 import { formatMoney } from "../lib/money";
@@ -117,25 +118,15 @@ export function OrdersPage() {
 
       <section className="card">
         <div className="toolbar">
-          <div className="field">
-            <label className="field__label" htmlFor="statusFilter">
-              Estado
-            </label>
-            <select
-              id="statusFilter"
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value as StatusFilter);
-                setPage(1);
-              }}
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <StatusFilterSelect
+            id="statusFilter"
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onChange={(status) => {
+              setStatusFilter(status);
+              setPage(1);
+            }}
+          />
           <div className="field">
             <label className="field__label" htmlFor="deliveryDateFrom">
               Entrega desde

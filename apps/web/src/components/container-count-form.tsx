@@ -4,6 +4,7 @@ import type { ContainerBalanceRow } from "../api/container-balances";
 import { createContainerCount } from "../api/container-counts";
 import type { ContainerType } from "../api/container-types";
 import { useAuth } from "../auth/use-auth";
+import { FormSubmitFooter } from "./form-submit-footer";
 
 export interface ContainerCountFormProps {
   row: ContainerBalanceRow;
@@ -254,29 +255,14 @@ export function ContainerCountForm({
           </div>
         )}
       </div>
-      {validationError && (
-        <div className="notice notice--error" role="alert">
-          {validationError}
-        </div>
-      )}
-      {submitError && (
-        <div className="notice notice--error" role="alert">
-          {submitError}
-        </div>
-      )}
-      <div className="form-actions">
-        <button
-          type="button"
-          className="button button--secondary"
-          onClick={onCancel}
-          disabled={isSubmitting}
-        >
-          Cancelar
-        </button>
-        <button type="submit" className="button button--primary" disabled={isSubmitting}>
-          {isSubmitting ? "Registrando…" : "Registrar conteo"}
-        </button>
-      </div>
+      <FormSubmitFooter
+        validationError={validationError}
+        submitError={submitError}
+        onCancel={onCancel}
+        isSubmitting={isSubmitting}
+        submitLabel="Registrar conteo"
+        submittingLabel="Registrando…"
+      />
     </form>
   );
 }
