@@ -38,6 +38,12 @@ export class PaymentMethodsController {
     return this.paymentMethodsService.findAll(query);
   }
 
+  // Sin consumidor en apps/web, y así se queda: mismo
+  // PaymentMethodResponseDto que un elemento del listado (los dos usan
+  // PAYMENT_METHOD_SELECT), y la API embebe {id, name} en toda referencia a
+  // método de pago. Quien lo va a necesitar es el móvil, para resolver un id
+  // suelto cuando su copia local del catálogo quedó vieja (spec §4.3,
+  // POST /sync/operations). Ver docs/estado-por-modulo.md.
   @ApiOperation({ summary: "Un método de pago por id" })
   @ApiResponse({ status: 200, type: PaymentMethodResponseDto })
   @ApiNotFoundResponse({ description: "Payment method id does not exist" })

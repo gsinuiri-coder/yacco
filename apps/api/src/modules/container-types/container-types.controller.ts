@@ -68,6 +68,12 @@ export class ContainerTypesController {
     return this.containerTypesService.findAll(query);
   }
 
+  // Sin consumidor en apps/web, y así se queda: mismo
+  // ContainerTypeResponseDto que un elemento del listado (los dos usan
+  // CONTAINER_TYPE_SELECT), y la API embebe {id, name} en toda referencia a
+  // tipo de envase. Quien lo va a necesitar es el móvil, para resolver un id
+  // suelto cuando su copia local del catálogo quedó vieja (spec §4.3,
+  // POST /sync/operations). Ver docs/estado-por-modulo.md.
   @ApiOperation({ summary: "Un tipo de envase por id" })
   @ApiResponse({ status: 200, type: ContainerTypeResponseDto })
   @ApiNotFoundResponse({ description: "Container type id does not exist" })
