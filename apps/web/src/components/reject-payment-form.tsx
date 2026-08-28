@@ -4,6 +4,7 @@ import { ApiError } from "../api/errors";
 import type { PaymentActionResult, PaymentRow } from "../api/payments";
 import { rejectPayment } from "../api/payments";
 import { useAuth } from "../auth/use-auth";
+import { FormSubmitFooter } from "./form-submit-footer";
 
 export interface RejectPaymentFormProps {
   payment: PaymentRow;
@@ -88,29 +89,14 @@ export function RejectPaymentForm({
           }}
         />
       </div>
-      {validationError && (
-        <div className="notice notice--error" role="alert">
-          {validationError}
-        </div>
-      )}
-      {submitError && (
-        <div className="notice notice--error" role="alert">
-          {submitError}
-        </div>
-      )}
-      <div className="form-actions">
-        <button
-          type="button"
-          className="button button--secondary"
-          onClick={onCancel}
-          disabled={isSubmitting}
-        >
-          Cancelar
-        </button>
-        <button type="submit" className="button button--primary" disabled={isSubmitting}>
-          {isSubmitting ? "Rechazando…" : "Confirmar rechazo"}
-        </button>
-      </div>
+      <FormSubmitFooter
+        validationError={validationError}
+        submitError={submitError}
+        onCancel={onCancel}
+        isSubmitting={isSubmitting}
+        submitLabel="Confirmar rechazo"
+        submittingLabel="Rechazando…"
+      />
     </form>
   );
 }
