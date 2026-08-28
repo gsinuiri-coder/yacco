@@ -97,6 +97,13 @@ una inconsistencia, no una variación válida.
 - **`.page-header`** — título + subtítulo + acciones alineadas a la derecha,
   con wrap en pantallas angostas. El subtítulo (`.page-header__subtitle`) usa
   `--text-muted`, nunca `--text-subtle`.
+- **`.text-muted`** — texto secundario **fuera** de un `.page-header`: la
+  bajada de un `<h2>` de sección dentro de una card, una aclaración debajo de
+  una tabla, un total de pie. Mismo color y tamaño que
+  `.page-header__subtitle` —son el mismo nivel tipográfico— pero con margen
+  por los dos lados, porque no cuelga de un `<h1>`. Existe para que
+  `.page-header__subtitle` no se use como utilidad genérica: si el párrafo no
+  está dentro de un `.page-header`, la clase es esta.
 - **`.stat`** — bloque de lectura (no interactivo) sobre `--surface-sunken`:
   `.stat__label` (mayúsculas, `--text-subtle`), `.stat__value` (tabular),
   `.stat__note` opcional (`--text-subtle`).
@@ -215,41 +222,70 @@ dejado en "Pendiente" ya están cerrados en el código:
   `<h2>` de sección en `.page-header`** — mismo patrón que ya usaba
   `customer-prices-section.tsx` — así que el título tiene el margen inferior
   del sistema en vez de tocar la primera fila del formulario.
-- **El negativo de `container-counts-page.tsx` lleva `aria-label`**, con un
-  texto propio de esta pantalla (el cliente devolvió más envases de los que
-  se le registraron como entregados) — no el mismo texto que
-  `inventory-page.tsx`, que describe un negativo distinto (más envases
+- **El negativo de `container-counts-page.tsx` se anuncia a los lectores de
+  pantalla**, con un texto propio de esta pantalla (el cliente devolvió más
+  envases de los que se le registraron como entregados) — no el mismo texto
+  que `inventory-page.tsx`, que describe un negativo distinto (más envases
   llenados que vacíos registrados en planta). Un comentario en el código
   marca por qué los dos textos no son intercambiables.
 
-## Pendiente (no entra en este PR) — solo quedan hallazgos P3
+  La técnica cambió después de que se escribió este párrafo: era un
+  `aria-label` sobre un `<span>` genérico —que los lectores de pantalla no
+  anuncian de forma confiable, porque `aria-label` solo aplica a elementos
+  con rol— y el PR #86 lo pasó al par `aria-hidden="true"` sobre el número
+  visible más un `.visually-hidden` con la explicación. Es lo que hay hoy en
+  las dos pantallas; el texto de arriba decía `aria-label` y quedó viejo.
 
-Criterio de esta lista: todo lo que requiere tocar un componente, marcado o
-clase queda acá para decidirse aparte, en vez de entrar en un PR de solo
-`:root`. Orden por severidad.
+## Resuelto: los tres hallazgos P3
+
+Los tres puntos que quedaban en "Pendiente" están cerrados.
 
 1. **[P3] `.page-header__subtitle` usado como utilidad de texto muted** —
-   se repite en `container-movements-page.tsx:482`,
-   `container-counts-page.tsx:170,235` y `inventory-page.tsx:120`.
-   `dashboard-page.tsx` salió de esta lista: el Panel se reescribió como
-   buscador de clientes (punto 4 de la cola de navegación) y su único
-   subtítulo ahora vive dentro de un `.page-header`, el uso correcto de la
-   clase. No existe una clase `.text-muted` genérica, así que las pantallas
-   que quedan reusan una clase pensada para el subtítulo de `.page-header`
-   fuera de ese contexto. Es el único patrón que se repite en 3 archivos.
-   _Categoría: consistencia, tipografía. Requiere: crear `.text-muted` y
-   migrar estos usos._
+   resuelto con una clase propia, `.text-muted`, y la migración de los usos
+   que estaban fuera de un `.page-header`: `container-movements-page.tsx`
+   (bajada de "Historial"), `container-counts-page.tsx` (contador de
+   resultados), `inventory-page.tsx` (total general), y los que habían
+   nacido con el módulo de rutas repitiendo el mismo atajo —
+   `route-detail-page.tsx`, `route-settlement-page.tsx` (tres) y
+   `components/route-loads-section.tsx`. Los subtítulos que sí viven dentro
+   de un `.page-header` quedaron como estaban.
 
-2. **[P3] `.field__hint` sin campo asociado** —
-   `components/order-items-form.tsx:246`. Es un mensaje instructivo suelto
-   ("Elige un cliente para ver sus precios"), no un hint de un input
-   específico, que es como se usa `.field__hint` en el resto del código.
-   _Categoría: consistencia, tipografía. Requiere: usar `.notice--info` o un
-   párrafo muted en vez de `.field__hint`._
+   Mismo color y tamaño que `.page-header__subtitle` a propósito: son el
+   mismo nivel tipográfico, y lo que cambia es el margen (`.text-muted`
+   separa por los dos lados, porque no cuelga de un `<h1>`). El valor de
+   tenerlas separadas es que cambiar el subtítulo de las cabeceras ya no
+   arrastra a media aplicación.
 
-3. **[P3] Error de fila lejos de la fila** —
-   `pages/container-types-page.tsx` y
-   `components/customer-prices-section.tsx`: los errores de renombrar/dar de
-   baja/editar se muestran una sola vez arriba de la card, no junto a la fila
-   que se está editando. No es un problema hoy con catálogos cortos, pero no
-   escala. _Categoría: estados. Requiere: mostrar el error junto a la fila._
+2. **[P3] `.field__hint` sin campo asociado** — `order-items-form.tsx` usa
+   ahora `.text-muted` para "Elige un cliente para ver sus precios". Es una
+   instrucción sobre el formulario entero, no la ayuda de un input concreto,
+   que es como `.field__hint` se usa en el resto del código: siempre debajo
+   del campo que describe.
+
+3. **[P3] Error de fila lejos de la fila** — en `container-types-page.tsx` y
+   `customer-prices-section.tsx`, el estado del error de una acción pasó de
+   `string` a `{ id, message }`, y el mensaje se renderiza en una fila
+   propia inmediatamente debajo de la fila que falló.
+
+   Fila aparte y no dentro de la celda de acciones: esa columna es angosta y
+   un mensaje ahí desborda la tabla — un problema real, visto en la pantalla
+   de usuarios, donde un texto de confirmación largo empujó los botones fuera
+   de la vista. En una fila propia el error queda pegado a su contexto y con
+   ancho para leerse entero.
+
+## Pendiente
+
+Nada. La cola de hallazgos de la auditoría de `chore/design-baseline` quedó
+vacía: los P1/P2 se cerraron en su momento y los tres P3 acá.
+
+Dos hallazgos de accesibilidad que figuraban como pendientes en la nota de
+trabajo que originó este PR ya estaban resueltos por el PR #86, y se verificó
+contra el código antes de tocar nada:
+
+- El `aria-label` sobre un `<span>` genérico en `container-counts-page.tsx`
+  e `inventory-page.tsx` ya es `aria-hidden` + `.visually-hidden` (ver la
+  nota en "Resuelto: los tres hallazgos no-P3" arriba).
+- El botón "Reintentar" de `customer-quick-search.tsx` ya no queda dentro de
+  un `role="listbox"`: ese rol se aplica condicionalmente, solo cuando hay
+  resultados y no hay error, así que el estado de error no es una lista de
+  opciones con un botón adentro.

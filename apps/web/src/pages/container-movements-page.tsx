@@ -481,7 +481,7 @@ export function ContainerMovementsPage() {
       <section className="card">
         <div className="card__body">
           <h2>Historial</h2>
-          <p className="page-header__subtitle">
+          <p className="text-muted">
             {isLoadingList && result === null
               ? "Cargando…"
               : `${total} ${total === 1 ? "movimiento" : "movimientos"}${hasFilters ? " con este filtro" : ""}`}

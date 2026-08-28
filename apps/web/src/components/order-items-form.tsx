@@ -243,7 +243,11 @@ export function OrderItemsForm({
 
   return (
     <div className="order-items">
-      {noCustomer && <p className="field__hint">Elige un cliente para ver sus precios.</p>}
+      {/* `.text-muted` y no `.field__hint`: es una instrucción sobre el
+          formulario entero, no la ayuda de un input concreto — que es como se
+          usa `.field__hint` en el resto del código, siempre debajo del campo
+          al que describe. */}
+      {noCustomer && <p className="text-muted">Elige un cliente para ver sus precios.</p>}
       {pricesLoadError && (
         <p className="notice notice--info" role="status">
           No se pudieron cargar los precios pactados: se usa el precio de lista. {pricesLoadError}

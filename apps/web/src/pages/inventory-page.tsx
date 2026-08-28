@@ -117,7 +117,7 @@ export function InventoryPage() {
                 </table>
               </div>
 
-              <p className="page-header__subtitle">
+              <p className="text-muted">
                 Total general: <strong>{total}</strong> {total === 1 ? "envase" : "envases"}
               </p>
             </>
