@@ -48,6 +48,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/zones" className="app-bar__link">
             Zonas
           </NavLink>
+          <NavLink to="/users" className="app-bar__link">
+            Usuarios
+          </NavLink>
         </nav>
         <div className="app-bar__user">
           <span>{user?.username}</span>

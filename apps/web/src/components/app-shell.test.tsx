@@ -16,6 +16,7 @@ const NAV_LINKS = [
   "Tipos de envase",
   "Contar envases",
   "Zonas",
+  "Usuarios",
 ];
 
 describe("AppShell", () => {
@@ -24,7 +25,7 @@ describe("AppShell", () => {
     signIn();
   });
 
-  it("muestra los once enlaces dentro de un único <nav aria-label='Principal'>", async () => {
+  it("muestra los doce enlaces dentro de un único <nav aria-label='Principal'>", async () => {
     renderWithProviders(
       <AppShell>
         <p>Contenido</p>
@@ -66,7 +67,7 @@ describe("AppShell", () => {
     expect(pagos.closest(".app-bar__nav-group")).toBeNull();
   });
 
-  it("«Zonas» va al final, fuera del grupo de envases", async () => {
+  it("«Zonas» y «Usuarios» cierran la barra, fuera del grupo de envases", async () => {
     renderWithProviders(
       <AppShell>
         <p>Contenido</p>
@@ -75,9 +76,14 @@ describe("AppShell", () => {
 
     const nav = await screen.findByRole("navigation", { name: "Principal" });
     const zonas = within(nav).getByRole("link", { name: "Zonas" });
+    const usuarios = within(nav).getByRole("link", { name: "Usuarios" });
     const links = within(nav).getAllByRole("link");
 
     expect(zonas.closest(".app-bar__nav-group")).toBeNull();
-    expect(links.at(-1)).toBe(zonas);
+    expect(usuarios.closest(".app-bar__nav-group")).toBeNull();
+    // Administración al final: usuarios es lo último que se toca en un día
+    // normal, y lo primero que hace falta al dar de alta a alguien nuevo.
+    expect(links.at(-1)).toBe(usuarios);
+    expect(links.at(-2)).toBe(zonas);
   });
 });
