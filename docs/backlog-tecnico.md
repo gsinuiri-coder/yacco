@@ -114,6 +114,34 @@ cargado de ahí en vez del texto libre — el mismo patrón que `api/products.ts
 y el `<select>` de producto en `order-items-form.tsx`. Hasta entonces,
 `zoneId` solo se puede poblar por API.
 
+## La gestión de usuarios no cambia contraseñas ni roles
+
+**Estado:** abierto. **Disparador:** cuando alguien olvide su contraseña, o
+cuando haya que corregir un rol mal asignado sin dar de alta a la persona de
+nuevo.
+
+`apps/web/src/pages/users-page.tsx` cubre las cuatro operaciones que
+bloqueaban trabajo real: dar de alta, renombrar, desactivar y reactivar.
+`PATCH /api/v1/users/:id` acepta además `password` y `roles`, y la pantalla
+**no** los expone.
+
+**Razón:** ninguna de las dos era lo que impedía operar —un chofer nuevo sí lo
+impedía, y entraba por CLI o por Swagger— y cada una es una decisión con su
+propia forma, no un campo más en el formulario:
+
+- **Contraseña:** ¿quién puede resetearle la contraseña a quién? ¿el
+  administrador la elige y se la dicta, o el sistema genera una temporal que
+  la persona cambia al entrar? ¿qué pasa con la sesión que esa persona tenga
+  abierta en ese momento? Hoy nada invalida un access token ya emitido.
+- **Roles:** quitarle DRIVER a alguien que tiene rutas planificadas deja esas
+  rutas asignadas a un usuario que ya no es chofer, y `RoutesService.create`
+  solo valida el rol al crear la ruta, nunca después.
+
+**Para cerrarla:** decidir con el dueño de la planta el flujo de reseteo de
+contraseña (y si hace falta invalidar sesiones, que es su propio trabajo sobre
+`auth`), y qué pasa con las rutas ya planificadas al quitar el rol de chofer.
+Recién entonces agregar los campos: el endpoint ya los acepta.
+
 ## No hay gestión del catálogo payment-methods
 
 **Estado:** abierto. **Disparador:** cuando aparezca un medio de cobro fuera

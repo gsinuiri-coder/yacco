@@ -21,6 +21,7 @@ import { RouteCreatePage } from "./pages/route-create-page";
 import { RouteDetailPage } from "./pages/route-detail-page";
 import { RouteSettlementPage } from "./pages/route-settlement-page";
 import { RoutesPage } from "./pages/routes-page";
+import { UsersPage } from "./pages/users-page";
 import { ZonesPage } from "./pages/zones-page";
 import { ProtectedRoute } from "./routes/protected-route";
 
@@ -50,6 +51,7 @@ export function App() {
           <Route path="/container-counts" element={<ContainerCountsPage />} />
           <Route path="/container-reconciliation" element={<ContainerReconciliationPage />} />
           <Route path="/zones" element={<ZonesPage />} />
+          <Route path="/users" element={<UsersPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

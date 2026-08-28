@@ -38,3 +38,33 @@ export function listUsers(apiClient: ApiClient, params: UserListParams = {}): Pr
   const query = buildListQuery(params);
   return apiClient.request<User[]>(`/users${query ? `?${query}` : ""}`);
 }
+
+/** Longitud mínima de la contraseña; espeja `@MinLength(8)` de CreateUserDto. */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/** CreateUserDto. Un usuario nace activo: `active` no se acepta al crear. */
+export interface CreateUserBody {
+  name: string;
+  username: string;
+  password: string;
+  roles: UserRole[];
+}
+
+/**
+ * UpdateUserDto, recortado a lo que la pantalla de usuarios ofrece: renombrar
+ * y activar/desactivar. La API también acepta `password` y `roles`, pero esta
+ * pantalla no los expone — ver docs/backlog-tecnico.md, "La gestión de
+ * usuarios no cambia contraseñas ni roles".
+ */
+export interface UpdateUserBody {
+  name?: string;
+  active?: boolean;
+}
+
+export function createUser(apiClient: ApiClient, body: CreateUserBody): Promise<User> {
+  return apiClient.request<User>("/users", { method: "POST", body });
+}
+
+export function updateUser(apiClient: ApiClient, id: string, body: UpdateUserBody): Promise<User> {
+  return apiClient.request<User>(`/users/${id}`, { method: "PATCH", body });
+}
