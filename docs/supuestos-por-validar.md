@@ -98,6 +98,42 @@ que dijo que sí.
   emitido» en `backlog-tecnico.md`, que además arrastra el caso de desactivar
   y reactivar.
 
+### 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea
+
+- **Asumimos:** que si el administrador le quita «Chofer» a alguien que todavía
+  tiene rutas sin cerrar, corresponde **avisarle cuántas** y dejarlo decidir, en
+  vez de impedírselo hasta que las cierre.
+- **Construido encima:** el bloque «Roles» de `apps/web/src/pages/users-page.tsx`
+  consulta las rutas `PLANNED` e `IN_PROGRESS` de esa persona y pide
+  confirmación diciendo el número. Si la consulta falla, se confirma igual
+  diciendo que no se pudo verificar. Es coherente con la filosofía del resto del
+  sistema —el límite de crédito advierte y no bloquea, una liquidación con
+  descuadre cierra igual—, pero eso es una inferencia nuestra, no algo que él
+  haya dicho de este caso.
+- **Preguntar:** si le saca el permiso de repartir a alguien que todavía tiene
+  reparto pendiente, ¿quiere que el sistema se lo deje hacer avisándole, o
+  prefiere que no lo deje hasta que esas rutas estén cerradas?
+- **Si dice que no:** barato en la pantalla —el botón de confirmar se
+  deshabilita en vez de guardar— pero hay que decidir antes qué pasa si la
+  consulta de rutas falla: bloquear por no poder verificar deja al
+  administrador sin poder corregir un rol por un problema de red.
+
+### 6. Las rutas conservan al chofer que las hizo
+
+- **Asumimos:** que al quitarle el rol de chofer a alguien, sus rutas ya
+  planificadas o en curso **siguen a su nombre**, sin reasignarse ni cancelarse.
+- **Construido encima:** el cambio de roles no toca `routes` en absoluto.
+  Descansa en que `route.driverId` es un hecho histórico y en que ADMIN y SELLER
+  pueden terminar cualquier ruta desde la oficina
+  (`assertCanAccessRoute`), así que ninguna queda trabada.
+- **Preguntar:** cuando alguien deja de repartir, ¿la ruta que ya salió a su
+  nombre tiene que seguir figurando como suya, o prefiere pasársela a otro
+  chofer?
+- **Si dice que no:** caro, y toca dominio. Reasignar una ruta cerrada o en
+  curso significa decidir qué pasa con lo ya entregado y cobrado en esa ruta, y
+  con la liquidación pendiente. No es un campo editable: es una operación con su
+  propia forma, y probablemente su propia entrada de backlog.
+
 ## Validados
 
 _Ninguno todavía._

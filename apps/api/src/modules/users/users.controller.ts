@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
   ApiForbiddenResponse,
@@ -12,6 +13,7 @@ import { UserRole } from "@prisma/client";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
+import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { CreateUserDto } from "./dto/create-user.dto.js";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto.js";
 import { UpdateUserDto } from "./dto/update-user.dto.js";
@@ -50,8 +52,18 @@ export class UsersController {
 
   @ApiResponse({ status: 200, type: UserResponseDto })
   @ApiNotFoundResponse({ description: "User id does not exist" })
+  @ApiBadRequestResponse({
+    description: "Validation failed, or the actor tried to deactivate or demote themselves",
+  })
   @Patch(":id")
-  update(@Param("id") id: string, @Body() dto: UpdateUserDto): Promise<UserResponseDto> {
-    return this.usersService.update(id, dto);
+  // El actor sale del token, nunca del body: quién manda el cambio es lo que
+  // decide si la guarda de auto-degradación aplica, y eso no puede venir del
+  // cliente. Mismo patrón que `actorFrom` en routes.controller.ts.
+  update(
+    @Param("id") id: string,
+    @Body() dto: UpdateUserDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<UserResponseDto> {
+    return this.usersService.update(id, dto, request.user.sub);
   }
 }

@@ -1,9 +1,12 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { UserRole } from "@prisma/client";
 import { jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { UsersService } from "./users.service.js";
+
+/** Actor por defecto de los tests: un id que no es el del usuario editado. */
+const ADMIN_ACTOR = "actor-admin";
 
 // Gherkin quoted from spec §2.4, HU-22:
 // "Dado el rol administrador, cuando creo un usuario con los roles vendedor y
@@ -158,7 +161,7 @@ describe("UsersService", () => {
       prisma.userRoleAssignment.deleteMany.mockResolvedValue({ count: 2 });
       prisma.userRoleAssignment.createMany.mockResolvedValue({ count: 1 });
 
-      const result = await service.update("user-1", { roles: [UserRole.ADMIN] });
+      const result = await service.update("user-1", { roles: [UserRole.ADMIN] }, ADMIN_ACTOR);
 
       expect(prisma.userRoleAssignment.deleteMany).toHaveBeenCalledWith({
         where: { userId: "user-1" },
@@ -174,9 +177,74 @@ describe("UsersService", () => {
         Object.assign(new Error("Record not found"), { code: "P2025" }),
       );
 
-      await expect(service.update("missing", { active: false })).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.update("missing", { active: false }, ADMIN_ACTOR),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    /*
+     * Nadie puede cerrarse la puerta desde adentro. Las dos mitades son la
+     * misma guarda: hasta ahora la de desactivar vivía solo en la web
+     * (`users-page.tsx` no ofrece "Desactivar" en la propia fila) y Swagger o
+     * un `curl` la salteaban.
+     *
+     * Lo que estos tests fijan además de los dos rechazos: que la guarda mira
+     * SOLO al actor, sin contar administradores. Si nadie puede quitarse a sí
+     * mismo, siempre queda al menos quien está haciendo el cambio.
+     */
+    describe("guarda de auto-degradación", () => {
+      it("el actor no puede desactivarse a sí mismo", async () => {
+        await expect(
+          service.update(ADMIN_ACTOR, { active: false }, ADMIN_ACTOR),
+        ).rejects.toBeInstanceOf(BadRequestException);
+
+        expect(prisma.user.update).not.toHaveBeenCalled();
+      });
+
+      it("el actor no puede quitarse a sí mismo el rol ADMIN", async () => {
+        await expect(
+          service.update(ADMIN_ACTOR, { roles: [UserRole.SELLER] }, ADMIN_ACTOR),
+        ).rejects.toBeInstanceOf(BadRequestException);
+
+        expect(prisma.userRoleAssignment.deleteMany).not.toHaveBeenCalled();
+      });
+
+      it("el actor sí puede cambiarse otras cosas: nombre, contraseña y roles que conserven ADMIN", async () => {
+        prisma.user.update.mockResolvedValue({
+          id: ADMIN_ACTOR,
+          name: "Nuevo Nombre",
+          username: "admin",
+          active: true,
+        });
+        prisma.role.findMany.mockResolvedValue([
+          { id: "role-admin", name: UserRole.ADMIN },
+          { id: "role-driver", name: UserRole.DRIVER },
+        ]);
+        prisma.userRoleAssignment.deleteMany.mockResolvedValue({ count: 1 });
+        prisma.userRoleAssignment.createMany.mockResolvedValue({ count: 2 });
+
+        const result = await service.update(
+          ADMIN_ACTOR,
+          { name: "Nuevo Nombre", roles: [UserRole.ADMIN, UserRole.DRIVER] },
+          ADMIN_ACTOR,
+        );
+
+        expect(result.roles).toEqual([UserRole.ADMIN, UserRole.DRIVER]);
+      });
+
+      it("la guarda mira al actor, no al rol: desactivar a otro administrador se permite", async () => {
+        prisma.user.update.mockResolvedValue({
+          id: "otro-admin",
+          name: "Otro Admin",
+          username: "otro",
+          active: false,
+        });
+        prisma.userRoleAssignment.findMany.mockResolvedValue([{ role: { name: UserRole.ADMIN } }]);
+
+        const result = await service.update("otro-admin", { active: false }, ADMIN_ACTOR);
+
+        expect(result.active).toBe(false);
+      });
     });
   });
 });

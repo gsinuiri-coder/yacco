@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { PrismaService } from "../../prisma/prisma.service.js";
@@ -89,7 +94,32 @@ export class UsersService {
     return users.map((user) => this.toSafeUserWithRoles(user));
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<UserResponseDto> {
+  /**
+   * `actorId` es quien manda el cambio, sacado del token en el controller.
+   *
+   * Existe solo para una guarda: nadie puede cerrarse la puerta desde adentro,
+   * ni quitándose el rol ADMIN ni desactivándose. Hasta ahora esa regla vivía
+   * únicamente en la web (`users-page.tsx` no ofrece "Desactivar" en la propia
+   * fila), y Swagger o un `curl` la salteaban.
+   *
+   * **No hace falta contar administradores, y no se debe.** Si nadie puede
+   * quitarse a sí mismo, siempre queda al menos quien está haciendo el cambio:
+   * la invariante «existe un ADMIN activo» se sostiene sin mirar a los demás.
+   * Un `countAdmins()` agregaría una consulta y una condición de carrera —dos
+   * administradores degradándose a la vez, cada uno viendo al otro— sin cubrir
+   * ningún caso que esta guarda deje afuera. Es el primer refactor que alguien
+   * va a querer hacerle; no lo hagas.
+   */
+  async update(id: string, dto: UpdateUserDto, actorId: string): Promise<UserResponseDto> {
+    if (actorId === id) {
+      if (dto.active === false) {
+        throw new BadRequestException("You cannot deactivate your own user");
+      }
+      if (dto.roles !== undefined && !dto.roles.includes(UserRole.ADMIN)) {
+        throw new BadRequestException("You cannot remove your own ADMIN role");
+      }
+    }
+
     const passwordHash = dto.password
       ? await bcrypt.hash(dto.password, PASSWORD_HASH_ROUNDS)
       : undefined;

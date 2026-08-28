@@ -364,6 +364,17 @@ textarea:disabled {
   gap: var(--space-2) var(--space-4);
 }
 
+/* Una casilla por línea, para las que llevan al lado el texto de qué habilita
+   ese rol: en fila, ese texto empuja a las demás fuera de la vista. */
+.checkbox-group--stacked {
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.checkbox-group--stacked .checkbox-field {
+  align-items: flex-start;
+}
+
 /* --- Buttons -------------------------------------------------------------- */
 
 .button {
