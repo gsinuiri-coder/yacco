@@ -120,6 +120,23 @@ async function addVanSaleStop(token: string, routeId: string): Promise<string> {
 }
 
 let batchCounter = 0;
+/**
+ * Cada lote nace UN DÍA MÁS VIEJO que el anterior, a propósito. `POST
+ * /routes/:id/loads` exige el lote más antiguo con unidades disponibles de
+ * ese tipo de envase (FIFO), y estos tests comparten un único
+ * `containerTypeId`: con una fecha fija, el sobrante de un test anterior
+ * sería la cabeza del FIFO y toda carga posterior se rechazaría. Fechándolos
+ * hacia atrás, el lote recién creado es siempre el que la regla manda cargar,
+ * que es justo lo que cada test quiere decir al pedirlo.
+ *
+ * La aritmética va en UTC, igual que `parseBusinessDate`/`formatBusinessDate`
+ * de la API: construirla con partes locales dejaría que la zona horaria de
+ * quien corre los tests corriera el día.
+ */
+function nextBatchDate(): string {
+  const base = Date.UTC(2026, 7, 1);
+  return new Date(base - batchCounter * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 /** A fresh ProductionBatch with one item, so each test controls its own stock. */
 async function createBatchItem(producedQty: number): Promise<string> {
   batchCounter += 1;
@@ -128,7 +145,7 @@ async function createBatchItem(producedQty: number): Promise<string> {
     .set("Authorization", `Bearer ${adminToken}`)
     .send({
       code: `LOTE-RUTAS-${batchCounter}`,
-      date: "2026-08-01",
+      date: nextBatchDate(),
       items: [{ containerTypeId, producedQty }],
     })
     .expect(201);
@@ -1080,6 +1097,87 @@ describe("POST /api/v1/routes/:id/loads", () => {
 
     const batchItem = await prisma.batchItem.findUniqueOrThrow({ where: { id: batchItemId } });
     expect(batchItem.availableQty).toBe(10);
+  });
+
+  /**
+   * El FIFO se prueba sobre un tipo de envase propio: así ningún sobrante de
+   * otro test puede ser la cabeza del FIFO y la aserción nombra exactamente
+   * el lote que se espera. De paso deja demostrado que la regla se acota por
+   * tipo de envase, no por toda la planta.
+   */
+  describe("FIFO: el lote más antiguo con stock", () => {
+    let fifoSeq = 0;
+
+    /**
+     * Un tipo de envase nuevo por test, con dos lotes suyos: el sobrante de
+     * un test hermano no puede convertirse en la cabeza del FIFO del
+     * siguiente, y la aserción nombra exactamente el lote que se espera.
+     */
+    async function createFifoPair(): Promise<{ oldItemId: string; newItemId: string }> {
+      fifoSeq += 1;
+      const containerType = await request(server())
+        .post("/api/v1/container-types")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ name: `Envase FIFO ${fifoSeq} (rutas)` })
+        .expect(201);
+
+      const batch = async (code: string, date: string) => {
+        const response = await request(server())
+          .post("/api/v1/production-batches")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({
+            code,
+            date,
+            items: [{ containerTypeId: containerType.body.id, producedQty: 40 }],
+          })
+          .expect(201);
+        return response.body.items[0].id as string;
+      };
+
+      return {
+        oldItemId: await batch(`LOTE-FIFO-VIEJO-${fifoSeq}`, "2026-05-01"),
+        newItemId: await batch(`LOTE-FIFO-NUEVO-${fifoSeq}`, "2026-05-02"),
+      };
+    }
+
+    test("rechaza el lote nuevo mientras el viejo tenga unidades, y nombra cuál cargar", async () => {
+      const { newItemId: newBatchItemId } = await createFifoPair();
+      const routeId = await createRoute(adminToken, { date: nextDate() });
+
+      const response = await addLoad(adminToken, routeId, newBatchItemId, 5);
+
+      expect(response.status).toBe(400);
+      expect(messagesOf(response)).toContain("LOTE-FIFO-VIEJO");
+
+      // Nada se descontó: el guard corre antes del UPDATE.
+      const untouched = await prisma.batchItem.findUniqueOrThrow({
+        where: { id: newBatchItemId },
+      });
+      expect(untouched.availableQty).toBe(40);
+    });
+
+    test("acepta el lote nuevo recién cuando el viejo se quedó sin unidades", async () => {
+      const { oldItemId, newItemId } = await createFifoPair();
+      const routeId = await createRoute(adminToken, { date: nextDate() });
+
+      await addLoad(adminToken, routeId, oldItemId, 40).then((r) => expect(r.status).toBe(201));
+      const response = await addLoad(adminToken, routeId, newItemId, 10);
+
+      expect(response.status).toBe(201);
+      expect(response.body.batchItemId).toBe(newItemId);
+    });
+
+    test("los lotes viejos de OTRO tipo de envase no bloquean la carga", async () => {
+      const { oldItemId } = await createFifoPair();
+      const routeId = await createRoute(adminToken, { date: nextDate() });
+
+      // El `containerTypeId` compartido del archivo arrastra sobrantes de
+      // otros tests, más viejos que estos dos lotes: si el guard no se acotara
+      // por tipo de envase, este 201 sería un 400.
+      const response = await addLoad(adminToken, routeId, oldItemId, 5);
+
+      expect(response.status).toBe(201);
+    });
   });
 
   test("rejects an unknown batchItemId", async () => {

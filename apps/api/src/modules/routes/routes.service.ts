@@ -635,6 +635,9 @@ export class RoutesService {
    * loading the same batchItem at once must have exactly one of them win,
    * not both succeed against stock that only covers one.
    *
+   * El `batchItemId` que llega tiene que ser el del lote más antiguo con
+   * unidades de ese tipo de envase: ver `assertIsOldestBatchItemWithStock`.
+   *
    * Loading the same batchItem twice on one route inserts a NEW RouteLoad
    * row rather than incrementing an existing one ("suma, no reemplaza" is
    * satisfied by summing the rows, not by a running total column): each
@@ -661,6 +664,8 @@ export class RoutesService {
     }
 
     const load = await this.prisma.$transaction(async (tx) => {
+      await assertIsOldestBatchItemWithStock(tx, batchItem);
+
       const { count } = await tx.batchItem.updateMany({
         where: { id: dto.batchItemId, availableQty: { gte: dto.quantity } },
         data: { availableQty: { decrement: dto.quantity } },
@@ -769,6 +774,47 @@ export class RoutesService {
     assertCanAccessRoute(actor, route);
     return route;
   }
+}
+
+/**
+ * FIFO estricto: la carga de una ruta consume el lote más antiguo que
+ * todavía tenga unidades de ese tipo de envase (CLAUDE.md, invariante de
+ * dominio). Hasta acá la regla la sostenía únicamente el reparto que hace la
+ * web (`apps/web/src/lib/fifo-load-plan.ts`): cualquier otro cliente —el
+ * móvil, un script, Swagger— podía mandar el batchItem que quisiera y el
+ * servidor lo aceptaba. Una invariante que solo vive en un cliente no es una
+ * invariante.
+ *
+ * El orden es el mismo que devuelve `GET /production-batches`
+ * (`[{ date: "asc" }, { code: "asc" }]`): fecha del lote, y el código como
+ * desempate cuando dos lotes son del mismo día. `code` es único, así que el
+ * "más antiguo" nunca es ambiguo.
+ *
+ * La comprobación va DENTRO de la transacción de `addLoad` y con su mismo
+ * cliente: leerla afuera dejaría una ventana en la que otra carga agota el
+ * lote viejo y el que acá parecía correcto deja de serlo.
+ *
+ * `oldest === null` significa que ningún lote de ese tipo tiene unidades —
+ * incluido el pedido. No es un error de orden sino de stock, así que se deja
+ * pasar para que lo reporte el UPDATE guardado de abajo con su mensaje.
+ */
+async function assertIsOldestBatchItemWithStock(
+  tx: Prisma.TransactionClient,
+  batchItem: { id: string; containerTypeId: string },
+): Promise<void> {
+  const oldest = await tx.batchItem.findFirst({
+    where: { containerTypeId: batchItem.containerTypeId, availableQty: { gt: 0 } },
+    orderBy: [{ batch: { date: "asc" } }, { batch: { code: "asc" } }],
+    select: { id: true, batch: { select: { code: true } } },
+  });
+
+  if (oldest === null || oldest.id === batchItem.id) {
+    return;
+  }
+
+  throw new BadRequestException(
+    `Primero hay que cargar el lote "${oldest.batch.code}", que es el más antiguo con unidades disponibles de ese tipo de envase`,
+  );
 }
 
 /** PLANNED and IN_PROGRESS may still be edited; FINISHED never is. */

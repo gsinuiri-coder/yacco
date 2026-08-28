@@ -140,6 +140,9 @@ function buildPrismaMock() {
     },
     batchItem: {
       findUnique: jest.fn<() => Promise<unknown>>(),
+      // Solo lo usa el guard de FIFO de addLoad; cada test de carga decide
+      // cuál es el lote más antiguo con stock.
+      findFirst: jest.fn<() => Promise<unknown>>(),
       updateMany: jest.fn<() => Promise<unknown>>(),
       update: jest.fn<() => Promise<unknown>>(),
     },
@@ -194,6 +197,12 @@ describe("RoutesService", () => {
       Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => Promise<unknown>)(prisma),
     );
     prisma.sale.findFirst.mockResolvedValue(null);
+    // Por defecto, el lote pedido ES el más antiguo con stock: así los tests
+    // de carga que no van sobre el FIFO no tienen que decirlo cada vez.
+    prisma.batchItem.findFirst.mockResolvedValue({
+      id: BATCH_ITEM_ID,
+      batch: { code: "LOTE-001" },
+    });
     containerMovements = buildContainerMovementsMock();
     sales = buildSalesMock();
 
@@ -1096,6 +1105,52 @@ describe("RoutesService", () => {
         service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.batchItem.findUnique).not.toHaveBeenCalled();
+    });
+
+    // La invariante FIFO de CLAUDE.md, ahora sostenida por el servidor y no
+    // por el reparto que hace la web.
+    it("busca el lote más antiguo con stock del MISMO tipo de envase, por fecha y luego código", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.batchItem.findUnique.mockResolvedValue(buildBatchItem());
+      prisma.batchItem.updateMany.mockResolvedValue({ count: 1 });
+      prisma.routeLoad.create.mockResolvedValue(buildLoad());
+
+      await service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor);
+
+      expect(prisma.batchItem.findFirst).toHaveBeenCalledWith({
+        where: { containerTypeId: CONTAINER_TYPE_ID, availableQty: { gt: 0 } },
+        orderBy: [{ batch: { date: "asc" } }, { batch: { code: "asc" } }],
+        select: { id: true, batch: { select: { code: true } } },
+      });
+    });
+
+    it("rechaza un lote que no es el más antiguo con stock, y nombra el que sí lo es", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.batchItem.findUnique.mockResolvedValue(buildBatchItem());
+      prisma.batchItem.findFirst.mockResolvedValue({
+        id: "aaaa0000-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        batch: { code: "LOTE-VIEJO" },
+      });
+
+      await expect(
+        service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor),
+      ).rejects.toThrow("LOTE-VIEJO");
+      expect(prisma.batchItem.updateMany).not.toHaveBeenCalled();
+      expect(containerMovements.createWithinTransaction).not.toHaveBeenCalled();
+      expect(prisma.routeLoad.create).not.toHaveBeenCalled();
+    });
+
+    // Sin ningún lote con stock, el problema no es el orden sino el stock:
+    // lo reporta el UPDATE guardado, con su propio mensaje.
+    it("sin ningún lote con stock deja pasar el guard y falla por stock insuficiente", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.batchItem.findUnique.mockResolvedValue(buildBatchItem());
+      prisma.batchItem.findFirst.mockResolvedValue(null);
+      prisma.batchItem.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor),
+      ).rejects.toThrow("Stock insuficiente");
     });
   });
 
