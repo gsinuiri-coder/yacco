@@ -2,17 +2,24 @@
  * Reparto FIFO de una carga de ruta entre los lotes disponibles.
  *
  * La regla es del dominio, no de la pantalla: "Route loading consumes batches
- * strictly FIFO (oldest batch date first)" (CLAUDE.md). `POST
- * /routes/:id/loads` acepta el `batchItemId` que le manden y no verifica el
- * orden, así que ofrecer un selector de lotes sería ofrecer una forma de
- * romper la regla con un clic — y además le pediría al usuario un
- * identificador que no tiene forma de conocer. En su lugar, la oficina dice
- * "50 bidones" y esto decide de qué lotes salen.
+ * strictly FIFO (oldest batch date first)" (CLAUDE.md), y desde el PR del
+ * FIFO en el servidor la garantiza la API: `POST /routes/:id/loads` rechaza
+ * con 400 un `batchItemId` que no sea el del lote más antiguo con unidades de
+ * ese tipo de envase (`assertIsOldestBatchItemWithStock` en
+ * `apps/api/src/modules/routes/routes.service.ts`).
+ *
+ * Esto, entonces, no es lo que sostiene la invariante: es la comodidad que
+ * le evita al usuario tener que adivinarla. La oficina dice "50 bidones" y
+ * esta función decide de qué lotes salen, en el mismo orden que la API va a
+ * exigir — así el formulario nunca arma una carga que el servidor va a
+ * rechazar, y nunca hay que pedirle a nadie un `batchItemId`, que es un
+ * identificador que no tiene forma de conocer.
  *
  * Nada de esto adivina el orden: los lotes llegan ya ordenados por fecha
  * ascendente y código ascendente desde `GET /production-batches`
- * (`orderBy: [{ date: "asc" }, { code: "asc" }]`), que es exactamente el
- * orden FIFO. Esta función respeta el orden en que los recibe.
+ * (`orderBy: [{ date: "asc" }, { code: "asc" }]`), el mismo `orderBy` con el
+ * que el servidor busca la cabeza del FIFO. Esta función respeta el orden en
+ * que los recibe.
  */
 import type { ProductionBatch } from "../api/production-batches";
 

@@ -85,6 +85,23 @@ async function createFreshLocation(): Promise<{ customerId: string; locationId: 
 }
 
 let batchCounter = 0;
+/**
+ * Cada lote nace UN DÍA MÁS VIEJO que el anterior, a propósito. `POST
+ * /routes/:id/loads` exige el lote más antiguo con unidades disponibles de
+ * ese tipo de envase (FIFO), y estos tests comparten un único
+ * `containerTypeId`: con una fecha fija, el sobrante de un test anterior
+ * sería la cabeza del FIFO y toda carga posterior se rechazaría. Fechándolos
+ * hacia atrás, el lote recién creado es siempre el que la regla manda cargar,
+ * que es justo lo que cada test quiere decir al pedirlo.
+ *
+ * La aritmética va en UTC, igual que `parseBusinessDate`/`formatBusinessDate`
+ * de la API: construirla con partes locales dejaría que la zona horaria de
+ * quien corre los tests corriera el día.
+ */
+function nextBatchDate(): string {
+  const base = Date.UTC(2026, 7, 1);
+  return new Date(base - batchCounter * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 async function createBatchItem(producedQty: number): Promise<string> {
   batchCounter += 1;
   const response = await request(server())
@@ -92,7 +109,7 @@ async function createBatchItem(producedQty: number): Promise<string> {
     .set("Authorization", `Bearer ${adminToken}`)
     .send({
       code: `LOTE-LIQUIDACION-${batchCounter}`,
-      date: "2026-08-01",
+      date: nextBatchDate(),
       items: [{ containerTypeId, producedQty }],
     })
     .expect(201);

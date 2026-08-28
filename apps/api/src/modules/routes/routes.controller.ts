@@ -229,11 +229,16 @@ export class RoutesController {
 
   // Cargo is office work, same as planning: a DRIVER only ever reads what
   // was loaded onto their own truck (see the class-level ownership note).
-  @ApiOperation({ summary: "Carga unidades de un ítem de lote al camión de la ruta" })
+  @ApiOperation({
+    summary: "Carga unidades de un ítem de lote al camión de la ruta",
+    description:
+      "El lote tiene que ser el más antiguo con unidades disponibles de ese tipo de envase (FIFO)",
+  })
   @ApiResponse({ status: 201, type: RouteLoadResponseDto })
   @ApiNotFoundResponse({ description: "Route id does not exist" })
   @ApiBadRequestResponse({
-    description: "Validation failed, the batch item is missing, or there isn't enough stock",
+    description:
+      "Validation failed, the batch item is missing, it is not the FIFO head, or there isn't enough stock",
   })
   @ApiConflictResponse({ description: "Route is FINISHED" })
   @Roles(UserRole.ADMIN, UserRole.SELLER)
