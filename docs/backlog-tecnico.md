@@ -3,6 +3,12 @@
 Deuda aceptada a conciencia. Cada entrada dice qué se hizo, por qué se aceptó
 y cuál es el disparador que obliga a resolverla.
 
+> **Documento hermano:** [`supuestos-por-validar.md`](./supuestos-por-validar.md)
+> — decisiones de producto tomadas sin preguntarle al dueño de la planta, con
+> código encima. No son deuda técnica: son las preguntas que hay que hacerle en
+> la próxima demo. Si una entrada de acá depende de que un supuesto sea cierto,
+> lo dice y apunta ahí.
+
 ## Refresh token en localStorage
 
 **Estado:** abierto. **Disparador:** antes del piloto de campo.
@@ -132,25 +138,20 @@ anotan como supuestos y no como decisiones suyas a propósito: el día que diga
 que prefiere otra cosa, este documento tiene que mostrar que nunca se lo
 preguntamos, no que dijo que sí.
 
-- **Quién y cómo (supuesto, a validar):** el administrador la elige y se la
-  dicta a la persona. No hay contraseña temporal que la persona cambie al
-  entrar, porque no existe pantalla de «cambiar mi contraseña» en
-  `apps/web/src/pages`: esa temporal no tendría a dónde ir. Si el dueño
-  prefiere dictar una temporal, lo que falta primero es esa pantalla, no un
-  campo más en esta.
-- **El administrador puede cambiarse la suya (supuesto, a validar):** es la
-  forma prevista de rotar `admin123` (ver «Password del admin de
-  producción»). La guarda de `isSelf` que sí tiene «Desactivar» no aplica acá.
-- **Qué pasa con la sesión abierta (verificado, pero la reacción es supuesto):**
-  no se cierra — eso es un hecho del código, fijado por un test en
-  `auth.int.test.ts` y explicado en «No hay forma de invalidar un token ya
-  emitido». Lo que es supuesto es que decírselo en pantalla alcance: si al
-  dueño le resulta inaceptable que alguien siga adentro después del cambio, lo
-  que hace falta es la invalidación de tokens, no otra redacción.
+Las tres viven en
+[`supuestos-por-validar.md`](./supuestos-por-validar.md) —#2, #3 y #4—, con la
+pregunta redactada y qué cambia según lo que conteste. Acá van en una línea:
 
-**Para validarlas:** mostrarle la pantalla en la primera demo en que aparezca
-gestión de usuarios, y anotar acá qué dijo de cada una — confirmándolas o
-abriendo la entrada que corresponda.
+- **Quién y cómo:** el administrador la elige y se la dicta; no hay contraseña
+  temporal, porque no existe pantalla de «cambiar mi contraseña» a la que esa
+  temporal pudiera llevar.
+- **El administrador puede cambiarse la suya:** es la forma prevista de rotar
+  `admin123` (ver «Password del admin de producción»). La guarda de `isSelf`
+  que sí tiene «Desactivar» no aplica acá.
+- **Qué pasa con la sesión abierta:** no se cierra. Eso **no** es supuesto —es
+  un hecho del código, fijado por un test en `auth.int.test.ts` y explicado en
+  «No hay forma de invalidar un token ya emitido». El supuesto es que
+  decírselo en pantalla alcance.
 
 ## La gestión de usuarios no cambia roles
 

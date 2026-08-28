@@ -14,8 +14,14 @@ const RESULTS_ID = "customer-quick-search-results";
  * ficha. Unlike CustomerSelect (a controlled form picker that retains its
  * value for a filter/order line), a pick here navigates immediately and
  * nothing stays selected — so this omits the `active` filter CustomerSelect
- * applies for its own reason: an inactive customer who still owes money is
- * exactly who the owner comes here to find.
+ * applies for its own reason.
+ *
+ * That reason is a WORKING ASSUMPTION, not something the plant owner asked
+ * for: that an inactive customer who still owes money is exactly who he
+ * comes here to find. It was decided between Giancarlo and the architecture
+ * layer; he has not been asked. Listed in docs/supuestos-por-validar.md —
+ * if he says an inactive customer should never surface here, the fix is to
+ * pass `active: true` like CustomerSelect does, not to redesign the search.
  */
 export function CustomerQuickSearch() {
   const { apiClient } = useAuth();
