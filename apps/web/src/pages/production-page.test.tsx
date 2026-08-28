@@ -272,7 +272,7 @@ describe("ProductionPage", () => {
     expect(screen.queryByLabelText("Código")).not.toBeInTheDocument();
   });
 
-  it("lista lotes con código, fecha, responsable y lo producido", async () => {
+  it("lista lotes con código, fecha, responsable, lo producido y lo que queda sin cargar", async () => {
     signIn(["ADMIN"]);
     stubContainerTypes();
     stubBatches(() =>
@@ -288,7 +288,7 @@ describe("ProductionPage", () => {
                 containerTypeId: CON_CANIO.id,
                 containerType: CON_CANIO,
                 producedQty: 60,
-                availableQty: 60,
+                availableQty: 25,
               },
             ],
           }),
@@ -303,6 +303,76 @@ describe("ProductionPage", () => {
     expect(within(row).getByText("20/08/2026")).toBeInTheDocument();
     expect(within(row).getByText("Administrador")).toBeInTheDocument();
     expect(within(row).getByText("60× Con caño")).toBeInTheDocument();
+    // Se produjeron 60 y salieron 35 en alguna ruta: quedan 25 sin cargar.
+    expect(within(row).getByText("25× Con caño")).toBeInTheDocument();
+  });
+
+  it("un lote que ya salió entero dice Todo cargado, no un cero suelto", async () => {
+    signIn(["ADMIN"]);
+    stubContainerTypes();
+    stubBatches(() =>
+      buildPage({
+        data: [
+          buildBatch({
+            code: "LOTE-CONSUMIDO",
+            items: [
+              {
+                id: "item-1",
+                containerTypeId: CON_CANIO.id,
+                containerType: CON_CANIO,
+                producedQty: 60,
+                availableQty: 0,
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    renderProduction();
+
+    const table = await screen.findByRole("table", { name: /Lotes de producción/ });
+    const row = within(table).getByText("LOTE-CONSUMIDO").closest("tr") as HTMLElement;
+    expect(within(row).getByText("60× Con caño")).toBeInTheDocument();
+    expect(within(row).getByText("Todo cargado")).toBeInTheDocument();
+  });
+
+  it("con dos tipos de envase, en Sin cargar solo aparece el que todavía tiene unidades", async () => {
+    signIn(["ADMIN"]);
+    stubContainerTypes();
+    stubBatches(() =>
+      buildPage({
+        data: [
+          buildBatch({
+            code: "LOTE-MIXTO",
+            items: [
+              {
+                id: "item-1",
+                containerTypeId: CON_CANIO.id,
+                containerType: CON_CANIO,
+                producedQty: 60,
+                availableQty: 0,
+              },
+              {
+                id: "item-2",
+                containerTypeId: SIN_CANIO.id,
+                containerType: SIN_CANIO,
+                producedQty: 40,
+                availableQty: 40,
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    renderProduction();
+
+    const table = await screen.findByRole("table", { name: /Lotes de producción/ });
+    const row = within(table).getByText("LOTE-MIXTO").closest("tr") as HTMLElement;
+    expect(within(row).getByText("60× Con caño, 40× Sin caño")).toBeInTheDocument();
+    expect(within(row).getByText("40× Sin caño")).toBeInTheDocument();
+    expect(within(row).queryByText("Todo cargado")).not.toBeInTheDocument();
   });
 
   it("vacío real: sin lotes registrados, sin filtro", async () => {
