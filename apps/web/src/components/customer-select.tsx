@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { listCustomers } from "../api/customers";
 import type { Customer } from "../api/customers";
 import { useAuth } from "../auth/use-auth";
+import { useOutsideClick } from "../hooks/use-outside-click";
 
 const SEARCH_DEBOUNCE_MS = 300;
 const RESULTS_LIMIT = 10;
@@ -65,15 +66,7 @@ export function CustomerSelect({
     };
   }, [apiClient, debouncedQuery]);
 
-  useEffect(() => {
-    function handleOutsideClick(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
+  useOutsideClick(containerRef, () => setIsOpen(false));
 
   function handlePick(customer: Customer) {
     onChange(customer);
