@@ -39,7 +39,10 @@ export function listUsers(apiClient: ApiClient, params: UserListParams = {}): Pr
   return apiClient.request<User[]>(`/users${query ? `?${query}` : ""}`);
 }
 
-/** Longitud mínima de la contraseña; espeja `@MinLength(8)` de CreateUserDto. */
+/**
+ * Longitud mínima de la contraseña; espeja el `@MinLength(8)` que llevan tanto
+ * `CreateUserDto.password` como `UpdateUserDto.password`.
+ */
 export const MIN_PASSWORD_LENGTH = 8;
 
 /** CreateUserDto. Un usuario nace activo: `active` no se acepta al crear. */
@@ -51,13 +54,18 @@ export interface CreateUserBody {
 }
 
 /**
- * UpdateUserDto, recortado a lo que la pantalla de usuarios ofrece: renombrar
- * y activar/desactivar. La API también acepta `password` y `roles`, pero esta
- * pantalla no los expone — ver docs/backlog-tecnico.md, "La gestión de
- * usuarios no cambia contraseñas ni roles".
+ * UpdateUserDto, recortado a lo que la pantalla de usuarios ofrece: renombrar,
+ * activar/desactivar y reponer la contraseña. La API también acepta `roles`,
+ * pero esta pantalla no los expone — ver docs/backlog-tecnico.md, "La gestión
+ * de usuarios no cambia roles".
+ *
+ * `password` viaja en claro por HTTPS y el servidor la hashea con bcrypt
+ * (`UsersService.update`); nunca vuelve en la respuesta, porque
+ * `UserResponseDto` no tiene `passwordHash`.
  */
 export interface UpdateUserBody {
   name?: string;
+  password?: string;
   active?: boolean;
 }
 

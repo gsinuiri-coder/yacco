@@ -97,6 +97,27 @@ function renderPage() {
   return renderWithProviders(<UsersPage />, "/users");
 }
 
+/**
+ * Abre el bloque de cambiar contraseña desde la fila y devuelve el formulario.
+ *
+ * `rowText` es lo que identifica la fila; `name` es el nombre de la persona,
+ * que es lo que el bloque pone en su título.
+ */
+async function openReset(
+  user: ReturnType<typeof userEvent.setup>,
+  rowText: string,
+  name = rowText,
+): Promise<HTMLElement> {
+  const row = await rowOf(rowText);
+  await user.click(within(row).getByRole("button", { name: "Cambiar contraseña" }));
+  return screen.getByRole("form", { name: `Cambiar la contraseña de ${name}` });
+}
+
+/** El botón de enviar del bloque, que a propósito no se llama como el de la fila. */
+function saveNewPassword(): HTMLElement {
+  return screen.getByRole("button", { name: "Guardar contraseña nueva" });
+}
+
 describe("UsersPage", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -327,6 +348,145 @@ describe("UsersPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Base de datos no disponible");
   });
 
+  it("cambiar la contraseña manda solo password", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    const captured = stubUpdate(DRIVER_ID, 200, DRIVER);
+
+    renderPage();
+    await openReset(user, "Luis Quispe");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "clave-nueva-de-luis");
+    await user.click(saveNewPassword());
+
+    await waitFor(() => expect(captured.body).toEqual({ password: "clave-nueva-de-luis" }));
+    expect(
+      await screen.findByText(/Contraseña cambiada\. Díctasela a Luis Quispe/),
+    ).toBeInTheDocument();
+    // El bloque se cierra: dejarlo abierto invita a repetir la reposición.
+    expect(
+      screen.queryByRole("form", { name: "Cambiar la contraseña de Luis Quispe" }),
+    ).not.toBeInTheDocument();
+  });
+
+  // El bloque tiene que decir las dos cosas que la gente confunde: cambiarla no
+  // cierra la sesión abierta, y lo que sí la corta es desactivar.
+  it("el bloque dice que cambiarla no cierra la sesión abierta y qué hacer para eso", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+
+    renderPage();
+    const form = await openReset(user, "Luis Quispe");
+
+    expect(form).toHaveTextContent(
+      "Cambiar la contraseña no cierra la sesión abierta de esa persona",
+    );
+    expect(form).toHaveTextContent("Para que alguien deje de entrar, desactívalo");
+  });
+
+  // Mismo `@MinLength(8)` que el alta, y el mismo criterio: se dice antes de
+  // gastar una llamada.
+  it("una contraseña nueva de menos de 8 caracteres no se envía y lo dice", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    const captured = stubUpdate(DRIVER_ID, 200, DRIVER);
+
+    renderPage();
+    await openReset(user, "Luis Quispe");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "corta");
+    await user.click(saveNewPassword());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "La contraseña debe tener al menos 8 caracteres",
+    );
+    expect(captured.body).toBeUndefined();
+  });
+
+  it("muestra el error del backend al cambiar la contraseña", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    stubUpdate(DRIVER_ID, 500, { message: "Base de datos no disponible" });
+
+    renderPage();
+    await openReset(user, "Luis Quispe");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "clave-nueva-de-luis");
+    await user.click(saveNewPassword());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Base de datos no disponible");
+  });
+
+  // Es la forma de rotar `admin123`: la guarda de `isSelf` de "Desactivar" no
+  // aplica acá. Se abre por el usuario y no por el nombre: el admin se llama
+  // "Administrador" y ese texto también es su rol.
+  it("el administrador puede cambiarse la contraseña a sí mismo", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    const captured = stubUpdate(SELF_ID, 200, SELF);
+
+    renderPage();
+    await openReset(user, "admin", "Administrador");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "clave-rotada");
+    await user.click(saveNewPassword());
+
+    await waitFor(() => expect(captured.body).toEqual({ password: "clave-rotada" }));
+  });
+
+  // La importante de las tres: sin esto, lo tipeado para una persona quedaría
+  // cargado y se enviaría como contraseña de la siguiente.
+  it("cambiar de persona vacía la contraseña tipeada para la anterior", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+
+    renderPage();
+    await openReset(user, "Luis Quispe");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "clave-de-luis");
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await openReset(user, "admin", "Administrador");
+    expect(screen.getByLabelText("Contraseña nueva")).toHaveValue("");
+  });
+
+  // Los dos bloques son hermanos arriba de la tabla y los dos tienen un
+  // "Cancelar"; la confirmación de desactivar es la tercera cosa que no puede
+  // convivir con ellos.
+  it("abrir otra operación cierra el bloque de cambiar contraseña", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+
+    renderPage();
+    await openReset(user, "Luis Quispe");
+    await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
+    expect(
+      screen.queryByRole("form", { name: "Cambiar la contraseña de Luis Quispe" }),
+    ).not.toBeInTheDocument();
+
+    await openReset(user, "Luis Quispe");
+    const row = await rowOf("Luis Quispe");
+    await user.click(within(row).getByRole("button", { name: "Editar" }));
+    expect(
+      screen.queryByRole("form", { name: "Cambiar la contraseña de Luis Quispe" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Cancelar" })).toHaveLength(1);
+  });
+
+  // El aviso nombra a una persona y vive en la card de la tabla, no adentro
+  // del bloque que lo produjo.
+  it("el aviso de contraseña cambiada no sobrevive a un cambio de filtro", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER, RETIRED]);
+    stubUpdate(DRIVER_ID, 200, DRIVER);
+
+    renderPage();
+    await openReset(user, "Luis Quispe");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "clave-nueva-de-luis");
+    await user.click(saveNewPassword());
+    await screen.findByText(/Contraseña cambiada\. Díctasela a Luis Quispe/);
+
+    await user.selectOptions(screen.getByLabelText("Estado"), "inactive");
+
+    await screen.findByText("Ana Retirada");
+    expect(screen.queryByText(/Contraseña cambiada/)).not.toBeInTheDocument();
+  });
+
   it("sin usuarios con ese filtro lo dice", async () => {
     stubList([]);
 
@@ -370,6 +530,7 @@ describe("UsersPage", () => {
     expect(await screen.findByText("Luis Quispe")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Nuevo usuario" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cambiar contraseña" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Desactivar" })).not.toBeInTheDocument();
   });
 });

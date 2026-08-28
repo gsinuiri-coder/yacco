@@ -116,31 +116,126 @@ y el `<select>` de producto en `order-items-form.tsx`. Hasta entonces,
 
 ## La gestión de usuarios no cambia contraseñas ni roles
 
-**Estado:** abierto. **Disparador:** cuando alguien olvide su contraseña, o
-cuando haya que corregir un rol mal asignado sin dar de alta a la persona de
-nuevo.
+**Estado:** resuelta a medias, y por eso se parte en dos. La mitad de la
+contraseña se cerró; la de los roles sigue abierta en «La gestión de usuarios
+no cambia roles», acá abajo.
 
-`apps/web/src/pages/users-page.tsx` cubre las cuatro operaciones que
-bloqueaban trabajo real: dar de alta, renombrar, desactivar y reactivar.
-`PATCH /api/v1/users/:id` acepta además `password` y `roles`, y la pantalla
-**no** los expone.
+**Cómo se cerró la mitad de la contraseña:** `users-page.tsx` cambia la
+contraseña desde un bloque aparte, abierto con «Cambiar contraseña» en la
+fila. Las tres preguntas que la entrada dejaba sin decidir se decidieron con
+el dueño de la planta:
 
-**Razón:** ninguna de las dos era lo que impedía operar —un chofer nuevo sí lo
-impedía, y entraba por CLI o por Swagger— y cada una es una decisión con su
-propia forma, no un campo más en el formulario:
+- **Quién y cómo:** el administrador la elige y se la dicta a la persona. No
+  hay contraseña temporal que la persona cambie al entrar, porque no existe
+  pantalla de «cambiar mi contraseña» en `apps/web/src/pages`: esa temporal no
+  tendría a dónde ir.
+- **El administrador sí puede cambiarse la suya**, y es la forma prevista de
+  rotar `admin123` (ver «Password del admin de producción»). La guarda de
+  `isSelf` que sí tiene «Desactivar» no aplica acá.
+- **Qué pasa con la sesión abierta:** nada, y la pantalla lo dice con esas
+  palabras en vez de callarlo. Sigue siendo cierto que nada invalida un token
+  ya emitido — eso es ahora su propia entrada, «No hay forma de invalidar un
+  token ya emitido».
 
-- **Contraseña:** ¿quién puede resetearle la contraseña a quién? ¿el
-  administrador la elige y se la dicta, o el sistema genera una temporal que
-  la persona cambia al entrar? ¿qué pasa con la sesión que esa persona tenga
-  abierta en ese momento? Hoy nada invalida un access token ya emitido.
-- **Roles:** quitarle DRIVER a alguien que tiene rutas planificadas deja esas
-  rutas asignadas a un usuario que ya no es chofer, y `RoutesService.create`
-  solo valida el rol al crear la ruta, nunca después.
+## La gestión de usuarios no cambia roles
 
-**Para cerrarla:** decidir con el dueño de la planta el flujo de reseteo de
-contraseña (y si hace falta invalidar sesiones, que es su propio trabajo sobre
-`auth`), y qué pasa con las rutas ya planificadas al quitar el rol de chofer.
-Recién entonces agregar los campos: el endpoint ya los acepta.
+**Estado:** abierto. **Disparador:** cuando haya que corregir un rol mal
+asignado sin dar de alta a la persona de nuevo.
+
+`PATCH /api/v1/users/:id` acepta `roles`, y `users-page.tsx` no los expone.
+
+**Razón:** quitarle `DRIVER` a alguien que tiene rutas planificadas deja esas
+rutas asignadas a un usuario que ya no es chofer, y `RoutesService.create`
+solo valida el rol al crear la ruta, nunca después. Es una decisión con su
+propia forma, no un campo más en el formulario.
+
+Sí bloquea trabajo real, y es por esto que `users` sigue en `Parcial` en
+`docs/estado-por-modulo.md`: quien nace vendedor y después empieza a repartir
+no se puede corregir desde la app. Las dos salidas de hoy son entrar por CLI, o
+darlo de alta de nuevo con otro nombre de usuario y perder el rastro del
+anterior. Que el alta acepte varios roles de una vez solo ayuda a quien ya se
+sabía las dos cosas el primer día.
+
+**Para cerrarla:** decidir qué pasa con las rutas ya planificadas al quitar el
+rol de chofer, y recién entonces agregar el campo — el endpoint ya lo acepta.
+Va con su propia guarda de dominio: un ADMIN no puede quitarse a sí mismo el
+rol ADMIN, que es la versión de roles del mismo cuidado que «Desactivar» ya
+tiene con `isSelf`.
+
+## No hay forma de invalidar un token ya emitido
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo, o el día que
+haya que sacar a alguien del sistema en el acto.
+
+El esquema no guarda nada por sesión: ni `tokenVersion` en `users`, ni `jti`,
+ni una tabla de refresh tokens. `AuthService.refreshAccessToken` solo chequea
+la firma del refresh token y que el usuario siga `active`. Dos consecuencias,
+las dos verificadas contra la API local:
+
+- **Cambiar la contraseña no cierra la sesión abierta de esa persona.** Un
+  refresh token emitido antes del cambio sigue devolviendo un access token
+  nuevo, y vive sus 30 días. `users-page.tsx` lo dice en la pantalla en vez de
+  esconderlo: lo que corta el acceso es desactivar, en el próximo refresco.
+- **Desactivar y reactivar revive el refresh token viejo.** Mientras está
+  desactivado, ese token da 401; al reactivarlo vuelve a dar 200. La
+  desactivación no invalida nada, solo tapa la puerta mientras dura.
+
+Sin urgencia mientras corramos local, con un solo usuario real: hoy el que
+desactiva y el que se desactiva son la misma persona.
+
+La primera de las dos está fijada por un test, no por un recordatorio:
+`auth.int.test.ts`, «resetting a user's password does NOT invalidate a refresh
+token already issued». El día que se cierre esta entrada, ese test se pone en
+rojo y obliga a cambiar el texto de la pantalla en el mismo commit, en vez de
+dejarla mintiéndole al dueño de la planta.
+
+**Para cerrarla:** un `tokenVersion` en `users` que el payload del token
+lleve y `refreshAccessToken` compare, incrementado al cambiar la contraseña y
+al desactivar; o una tabla de refresh tokens emitidos que se pueda revocar,
+que además serviría para «Refresh token en localStorage».
+
+## La web no descarta la petición en vuelo al cambiar de objetivo
+
+**Estado:** abierto, anotado como **patrón** y no como incidente: van dos
+apariciones en pantallas que no comparten una línea de código. **Disparador:**
+la tercera aparición, o el momento de arreglar el flaky que se nombra abajo —
+es esa decisión la que esto tiene que informar.
+
+Ninguna pantalla cancela la petición que ya salió cuando el usuario cambia de
+objetivo (otra fila, otra página, otro filtro). Lo más que hay es un guard
+ad-hoc que decide si la **respuesta** se ignora; la petición sigue viva, y
+nada impide que su resultado —o su registro— llegue después del cambio.
+
+Las dos apariciones:
+
+- **`users-page.tsx`, cambiar contraseña.** Sin guard: los botones de la fila
+  se deshabilitaban con `isSavingAction` y no con `isResetting`, así que se
+  podía abrir el bloque de otra persona con el PATCH de la primera todavía en
+  vuelo; al volver, la respuesta cerraba el formulario recién abierto y
+  anunciaba éxito con el nombre equivocado. Arreglado acá deshabilitando
+  también las acciones de la fila mientras dura la petición — un parche por
+  pantalla, deliberadamente el más chico que cierra el agujero.
+- **`customers-page.tsx`, paginación.** Con guard: el efecto de listado usa
+  una bandera `cancelled` que descarta la respuesta vieja, y eso cubre el
+  estado. Lo que no cubre es que `page` tenga dos escritores —el clic en
+  «Siguiente» y el `setPage(1)` del efecto de debounce de la búsqueda— ni que
+  la petición vieja se haya emitido igual. Es el terreno del test flaky
+  «pagina: «Siguiente» pide la página 2 y muestra sus filas», que falla solo
+  bajo carga y afirma sobre el **registro de peticiones**
+  (`seen.at(-1)`), no sobre lo que se ve. La causa raíz del flaky no está
+  confirmada; lo que sí está verificado es la forma.
+
+**Por qué importa que esté escrito junto:** con una sola aparición, el arreglo
+del flaky es un parche local y se decide en su propio PR. Con dos en pantallas
+sin código común, la pregunta cambia: si la tercera aparece, lo que falta no es
+otro parche sino una pieza compartida —un hook de petición con `AbortController`
+y un solo dueño del objetivo— y conviene saberlo antes de escribir el tercer
+parche, no después.
+
+**Para cerrarla:** al tocar el flaky de `customers-page`, decidir explícitamente
+entre parche por pantalla y pieza compartida, y anotar acá cuál se eligió y por
+qué. Si sale pieza compartida, `users-page.tsx` es su primer cliente y el
+`disabled={... || isResetting}` de las acciones de fila se puede retirar.
 
 ## No hay gestión del catálogo payment-methods
 
