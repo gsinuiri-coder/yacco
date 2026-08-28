@@ -54,19 +54,23 @@ export interface CreateUserBody {
 }
 
 /**
- * UpdateUserDto, recortado a lo que la pantalla de usuarios ofrece: renombrar,
- * activar/desactivar y cambiar la contraseña. La API también acepta `roles`,
- * pero esta pantalla no los expone — ver docs/backlog-tecnico.md, "La gestión
- * de usuarios no cambia roles".
+ * UpdateUserDto completo: renombrar, activar/desactivar, cambiar la contraseña
+ * y corregir los roles. La pantalla manda una sola de estas cosas por PATCH.
  *
  * `password` viaja en claro por HTTPS y el servidor la hashea con bcrypt
  * (`UsersService.update`); nunca vuelve en la respuesta, porque
  * `UserResponseDto` no tiene `passwordHash`.
+ *
+ * `roles` REEMPLAZA el conjunto, no lo fusiona: `UsersService.update` borra
+ * las asignaciones y crea las del cuerpo. Mandar `["DRIVER"]` a alguien que
+ * era vendedor y chofer lo deja solo como chofer. Por eso la pantalla manda
+ * siempre la lista completa que quedó marcada, nunca un delta.
  */
 export interface UpdateUserBody {
   name?: string;
   password?: string;
   active?: boolean;
+  roles?: UserRole[];
 }
 
 export function createUser(apiClient: ApiClient, body: CreateUserBody): Promise<User> {

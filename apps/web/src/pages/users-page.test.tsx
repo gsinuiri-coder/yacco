@@ -118,6 +118,35 @@ function saveNewPassword(): HTMLElement {
   return screen.getByRole("button", { name: "Guardar contraseña nueva" });
 }
 
+/** Abre el bloque de corregir roles desde la fila y devuelve el formulario. */
+async function openRoles(
+  user: ReturnType<typeof userEvent.setup>,
+  rowText: string,
+  name = rowText,
+): Promise<HTMLElement> {
+  const row = await rowOf(rowText);
+  await user.click(within(row).getByRole("button", { name: "Roles" }));
+  return screen.getByRole("form", { name: `Corregir los roles de ${name}` });
+}
+
+/**
+ * `GET /routes` filtrado por chofer y estado. La pantalla llama dos veces —un
+ * `status` por llamada— y solo mira `total`, así que `data` va vacío.
+ */
+function stubRoutesByStatus(totals: Partial<Record<string, number>>): { seen: string[] } {
+  const captured: { seen: string[] } = { seen: [] };
+  server.use(
+    http.get(`${API_BASE_URL}/routes`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      const status = params.get("status") ?? "";
+      captured.seen.push(`${params.get("driverId") ?? ""}:${status}`);
+      const total = totals[status] ?? 0;
+      return HttpResponse.json({ data: [], total, page: 1, limit: 1, totalPages: 1 });
+    }),
+  );
+  return captured;
+}
+
 describe("UsersPage", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -524,6 +553,182 @@ describe("UsersPage", () => {
       ).not.toBeInTheDocument(),
     );
     expect(screen.queryByText(/Contraseña cambiada/)).not.toBeInTheDocument();
+  });
+
+  it("corregir roles manda la lista completa y refleja la fila", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    const updated = { ...DRIVER, roles: ["SELLER", "DRIVER"] as User["roles"] };
+    const captured = stubUpdate(DRIVER_ID, 200, updated);
+
+    renderPage();
+    const form = await openRoles(user, "Luis Quispe");
+    await user.click(within(form).getByRole("checkbox", { name: /Vendedor/ }));
+    await user.click(within(form).getByRole("button", { name: "Guardar roles" }));
+
+    // La lista completa, no un delta: la API reemplaza el conjunto.
+    await waitFor(() => expect(captured.body).toEqual({ roles: ["DRIVER", "SELLER"] }));
+    const row = await rowOf("Luis Quispe");
+    expect(within(row).getByText("Vendedor, Chofer")).toBeInTheDocument();
+  });
+
+  it("cada rol dice qué habilita, incluido que vendedor ve todas las rutas", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+
+    renderPage();
+    const form = await openRoles(user, "Luis Quispe");
+
+    expect(form).toHaveTextContent("Ve y opera las rutas de todos los choferes");
+    expect(form).toHaveTextContent("Ve y opera solo las rutas que tiene a su nombre");
+  });
+
+  // Avisa, no bloquea, y dice el número: la pregunta que el dueño se hace es
+  // si puede quitarle el rol ahora o conviene esperar a que cierre la de hoy.
+  it("quitar Chofer cuenta sus rutas sin cerrar y pide confirmación con el número", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    const routes = stubRoutesByStatus({ PLANNED: 2, IN_PROGRESS: 1 });
+    const captured = stubUpdate(DRIVER_ID, 200, { ...DRIVER, roles: ["SELLER"] });
+
+    renderPage();
+    const form = await openRoles(user, "Luis Quispe");
+    await user.click(within(form).getByRole("checkbox", { name: /Vendedor/ }));
+    await user.click(within(form).getByRole("checkbox", { name: /Chofer/ }));
+    await user.click(within(form).getByRole("button", { name: "Guardar roles" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Luis Quispe tiene 3 rutas sin cerrar",
+    );
+    // Consultó los dos estados sin cerrar, y todavía no mandó nada.
+    expect(routes.seen).toEqual([`${DRIVER_ID}:PLANNED`, `${DRIVER_ID}:IN_PROGRESS`]);
+    expect(captured.body).toBeUndefined();
+
+    await user.click(within(form).getByRole("button", { name: "Sí, guardar los roles" }));
+
+    await waitFor(() => expect(captured.body).toEqual({ roles: ["SELLER"] }));
+  });
+
+  it("si no se pueden consultar las rutas, se confirma igual diciendo que no se pudo", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    server.use(
+      http.get(`${API_BASE_URL}/routes`, () =>
+        HttpResponse.json({ message: "Base de datos no disponible" }, { status: 500 }),
+      ),
+    );
+    const captured = stubUpdate(DRIVER_ID, 200, { ...DRIVER, roles: ["SELLER"] });
+
+    renderPage();
+    const form = await openRoles(user, "Luis Quispe");
+    await user.click(within(form).getByRole("checkbox", { name: /Vendedor/ }));
+    await user.click(within(form).getByRole("checkbox", { name: /Chofer/ }));
+    await user.click(within(form).getByRole("button", { name: "Guardar roles" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudo consultar las rutas de Luis Quispe",
+    );
+    expect(captured.body).toBeUndefined();
+
+    await user.click(within(form).getByRole("button", { name: "Sí, guardar los roles" }));
+
+    await waitFor(() => expect(captured.body).toEqual({ roles: ["SELLER"] }));
+  });
+
+  // Agregar Chofer no toca ninguna ruta: no hay nada que consultar.
+  it("agregar un rol no consulta rutas ni pide confirmación", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    const routes = stubRoutesByStatus({});
+    const captured = stubUpdate(DRIVER_ID, 200, { ...DRIVER, roles: ["SELLER", "DRIVER"] });
+
+    renderPage();
+    const form = await openRoles(user, "Luis Quispe");
+    await user.click(within(form).getByRole("checkbox", { name: /Vendedor/ }));
+    await user.click(within(form).getByRole("button", { name: "Guardar roles" }));
+
+    await waitFor(() => expect(captured.body).toEqual({ roles: ["DRIVER", "SELLER"] }));
+    expect(routes.seen).toEqual([]);
+  });
+
+  it("sin ningún rol marcado no se envía", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    const captured = stubUpdate(DRIVER_ID, 200, DRIVER);
+
+    renderPage();
+    const form = await openRoles(user, "Luis Quispe");
+    await user.click(within(form).getByRole("checkbox", { name: /Chofer/ }));
+    await user.click(within(form).getByRole("button", { name: "Guardar roles" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Elige al menos un rol");
+    expect(captured.body).toBeUndefined();
+  });
+
+  // Cerrarse la puerta desde adentro. La API lo rechaza igual, pero la
+  // pantalla no lo ofrece en vez de dejar que pase y avisar después.
+  it("no deja al administrador quitarse a sí mismo la administración", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+
+    renderPage();
+    const own = await openRoles(user, "admin", "Administrador");
+
+    const adminBox = within(own).getByRole("checkbox", { name: /Administrador/ });
+    expect(adminBox).toBeChecked();
+    expect(adminBox).toBeDisabled();
+    expect(own).toHaveTextContent("No puedes quitarte a ti mismo la administración");
+
+    // El de otra persona sí se puede tocar.
+    await user.click(within(own).getByRole("button", { name: "Cancelar" }));
+    const other = await openRoles(user, "Luis Quispe");
+    expect(within(other).getByRole("checkbox", { name: /Administrador/ })).toBeEnabled();
+  });
+
+  // El cuarto modo. La exclusión estaba repartida en cada handler y se olvidó
+  // dos veces; ahora vive en `closeAllModes`.
+  it("abrir roles cierra los otros tres modos, y cualquiera de ellos cierra roles", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+
+    renderPage();
+
+    // Contraseña abierta -> abrir roles la cierra.
+    await openReset(user, "Luis Quispe");
+    await openRoles(user, "Luis Quispe");
+    expect(
+      screen.queryByRole("form", { name: "Cambiar la contraseña de Luis Quispe" }),
+    ).not.toBeInTheDocument();
+
+    // Roles abierto -> "Nuevo usuario" lo cierra.
+    await user.click(screen.getByRole("button", { name: "Nuevo usuario" }));
+    expect(
+      screen.queryByRole("form", { name: "Corregir los roles de Luis Quispe" }),
+    ).not.toBeInTheDocument();
+
+    // Roles abierto -> "Editar" lo cierra, y queda un solo "Cancelar".
+    await openRoles(user, "Luis Quispe");
+    const row = await rowOf("Luis Quispe");
+    await user.click(within(row).getByRole("button", { name: "Editar" }));
+    expect(
+      screen.queryByRole("form", { name: "Corregir los roles de Luis Quispe" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Cancelar" })).toHaveLength(1);
+  });
+
+  it("muestra el error del backend al corregir roles", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER]);
+    stubUpdate(DRIVER_ID, 400, { message: "You cannot remove your own ADMIN role" });
+
+    renderPage();
+    const form = await openRoles(user, "Luis Quispe");
+    await user.click(within(form).getByRole("checkbox", { name: /Vendedor/ }));
+    await user.click(within(form).getByRole("button", { name: "Guardar roles" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "You cannot remove your own ADMIN role",
+    );
   });
 
   it("sin usuarios con ese filtro lo dice", async () => {

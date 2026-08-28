@@ -155,28 +155,43 @@ pregunta redactada y qué cambia según lo que conteste. Acá van en una línea:
 
 ## La gestión de usuarios no cambia roles
 
-**Estado:** abierto. **Disparador:** cuando haya que corregir un rol mal
-asignado sin dar de alta a la persona de nuevo.
+**Estado:** resuelta.
 
-`PATCH /api/v1/users/:id` acepta `roles`, y `users-page.tsx` no los expone.
+`users-page.tsx` corrige los roles desde un bloque propio, abierto con «Roles»
+en la fila. Con eso `users` pasó a `Completo` en `docs/estado-por-modulo.md`.
 
-**Razón:** quitarle `DRIVER` a alguien que tiene rutas planificadas deja esas
-rutas asignadas a un usuario que ya no es chofer, y `RoutesService.create`
-solo valida el rol al crear la ruta, nunca después. Es una decisión con su
-propia forma, no un campo más en el formulario.
+**Qué se decidió sobre las rutas ya planificadas**, que era lo que faltaba: no
+se tocan. Nunca se reasignan, ni se cancelan, ni se marcan. `route.driverId` es
+un hecho histórico —quién hizo ese reparto— y reescribirlo para acomodar un
+cambio de rol de hoy sería falsear el libro.
 
-Sí bloquea trabajo real, y es por esto que `users` sigue en `Parcial` en
-`docs/estado-por-modulo.md`: quien nace vendedor y después empieza a repartir
-no se puede corregir desde la app. Las dos salidas de hoy son entrar por CLI, o
-darlo de alta de nuevo con otro nombre de usuario y perder el rastro del
-anterior. Que el alta acepte varios roles de una vez solo ayuda a quien ya se
-sabía las dos cosas el primer día.
+Ninguna ruta queda sin quien la opere, y por eso alcanza con avisar: ADMIN y
+SELLER pasan `assertCanAccessRoute` siempre, así que una ruta de alguien que
+dejó de ser chofer se sigue pudiendo terminar desde la oficina. Lo único que
+pierde esa persona es abrirla desde su teléfono. `RoutesService.create` valida
+el rol solo al crear la ruta, y eso está bien: valida el momento en que se
+decide a quién se le asigna.
 
-**Para cerrarla:** decidir qué pasa con las rutas ya planificadas al quitar el
-rol de chofer, y recién entonces agregar el campo — el endpoint ya lo acepta.
-Va con su propia guarda de dominio: un ADMIN no puede quitarse a sí mismo el
-rol ADMIN, que es la versión de roles del mismo cuidado que «Desactivar» ya
-tiene con `isSelf`.
+La pantalla, antes de mandar el PATCH que quita `DRIVER`, cuenta las rutas
+`PLANNED` e `IN_PROGRESS` de esa persona y pide confirmación **diciendo el
+número**. Avisa, no bloquea. Si la consulta falla, se confirma igual diciendo
+que no se pudo verificar — nunca inventando un cero. Acopla la pantalla de
+usuarios al cliente de rutas a propósito: un aviso genérico no responde la
+pregunta que el dueño se va a hacer, que es si le puede quitar el rol ahora o
+conviene esperar a que cierre la ruta de hoy.
+
+**La guarda de auto-degradación bajó a la API.** `UsersService.update` recibe
+el actor del token y rechaza con 400 que se quite a sí mismo el rol ADMIN o se
+ponga `active: false`. La mitad de desactivar vivía solo en la web, y Swagger o
+un `curl` la salteaban. Una sola guarda, y deliberadamente **sin contar
+administradores**: si nadie puede quitarse a sí mismo, siempre queda al menos
+quien está haciendo el cambio. La razón está escrita en el código, porque es el
+primer refactor que alguien va a querer hacerle.
+
+**Lo que quedó anotado como supuesto:** avisar sin bloquear al quitar DRIVER, y
+que las rutas conserven al chofer que las hizo, son decisiones de producto que
+el dueño de la planta no vio. Están en
+[`supuestos-por-validar.md`](./supuestos-por-validar.md), #5 y #6.
 
 ## No hay forma de invalidar un token ya emitido
 
@@ -710,6 +725,37 @@ entrada sigue con el mismo disparador —antes del piloto—, pero ya no es
 teórico: es el único test del repo que obliga a preguntarse si el rojo es
 verdadero, y por ahora no llegó a fallar en CI solo por suerte de
 programación.
+
+## La suite de web roza el timeout de 5 s bajo cobertura
+
+**Estado:** abierto, en observación. **Disparador:** que vuelva a pasar dos
+veces seguidas, o que empiece a pasar en CI.
+
+`pnpm --filter @yacco/web test` corre con `--coverage` y en paralelo con la de
+api. Bajo esa carga, algún test suelto llega al timeout por defecto de vitest
+(5000 ms) y da rojo sin haber evaluado ninguna aserción. Visto tres veces el
+28/08/2026, en tres archivos distintos y no siempre los mismos:
+`production-page` («un doble clic en registrar dispara un solo POST»),
+`customers-page` y `customer-create-page` («muestra el 400 de la API en vez de
+tragárselo», 5046 ms). Cada uno pasa aislado en ~1 s, y la corrida siguiente de
+la suite completa pasa entera.
+
+**Por qué se anota en vez de ignorarse.** Esta es exactamente la forma que
+tenía «Test flaky en apps/web: customers-page falla bajo carga», que se
+descartó cinco veces y resultó ser un bug real. La diferencia que sí se puede
+verificar: aquel fallaba con **una aserción dando un valor equivocado**
+(`'1'` en vez de `'2'`), y este falla por **agotar el tiempo** sin llegar a
+evaluar nada. Un valor equivocado es un defecto del código; un timeout puede
+ser solo contención. La distinción vale mientras se compruebe cada vez, no
+como excusa por defecto: ante un rojo nuevo acá, lo primero es mirar si el
+mensaje es una aserción o un timeout.
+
+**Para cerrarla:** medir antes de tocar. Si el costo está en el arranque de
+cada archivo (`setup` suma más que `tests` en el reporte, hoy 92 s contra
+199 s), la salida no es subir `testTimeout` —que solo esconde el síntoma y
+retrasa el rojo real— sino reducir trabajo por archivo o limitar la
+concurrencia con `poolOptions`. Subir el timeout sin medir es lo único que
+está descartado.
 
 ## Doble envío del formulario de cobranza
 

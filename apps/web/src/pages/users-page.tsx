@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { listRoutes } from "../api/routes";
 import { MIN_PASSWORD_LENGTH, createUser, listUsers, updateUser } from "../api/users";
 import type { User, UserListParams, UserRole } from "../api/users";
 import { useAuth } from "../auth/use-auth";
@@ -19,6 +20,36 @@ const ROLE_ORDER: UserRole[] = ["ADMIN", "SELLER", "DRIVER"];
 
 type RoleFilter = UserRole | "all";
 type StatusFilter = "active" | "inactive";
+
+/**
+ * Qué habilita cada rol, en el vocabulario de la planta.
+ *
+ * Está a la vista al corregir roles porque el caso que más confunde no es
+ * agregar sino quitar: sacarle "Chofer" a alguien que además es "Vendedor" NO
+ * le achica el acceso a rutas, se lo agranda. `isPrivileged` en
+ * `routes.service.ts` hace que un vendedor vea y opere TODAS las rutas,
+ * mientras que un chofer solo ve las suyas. Es la definición de vendedor y no
+ * un bug, pero desde esta pantalla es un clic y sin este texto no se ve.
+ */
+const ROLE_EXPLANATIONS: Record<UserRole, string> = {
+  ADMIN: "Ve y hace todo: precios, cobranzas, usuarios y el cuadre de envases.",
+  SELLER: "Toma pedidos y planifica rutas. Ve y opera las rutas de todos los choferes.",
+  DRIVER: "Sale a repartir. Ve y opera solo las rutas que tiene a su nombre.",
+};
+
+/**
+ * Rutas sin cerrar de quien está por dejar de ser chofer.
+ *
+ * Su presencia es además el estado de "ya se confirmó": mientras es `null` no
+ * hay nada confirmado, y `toggleRoleDraft` la vuelve a `null` porque un cambio
+ * de casilla invalida la cuenta que se le mostró al administrador.
+ */
+interface RoutesAtRisk {
+  /** Nombre de la persona, para no depender de que su fila siga en la tabla. */
+  name: string;
+  /** `null` cuando la consulta falló: hay que confirmar sin saber. */
+  count: number | null;
+}
 
 const NAME_REQUIRED = "Escribe el nombre de la persona";
 const USERNAME_REQUIRED = "Escribe el usuario con el que va a entrar";
@@ -40,8 +71,8 @@ function describeRoles(roles: UserRole[]): string {
 }
 
 /**
- * Gestión de usuarios: alta, renombrar, cambiar la contraseña, desactivar y
- * reactivar.
+ * Gestión de usuarios: alta, renombrar, cambiar la contraseña, corregir roles,
+ * desactivar y reactivar.
  *
  * Roles asimétricos, el mismo patrón que ContainerTypesPage y ZonesPage: leer
  * es ADMIN y SELLER —un vendedor planifica rutas y necesita saber quién es
@@ -72,10 +103,19 @@ function describeRoles(roles: UserRole[]): string {
  * rotar `admin123` el día que se decida, así que la guarda de `isSelf` que
  * tiene "Desactivar" no aplica acá.
  *
- * Lo que esta pantalla deliberadamente NO hace: cambiar los roles de alguien.
- * `PATCH /users/:id` los acepta, pero quitarle DRIVER a quien tiene rutas
- * planificadas es una decisión con su propia forma, no un campo más. Queda
- * anotado en docs/backlog-tecnico.md.
+ * Corregir roles es el cuarto modo, y también un bloque propio: tres casillas
+ * más el texto de qué habilita cada rol no entran en la fila sin repetir el
+ * desborde de la columna de acciones, y cada PATCH de esta pantalla manda una
+ * sola operación.
+ *
+ * Quitarle "Chofer" a alguien con rutas sin cerrar AVISA, no bloquea, y las
+ * rutas no se tocan: `route.driverId` es un hecho histórico. Ninguna queda sin
+ * quien la opere, porque ADMIN y SELLER pasan `assertCanAccessRoute` siempre.
+ *
+ * La guarda de no cerrarse la puerta desde adentro vive ahora en la API
+ * (`UsersService.update` mira el actor del token) además de en la pantalla, que
+ * no ofrece ni desactivarse ni quitarse ADMIN a uno mismo. Antes vivía solo
+ * acá, y Swagger la salteaba.
  */
 export function UsersPage() {
   const { apiClient, user } = useAuth();
@@ -118,6 +158,17 @@ export function UsersPage() {
   /** Nombre de la última persona a la que se le cambió, para el aviso de "listo". */
   const [resetDone, setResetDone] = useState<string | null>(null);
 
+  const [rolesTarget, setRolesTarget] = useState<User | null>(null);
+  const [rolesDraft, setRolesDraft] = useState<UserRole[]>([]);
+  const [rolesError, setRolesError] = useState<string | null>(null);
+  const [isSavingRoles, setIsSavingRoles] = useState(false);
+  /**
+   * Cuántas rutas sin cerrar quedan a nombre de quien está por dejar de ser
+   * chofer, y si se pudo averiguar. `null` mientras no haya nada que confirmar.
+   */
+  const [routesAtRisk, setRoutesAtRisk] = useState<RoutesAtRisk | null>(null);
+  const [isCheckingRoutes, setIsCheckingRoutes] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     listRunRef.current += 1;
@@ -159,28 +210,47 @@ export function UsersPage() {
     setCreateError(null);
   }
 
+  /**
+   * Deja la pantalla sin ningún modo abierto, y se lleva lo que cada uno
+   * hubiera dejado en pantalla: la contraseña tipeada —una credencial en
+   * claro—, los borradores, los errores de la operación anterior y el aviso
+   * del último cambio, que nombra a una persona y envejece mal.
+   *
+   * Los cuatro modos —alta, renombrar, contraseña, roles— se excluyen entre
+   * sí: dos bloques hermanos arriba de la tabla, cada uno con su "Cancelar",
+   * abiertos a la vez no dejan saber cuál cancela cuál; y una fila en modo
+   * edición debajo de un bloque de otra persona se lee como si fueran la
+   * misma operación.
+   *
+   * Vive en una sola función a propósito. La exclusión estaba repartida en
+   * cada `handleStart*`, escribiendo a mano el estado de los otros tres, y así
+   * se olvidó dos veces: al agregar el bloque de contraseña, «Editar» y
+   * «Desactivar» no lo cerraban. Con cuatro modos, el que agregue el quinto
+   * solo tiene que llamar a esto primero.
+   */
+  function closeAllModes() {
+    setIsAdding(false);
+    setCreateError(null);
+    setEditingId(null);
+    setDeactivatingId(null);
+    setActionError(null);
+    setResetTarget(null);
+    setResetPassword("");
+    setResetError(null);
+    setResetDone(null);
+    setRolesTarget(null);
+    setRolesDraft([]);
+    setRolesError(null);
+    setRoutesAtRisk(null);
+  }
+
   function handleStartAdd() {
+    closeAllModes();
     setIsAdding(true);
     setNewName("");
     setNewUsername("");
     setNewPassword("");
     setNewRoles([]);
-    setCreateError(null);
-    // Los dos bloques son hermanos arriba de la tabla y los dos tienen un
-    // "Cancelar": abiertos a la vez, no se sabe cuál cancela cuál.
-    closeReset();
-  }
-
-  /**
-   * Cierra el bloque de cambiar contraseña y se lleva lo que dejó en pantalla:
-   * la contraseña tipeada —que es una credencial en claro— y el aviso del
-   * cambio anterior, que nombra a una persona y envejece mal.
-   */
-  function closeReset() {
-    setResetTarget(null);
-    setResetPassword("");
-    setResetError(null);
-    setResetDone(null);
   }
 
   function handleCreate(event: FormEvent<HTMLFormElement>) {
@@ -213,31 +283,25 @@ export function UsersPage() {
   }
 
   function handleStartEdit(target: User) {
+    closeAllModes();
     setEditingId(target.id);
     setEditName(target.name);
-    setDeactivatingId(null);
-    setActionError(null);
-    closeReset();
   }
 
   function handleStartDeactivate(target: User) {
+    closeAllModes();
     setDeactivatingId(target.id);
-    setEditingId(null);
-    setActionError(null);
-    closeReset();
   }
 
   function handleStartReset(target: User) {
+    closeAllModes();
     setResetTarget(target);
-    setResetPassword("");
-    setResetError(null);
-    setResetDone(null);
-    setIsAdding(false);
-    setEditingId(null);
-    setDeactivatingId(null);
-    // Un "No se pudo desactivar" de hace un rato, colgado arriba de la tabla
-    // mientras se repone una contraseña, se lee como si fuera de esto.
-    setActionError(null);
+  }
+
+  function handleStartRoles(target: User) {
+    closeAllModes();
+    setRolesTarget(target);
+    setRolesDraft(target.roles);
   }
 
   function handleReset(event: FormEvent<HTMLFormElement>) {
@@ -275,6 +339,97 @@ export function UsersPage() {
         setResetError(errorMessage(error, "No se pudo cambiar la contraseña."));
       })
       .finally(() => setIsResetting(false));
+  }
+
+  function toggleRoleDraft(role: UserRole) {
+    setRolesDraft((current) =>
+      current.includes(role) ? current.filter((value) => value !== role) : [...current, role],
+    );
+    setRolesError(null);
+    // El aviso de rutas se calculó para un borrador que ya no es este.
+    setRoutesAtRisk(null);
+  }
+
+  /**
+   * Antes de quitarle DRIVER a alguien que lo tenía, cuenta cuántas rutas sin
+   * cerrar quedan a su nombre y pide confirmación diciendo el número.
+   *
+   * Avisa, no bloquea, y las rutas NO se tocan: `route.driverId` es un hecho
+   * histórico —quién hizo ese reparto— y reasignarlas o cancelarlas sería
+   * reescribirlo. Ninguna queda huérfana: `RoutesService.create` valida el rol
+   * solo al crear, y `assertCanAccessRoute` deja pasar siempre a ADMIN y
+   * SELLER, así que la ruta sigue teniendo quien la opere desde la oficina.
+   *
+   * Esto acopla la pantalla de usuarios al cliente de rutas a propósito. Un
+   * aviso genérico —"puede tener rutas asignadas"— no responde la pregunta que
+   * el dueño se va a hacer, que es si le puede quitar el rol ahora o conviene
+   * esperar a que cierre la ruta de hoy. Para eso hace falta el número.
+   */
+  function handleSaveRoles(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSavingRoles || isCheckingRoutes || rolesTarget === null) return;
+    if (rolesDraft.length === 0) return setRolesError(ROLES_REQUIRED);
+
+    const target = rolesTarget;
+    const losesDriver = target.roles.includes("DRIVER") && !rolesDraft.includes("DRIVER");
+    if (!losesDriver || routesAtRisk !== null) return saveRoles(target);
+
+    setIsCheckingRoutes(true);
+    setRolesError(null);
+    // `limit: 1` porque solo interesa `total`; y dos llamadas porque
+    // `GET /routes` acepta un `status` por vez. No se toca ese contrato para
+    // esto: dos consultas de una fila, una sola vez y solo cuando se quita
+    // DRIVER, no justifican un parámetro nuevo en la API.
+    Promise.all([
+      listRoutes(apiClient, { driverId: target.id, status: "PLANNED", limit: 1 }),
+      listRoutes(apiClient, { driverId: target.id, status: "IN_PROGRESS", limit: 1 }),
+    ])
+      .then(([planned, inProgress]) => {
+        setRoutesAtRisk({
+          name: target.name,
+          count: planned.total + inProgress.total,
+        });
+      })
+      .catch(() => {
+        // No poder verificar no bloquea el cambio: se confirma igual, pero la
+        // pantalla dice que no pudo mirar en vez de callarlo o inventar un
+        // cero, que sería peor que no avisar.
+        setRoutesAtRisk({ name: target.name, count: null });
+      })
+      .finally(() => setIsCheckingRoutes(false));
+  }
+
+  /**
+   * No muestra aviso: la fila misma es la confirmación, porque su columna
+   * Roles cambia a la vista. Eso además evita heredar la carrera que arregló
+   * el #107 — un aviso que nombra a una persona tiene que morir cuando la
+   * lista cambia debajo, y acá el propio guardado puede cambiarla.
+   *
+   * Se recarga SOLO si la fila deja de pertenecer al filtro de rol que se está
+   * mirando; en ese caso desaparece, igual que al desactivar con el filtro en
+   * "En uso". Si el filtro es "Todos" o la persona lo sigue cumpliendo, se
+   * actualiza en el lugar y no se gasta una consulta.
+   */
+  function saveRoles(target: User) {
+    setIsSavingRoles(true);
+    setRolesError(null);
+    // Solo `roles`, y la lista completa: la API reemplaza el conjunto.
+    updateUser(apiClient, target.id, { roles: rolesDraft })
+      .then((updated) => {
+        setRolesTarget(null);
+        setRoutesAtRisk(null);
+        if (roleFilter !== "all" && !updated.roles.includes(roleFilter)) {
+          reload();
+          return;
+        }
+        setUsers((current) =>
+          sortByName(current.map((row) => (row.id === updated.id ? updated : row))),
+        );
+      })
+      .catch((error: unknown) => {
+        setRolesError(errorMessage(error, "No se pudieron cambiar los roles."));
+      })
+      .finally(() => setIsSavingRoles(false));
   }
 
   function handleSaveEdit(id: string) {
@@ -506,7 +661,7 @@ export function UsersPage() {
                 type="button"
                 className="button button--secondary"
                 disabled={isResetting}
-                onClick={closeReset}
+                onClick={closeAllModes}
               >
                 Cancelar
               </button>
@@ -516,6 +671,94 @@ export function UsersPage() {
                   fila con ese nombre, más este. */}
               <button type="submit" className="button button--primary" disabled={isResetting}>
                 {isResetting ? "Guardando…" : "Guardar contraseña nueva"}
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {rolesTarget && (
+        <section className="card">
+          <form
+            className="card__body"
+            onSubmit={handleSaveRoles}
+            noValidate
+            aria-label={`Corregir los roles de ${rolesTarget.name}`}
+          >
+            <div className="page-header">
+              <h2>Corregir los roles de {rolesTarget.name}</h2>
+            </div>
+
+            <div className="field">
+              <span className="field__label">Roles</span>
+              <div className="checkbox-group checkbox-group--stacked">
+                {ROLE_ORDER.map((role) => {
+                  // Un administrador no puede quitarse a sí mismo la
+                  // administración: se cerraría la puerta desde adentro. La
+                  // pantalla no lo ofrece, y la API lo rechaza igual.
+                  const isOwnAdmin = rolesTarget.id === user?.id && role === "ADMIN";
+                  return (
+                    <label className="checkbox-field" key={role}>
+                      <input
+                        type="checkbox"
+                        checked={rolesDraft.includes(role)}
+                        disabled={isSavingRoles || isCheckingRoutes || isOwnAdmin}
+                        onChange={() => toggleRoleDraft(role)}
+                      />
+                      <span>
+                        {ROLE_LABELS[role]}
+                        <span className="field__hint"> — {ROLE_EXPLANATIONS[role]}</span>
+                        {isOwnAdmin && (
+                          <span className="field__hint">
+                            {" "}
+                            No puedes quitarte a ti mismo la administración.
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {routesAtRisk && (
+              <div className="notice notice--warning" role="alert">
+                <span>
+                  {routesAtRisk.count === null
+                    ? `No se pudo consultar las rutas de ${routesAtRisk.name}. Si tiene alguna sin cerrar, sigue a su nombre y se puede terminar desde la oficina.`
+                    : routesAtRisk.count === 0
+                      ? `${routesAtRisk.name} no tiene rutas sin cerrar. Al dejar de ser chofer no podrá salir a repartir.`
+                      : `${routesAtRisk.name} tiene ${String(routesAtRisk.count)} ${routesAtRisk.count === 1 ? "ruta sin cerrar" : "rutas sin cerrar"}. Siguen a su nombre y se pueden terminar desde la oficina, pero ya no va a poder abrirlas desde su teléfono. Puedes esperar a que las cierre.`}
+                </span>
+              </div>
+            )}
+
+            {rolesError && (
+              <div className="notice notice--error" role="alert">
+                {rolesError}
+              </div>
+            )}
+            <div className="form-actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                disabled={isSavingRoles || isCheckingRoutes}
+                onClick={closeAllModes}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="button button--primary"
+                disabled={isSavingRoles || isCheckingRoutes}
+              >
+                {isCheckingRoutes
+                  ? "Revisando sus rutas…"
+                  : isSavingRoles
+                    ? "Guardando…"
+                    : routesAtRisk
+                      ? "Sí, guardar los roles"
+                      : "Guardar roles"}
               </button>
             </div>
           </form>
@@ -708,6 +951,14 @@ export function UsersPage() {
                                 onClick={() => handleStartReset(row)}
                               >
                                 Cambiar contraseña
+                              </button>
+                              <button
+                                type="button"
+                                className="button button--ghost"
+                                disabled={isSavingAction || isResetting}
+                                onClick={() => handleStartRoles(row)}
+                              >
+                                Roles
                               </button>
                               {row.active ? (
                                 // Desactivarse a uno mismo es cerrarse la
