@@ -270,6 +270,26 @@ describe("ContainerTypesPage", () => {
     expect(within(rowOf("Bidón 20L (V)")).getByText("En uso")).toBeInTheDocument();
   });
 
+  // El error va pegado a la fila que falló, no una sola vez arriba de la
+  // card: con un catálogo largo, un mensaje arriba no dice cuál fue.
+  it("el error de una acción se muestra dentro de la tabla, junto a su fila", async () => {
+    const user = userEvent.setup();
+    stubList([BLUE, RED]);
+    stubUpdate(BLUE_ID, 500, { message: "Base de datos no disponible" });
+
+    renderPage();
+    await screen.findByText("Bidón 20L (V)");
+    const row = rowOf("Bidón 20L (V)");
+
+    await user.click(within(row).getByRole("button", { name: "Retirar" }));
+    await user.click(screen.getByRole("button", { name: "Sí, retirar" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(within(screen.getByRole("table")).getByRole("alert")).toBe(alert);
+    // Y en la fila inmediatamente siguiente a la que falló.
+    expect(rowOf("Bidón 20L (V)").nextElementSibling).toContainElement(alert);
+  });
+
   it("muestra el error de carga y permite reintentar", async () => {
     const user = userEvent.setup();
     let attempt = 0;

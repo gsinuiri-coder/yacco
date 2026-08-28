@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { JsonBodyType } from "msw";
@@ -195,7 +195,12 @@ describe("CustomerPricesSection", () => {
       await user.click(screen.getByRole("button", { name: "Editar" }));
       await user.click(screen.getByRole("button", { name: "Guardar" }));
 
-      expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo guardar");
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("No se pudo guardar");
+      // Pegado a la fila que falló, dentro de la tabla, y no una sola vez
+      // arriba de la sección: con la lista entera de productos de un cliente,
+      // un mensaje arriba no dice cuál fue.
+      expect(within(screen.getByRole("table")).getByRole("alert")).toBe(alert);
       // Stays in edit mode with the typed value, rather than reverting silently.
       expect(screen.getByLabelText("Precio de Recarga 20L")).toHaveValue("7.00");
     });

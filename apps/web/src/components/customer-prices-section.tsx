@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   createCustomerPrice,
@@ -43,7 +43,13 @@ export function CustomerPricesSection({ customerId, isAdmin }: CustomerPricesSec
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState("");
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  /**
+   * El error de una acción de fila lleva el id del precio, no solo el texto:
+   * se muestra pegado a la fila que se estaba editando en vez de una sola vez
+   * arriba de la sección. Con dos precios daba igual; con la lista entera de
+   * productos de un cliente, un mensaje arriba no dice cuál falló.
+   */
+  const [actionError, setActionError] = useState<{ priceId: string; message: string } | null>(null);
   const [isSavingAction, setIsSavingAction] = useState(false);
 
   useEffect(() => {
@@ -136,7 +142,10 @@ export function CustomerPricesSection({ customerId, isAdmin }: CustomerPricesSec
   function handleSaveEdit(priceId: string) {
     if (isSavingAction) return;
     if (!isValidMoney(editPrice.trim())) {
-      setActionError('El precio debe ser un monto válido, como "12.50"');
+      setActionError({
+        priceId,
+        message: 'El precio debe ser un monto válido, como "12.50"',
+      });
       return;
     }
 
@@ -148,7 +157,10 @@ export function CustomerPricesSection({ customerId, isAdmin }: CustomerPricesSec
         setEditingId(null);
       })
       .catch((error: unknown) => {
-        setActionError(error instanceof Error ? error.message : "No se pudo actualizar el precio.");
+        setActionError({
+          priceId,
+          message: error instanceof Error ? error.message : "No se pudo actualizar el precio.",
+        });
       })
       .finally(() => setIsSavingAction(false));
   }
@@ -172,7 +184,10 @@ export function CustomerPricesSection({ customerId, isAdmin }: CustomerPricesSec
         setConfirmingDeleteId(null);
       })
       .catch((error: unknown) => {
-        setActionError(error instanceof Error ? error.message : "No se pudo eliminar el precio.");
+        setActionError({
+          priceId,
+          message: error instanceof Error ? error.message : "No se pudo eliminar el precio.",
+        });
       })
       .finally(() => setIsSavingAction(false));
   }
@@ -205,11 +220,6 @@ export function CustomerPricesSection({ customerId, isAdmin }: CustomerPricesSec
             {createError && (
               <div className="notice notice--error" role="alert">
                 {createError}
-              </div>
-            )}
-            {actionError && (
-              <div className="notice notice--error" role="alert">
-                {actionError}
               </div>
             )}
 
@@ -290,82 +300,97 @@ export function CustomerPricesSection({ customerId, isAdmin }: CustomerPricesSec
                   </thead>
                   <tbody>
                     {prices.map((price) => (
-                      <tr key={price.id}>
-                        <td>{price.product.name}</td>
-                        <td className="table__numeric">
-                          {editingId === price.id ? (
-                            <input
-                              aria-label={`Precio de ${price.product.name}`}
-                              type="text"
-                              inputMode="decimal"
-                              value={editPrice}
-                              disabled={isSavingAction}
-                              onChange={(event) => setEditPrice(event.target.value)}
-                            />
-                          ) : (
-                            formatMoney(price.price)
-                          )}
-                        </td>
-                        <td className="table__actions">
-                          {confirmingDeleteId === price.id ? (
-                            <span>
-                              ¿Eliminar? Volverá a regir el precio de lista.{" "}
-                              <button
-                                type="button"
-                                className="button button--secondary"
-                                onClick={handleCancelDelete}
+                      <Fragment key={price.id}>
+                        <tr>
+                          <td>{price.product.name}</td>
+                          <td className="table__numeric">
+                            {editingId === price.id ? (
+                              <input
+                                aria-label={`Precio de ${price.product.name}`}
+                                type="text"
+                                inputMode="decimal"
+                                value={editPrice}
                                 disabled={isSavingAction}
-                              >
-                                No
-                              </button>{" "}
-                              <button
-                                type="button"
-                                className="button button--primary"
-                                onClick={() => handleConfirmDelete(price.id)}
-                                disabled={isSavingAction}
-                              >
-                                {isSavingAction ? "Eliminando…" : "Sí, eliminar"}
-                              </button>
-                            </span>
-                          ) : editingId === price.id ? (
-                            <>
-                              <button
-                                type="button"
-                                className="button button--secondary"
-                                onClick={handleCancelEdit}
-                                disabled={isSavingAction}
-                              >
-                                Cancelar
-                              </button>{" "}
-                              <button
-                                type="button"
-                                className="button button--primary"
-                                onClick={() => handleSaveEdit(price.id)}
-                                disabled={isSavingAction}
-                              >
-                                {isSavingAction ? "Guardando…" : "Guardar"}
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="button button--ghost"
-                                onClick={() => handleStartEdit(price)}
-                              >
-                                Editar
-                              </button>{" "}
-                              <button
-                                type="button"
-                                className="button button--ghost"
-                                onClick={() => handleStartDelete(price.id)}
-                              >
-                                Eliminar
-                              </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
+                                onChange={(event) => setEditPrice(event.target.value)}
+                              />
+                            ) : (
+                              formatMoney(price.price)
+                            )}
+                          </td>
+                          <td className="table__actions">
+                            {confirmingDeleteId === price.id ? (
+                              <span>
+                                ¿Eliminar? Volverá a regir el precio de lista.{" "}
+                                <button
+                                  type="button"
+                                  className="button button--secondary"
+                                  onClick={handleCancelDelete}
+                                  disabled={isSavingAction}
+                                >
+                                  No
+                                </button>{" "}
+                                <button
+                                  type="button"
+                                  className="button button--primary"
+                                  onClick={() => handleConfirmDelete(price.id)}
+                                  disabled={isSavingAction}
+                                >
+                                  {isSavingAction ? "Eliminando…" : "Sí, eliminar"}
+                                </button>
+                              </span>
+                            ) : editingId === price.id ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="button button--secondary"
+                                  onClick={handleCancelEdit}
+                                  disabled={isSavingAction}
+                                >
+                                  Cancelar
+                                </button>{" "}
+                                <button
+                                  type="button"
+                                  className="button button--primary"
+                                  onClick={() => handleSaveEdit(price.id)}
+                                  disabled={isSavingAction}
+                                >
+                                  {isSavingAction ? "Guardando…" : "Guardar"}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="button button--ghost"
+                                  onClick={() => handleStartEdit(price)}
+                                >
+                                  Editar
+                                </button>{" "}
+                                <button
+                                  type="button"
+                                  className="button button--ghost"
+                                  onClick={() => handleStartDelete(price.id)}
+                                >
+                                  Eliminar
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                        {/* Fila aparte y no dentro de la celda de acciones: esa
+                          columna es angosta y un mensaje ahí desborda la
+                          tabla. Acá queda pegado a su fila y con ancho para
+                          leerse entero. */}
+                        {actionError?.priceId === price.id && (
+                          <tr>
+                            <td colSpan={3}>
+                              <p className="notice notice--error" role="alert">
+                                {actionError.message}
+                              </p>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   createContainerType,
@@ -58,7 +58,13 @@ export function ContainerTypesPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  /**
+   * El error de una acción de fila lleva el id de la fila, no solo el texto:
+   * se muestra pegado a la que se estaba editando en vez de una sola vez
+   * arriba de la card. Con dos tipos de envase daba igual; con veinte, un
+   * mensaje arriba no dice cuál falló.
+   */
+  const [actionError, setActionError] = useState<{ typeId: string; message: string } | null>(null);
   const [isSavingAction, setIsSavingAction] = useState(false);
 
   useEffect(() => {
@@ -137,7 +143,7 @@ export function ContainerTypesPage() {
     if (isSavingAction) return;
     const name = renameValue.trim();
     if (name === "") {
-      setActionError(NAME_REQUIRED_MESSAGE);
+      setActionError({ typeId: id, message: NAME_REQUIRED_MESSAGE });
       return;
     }
 
@@ -149,7 +155,10 @@ export function ContainerTypesPage() {
         setRenamingId(null);
       })
       .catch((error: unknown) => {
-        setActionError(errorMessage(error, "No se pudo renombrar el tipo de envase."));
+        setActionError({
+          typeId: id,
+          message: errorMessage(error, "No se pudo renombrar el tipo de envase."),
+        });
       })
       .finally(() => setIsSavingAction(false));
   }
@@ -170,14 +179,15 @@ export function ContainerTypesPage() {
         setWithdrawingId(null);
       })
       .catch((error: unknown) => {
-        setActionError(
-          errorMessage(
+        setActionError({
+          typeId: id,
+          message: errorMessage(
             error,
             active
               ? "No se pudo reactivar el tipo de envase."
               : "No se pudo retirar el tipo de envase.",
           ),
-        );
+        });
       })
       .finally(() => setIsSavingAction(false));
   }
@@ -215,11 +225,6 @@ export function ContainerTypesPage() {
           {createError && (
             <div className="notice notice--error" role="alert">
               {createError}
-            </div>
-          )}
-          {actionError && (
-            <div className="notice notice--error" role="alert">
-              {actionError}
             </div>
           )}
 
@@ -287,91 +292,106 @@ export function ContainerTypesPage() {
                 </thead>
                 <tbody>
                   {types.map((type) => (
-                    <tr key={type.id}>
-                      <td>
-                        {renamingId === type.id ? (
-                          <input
-                            aria-label={`Nuevo nombre de ${type.name}`}
-                            type="text"
-                            maxLength={80}
-                            value={renameValue}
-                            disabled={isSavingAction}
-                            onChange={(event) => setRenameValue(event.target.value)}
-                          />
-                        ) : (
-                          <span className="cell-primary">{type.name}</span>
-                        )}
-                      </td>
-                      <td>
-                        <span
-                          className={`badge ${type.active ? "badge--active" : "badge--inactive"}`}
-                        >
-                          {type.active ? "En uso" : "Retirado"}
-                        </span>
-                      </td>
-                      {isAdmin && (
-                        <td className="table__actions">
-                          {withdrawingId === type.id ? (
-                            <WithdrawConfirm
-                              itemLabel={type.name}
-                              explanation={WITHDRAW_EXPLANATION}
-                              isSaving={isSavingAction}
-                              onCancel={() => setWithdrawingId(null)}
-                              onConfirm={() => handleSetActive(type.id, false)}
+                    <Fragment key={type.id}>
+                      <tr>
+                        <td>
+                          {renamingId === type.id ? (
+                            <input
+                              aria-label={`Nuevo nombre de ${type.name}`}
+                              type="text"
+                              maxLength={80}
+                              value={renameValue}
+                              disabled={isSavingAction}
+                              onChange={(event) => setRenameValue(event.target.value)}
                             />
-                          ) : renamingId === type.id ? (
-                            <>
-                              <button
-                                type="button"
-                                className="button button--secondary"
-                                onClick={() => setRenamingId(null)}
-                                disabled={isSavingAction}
-                              >
-                                Cancelar
-                              </button>{" "}
-                              <button
-                                type="button"
-                                className="button button--primary"
-                                onClick={() => handleSaveRename(type.id)}
-                                disabled={isSavingAction}
-                              >
-                                {isSavingAction ? "Guardando…" : "Guardar"}
-                              </button>
-                            </>
                           ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="button button--ghost"
-                                onClick={() => handleStartRename(type)}
-                                disabled={isSavingAction}
-                              >
-                                Renombrar
-                              </button>{" "}
-                              {type.active ? (
-                                <button
-                                  type="button"
-                                  className="button button--ghost"
-                                  onClick={() => handleStartWithdraw(type.id)}
-                                  disabled={isSavingAction}
-                                >
-                                  Retirar
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="button button--ghost"
-                                  onClick={() => handleSetActive(type.id, true)}
-                                  disabled={isSavingAction}
-                                >
-                                  {isSavingAction ? "Reactivando…" : "Reactivar"}
-                                </button>
-                              )}
-                            </>
+                            <span className="cell-primary">{type.name}</span>
                           )}
                         </td>
+                        <td>
+                          <span
+                            className={`badge ${type.active ? "badge--active" : "badge--inactive"}`}
+                          >
+                            {type.active ? "En uso" : "Retirado"}
+                          </span>
+                        </td>
+                        {isAdmin && (
+                          <td className="table__actions">
+                            {withdrawingId === type.id ? (
+                              <WithdrawConfirm
+                                itemLabel={type.name}
+                                explanation={WITHDRAW_EXPLANATION}
+                                isSaving={isSavingAction}
+                                onCancel={() => setWithdrawingId(null)}
+                                onConfirm={() => handleSetActive(type.id, false)}
+                              />
+                            ) : renamingId === type.id ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="button button--secondary"
+                                  onClick={() => setRenamingId(null)}
+                                  disabled={isSavingAction}
+                                >
+                                  Cancelar
+                                </button>{" "}
+                                <button
+                                  type="button"
+                                  className="button button--primary"
+                                  onClick={() => handleSaveRename(type.id)}
+                                  disabled={isSavingAction}
+                                >
+                                  {isSavingAction ? "Guardando…" : "Guardar"}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="button button--ghost"
+                                  onClick={() => handleStartRename(type)}
+                                  disabled={isSavingAction}
+                                >
+                                  Renombrar
+                                </button>{" "}
+                                {type.active ? (
+                                  <button
+                                    type="button"
+                                    className="button button--ghost"
+                                    onClick={() => handleStartWithdraw(type.id)}
+                                    disabled={isSavingAction}
+                                  >
+                                    Retirar
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="button button--ghost"
+                                    onClick={() => handleSetActive(type.id, true)}
+                                    disabled={isSavingAction}
+                                  >
+                                    {isSavingAction ? "Reactivando…" : "Reactivar"}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                      {/* Fila aparte y no dentro de la celda de acciones: esa
+                        columna es angosta y un mensaje ahí desborda la tabla.
+                        Acá el error queda pegado a su fila y con ancho para
+                        leerse entero. */}
+                      {actionError?.typeId === type.id && (
+                        <tr>
+                          <td colSpan={isAdmin ? 3 : 2}>
+                            <p className="notice notice--error" role="alert">
+                              {actionError.message}
+                            </p>
+                          </td>
+                        </tr>
                       )}
-                    </tr>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

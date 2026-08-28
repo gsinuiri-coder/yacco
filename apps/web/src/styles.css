@@ -201,6 +201,25 @@ h2 {
   font-size: 0.875rem;
 }
 
+/*
+ * Texto secundario fuera de un `.page-header`: la bajada de una sección
+ * dentro de una card, una aclaración debajo de una tabla, un total de pie.
+ *
+ * Existe porque esas pantallas venían reusando `.page-header__subtitle`, que
+ * está pensada para el subtítulo de un encabezado de página: el mismo aspecto
+ * por accidente, no por decisión. Con dos clases, cambiar el subtítulo de las
+ * cabeceras ya no arrastra a media aplicación.
+ *
+ * Mismo color y tamaño que `.page-header__subtitle` a propósito — son el
+ * mismo nivel tipográfico. Lo que cambia es el margen: acá no hay un `<h1>`
+ * arriba del que colgarse, así que separa por los dos lados.
+ */
+.text-muted {
+  margin: var(--space-1) 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
 /* --- Card ----------------------------------------------------------------- */
 
 .card {
