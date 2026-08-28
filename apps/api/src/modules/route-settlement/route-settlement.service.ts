@@ -20,6 +20,7 @@ interface Expected {
   fullOut: number;
   fullDelivered: number;
   fullSold: number;
+  emptiesPickedUp: number;
   totalSold: Prisma.Decimal;
   totalCollected: Prisma.Decimal;
   totalCashCollected: Prisma.Decimal;
@@ -32,6 +33,7 @@ function toExpectedDto(expected: Expected): RouteSettlementExpectedDto {
     fullOut: expected.fullOut,
     fullDelivered: expected.fullDelivered,
     fullSold: expected.fullSold,
+    emptiesPickedUp: expected.emptiesPickedUp,
     totalSold: expected.totalSold.toFixed(2),
     totalCollected: expected.totalCollected.toFixed(2),
     totalCashCollected: expected.totalCashCollected.toFixed(2),
@@ -85,6 +87,7 @@ export class RouteSettlementService {
       fullOutAgg,
       fullDeliveredAgg,
       fullSoldAgg,
+      emptiesPickedUpAgg,
       totalSoldAgg,
       collectedAgg,
       cashAgg,
@@ -97,6 +100,10 @@ export class RouteSettlementService {
       }),
       client.containerMovement.aggregate({
         where: { routeId, type: ContainerMovementType.FULL_SALE },
+        _sum: { quantity: true },
+      }),
+      client.containerMovement.aggregate({
+        where: { routeId, type: ContainerMovementType.EMPTY_PICKUP },
         _sum: { quantity: true },
       }),
       client.sale.aggregate({ where: { stop: { routeId } }, _sum: { total: true } }),
@@ -128,6 +135,7 @@ export class RouteSettlementService {
       fullOut: fullOutAgg._sum.quantity ?? 0,
       fullDelivered: fullDeliveredAgg._sum.quantity ?? 0,
       fullSold: fullSoldAgg._sum.quantity ?? 0,
+      emptiesPickedUp: emptiesPickedUpAgg._sum.quantity ?? 0,
       totalSold,
       totalCollected,
       totalCashCollected: cashAgg._sum.amount ?? new Prisma.Decimal(0),
@@ -205,11 +213,6 @@ export class RouteSettlementService {
       }
 
       const expected = await this.computeExpected(tx, routeId);
-      const emptiesPickedUpAgg = await tx.containerMovement.aggregate({
-        where: { routeId, type: ContainerMovementType.EMPTY_PICKUP },
-        _sum: { quantity: true },
-      });
-      const emptiesPickedUp = emptiesPickedUpAgg._sum.quantity ?? 0;
 
       const settlement = await tx.routeSettlement.create({
         data: {
@@ -235,7 +238,7 @@ export class RouteSettlementService {
         differences: {
           containers:
             expected.fullOut - (expected.fullDelivered + expected.fullSold + dto.fullReturned),
-          empties: emptiesPickedUp - dto.emptiesCollected,
+          empties: expected.emptiesPickedUp - dto.emptiesCollected,
         },
       };
     });

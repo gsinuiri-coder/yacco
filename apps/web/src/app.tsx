@@ -18,6 +18,7 @@ import { PaymentsPage } from "./pages/payments-page";
 import { ProductionPage } from "./pages/production-page";
 import { RouteCreatePage } from "./pages/route-create-page";
 import { RouteDetailPage } from "./pages/route-detail-page";
+import { RouteSettlementPage } from "./pages/route-settlement-page";
 import { RoutesPage } from "./pages/routes-page";
 import { ZonesPage } from "./pages/zones-page";
 import { ProtectedRoute } from "./routes/protected-route";
@@ -39,6 +40,7 @@ export function App() {
           <Route path="/routes" element={<RoutesPage />} />
           <Route path="/routes/new" element={<RouteCreatePage />} />
           <Route path="/routes/:routeId" element={<RouteDetailPage />} />
+          <Route path="/routes/:routeId/settlement" element={<RouteSettlementPage />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/production" element={<ProductionPage />} />

@@ -123,7 +123,7 @@ describe("RouteSettlementService", () => {
       prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID });
       prisma.routeLoad.aggregate.mockResolvedValue({ _sum: { quantity: 20 } });
       prisma.containerMovement.aggregate.mockImplementation(
-        containerMovementAggregateMock({ fullDelivered: 10, fullSold: 4 }),
+        containerMovementAggregateMock({ fullDelivered: 10, fullSold: 4, emptiesPickedUp: 14 }),
       );
       prisma.sale.aggregate.mockResolvedValue({ _sum: { total: decimal("320.00") } });
       prisma.payment.aggregate.mockImplementation(
@@ -136,10 +136,13 @@ describe("RouteSettlementService", () => {
 
       expect(result.settlement).toBeNull();
       expect(result.unresolvedStops).toBe(2);
+      // `emptiesPickedUp` viaja en la vista previa porque es el número contra
+      // el que se cuentan los vacíos en la puerta.
       expect(result.expected).toEqual({
         fullOut: 20,
         fullDelivered: 10,
         fullSold: 4,
+        emptiesPickedUp: 14,
         totalSold: "320.00",
         totalCollected: "280.00",
         totalCashCollected: "150.00",

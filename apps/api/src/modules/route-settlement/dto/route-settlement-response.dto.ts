@@ -11,6 +11,16 @@ export class RouteSettlementExpectedDto {
   @ApiProperty({ description: "Llenos vendidos completos, salen de la flota (FULL_SALE)" })
   fullSold!: number;
 
+  /**
+   * Vacíos que el libro dice que se recogieron (EMPTY_PICKUP). Es el número
+   * contra el que se cuenta al descargar el camión: sin él, la vista previa
+   * pide un conteo físico sin decir con qué compararlo. No se persiste en
+   * `route_settlements` —siempre es reconstruible del ledger— por la misma
+   * razón por la que `differences` tampoco se guarda.
+   */
+  @ApiProperty({ description: "Vacíos recogidos según el libro (EMPTY_PICKUP)" })
+  emptiesPickedUp!: number;
+
   @ApiProperty({ type: String, example: "320.00" })
   totalSold!: string;
 
