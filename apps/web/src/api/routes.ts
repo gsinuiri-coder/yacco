@@ -183,3 +183,64 @@ export function startRoute(apiClient: ApiClient, routeId: string): Promise<Route
 export function finishRoute(apiClient: ApiClient, routeId: string): Promise<Route> {
   return apiClient.request<Route>(`/routes/${routeId}/finish`, { method: "PATCH" });
 }
+
+/** RouteLoadContainerTypeDto. */
+export interface RouteLoadContainerType {
+  id: string;
+  name: string;
+}
+
+/** RouteLoadBatchDto. */
+export interface RouteLoadBatch {
+  id: string;
+  code: string;
+}
+
+/** RouteLoadBatchItemDto: la línea de lote de la que salieron las unidades. */
+export interface RouteLoadBatchItem {
+  id: string;
+  containerTypeId: string;
+  containerType: RouteLoadContainerType;
+  batchId: string;
+  batch: RouteLoadBatch;
+}
+
+/** RouteLoadResponseDto. */
+export interface RouteLoad {
+  id: string;
+  routeId: string;
+  batchItemId: string;
+  batchItem: RouteLoadBatchItem;
+  quantity: number;
+}
+
+/**
+ * CreateRouteLoadDto. `batchItemId` no se le pide al usuario: la pantalla lo
+ * resuelve consumiendo los lotes del más antiguo al más nuevo (FIFO), que es
+ * la regla del dominio.
+ */
+export interface CreateRouteLoadBody {
+  batchItemId: string;
+  quantity: number;
+}
+
+export function listRouteLoads(apiClient: ApiClient, routeId: string): Promise<RouteLoad[]> {
+  return apiClient.request<RouteLoad[]>(`/routes/${routeId}/loads`);
+}
+
+export function addRouteLoad(
+  apiClient: ApiClient,
+  routeId: string,
+  body: CreateRouteLoadBody,
+): Promise<RouteLoad> {
+  return apiClient.request<RouteLoad>(`/routes/${routeId}/loads`, { method: "POST", body });
+}
+
+/** 204 sin cuerpo. Solo con la ruta PLANNED: la API lo rechaza después. */
+export function removeRouteLoad(
+  apiClient: ApiClient,
+  routeId: string,
+  loadId: string,
+): Promise<void> {
+  return apiClient.request<void>(`/routes/${routeId}/loads/${loadId}`, { method: "DELETE" });
+}

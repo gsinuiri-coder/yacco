@@ -300,6 +300,40 @@ describe("ProductionBatchesService", () => {
         service.findAll({ page: 1, limit: 20, dateFrom: "2026-08-31", dateTo: "2026-08-01" }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    // Lo que la carga de ruta necesita: el listado va de la fecha más antigua
+    // a la más nueva (el orden FIFO de consumo), así que sin este filtro la
+    // primera página son los lotes más viejos, que ya no tienen nada.
+    it("withStock=true deja solo los lotes con alguna línea disponible", async () => {
+      prisma.productionBatch.count.mockResolvedValue(0);
+      prisma.productionBatch.findMany.mockResolvedValue([]);
+
+      await service.findAll({ page: 1, limit: 20, withStock: true });
+
+      expect(prisma.productionBatch.count).toHaveBeenCalledWith({
+        where: { items: { some: { availableQty: { gt: 0 } } } },
+      });
+    });
+
+    it("withStock=false deja solo los lotes ya consumidos por completo", async () => {
+      prisma.productionBatch.count.mockResolvedValue(0);
+      prisma.productionBatch.findMany.mockResolvedValue([]);
+
+      await service.findAll({ page: 1, limit: 20, withStock: false });
+
+      expect(prisma.productionBatch.count).toHaveBeenCalledWith({
+        where: { items: { every: { availableQty: { lte: 0 } } } },
+      });
+    });
+
+    it("sin el filtro, el where no menciona las líneas: el historial sigue completo", async () => {
+      prisma.productionBatch.count.mockResolvedValue(0);
+      prisma.productionBatch.findMany.mockResolvedValue([]);
+
+      await service.findAll({ page: 1, limit: 20 });
+
+      expect(prisma.productionBatch.count).toHaveBeenCalledWith({ where: {} });
+    });
   });
 
   describe("findOne", () => {

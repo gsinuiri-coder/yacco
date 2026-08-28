@@ -17,6 +17,7 @@ import {
   STOP_ORIGIN_LABELS,
   StopStatusBadge,
 } from "../components/route-status-badge";
+import { RouteLoadsSection } from "../components/route-loads-section";
 import { RouteStopForm } from "../components/route-stop-form";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatBusinessDate, formatBusinessDateTime } from "../lib/business-date";
@@ -254,6 +255,8 @@ export function RouteDetailPage() {
           </section>
 
           <RouteStopsSection route={route} onChanged={reload} />
+
+          <RouteLoadsSection route={route} />
         </>
       ) : null}
     </AppShell>

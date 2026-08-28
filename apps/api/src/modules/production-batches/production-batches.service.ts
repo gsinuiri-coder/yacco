@@ -236,7 +236,7 @@ export class ProductionBatchesService {
 }
 
 function buildBatchFilter(query: ListProductionBatchesQueryDto): Prisma.ProductionBatchWhereInput {
-  const { dateFrom, dateTo } = query;
+  const { dateFrom, dateTo, withStock } = query;
   const from = dateFrom === undefined ? undefined : parseBusinessDate(dateFrom, "La fecha desde");
   const to = dateTo === undefined ? undefined : parseBusinessDate(dateTo, "La fecha hasta");
 
@@ -244,12 +244,20 @@ function buildBatchFilter(query: ListProductionBatchesQueryDto): Prisma.Producti
     throw new BadRequestException("La fecha desde no puede ser posterior a la fecha hasta");
   }
 
-  return from !== undefined || to !== undefined
-    ? {
-        date: {
-          ...(from !== undefined ? { gte: from } : {}),
-          ...(to !== undefined ? { lte: to } : {}),
-        },
-      }
-    : {};
+  return {
+    ...(from !== undefined || to !== undefined
+      ? {
+          date: {
+            ...(from !== undefined ? { gte: from } : {}),
+            ...(to !== undefined ? { lte: to } : {}),
+          },
+        }
+      : {}),
+    // `some` y no un filtro sobre `items` en el include: el lote entra o no
+    // entra en la página, y sus líneas siguen viajando completas — una línea
+    // agotada de un lote que todavía tiene otra con stock es información que
+    // la pantalla de carga necesita para no ofrecerla.
+    ...(withStock === true ? { items: { some: { availableQty: { gt: 0 } } } } : {}),
+    ...(withStock === false ? { items: { every: { availableQty: { lte: 0 } } } } : {}),
+  };
 }
