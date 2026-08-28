@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { createCustomer } from "../api/customers";
 import type { CreateCustomerBody } from "../api/customers";
+import { listZones } from "../api/zones";
+import type { Zone } from "../api/zones";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
 import { CustomerForm, emptyCustomerForm } from "../components/customer-form";
@@ -27,6 +29,24 @@ export function CustomerCreatePage() {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [zones, setZones] = useState<Zone[]>([]);
+
+  // Catalog read from its own endpoint, active only: a new customer can only
+  // be assigned a zone that is currently offered. A load failure just leaves
+  // the select at "Sin zona" — it never blocks the rest of the form.
+  useEffect(() => {
+    let cancelled = false;
+    listZones(apiClient, { active: true })
+      .then((response) => {
+        if (!cancelled) setZones(response);
+      })
+      .catch(() => {
+        if (!cancelled) setZones([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient]);
 
   async function handleSubmit(values: CustomerFormValues) {
     setIsSubmitting(true);
@@ -58,6 +78,7 @@ export function CustomerCreatePage() {
         submitLabel="Registrar cliente"
         isSubmitting={isSubmitting}
         submitError={submitError}
+        zones={zones}
         onSubmit={handleSubmit}
         onCancel={() => void navigate("/customers")}
       />

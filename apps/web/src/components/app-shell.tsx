@@ -42,6 +42,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               Contar envases
             </NavLink>
           </span>
+          <NavLink to="/zones" className="app-bar__link">
+            Zonas
+          </NavLink>
         </nav>
         <div className="app-bar__user">
           <span>{user?.username}</span>

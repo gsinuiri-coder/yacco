@@ -5,6 +5,7 @@ import type { JsonBodyType } from "msw";
 import { Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Customer } from "../api/customers";
+import type { Zone } from "../api/zones";
 import { API_BASE_URL } from "../config";
 import { renderWithProviders } from "../test/render";
 import { server } from "../test/server";
@@ -12,6 +13,8 @@ import { signIn } from "../test/session";
 import { CustomerEditPage } from "./customer-edit-page";
 
 const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
+const NORTE_ID = "33333333-3333-4333-8333-333333333333";
+const SUR_ID = "44444444-4444-4444-8444-444444444444";
 
 function buildCustomer(overrides: Partial<Customer> = {}): Customer {
   return {
@@ -34,6 +37,10 @@ function stubGet(customer: Customer) {
   server.use(
     http.get(`${API_BASE_URL}/customers/${CUSTOMER_ID}`, () => HttpResponse.json(customer)),
   );
+}
+
+function stubZones(zones: Zone[]): void {
+  server.use(http.get(`${API_BASE_URL}/zones`, () => HttpResponse.json(zones)));
 }
 
 /** Captures the PATCH body so the test can assert the contract. */
@@ -65,6 +72,7 @@ describe("CustomerEditPage", () => {
   beforeEach(() => {
     localStorage.clear();
     signIn();
+    stubZones([]);
   });
 
   it("precarga el formulario con los datos del cliente", async () => {
@@ -78,6 +86,84 @@ describe("CustomerEditPage", () => {
     expect(screen.getByLabelText("Referencia")).toHaveValue("Portón azul");
     expect(screen.getByLabelText("Límite de crédito (opcional)")).toHaveValue("150.00");
     expect(screen.getByLabelText("Cliente activo")).toBeChecked();
+  });
+
+  it("precarga la zona vigente del cliente entre las zonas activas", async () => {
+    stubZones([
+      { id: NORTE_ID, name: "Norte", deliveryDays: [], active: true },
+      { id: SUR_ID, name: "Sur", deliveryDays: [], active: true },
+    ]);
+    stubGet(buildCustomer({ zoneId: SUR_ID, zone: { id: SUR_ID, name: "Sur" } }));
+
+    renderEdit();
+
+    expect(await screen.findByLabelText("Zona (opcional)")).toHaveValue(SUR_ID);
+  });
+
+  it("una zona retirada asignada al cliente sigue apareciendo en el select, marcada", async () => {
+    // The catalog fetch is active-only, so it never returns this withdrawn
+    // zone on its own — the page must add it back from the customer record.
+    stubZones([{ id: NORTE_ID, name: "Norte", deliveryDays: [], active: true }]);
+    const withdrawnZoneId = "55555555-5555-4555-8555-555555555555";
+    stubGet(
+      buildCustomer({ zoneId: withdrawnZoneId, zone: { id: withdrawnZoneId, name: "Antigua" } }),
+    );
+
+    renderEdit();
+
+    const select = await screen.findByLabelText("Zona (opcional)");
+    expect(select).toHaveValue(withdrawnZoneId);
+    expect(screen.getByRole("option", { name: "Antigua (retirada)" })).toBeInTheDocument();
+  });
+
+  it("guardar sin tocar el select de una zona retirada no le borra la zona al cliente", async () => {
+    const user = userEvent.setup();
+    stubZones([]);
+    const withdrawnZoneId = "55555555-5555-4555-8555-555555555555";
+    stubGet(
+      buildCustomer({ zoneId: withdrawnZoneId, zone: { id: withdrawnZoneId, name: "Antigua" } }),
+    );
+    const captured = stubPatch();
+
+    renderEdit();
+    await screen.findByLabelText("Zona (opcional)");
+
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    await screen.findByRole("heading", { name: "Clientes" });
+    expect(captured.body).toMatchObject({ zoneId: withdrawnZoneId });
+  });
+
+  it("si el catálogo de zonas falla, el formulario sigue usable con 'Sin zona'", async () => {
+    server.use(
+      http.get(`${API_BASE_URL}/zones`, () =>
+        HttpResponse.json({ message: "Catálogo no disponible" }, { status: 500 }),
+      ),
+    );
+    stubGet(buildCustomer());
+
+    renderEdit();
+
+    const select = await screen.findByLabelText("Zona (opcional)");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(select).toHaveValue("");
+  });
+
+  it("elegir otra zona activa la manda en el PATCH", async () => {
+    const user = userEvent.setup();
+    stubZones([
+      { id: NORTE_ID, name: "Norte", deliveryDays: [], active: true },
+      { id: SUR_ID, name: "Sur", deliveryDays: [], active: true },
+    ]);
+    stubGet(buildCustomer({ zoneId: NORTE_ID, zone: { id: NORTE_ID, name: "Norte" } }));
+    const captured = stubPatch();
+
+    renderEdit();
+    await user.selectOptions(await screen.findByLabelText("Zona (opcional)"), SUR_ID);
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    await screen.findByRole("heading", { name: "Clientes" });
+    expect(captured.body).toMatchObject({ zoneId: SUR_ID });
   });
 
   it("muestra la deuda como solo lectura, sin campo editable ni pérdida de precisión", async () => {

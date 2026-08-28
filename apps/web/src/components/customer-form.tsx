@@ -3,6 +3,12 @@ import type { FormEvent, ReactNode } from "react";
 import type { Customer } from "../api/customers";
 import { isValidMoney } from "../lib/money";
 
+/** Only what the select needs to render an option — never the full Zone shape. */
+export interface ZoneOption {
+  id: string;
+  name: string;
+}
+
 export interface CustomerFormValues {
   name: string;
   phone: string;
@@ -86,6 +92,13 @@ interface CustomerFormProps {
   submitError: string | null;
   onSubmit: (values: CustomerFormValues) => void;
   onCancel: () => void;
+  /**
+   * The zone catalog, read from its own endpoint, never hardcoded. On edit,
+   * a customer whose zone was withdrawn still needs that zone in the list —
+   * the caller is responsible for including it (see customer-edit-page.tsx),
+   * or the select would silently clear the customer's zone on save.
+   */
+  zones: ZoneOption[];
   /** Shown on edit only: the read-only ledger balance. */
   readOnlySummary?: ReactNode;
   /** Deactivation lives here on edit; a new customer is always created active. */
@@ -99,6 +112,7 @@ export function CustomerForm({
   submitError,
   onSubmit,
   onCancel,
+  zones,
   readOnlySummary,
   showActiveToggle = false,
 }: CustomerFormProps) {
@@ -166,6 +180,24 @@ export function CustomerForm({
             hint="Cómo encontrar la puerta: un color, una esquina, un negocio al lado."
             onChange={(value) => setField("addressReference", value)}
           />
+          <div className="field">
+            <label className="field__label" htmlFor="zoneId">
+              Zona (opcional)
+            </label>
+            <select
+              id="zoneId"
+              value={values.zoneId}
+              disabled={isSubmitting}
+              onChange={(event) => setField("zoneId", event.target.value)}
+            >
+              <option value="">Sin zona</option>
+              {zones.map((zone) => (
+                <option key={zone.id} value={zone.id}>
+                  {zone.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <TextField
             id="creditLimit"
             label="Límite de crédito (opcional)"

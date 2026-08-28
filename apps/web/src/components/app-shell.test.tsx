@@ -14,6 +14,7 @@ const NAV_LINKS = [
   "Movimientos",
   "Tipos de envase",
   "Contar envases",
+  "Zonas",
 ];
 
 describe("AppShell", () => {
@@ -22,7 +23,7 @@ describe("AppShell", () => {
     signIn();
   });
 
-  it("muestra los nueve enlaces dentro de un único <nav aria-label='Principal'>", async () => {
+  it("muestra los diez enlaces dentro de un único <nav aria-label='Principal'>", async () => {
     renderWithProviders(
       <AppShell>
         <p>Contenido</p>
@@ -62,5 +63,20 @@ describe("AppShell", () => {
     const pagos = within(nav).getByRole("link", { name: "Pagos" });
 
     expect(pagos.closest(".app-bar__nav-group")).toBeNull();
+  });
+
+  it("«Zonas» va al final, fuera del grupo de envases", async () => {
+    renderWithProviders(
+      <AppShell>
+        <p>Contenido</p>
+      </AppShell>,
+    );
+
+    const nav = await screen.findByRole("navigation", { name: "Principal" });
+    const zonas = within(nav).getByRole("link", { name: "Zonas" });
+    const links = within(nav).getAllByRole("link");
+
+    expect(zonas.closest(".app-bar__nav-group")).toBeNull();
+    expect(links.at(-1)).toBe(zonas);
   });
 });

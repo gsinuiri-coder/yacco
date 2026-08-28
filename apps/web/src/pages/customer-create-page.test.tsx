@@ -4,11 +4,23 @@ import { HttpResponse, http } from "msw";
 import type { JsonBodyType } from "msw";
 import { Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { Zone } from "../api/zones";
 import { API_BASE_URL } from "../config";
 import { renderWithProviders } from "../test/render";
 import { server } from "../test/server";
 import { signIn } from "../test/session";
 import { CustomerCreatePage } from "./customer-create-page";
+
+const NORTE: Zone = {
+  id: "33333333-3333-4333-8333-333333333333",
+  name: "Norte",
+  deliveryDays: [],
+  active: true,
+};
+
+function stubZones(zones: Zone[] = [NORTE]): void {
+  server.use(http.get(`${API_BASE_URL}/zones`, () => HttpResponse.json(zones)));
+}
 
 function renderCreate() {
   return renderWithProviders(
@@ -46,6 +58,7 @@ describe("CustomerCreatePage", () => {
   beforeEach(() => {
     localStorage.clear();
     signIn();
+    stubZones();
   });
 
   it("envía solo los campos del contrato y vuelve a la lista", async () => {
@@ -69,6 +82,35 @@ describe("CustomerCreatePage", () => {
     });
     // debtBalance is read-only: the API rejects a body that carries it.
     expect(captured.body).not.toHaveProperty("debtBalance");
+  });
+
+  it("el catálogo de zonas se lee de su propio endpoint y elegir una la manda en el cuerpo", async () => {
+    const user = userEvent.setup();
+    const captured = stubCreate();
+
+    renderCreate();
+    await screen.findByRole("heading", { name: "Nuevo cliente" });
+    await fillRequiredFields(user);
+
+    await user.selectOptions(await screen.findByLabelText("Zona (opcional)"), NORTE.id);
+    await user.click(screen.getByRole("button", { name: "Registrar cliente" }));
+
+    await screen.findByRole("heading", { name: "Clientes" });
+    expect(captured.body).toHaveProperty("zoneId", NORTE.id);
+  });
+
+  it("si el catálogo de zonas falla, el formulario sigue usable con 'Sin zona'", async () => {
+    server.use(
+      http.get(`${API_BASE_URL}/zones`, () =>
+        HttpResponse.json({ message: "Catálogo no disponible" }, { status: 500 }),
+      ),
+    );
+
+    renderCreate();
+
+    const select = await screen.findByLabelText("Zona (opcional)");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(select).toHaveValue("");
   });
 
   it("omite los opcionales en blanco en vez de mandarlos vacíos", async () => {
