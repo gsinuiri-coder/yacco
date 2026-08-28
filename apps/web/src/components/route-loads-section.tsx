@@ -207,7 +207,7 @@ export function RouteLoadsSection({ route }: { route: Route }) {
     <section className="card">
       <div className="card__body">
         <h2>Carga del camión</h2>
-        <p className="page-header__subtitle">
+        <p className="text-muted">
           Lo que sube sale siempre del lote más antiguo que todavía tenga unidades.
           {canRemove && " Mientras la ruta no arranque se puede corregir; después ya no."}
         </p>

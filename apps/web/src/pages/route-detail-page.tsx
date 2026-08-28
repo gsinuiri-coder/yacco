@@ -353,7 +353,7 @@ function RouteStopsSection({
     <section className="card">
       <div className="card__body">
         <h2>Paradas</h2>
-        <p className="page-header__subtitle">En el orden en que el chofer las va a visitar.</p>
+        <p className="text-muted">En el orden en que el chofer las va a visitar.</p>
         {editable && !isAdding && (
           <div className="form-actions">
             <button

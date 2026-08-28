@@ -237,7 +237,7 @@ export function RouteSettlementPage() {
             <section className="card">
               <div className="card__body">
                 <h2>Lo que se contó en la puerta</h2>
-                <p className="page-header__subtitle">
+                <p className="text-muted">
                   Los dos únicos números que se cuentan a mano. Todo lo demás sale del libro.
                 </p>
               </div>
@@ -360,7 +360,7 @@ function ExpectedSection({
     <section className="card">
       <div className="card__body">
         <h2>Lo que dice el libro</h2>
-        <p className="page-header__subtitle">
+        <p className="text-muted">
           Todo esto sale de lo ya registrado en la ruta; nadie lo escribe a mano.
         </p>
         <div className="form-grid">
@@ -501,9 +501,7 @@ function SettledSection({
     <section className="card">
       <div className="card__body">
         <h2>Liquidada</h2>
-        <p className="page-header__subtitle">
-          Cerrada el {formatBusinessDateTime(settlement.settledAt)}.
-        </p>
+        <p className="text-muted">Cerrada el {formatBusinessDateTime(settlement.settledAt)}.</p>
         <div className="form-grid">
           <div className="stat">
             <span className="stat__label">Llenos que volvieron</span>

@@ -232,7 +232,7 @@ export function ContainerCountsPage() {
         </div>
 
         <div className="card__body">
-          <p className="page-header__subtitle">
+          <p className="text-muted">
             {isLoading && result === null
               ? "Cargando…"
               : `${total} ${total === 1 ? "ubicación" : "ubicaciones"}${hasFilters ? " con este filtro" : ""}`}
