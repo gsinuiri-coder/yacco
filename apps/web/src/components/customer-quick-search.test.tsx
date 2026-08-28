@@ -85,6 +85,23 @@ describe("CustomerQuickSearch", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
+  it("aria-expanded refleja si hay lista desplegada, no solo el foco", async () => {
+    const user = userEvent.setup();
+    stubSearch([buildCustomer({ name: "Panadería Aurora" })]);
+
+    renderSearch();
+    const input = screen.getByLabelText("Buscar cliente");
+    // El campo llega enfocado por autoFocus pero sin texto: no hay listbox
+    // que desplegar, así que aria-expanded no puede ser "true".
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute("aria-expanded", "false");
+
+    await user.type(input, "aurora");
+    await screen.findByRole("option", { name: /Panadería Aurora/ });
+
+    expect(input).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("elegir un resultado navega a la ficha del cliente", async () => {
     const user = userEvent.setup();
     stubSearch([buildCustomer({ name: "Panadería Aurora" })]);

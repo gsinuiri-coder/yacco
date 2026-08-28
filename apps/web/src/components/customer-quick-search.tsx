@@ -101,7 +101,7 @@ export function CustomerQuickSearch() {
             }
           }}
           role="combobox"
-          aria-expanded={isOpen}
+          aria-expanded={isOpen && debouncedQuery !== ""}
           aria-controls={RESULTS_ID}
           aria-activedescendant={
             highlightedIndex >= 0 ? `${RESULTS_ID}-option-${highlightedIndex}` : undefined
