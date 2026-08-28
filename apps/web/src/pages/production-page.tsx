@@ -340,7 +340,8 @@ export function ProductionPage() {
             <div className="table-scroll">
               <table className="table">
                 <caption className="visually-hidden">
-                  Lotes de producción con código, fecha, responsable y lo producido
+                  Lotes de producción con código, fecha, responsable, lo producido y lo que todavía
+                  no salió en ninguna ruta
                 </caption>
                 <thead>
                   <tr>
@@ -348,6 +349,7 @@ export function ProductionPage() {
                     <th scope="col">Fecha</th>
                     <th scope="col">Responsable</th>
                     <th scope="col">Producido</th>
+                    <th scope="col">Sin cargar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -372,10 +374,23 @@ export function ProductionPage() {
   );
 }
 
+function summarizeItems(items: { qty: number; name: string }[]): string {
+  return items.map((item) => `${item.qty}× ${item.name}`).join(", ");
+}
+
 function BatchRow({ batch }: { batch: ProductionBatch }) {
-  const producedSummary = batch.items
-    .map((item) => `${item.producedQty}× ${item.containerType.name}`)
-    .join(", ");
+  const producedSummary = summarizeItems(
+    batch.items.map((item) => ({ qty: item.producedQty, name: item.containerType.name })),
+  );
+  // Lo que queda del lote sin salir en ninguna ruta: `availableQty` nace igual
+  // a `producedQty` y baja con cada carga (vuelve a subir si la ruta se
+  // cancela). Se muestra porque las rutas consumen los lotes del más viejo al
+  // más nuevo: sin este dato no hay forma de ver desde la app qué lote es el
+  // que va a salir primero.
+  const remaining = batch.items.filter((item) => item.availableQty > 0);
+  const remainingSummary = summarizeItems(
+    remaining.map((item) => ({ qty: item.availableQty, name: item.containerType.name })),
+  );
 
   return (
     <tr>
@@ -383,6 +398,9 @@ function BatchRow({ batch }: { batch: ProductionBatch }) {
       <td>{formatBusinessDate(batch.date)}</td>
       <td>{batch.filledBy.name}</td>
       <td className="cell-secondary">{producedSummary}</td>
+      <td className="cell-secondary">
+        {remaining.length === 0 ? "Todo cargado" : remainingSummary}
+      </td>
     </tr>
   );
 }
