@@ -146,6 +146,107 @@ describe("CustomersPage", () => {
 
     expect(await screen.findByText("Cliente de la 2")).toBeInTheDocument();
     expect(seen.at(-1)?.searchParams.get("page")).toBe("2");
+    expect(screen.queryByText("Cliente de la 1")).not.toBeInTheDocument();
+  });
+
+  /*
+   * Los dos casos de abajo son el bug que este archivo venía reportando desde
+   * el 24/08 y que se descartó cinco veces como "el flaky de siempre": el
+   * debounce del buscador reseteaba `page` a 1 aunque el término terminara
+   * igual que estaba. Cada uno afirma sobre las dos cosas — qué se pidió y qué
+   * se ve — porque la aserción sobre las peticiones es la que dice el bug con
+   * precisión, y es la que lo venía diciendo bien desde el principio.
+   *
+   * `paginateAndWaitForDebounce` deja correr el timer del debounce a
+   * propósito: es justamente lo que el test original no hacía, y por eso el
+   * fallo dependía de dónde cayeran los 300 ms respecto de la corrida.
+   */
+  const PAST_DEBOUNCE_MS = 450;
+
+  function waitPastDebounce(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, PAST_DEBOUNCE_MS));
+  }
+
+  function stubTwoPages(): URL[] {
+    return stubCustomers((url) => {
+      const page = Number(url.searchParams.get("page"));
+      return buildPage({
+        data: [buildCustomer({ name: page === 2 ? "Cliente de la 2" : "Cliente de la 1" })],
+        total: 40,
+        page,
+        totalPages: 2,
+      });
+    });
+  }
+
+  it("paginar apenas carga la pantalla no se pisa cuando vence el debounce del mount", async () => {
+    const user = userEvent.setup();
+    const seen = stubTwoPages();
+
+    renderCustomers();
+    await screen.findByText("Cliente de la 1");
+    // Sin esperar nada: el timer que el mount programó sigue vivo.
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await screen.findByText("Cliente de la 2");
+
+    await waitPastDebounce();
+
+    expect(seen.map((url) => url.searchParams.get("page"))).toEqual(["1", "2"]);
+    expect(screen.getByText("Cliente de la 2")).toBeInTheDocument();
+  });
+
+  it("tipear en el buscador y borrarlo deja al usuario en la página que eligió", async () => {
+    const user = userEvent.setup();
+    const seen = stubTwoPages();
+
+    renderCustomers();
+    await screen.findByText("Cliente de la 1");
+    // Acá sí se espera: este caso no depende de la ventana del mount.
+    await waitPastDebounce();
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await screen.findByText("Cliente de la 2");
+
+    const searchBox = screen.getByPlaceholderText("Nombre o teléfono");
+    await user.type(searchBox, "a");
+    await user.clear(searchBox);
+    await waitPastDebounce();
+
+    // El término terminó igual que estaba —vacío—, así que no se pidió nada
+    // nuevo y la página elegida sigue siendo la del usuario.
+    expect(seen.map((url) => url.searchParams.get("page"))).toEqual(["1", "2"]);
+    expect(screen.getByText("Cliente de la 2")).toBeInTheDocument();
+  });
+
+  it("cambiar el término de búsqueda sí vuelve a la primera página", async () => {
+    const user = userEvent.setup();
+    const seen = stubCustomers((url) => {
+      const page = Number(url.searchParams.get("page"));
+      const search = url.searchParams.get("search");
+      return buildPage({
+        data: [
+          buildCustomer({
+            name: search ? "Resultado buscado" : page === 2 ? "Cliente de la 2" : "Cliente de la 1",
+          }),
+        ],
+        total: 40,
+        page,
+        totalPages: 2,
+      });
+    });
+
+    renderCustomers();
+    await screen.findByText("Cliente de la 1");
+    await waitPastDebounce();
+
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await screen.findByText("Cliente de la 2");
+
+    await user.type(screen.getByPlaceholderText("Nombre o teléfono"), "rosa");
+
+    expect(await screen.findByText("Resultado buscado")).toBeInTheDocument();
+    expect(seen.at(-1)?.searchParams.get("search")).toBe("rosa");
+    expect(seen.at(-1)?.searchParams.get("page")).toBe("1");
   });
 
   it("busca por nombre o teléfono contra la API", async () => {

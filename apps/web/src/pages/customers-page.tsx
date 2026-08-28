@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { CUSTOMERS_PAGE_SIZE, listCustomers } from "../api/customers";
 import type { Customer, PaginatedCustomers } from "../api/customers";
@@ -36,9 +36,34 @@ export function CustomersPage() {
   const [reloadToken, setReloadToken] = useState(0);
   const isSlow = useSlowRequest(isLoading);
 
+  /**
+   * El último término que se llegó a aplicar.
+   *
+   * `page` tiene tres escritores: este debounce, el `onChange` del select de
+   * Estado y la paginación. El del select ya está bien y no necesita nada:
+   * resetea sincrónicamente, en el mismo handler que cambia el criterio, así
+   * que entre el cambio y el reset no hay hueco donde el usuario pueda haber
+   * elegido otra página. El buscador es el único que difiere su reset a un
+   * timer, y ese hueco dura 300 ms.
+   *
+   * Con el término aplicado a mano, pasada la pausa se puede no escribir nada
+   * cuando la búsqueda terminó igual que estaba: ni en el mount —donde el
+   * timer se programa con el campo vacío y antes pisaba la página que el
+   * usuario acabara de elegir— ni cuando alguien tipea una letra y se
+   * arrepiente.
+   */
+  const appliedSearchRef = useRef(search);
+
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setSearch(searchInput.trim());
+      const nextSearch = searchInput.trim();
+      if (nextSearch === appliedSearchRef.current) return;
+
+      appliedSearchRef.current = nextSearch;
+      setSearch(nextSearch);
+      // Volver a la primera página corresponde SOLO acá, donde el término
+      // cambió de verdad y los resultados son otros. Si terminó igual, la
+      // página que el usuario eligió es suya.
       setPage(1);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timeoutId);
