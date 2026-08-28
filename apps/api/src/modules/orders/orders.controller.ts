@@ -56,7 +56,11 @@ export class OrdersController {
     return this.ordersService.create(dto, request.user.sub);
   }
 
-  @ApiOperation({ summary: "Lista pedidos paginados, con filtros por estado, cliente y fecha" })
+  @ApiOperation({
+    summary: "Lista pedidos paginados, con filtros por estado, cliente, fecha y parada asignada",
+    description:
+      "?status=PENDING&hasRouteStop=false es lo que puede agregarse como parada de una ruta",
+  })
   @ApiResponse({ status: 200, type: PaginatedOrdersDto })
   @Get()
   findAll(@Query() query: ListOrdersQueryDto): Promise<PaginatedOrdersDto> {
