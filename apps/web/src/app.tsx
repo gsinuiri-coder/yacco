@@ -14,6 +14,7 @@ import { NotFoundPage } from "./pages/not-found-page";
 import { OrderCreatePage } from "./pages/order-create-page";
 import { OrderDetailPage } from "./pages/order-detail-page";
 import { OrdersPage } from "./pages/orders-page";
+import { PaymentsPage } from "./pages/payments-page";
 import { ProductionPage } from "./pages/production-page";
 import { ProtectedRoute } from "./routes/protected-route";
 
@@ -31,6 +32,7 @@ export function App() {
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/new" element={<OrderCreatePage />} />
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+          <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/production" element={<ProductionPage />} />
           <Route path="/container-movements" element={<ContainerMovementsPage />} />

@@ -243,7 +243,8 @@ input[type="text"],
 input[type="search"],
 input[type="password"],
 input[type="date"],
-select {
+select,
+textarea {
   width: 100%;
   padding: 0.5rem 0.6875rem;
   font: inherit;
@@ -254,12 +255,19 @@ select {
   border-radius: var(--radius-sm);
 }
 
-input::placeholder {
+textarea {
+  resize: vertical;
+  min-height: 4.5rem;
+}
+
+input::placeholder,
+textarea::placeholder {
   color: var(--text-subtle);
 }
 
 input:focus-visible,
 select:focus-visible,
+textarea:focus-visible,
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--focus);
@@ -271,7 +279,8 @@ input[aria-invalid="true"] {
 }
 
 input:disabled,
-select:disabled {
+select:disabled,
+textarea:disabled {
   background: var(--surface-sunken);
   color: var(--text-subtle);
 }

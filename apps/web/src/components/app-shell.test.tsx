@@ -8,6 +8,7 @@ const NAV_LINKS = [
   "Panel",
   "Clientes",
   "Pedidos",
+  "Pagos",
   "Inventario",
   "Producción",
   "Movimientos",
@@ -21,7 +22,7 @@ describe("AppShell", () => {
     signIn();
   });
 
-  it("muestra los ocho enlaces dentro de un único <nav aria-label='Principal'>", async () => {
+  it("muestra los nueve enlaces dentro de un único <nav aria-label='Principal'>", async () => {
     renderWithProviders(
       <AppShell>
         <p>Contenido</p>
@@ -48,5 +49,18 @@ describe("AppShell", () => {
 
     expect(movimientos.closest("nav")).toBe(nav);
     expect(movimientos.closest(".app-bar__nav-group")).not.toBeNull();
+  });
+
+  it("«Pagos» va junto a clientes y pedidos, no en el grupo de envases", async () => {
+    renderWithProviders(
+      <AppShell>
+        <p>Contenido</p>
+      </AppShell>,
+    );
+
+    const nav = await screen.findByRole("navigation", { name: "Principal" });
+    const pagos = within(nav).getByRole("link", { name: "Pagos" });
+
+    expect(pagos.closest(".app-bar__nav-group")).toBeNull();
   });
 });
