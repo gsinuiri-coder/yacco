@@ -64,7 +64,7 @@ describe("OrderDetailPage", () => {
     signIn();
   });
 
-  it("muestra el detalle con sus ítems, subtotales y el total del backend", async () => {
+  it("muestra el detalle con sus productos, subtotales y el total del backend", async () => {
     const order = buildOrder({
       items: [
         {

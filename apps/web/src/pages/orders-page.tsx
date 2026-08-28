@@ -197,14 +197,14 @@ export function OrdersPage() {
             <div className="table-scroll">
               <table className="table">
                 <caption className="visually-hidden">
-                  Pedidos con cliente, fecha de entrega, estado e ítems
+                  Pedidos con cliente, fecha de entrega, estado y productos
                 </caption>
                 <thead>
                   <tr>
                     <th scope="col">Cliente</th>
                     <th scope="col">Entrega</th>
                     <th scope="col">Estado</th>
-                    <th scope="col">Ítems</th>
+                    <th scope="col">Productos</th>
                     <th scope="col" className="table__numeric">
                       Total
                     </th>
