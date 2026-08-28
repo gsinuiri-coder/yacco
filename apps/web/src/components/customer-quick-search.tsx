@@ -120,7 +120,11 @@ export function CustomerQuickSearch() {
           autoComplete="off"
         />
         {isOpen && debouncedQuery !== "" && (
-          <div className="combobox__results" id={RESULTS_ID} role="listbox">
+          <div
+            className="combobox__results"
+            id={RESULTS_ID}
+            role={!isSearching && !errorMessage && results.length > 0 ? "listbox" : undefined}
+          >
             {isSearching ? (
               <p className="combobox__empty">Buscando…</p>
             ) : errorMessage ? (

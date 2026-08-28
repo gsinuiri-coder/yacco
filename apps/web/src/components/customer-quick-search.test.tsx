@@ -174,6 +174,23 @@ describe("CustomerQuickSearch", () => {
     expect(norte).toHaveAttribute("aria-selected", "false");
   });
 
+  it("el rol listbox solo se aplica cuando hay opciones que listar", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get(`${API_BASE_URL}/customers`, () =>
+        HttpResponse.json({ message: "Base de datos no disponible" }, { status: 500 }),
+      ),
+    );
+
+    renderSearch();
+    await user.type(screen.getByLabelText("Buscar cliente"), "aurora");
+
+    // El contenedor de resultados existe (error visible) pero no es un
+    // listbox: no tiene opciones como hijos.
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
   it("un error de búsqueda se distingue de 'sin resultados', con reintento", async () => {
     const user = userEvent.setup();
     let attempt = 0;

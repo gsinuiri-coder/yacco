@@ -150,11 +150,12 @@ function InventoryRowView({ row }: { row: InventoryRow }) {
 function Quantity({ value }: { value: number }) {
   if (value >= 0) return <>{value}</>;
   return (
-    <span
-      className="table__cell--negative"
-      aria-label={`${value}: hay más envases llenados que vacíos registrados, faltan registrar entradas de envases`}
-    >
-      {value}
+    <span className="table__cell--negative">
+      <span aria-hidden="true">{value}</span>
+      <span className="visually-hidden">
+        {value}: hay más envases llenados que vacíos registrados, faltan registrar entradas de
+        envases
+      </span>
     </span>
   );
 }

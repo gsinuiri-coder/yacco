@@ -370,11 +370,14 @@ function BalanceRow({
                       the aria-label says what it actually means here, not a
                       copy of the other screen's text. */}
                   {container.quantity < 0 ? (
-                    <span
-                      className="table__cell--negative"
-                      aria-label={`${container.quantity} ${container.containerType.name}: el cliente devolvió más envases de los que se le registraron, falta registrar una entrega`}
-                    >
-                      {container.quantity} {container.containerType.name}
+                    <span className="table__cell--negative">
+                      <span aria-hidden="true">
+                        {container.quantity} {container.containerType.name}
+                      </span>
+                      <span className="visually-hidden">
+                        {container.quantity} {container.containerType.name}: el cliente devolvió más
+                        envases de los que se le registraron, falta registrar una entrega
+                      </span>
                     </span>
                   ) : (
                     <span>
