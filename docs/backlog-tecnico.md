@@ -212,17 +212,21 @@ que además serviría para «Refresh token en localStorage».
 
 ## La web no descarta la petición en vuelo al cambiar de objetivo
 
-**Estado:** abierto, anotado como **patrón** y no como incidente: van dos
-apariciones en pantallas que no comparten una línea de código. **Disparador:**
-la tercera aparición, o el momento de arreglar el flaky que se nombra abajo —
-es esa decisión la que esto tiene que informar.
+**Estado:** abierto, en observación, con **una** aparición confirmada.
+**Disparador:** una segunda aparición de verdad.
+
+> **Corrección (28/08/2026).** Esta entrada nació diciendo «van dos
+> apariciones en pantallas que no comparten una línea de código», y sobre esa
+> cuenta se apoyaba la pregunta de la pieza compartida. Al perseguir el flaky
+> de `customers-page` hasta la causa, resultó que esa pantalla **no** era una
+> aparición de este patrón. Queda una sola. Ver «Lo que se descartó», al final.
 
 Ninguna pantalla cancela la petición que ya salió cuando el usuario cambia de
 objetivo (otra fila, otra página, otro filtro). Lo más que hay es un guard
 ad-hoc que decide si la **respuesta** se ignora; la petición sigue viva, y
-nada impide que su resultado —o su registro— llegue después del cambio.
+nada impide que su resultado llegue después del cambio.
 
-Las dos apariciones:
+La aparición confirmada:
 
 - **`users-page.tsx`, cambiar contraseña.** Tuvo el defecto por dos puertas
   distintas, y necesitó dos arreglos de naturaleza distinta — que es
@@ -239,32 +243,47 @@ Las dos apariciones:
      aviso de éxito nombrando a alguien que ya no estaba en la lista visible.
      Acá **no** se agregó otro `disabled`: la página cuenta sus cargas de
      lista (`listRunRef`) y la respuesta tardía solo pone el aviso si la tabla
-     sigue siendo la misma que cuando se envió. Es la versión chica de lo que
-     haría la pieza compartida.
-- **`customers-page.tsx`, paginación.** Con guard: el efecto de listado usa
-  una bandera `cancelled` que descarta la respuesta vieja, y eso cubre el
-  estado. Lo que no cubre es que `page` tenga dos escritores —el clic en
-  «Siguiente» y el `setPage(1)` del efecto de debounce de la búsqueda— ni que
-  la petición vieja se haya emitido igual. Es el terreno del test flaky
-  «pagina: «Siguiente» pide la página 2 y muestra sus filas», que falla solo
-  bajo carga y afirma sobre el **registro de peticiones**
-  (`seen.at(-1)`), no sobre lo que se ve. La causa raíz del flaky no está
-  confirmada; lo que sí está verificado es la forma.
+     sigue siendo la misma que cuando se envió.
 
-**Por qué importa que esté escrito junto:** con una sola aparición, el arreglo
-del flaky es un parche local y se decide en su propio PR. Con dos en pantallas
-sin código común, la pregunta cambia: lo que falta empieza a parecerse a una
-pieza compartida —un hook de petición con `AbortController` y un solo dueño del
-objetivo— y conviene saberlo antes de escribir el tercer parche, no después.
-Que `users-page` haya necesitado dos arreglos distintos para el mismo defecto
-es parte de la evidencia: el segundo (contar cargas y comparar al volver) es
-exactamente el trabajo que la pieza compartida haría una sola vez.
+### Lo que se descartó: `customers-page` no era esto
 
-**Para cerrarla:** al tocar el flaky de `customers-page`, decidir explícitamente
-entre parche por pantalla y pieza compartida, y anotar acá cuál se eligió y por
-qué. Si sale pieza compartida, `users-page.tsx` es su primer cliente: se le
-retiran tanto el `disabled={... || isResetting}` de las acciones de fila como
-el `listRunRef`.
+Se contaba como segunda aparición, y no lo es. La bandera `cancelled` de su
+efecto de listado **funciona**: descarta correctamente la respuesta vieja. La
+petición de más que se veía en el test no era una respuesta que aterrizaba
+tarde, sino una petición nueva y correctamente ejecutada, para una página que
+el usuario nunca pidió.
+
+El defecto era **una escritura diferida e incondicional sobre un estado con
+varios dueños**: `setPage(1)` dentro del timer del debounce, corriendo aunque
+el término de búsqueda terminara igual. Otra familia — ver «Test flaky en
+apps/web: customers-page falla bajo carga», ya cerrada.
+
+**Por qué eso descarta la pieza compartida, por ahora.** Lo que se estaba
+considerando era un hook de petición con `AbortController` y un solo dueño del
+objetivo. Abortar peticiones **no habría arreglado ninguno de los dos casos
+que lo motivaron**: en `customers-page` la petición sobrante era legítima
+—faltaba no escribir el estado, no cancelar nada—, y en `users-page` el PATCH
+tenía que completarse igual, porque la contraseña sí se estaba cambiando; lo
+que sobraba era el efecto en pantalla, no la petición. Un refactor de 35
+efectos por una premisa que no resuelve ninguno de los dos casos es el tipo de
+trabajo que después nadie sabe por qué se hizo.
+
+**El censo, que el día que alguien reabra esto importa más que la conclusión**
+(medido el 28/08/2026, en `apps/web/src`):
+
+| Forma                                                  | Cuánta hay                                            | Fallos |
+| ------------------------------------------------------ | ----------------------------------------------------- | ------ |
+| Bandera `cancelled` en un efecto de carga              | 35 efectos en 22 archivos                             | cero   |
+| Debounce que difiere un `setPage(1)`                   | solo `customers-page.tsx`                             | uno    |
+| Aviso de éxito que nombra un objetivo, junto a filtros | `users-page` (arreglado) y `container-movements-page` | uno    |
+
+El aviso de `container-movements-page` no está expuesto: es genérico, no
+nombra una fila, y vive dentro del mismo formulario que lo produjo.
+
+**Para cerrarla:** si aparece una segunda aparición real —una respuesta que
+aterriza sobre estado que ya es de otro objetivo—, volver a plantear la pieza
+compartida con los tres casos sobre la mesa. Hasta entonces `users-page` se
+queda con sus dos remedios, incluido el `disabled={... || isResetting}`.
 
 ## No hay gestión del catálogo payment-methods
 
@@ -621,7 +640,48 @@ un catálogo desincronizado sin depender de que alguien lo note a ojo.
 
 ## Test flaky en apps/web: customers-page falla bajo carga
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA — y mal titulada desde el primer día. **No era un test
+flaky: era un bug real, y el test lo estaba reportando bien.** Se descartó
+cinco veces como ruido de CPU.
+
+**Qué era.** El efecto de debounce del buscador
+(`apps/web/src/pages/customers-page.tsx`) llamaba `setPage(1)`
+**incondicionalmente** 300 ms después de cada cambio de `searchInput`,
+incluido el que se programa en el mount con el campo vacío. Dos consecuencias,
+las dos reproducidas de forma determinista antes de tocar nada:
+
+- **Paginar dentro de los primeros 300 ms se pisaba.** Peticiones observadas:
+  `page=1`, `page=2`, `page=1` — la tercera no la pidió nadie. Que fallara
+  «bajo carga» nunca fue por contención: dependía de dónde cayeran los 300 ms
+  respecto del clic y de la aserción, y la carga solo ensanchaba la dispersión
+  hasta hacer que la corrida los cruzara.
+- **Tipear una letra en el buscador y borrarla sacaba al usuario de la página
+  que estaba mirando.** Sin ventana de tiempo ni carrera: el término termina
+  igual —`""` a `""`—, `setSearch` no cambia nada, pero `setPage(1)` corre
+  igual. Una persona en la oficina que se arrepiente de lo que tipeó pierde el
+  lugar donde estaba.
+
+**Qué falló, y no fue el test.** La forma del test estaba bien, incluida la
+aserción sobre el registro de peticiones: era exactamente lo que hacía falta
+para ver este bug, y es lo único que lo estuvo mirando durante cinco
+apariciones. Lo que falló fuimos nosotros, leyendo un rojo verdadero como
+ruido de CPU porque pasaba aislado. La entrada anterior llegó a escribir que
+«lo más probable» era una espera mal puesta en el test; no lo era, y la
+hipótesis nunca se comprobó antes de archivarla.
+
+La lección que vale más que el arreglo: un test que pasa aislado y falla en la
+suite no es, por eso, un test malo. Aislado también cambia el reloj.
+
+**Cómo se cerró:** el debounce guarda el último término aplicado y no escribe
+nada cuando la búsqueda termina igual que estaba, así que `setPage(1)` corre
+solo cuando el término cambió de verdad. Los dos casos de arriba quedaron como
+tests permanentes en `customers-page.test.tsx`, cada uno afirmando sobre las
+peticiones **y** sobre qué fila se ve; se verificó que los dos fallan sin el
+arreglo.
+
+_Texto original de la entrada, tal como se escribió cuando se la creía flaky:_
+
+**Estado (original):** abierto. **Disparador:** antes del piloto de campo.
 
 `src/pages/customers-page.test.tsx` (caso «Siguiente» pide la página 2 y
 muestra sus filas) falló el 24/08/2026 corriendo `pnpm test` completo (toda
