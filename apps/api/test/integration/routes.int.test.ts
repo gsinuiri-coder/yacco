@@ -398,6 +398,10 @@ describe("POST /api/v1/routes", () => {
 
     expect(response.status).toBe(400);
     expect(messagesOf(response)).toContain("ya tiene una ruta planificada");
+    // Como la lee una persona, no como viaja en el cable: la web muestra este
+    // mensaje tal cual, junto a fechas que siempre dice en DD/MM/AAAA.
+    expect(messagesOf(response)).toContain("05/09/2026");
+    expect(messagesOf(response)).not.toContain("2026-09-05");
   });
 
   test("rejects a malformed date", async () => {
