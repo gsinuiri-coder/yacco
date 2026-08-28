@@ -3,12 +3,28 @@ import { useNavigate, useParams } from "react-router";
 import { getCustomer, updateCustomer } from "../api/customers";
 import type { Customer, UpdateCustomerBody } from "../api/customers";
 import { SLOW_REQUEST_MESSAGE } from "../api/timing";
+import { listZones } from "../api/zones";
+import type { Zone } from "../api/zones";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
 import { CustomerForm, customerToForm } from "../components/customer-form";
-import type { CustomerFormValues } from "../components/customer-form";
+import type { CustomerFormValues, ZoneOption } from "../components/customer-form";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatMoney, formatOptionalMoney } from "../lib/money";
+
+/**
+ * The active-only catalog omits a zone once it's withdrawn — but a customer
+ * assigned to it before that keeps the reference, and the select must keep
+ * offering it. Without this, saving the form with no other zone change would
+ * silently clear a zone the office never asked to clear.
+ */
+export function withAssignedZone(zones: ZoneOption[], customer: Customer): ZoneOption[] {
+  const zone = customer.zone;
+  if (zone === null || zones.some((candidate) => candidate.id === zone.id)) {
+    return zones;
+  }
+  return [...zones, { id: zone.id, name: `${zone.name} (retirada)` }];
+}
 
 /**
  * `debtBalance` is absent by construction: it is a ledger balance the API
@@ -42,7 +58,25 @@ export function CustomerEditPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [zones, setZones] = useState<Zone[]>([]);
   const isSlow = useSlowRequest(isLoading);
+
+  // Catalog read from its own endpoint, active only; withAssignedZone below
+  // adds the customer's own zone back in if it was withdrawn. A load
+  // failure just leaves the select without extra options.
+  useEffect(() => {
+    let cancelled = false;
+    listZones(apiClient, { active: true })
+      .then((response) => {
+        if (!cancelled) setZones(response);
+      })
+      .catch(() => {
+        if (!cancelled) setZones([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient]);
 
   useEffect(() => {
     if (!customerId) return;
@@ -124,6 +158,7 @@ export function CustomerEditPage() {
           submitLabel="Guardar cambios"
           isSubmitting={isSubmitting}
           submitError={submitError}
+          zones={withAssignedZone(zones, customer)}
           onSubmit={handleSubmit}
           onCancel={() => void navigate("/customers")}
           showActiveToggle

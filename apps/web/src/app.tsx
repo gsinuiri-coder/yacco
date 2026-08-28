@@ -16,6 +16,7 @@ import { OrderDetailPage } from "./pages/order-detail-page";
 import { OrdersPage } from "./pages/orders-page";
 import { PaymentsPage } from "./pages/payments-page";
 import { ProductionPage } from "./pages/production-page";
+import { ZonesPage } from "./pages/zones-page";
 import { ProtectedRoute } from "./routes/protected-route";
 
 export function App() {
@@ -38,6 +39,7 @@ export function App() {
           <Route path="/container-movements" element={<ContainerMovementsPage />} />
           <Route path="/container-types" element={<ContainerTypesPage />} />
           <Route path="/container-counts" element={<ContainerCountsPage />} />
+          <Route path="/zones" element={<ZonesPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
