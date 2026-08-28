@@ -630,3 +630,50 @@ ventas, medir el plan de `GET .../account-statement` y agregar
 `@@index([locationId, soldAt])` en `Sale` si el `EXPLAIN` lo justifica —
 mismo criterio que ya aplicó `payments (customer_id, paid_at DESC)` en el
 PR de cobranza de oficina.
+
+## Un pedido asignado a una parada sigue en PENDING
+
+**Estado:** abierto. **Disparador:** cuando la oficina necesite ver en la
+lista de pedidos cuáles ya están arriba del camión.
+
+HU-10 E1 dice, textual: «los pedidos asignados pasan a "en ruta"».
+`RoutesService.addStop` no toca `Order.status`, y `OrderStatus.ON_ROUTE` no
+se escribe en ningún punto de `apps/api/src` (verificado con `grep`): un
+pedido con parada asignada se queda PENDING para siempre, y también sigue
+PENDING después de que su parada se marque DELIVERED. La pantalla de pedidos
+lo muestra como «Pendiente» aunque ya se haya entregado.
+
+**Razón:** se encontró leyendo el módulo de rutas para construir sus
+pantallas, no persiguiéndolo. No bloquea nada de lo construido: el selector
+de pedidos de una parada filtra por `status=PENDING` **y** por «sin parada
+asignada» (`hasRouteStop=false`), que es exactamente la condición que
+`addStop` acepta, así que la lista ofrecida y la lista aceptada coinciden.
+Cambiar la transición sí tocaría reglas de dominio ya codificadas y el
+significado de `OrderStatus` en toda la app, que es más de lo que
+correspondía a un PR de pantallas.
+
+**Para cerrarla:** decidir con el dueño de la planta si un pedido asignado
+debe verse «En ruta» en la bandeja de pedidos, y en ese caso mover
+`Order.status` a ON_ROUTE dentro de la misma transacción que crea la parada
+(y a DELIVERED/FAILED al marcarla), o corregir HU-10 E1 en la spec si la
+decisión es que el estado del pedido no siga a la parada.
+
+## Los errores de rutas escriben la fecha en formato ISO
+
+**Estado:** abierto. **Disparador:** cuando el dueño de la planta reporte
+que un mensaje de error «habla en otro idioma».
+
+Los 400 de `RoutesService.create` interpolan la fecha tal como llegó en el
+cuerpo: «El chofer "Julio Ramírez" ya tiene una ruta planificada para el
+2026-08-28». La web muestra el mensaje del backend tal cual —decisión
+deliberada, para que no se despegue del que mantiene la API— así que el
+usuario ve `2026-08-28` en una pantalla donde todas las demás fechas dicen
+`28/08/2026`.
+
+**Razón:** se vio en el navegador al probar el alta duplicada. Es cosmético
+y no confunde sobre qué día se habla; arreglarlo del lado de la web
+significaría parsear el mensaje del servidor, que es peor.
+
+**Para cerrarla:** que la API formatee la fecha de negocio en los mensajes
+dirigidos a personas (`DD/MM/AAAA`), en `RoutesService` y en cualquier otro
+servicio que interpole una fecha de negocio dentro de un mensaje de error.

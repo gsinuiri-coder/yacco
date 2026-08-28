@@ -17,6 +17,20 @@ export class RouteZoneDto {
   name!: string;
 }
 
+/**
+ * A quién pertenece la ubicación de la parada. Sin esto una hoja de ruta
+ * repite "Principal" en cada fila — el nombre de la locación principal de
+ * todo cliente — y la oficina no puede saber a quién va cada parada sin
+ * cruzar la dirección a mano contra la lista de clientes.
+ */
+export class RouteStopCustomerDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
 export class RouteStopLocationDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
@@ -26,6 +40,9 @@ export class RouteStopLocationDto {
 
   @ApiProperty()
   address!: string;
+
+  @ApiProperty({ type: RouteStopCustomerDto })
+  customer!: RouteStopCustomerDto;
 }
 
 export class RouteStopContainerTypeDto {

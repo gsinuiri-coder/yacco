@@ -8,6 +8,7 @@ const NAV_LINKS = [
   "Panel",
   "Clientes",
   "Pedidos",
+  "Rutas",
   "Pagos",
   "Inventario",
   "Producción",
@@ -23,7 +24,7 @@ describe("AppShell", () => {
     signIn();
   });
 
-  it("muestra los diez enlaces dentro de un único <nav aria-label='Principal'>", async () => {
+  it("muestra los once enlaces dentro de un único <nav aria-label='Principal'>", async () => {
     renderWithProviders(
       <AppShell>
         <p>Contenido</p>
