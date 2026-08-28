@@ -154,6 +154,13 @@ export function RouteDetailPage() {
               Terminar ruta
             </button>
           )}
+          {/* La liquidación se ofrece desde que la ruta terminó, y sigue
+              accesible una vez cerrada: es el registro de cómo cuadró. */}
+          {(route?.status === "FINISHED" || route?.status === "SETTLED") && (
+            <Link to={`/routes/${route.id}/settlement`} className="button button--primary">
+              {route.status === "FINISHED" ? "Liquidar la ruta" : "Ver la liquidación"}
+            </Link>
+          )}
           <Link to="/routes" className="button button--secondary">
             Volver a rutas
           </Link>

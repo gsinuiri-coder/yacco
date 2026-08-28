@@ -285,6 +285,11 @@ describe("full reconciliation: LOAN_DELIVERY + FULL_SALE + a rejected payment", 
 
     await finishRoute(routeId);
 
+    // La vista previa tiene que decir 3 vacíos según el libro ANTES de que
+    // nadie cuente nada: es el número contra el que se cuenta en la puerta.
+    const preview = await getSettlement(routeId);
+    expect(preview.body.expected.emptiesPickedUp).toBe(3);
+
     // fullOut=10, fullDelivered=3(A)+1(C)=4, fullSold=2(B) -> fullReturned=4
     // for the identity to hold exactly. emptiesCollected ledger = 3 (only A
     // returned containers) -> entering 3 matches exactly too.
@@ -445,6 +450,9 @@ describe("GET .../settlement before and after settling", () => {
     expect(before.body.settlement).toBeNull();
     expect(before.body.expected.fullOut).toBe(5);
     expect(before.body.expected.fullDelivered).toBe(2);
+    // Sin vacíos devueltos en esta entrega, el libro dice 0: es contra ese
+    // número que se cuentan los vacíos al descargar el camión.
+    expect(before.body.expected.emptiesPickedUp).toBe(0);
 
     await postSettlement(routeId, { fullReturned: 3, emptiesCollected: 0 }).then((r) =>
       expect(r.status).toBe(201),
