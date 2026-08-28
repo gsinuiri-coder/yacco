@@ -454,6 +454,23 @@ describe("GET /api/v1/routes/:id", () => {
     expect(response.body.stops[1].position).toBe(2);
   });
 
+  // La locación principal de todo cliente se llama "Principal": sin el
+  // cliente, una hoja de ruta repite ese nombre en cada fila.
+  test("each stop's location names the customer it belongs to", async () => {
+    const routeId = await createRoute(adminToken, { date: "2026-09-19" });
+    await addVanSaleStop(adminToken, routeId);
+
+    const response = await request(server())
+      .get(`/api/v1/routes/${routeId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.stops[0].location.customer).toEqual({
+      id: customerId,
+      name: "Bodega Rutas",
+    });
+  });
+
   test("an unknown id is rejected with 404", async () => {
     const response = await request(server())
       .get(`/api/v1/routes/${MISSING_UUID}`)

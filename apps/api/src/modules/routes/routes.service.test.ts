@@ -37,6 +37,7 @@ const ADMIN_ID = "44444444-4444-4444-8444-444444444444";
 const SELLER_ID = "55555555-5555-4555-8555-555555555555";
 const ZONE_ID = "66666666-6666-4666-8666-666666666666";
 const LOCATION_ID = "77777777-7777-4777-8777-777777777777";
+const CUSTOMER_ID = "7c7c7c7c-7c7c-47c7-87c7-7c7c7c7c7c7c";
 const ORDER_ID = "88888888-8888-4888-8888-888888888888";
 const STOP_ID = "99999999-9999-4999-8999-999999999999";
 const OTHER_STOP_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -77,7 +78,12 @@ function buildStop(overrides: Record<string, unknown> = {}) {
     orderId: null,
     status: StopStatus.PENDING,
     failureReason: null,
-    location: { id: LOCATION_ID, name: "Bodega Santa Rosa", address: "Av. Los Alamos 452" },
+    location: {
+      id: LOCATION_ID,
+      name: "Principal",
+      address: "Av. Los Alamos 452",
+      customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa" },
+    },
     ...overrides,
   };
 }
@@ -342,6 +348,37 @@ describe("RoutesService", () => {
 
       expect(result.id).toBe(ROUTE_ID);
       expect(result.stops).toHaveLength(1);
+    });
+
+    // Sin el cliente, toda parada se lee "Principal": el nombre que lleva la
+    // locación principal de cualquier cliente.
+    it("carries the location's customer, so a stop names who it is for", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ stops: [buildStop()] }));
+
+      const result = await service.findOne(ROUTE_ID, adminActor);
+
+      expect(result.stops[0]?.location.customer).toEqual({
+        id: CUSTOMER_ID,
+        name: "Bodega Santa Rosa",
+      });
+      expect(prisma.route.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            stops: expect.objectContaining({
+              include: {
+                location: {
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    customer: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            }) as unknown,
+          }) as unknown,
+        }),
+      );
     });
 
     it("throws NotFoundException for an unknown id", async () => {

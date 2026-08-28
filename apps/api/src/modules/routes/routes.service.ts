@@ -44,8 +44,18 @@ function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
+// `customer` viaja con la locación, no aparte: una parada nombra un lugar,
+// y el lugar es de alguien. Sin el cliente, toda parada se muestra como
+// "Principal" (el nombre de la locación principal de cualquier cliente).
 const STOP_INCLUDE = {
-  location: { select: { id: true, name: true, address: true } },
+  location: {
+    select: {
+      id: true,
+      name: true,
+      address: true,
+      customer: { select: { id: true, name: true } },
+    },
+  },
 } satisfies Prisma.RouteStopInclude;
 
 const ROUTE_INCLUDE = {
