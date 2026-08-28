@@ -9,6 +9,7 @@ import {
   startRoute,
 } from "../api/routes";
 import type { Route, RouteStop } from "../api/routes";
+import type { PaymentStatus } from "../api/payments";
 import { SLOW_REQUEST_MESSAGE } from "../api/timing";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
@@ -19,8 +20,10 @@ import {
 } from "../components/route-status-badge";
 import { RouteLoadsSection } from "../components/route-loads-section";
 import { RouteStopForm } from "../components/route-stop-form";
+import { RouteStopMarkForm } from "../components/route-stop-mark-form";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatBusinessDate, formatBusinessDateTime } from "../lib/business-date";
+import { formatMoney } from "../lib/money";
 
 /** PLANNED e IN_PROGRESS todavía se editan; FINISHED y SETTLED, nunca. */
 function isEditable(route: Route): boolean {
@@ -55,6 +58,13 @@ export function RouteDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isActing, setIsActing] = useState(false);
   const [isConfirmingFinish, setIsConfirmingFinish] = useState(false);
+  /**
+   * El resumen de la parada recién registrada vive acá arriba y no dentro de
+   * la sección de paradas: marcar una parada recarga la ruta, la recarga
+   * pone `isLoading` en true, y mientras carga la sección entera se
+   * desmonta — el aviso se perdía antes de que nadie llegara a leerlo.
+   */
+  const [markResult, setMarkResult] = useState<MarkOutcome | null>(null);
 
   useEffect(() => {
     if (!routeId) return;
@@ -156,6 +166,10 @@ export function RouteDetailPage() {
         </p>
       )}
 
+      {markResult && (
+        <MarkOutcomeNotice stopName={markResult.stopName} result={markResult.result} />
+      )}
+
       {isConfirmingFinish && (
         <div className="card card__body" role="group" aria-label="Confirmar el fin de la ruta">
           <p>
@@ -254,7 +268,7 @@ export function RouteDetailPage() {
             </div>
           </section>
 
-          <RouteStopsSection route={route} onChanged={reload} />
+          <RouteStopsSection route={route} onChanged={reload} onMarkResult={setMarkResult} />
 
           <RouteLoadsSection route={route} />
         </>
@@ -263,14 +277,28 @@ export function RouteDetailPage() {
   );
 }
 
-function RouteStopsSection({ route, onChanged }: { route: Route; onChanged: () => void }) {
+function RouteStopsSection({
+  route,
+  onChanged,
+  onMarkResult,
+}: {
+  route: Route;
+  onChanged: () => void;
+  /** El resumen de la parada marcada lo muestra la página, no esta sección. */
+  onMarkResult: (result: MarkOutcome | null) => void;
+}) {
   const { apiClient } = useAuth();
   const [isAdding, setIsAdding] = useState(false);
   const [busyStopId, setBusyStopId] = useState<string | null>(null);
   const [removingStopId, setRemovingStopId] = useState<string | null>(null);
+  const [markingStop, setMarkingStop] = useState<RouteStop | null>(null);
   const [stopError, setStopError] = useState<string | null>(null);
 
   const editable = isEditable(route);
+  // Marcar una parada solo es posible con la ruta en curso: antes el camión
+  // no salió, y después la ruta ya está cerrada. Es la misma regla que
+  // RoutesService.markStop aplica del otro lado.
+  const canMark = route.status === "IN_PROGRESS";
   const stops = route.stops;
 
   /**
@@ -344,6 +372,29 @@ function RouteStopsSection({ route, onChanged }: { route: Route; onChanged: () =
             onChanged();
           }}
         />
+      )}
+
+      {markingStop && (
+        <>
+          <div className="card__body">
+            <h3>
+              Parada {markingStop.position}: {markingStop.location.customer.name}
+            </h3>
+            <p className="cell-secondary">
+              {markingStop.location.name} · {markingStop.location.address}
+            </p>
+          </div>
+          <RouteStopMarkForm
+            routeId={route.id}
+            stop={markingStop}
+            onCancel={() => setMarkingStop(null)}
+            onMarked={(result) => {
+              onMarkResult({ stopName: markingStop.location.customer.name, result });
+              setMarkingStop(null);
+              onChanged();
+            }}
+          />
+        </>
       )}
 
       {stopError && (
@@ -429,6 +480,21 @@ function RouteStopsSection({ route, onChanged }: { route: Route; onChanged: () =
                         </span>
                       ) : (
                         <>
+                          {canMark && stop.status === "PENDING" && (
+                            <button
+                              type="button"
+                              className="button button--secondary"
+                              aria-label={`Registrar la parada de ${stop.location.customer.name}`}
+                              disabled={busyStopId !== null}
+                              onClick={() => {
+                                setMarkingStop(stop);
+                                onMarkResult(null);
+                                setStopError(null);
+                              }}
+                            >
+                              Registrar
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="button button--ghost"
@@ -472,5 +538,66 @@ function RouteStopsSection({ route, onChanged }: { route: Route; onChanged: () =
         </div>
       )}
     </section>
+  );
+}
+
+/** Lo que dejó registrado una parada, más el cliente al que corresponde. */
+interface MarkOutcome {
+  stopName: string;
+  result: RouteStop;
+}
+
+const PAYMENT_STATUS_NOTE: Record<PaymentStatus, string> = {
+  CONFIRMED: "confirmado",
+  PENDING: "queda por confirmar",
+  REJECTED: "rechazado",
+};
+
+/**
+ * Lo que la parada dejó registrado, en el orden en que le importa a la
+ * oficina: la venta, el aviso de crédito si lo hubo, el cobro y el saldo de
+ * envases que le queda al cliente. Todo sale de la respuesta de la API — acá
+ * no se calcula nada.
+ */
+function MarkOutcomeNotice({ stopName, result }: { stopName: string; result: RouteStop }) {
+  if (result.status === "FAILED") {
+    return (
+      <p className="notice notice--info" role="status">
+        La parada de {stopName} quedó registrada como no entregada
+        {result.failureReason ? `: ${result.failureReason}` : ""}.
+      </p>
+    );
+  }
+
+  const balances = result.containerBalances ?? [];
+
+  return (
+    <>
+      <p className="notice notice--info" role="status">
+        Entrega de {stopName} registrada
+        {result.sale ? ` por ${formatMoney(result.sale.total)}` : ""}
+        {result.payment
+          ? `. Cobro de ${formatMoney(result.payment.amount)} (${PAYMENT_STATUS_NOTE[result.payment.status]})`
+          : ". No se cobró nada: queda al fiado"}
+        .
+        {balances.length > 0 && (
+          <>
+            {" "}
+            Envases en poder del cliente:{" "}
+            {balances
+              .map((balance) => `${balance.quantity} × ${balance.containerType.name}`)
+              .join(", ")}
+            .
+          </>
+        )}
+      </p>
+      {/* HU-13 E2: la advertencia de límite de crédito se muestra y nunca
+          bloquea — para cuando se ve, la venta ya quedó registrada. */}
+      {result.sale?.creditLimitExceeded && (
+        <p className="notice notice--warning" role="status">
+          Esta venta superó el límite de crédito de {stopName}. Quedó registrada igual.
+        </p>
+      )}
+    </>
   );
 }

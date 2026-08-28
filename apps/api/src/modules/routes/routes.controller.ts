@@ -198,6 +198,11 @@ export class RoutesController {
   // already was for the plain status flip before this PR. Revisit — tighten
   // this to ADMIN/SELLER only, or move the write behind /sync/operations —
   // once the sync module ships.
+  //
+  // Decidido con el dueño de la planta y asentado en la spec (§4.3, nota
+  // bajo "Principio de diseño"): mientras no exista el móvil, la OFICINA
+  // registra las paradas desde la web contra este mismo endpoint. Ya no es
+  // solo una puerta que quedó abierta: es el camino que la planta usa.
   @ApiOperation({
     summary: "Marca una parada como entregada o fallida",
     description:
