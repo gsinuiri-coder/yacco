@@ -575,7 +575,8 @@ select:disabled {
 }
 
 .combobox__result:hover,
-.combobox__result:focus-visible {
+.combobox__result:focus-visible,
+.combobox__result[aria-selected="true"] {
   background: var(--brand-soft);
 }
 

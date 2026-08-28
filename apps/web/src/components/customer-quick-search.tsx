@@ -25,7 +25,9 @@ export function CustomerQuickSearch() {
   const [results, setResults] = useState<Customer[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [reloadToken, setReloadToken] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,14 +43,19 @@ export function CustomerQuickSearch() {
     }
     let cancelled = false;
     setIsSearching(true);
+    setErrorMessage(null);
     listCustomers(apiClient, { search: debouncedQuery, limit: RESULTS_LIMIT })
       .then((response) => {
         if (cancelled) return;
         setResults(response.data);
         setHighlightedIndex(-1);
       })
-      .catch(() => {
-        if (!cancelled) setResults([]);
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        // SessionExpiredError is handled by the api client + ProtectedRoute;
+        // anything else is the office's problem to see and retry.
+        setResults([]);
+        setErrorMessage(error instanceof Error ? error.message : "No se pudo buscar clientes.");
       })
       .finally(() => {
         if (!cancelled) setIsSearching(false);
@@ -56,12 +63,16 @@ export function CustomerQuickSearch() {
     return () => {
       cancelled = true;
     };
-  }, [apiClient, debouncedQuery]);
+  }, [apiClient, debouncedQuery, reloadToken]);
 
   useOutsideClick(containerRef, () => setIsOpen(false));
 
   function handlePick(customer: Customer) {
     void navigate(`/customers/${customer.id}`);
+  }
+
+  function retry() {
+    setReloadToken((token) => token + 1);
   }
 
   return (
@@ -112,6 +123,13 @@ export function CustomerQuickSearch() {
           <div className="combobox__results" id={RESULTS_ID} role="listbox">
             {isSearching ? (
               <p className="combobox__empty">Buscando…</p>
+            ) : errorMessage ? (
+              <div className="notice notice--error" role="alert">
+                <p>{errorMessage}</p>
+                <button type="button" className="button button--secondary" onClick={retry}>
+                  Reintentar
+                </button>
+              </div>
             ) : results.length === 0 ? (
               <p className="combobox__empty">Sin resultados</p>
             ) : (

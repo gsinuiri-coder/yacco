@@ -155,4 +155,53 @@ describe("CustomerQuickSearch", () => {
 
     expect(await screen.findByRole("heading", { name: "Ficha" })).toBeInTheDocument();
   });
+
+  it("una flecha marca aria-selected en el resaltado y en ningún otro", async () => {
+    const user = userEvent.setup();
+    stubSearch([
+      buildCustomer({ name: "Panadería Aurora" }),
+      buildCustomer({ id: "22222222-2222-4222-8222-222222222222", name: "Bodega Norte" }),
+    ]);
+
+    renderSearch();
+    await user.type(screen.getByLabelText("Buscar cliente"), "a");
+    const aurora = await screen.findByRole("option", { name: /Panadería Aurora/ });
+    const norte = screen.getByRole("option", { name: /Bodega Norte/ });
+
+    await user.keyboard("{ArrowDown}");
+
+    expect(aurora).toHaveAttribute("aria-selected", "true");
+    expect(norte).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("un error de búsqueda se distingue de 'sin resultados', con reintento", async () => {
+    const user = userEvent.setup();
+    let attempt = 0;
+    server.use(
+      http.get(`${API_BASE_URL}/customers`, () => {
+        attempt += 1;
+        if (attempt === 1) {
+          return HttpResponse.json({ message: "Base de datos no disponible" }, { status: 500 });
+        }
+        return HttpResponse.json({
+          data: [buildCustomer({ name: "Panadería Aurora" })],
+          total: 1,
+          page: 1,
+          limit: 10,
+          totalPages: 1,
+        } satisfies PaginatedCustomers);
+      }),
+    );
+
+    renderSearch();
+    await user.type(screen.getByLabelText("Buscar cliente"), "aurora");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Base de datos no disponible");
+    expect(screen.queryByText("Sin resultados")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+
+    expect(await screen.findByText("Panadería Aurora")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

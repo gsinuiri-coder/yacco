@@ -108,6 +108,14 @@ una inconsistencia, no una variación válida.
   `--error`, `--info`, `--warning`. No existe `.notice--success`.
 - **`.state`** — bloque centrado de página vacía/error, con `.state__title` y
   `.state__actions` opcional.
+- **`.combobox`** — buscador con resultados flotantes (`CustomerSelect`,
+  `CustomerQuickSearch`). El resaltado de teclado NO puede apoyarse en
+  `:focus`/`:focus-visible`: el foco real se queda en el `<input>`
+  (`aria-activedescendant` apunta a la opción resaltada), así que
+  `.combobox__result[aria-selected="true"]` lleva su propia regla, igual
+  que `:hover`. Un error de red dentro del desplegable usa `.notice--error`
+  con `role="alert"` y un botón `Reintentar` — nunca `ErrorState`, pensado
+  para el bloque de una página entera, no para un panel flotante de 260px.
 - **Tabla** (`.table` dentro de `.table-scroll`) — encabezado en
   `--surface-sunken` con texto `--text-subtle`; `.cell-primary` /
   `.cell-secondary` para la jerarquía dentro de una celda;
