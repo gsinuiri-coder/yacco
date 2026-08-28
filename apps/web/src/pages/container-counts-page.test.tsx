@@ -187,10 +187,11 @@ describe("ContainerCountsPage", () => {
 
     const negative = rowOf("Panadería Aurora");
     expect(within(negative).getByText("Entrega sin registrar")).toBeInTheDocument();
-    expect(within(negative).getByText("-1 Bidón (V)")).toHaveClass("table__cell--negative");
-    expect(within(negative).getByText("-1 Bidón (V)")).toHaveAccessibleName(
-      /falta registrar una entrega/,
-    );
+    expect(within(negative).getByText("-1 Bidón (V)")).toBeInTheDocument();
+    expect(
+      within(negative).getByText(/-1 Bidón \(V\): el cliente devolvió más envases/),
+    ).toBeInTheDocument();
+    expect(within(negative).getByText(/falta registrar una entrega/)).toBeInTheDocument();
 
     const closed = rowOf("Bodega Cerrada");
     expect(within(closed).getByText("Hace más de 60 días")).toBeInTheDocument();

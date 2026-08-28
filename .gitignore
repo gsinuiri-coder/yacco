@@ -32,3 +32,6 @@ apps/api/prisma/migrations/.tmp/
 
 # Local Docker Compose overrides (machine-specific)
 docker-compose.override.yml
+
+# Impeccable skill scratch state
+.impeccable/

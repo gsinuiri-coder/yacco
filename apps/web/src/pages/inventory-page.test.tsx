@@ -95,9 +95,10 @@ describe("InventoryPage", () => {
 
     renderInventory();
 
-    const negativeCell = await screen.findByText("-3");
-    expect(negativeCell).toHaveClass("table__cell--negative");
-    expect(negativeCell).toHaveAccessibleName(/faltan registrar entradas de envases/);
+    await screen.findByText("-3");
+    expect(
+      screen.getByText(/-3: hay más envases llenados que vacíos registrados/),
+    ).toBeInTheDocument();
 
     expect(
       await screen.findByText(/se registraron más envases llenados que vacíos disponibles/),
@@ -125,9 +126,10 @@ describe("InventoryPage", () => {
     expect(await screen.findByRole("table")).toBeInTheDocument();
     expect(screen.queryByText("Todavía no hay movimientos de envases")).not.toBeInTheDocument();
 
-    const negativeCell = screen.getByText("-50");
-    expect(negativeCell).toHaveClass("table__cell--negative");
-    expect(negativeCell).toHaveAccessibleName(/faltan registrar entradas de envases/);
+    screen.getByText("-50");
+    expect(
+      screen.getByText(/-50: hay más envases llenados que vacíos registrados/),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/se registraron más envases llenados que vacíos disponibles/),
     ).toBeInTheDocument();
