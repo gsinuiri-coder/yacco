@@ -128,3 +128,58 @@ export function getRoute(apiClient: ApiClient, id: string): Promise<Route> {
 export function createRoute(apiClient: ApiClient, body: CreateRouteBody): Promise<Route> {
   return apiClient.request<Route>("/routes", { method: "POST", body });
 }
+
+/**
+ * CreateRouteStopDto. `origin` decide cuál de los otros dos campos va: ORDER
+ * lleva `orderId` y toma la ubicación del pedido; VAN_SALE lleva `locationId`
+ * y nunca toca un pedido. Mandar los dos, o ninguno, lo rechaza la API con
+ * 400 — la regla vive en RoutesService.addStop, no acá.
+ */
+export interface CreateRouteStopBody {
+  origin: StopOrigin;
+  orderId?: string;
+  locationId?: string;
+}
+
+export function addRouteStop(
+  apiClient: ApiClient,
+  routeId: string,
+  body: CreateRouteStopBody,
+): Promise<RouteStop> {
+  return apiClient.request<RouteStop>(`/routes/${routeId}/stops`, { method: "POST", body });
+}
+
+/** 204 sin cuerpo: la parada se quita y las posiciones se recompactan. */
+export function removeRouteStop(
+  apiClient: ApiClient,
+  routeId: string,
+  stopId: string,
+): Promise<void> {
+  return apiClient.request<void>(`/routes/${routeId}/stops/${stopId}`, { method: "DELETE" });
+}
+
+/**
+ * ReorderRouteStopsDto: la lista COMPLETA de paradas en el orden nuevo, no un
+ * parche parcial. La API rechaza una lista a la que le falte una parada, que
+ * repita una, o que nombre una de otra ruta.
+ */
+export function reorderRouteStops(
+  apiClient: ApiClient,
+  routeId: string,
+  stopIds: string[],
+): Promise<Route> {
+  return apiClient.request<Route>(`/routes/${routeId}/stops/reorder`, {
+    method: "PATCH",
+    body: { stopIds },
+  });
+}
+
+/** Sin cuerpo: la única transición que permite es PLANNED -> IN_PROGRESS. */
+export function startRoute(apiClient: ApiClient, routeId: string): Promise<Route> {
+  return apiClient.request<Route>(`/routes/${routeId}/start`, { method: "PATCH" });
+}
+
+/** Sin cuerpo: la única transición que permite es IN_PROGRESS -> FINISHED. */
+export function finishRoute(apiClient: ApiClient, routeId: string): Promise<Route> {
+  return apiClient.request<Route>(`/routes/${routeId}/finish`, { method: "PATCH" });
+}

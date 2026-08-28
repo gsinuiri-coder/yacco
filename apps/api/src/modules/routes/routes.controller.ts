@@ -167,6 +167,28 @@ export class RoutesController {
     return this.routesService.reorderStops(id, dto, actorFrom(request));
   }
 
+  // Declarado antes de PATCH ":id/stops/:stopId" solo por simetría de
+  // lectura; DELETE y PATCH no compiten entre sí en el router de Nest.
+  @ApiOperation({
+    summary: "Quita una parada todavía pendiente de la ruta",
+    description:
+      "Si la parada venía de un pedido, el pedido queda libre para asignarse a otra ruta",
+  })
+  @ApiResponse({ status: 204, description: "La parada se quitó y las posiciones se recompactaron" })
+  @ApiNotFoundResponse({ description: "Route or stop id does not exist" })
+  @ApiConflictResponse({
+    description: "Route is FINISHED, or the stop is no longer PENDING (already resolved)",
+  })
+  @HttpCode(204)
+  @Delete(":id/stops/:stopId")
+  removeStop(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("stopId", ParseUUIDPipe) stopId: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    return this.routesService.removeStop(id, stopId, actorFrom(request));
+  }
+
   // Known gap, accepted deliberately (not an oversight): spec §4.3 says field
   // writes from a driver enter through ONE idempotent door, POST
   // /sync/operations, never an individual endpoint — and HU-12/HU-13 (what

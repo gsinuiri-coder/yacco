@@ -389,6 +389,51 @@ export class RoutesService {
   }
 
   /**
+   * Quita una parada que todavía no se resolvió. Solo PENDING, y solo
+   * mientras la ruta se puede tocar: una parada DELIVERED tiene una venta,
+   * movimientos de envases y quizá un cobro colgando de ella, y borrarla
+   * sería editar el libro — que es exactamente lo que el dominio prohíbe (un
+   * error de campo se corrige con movimientos inversos, nunca borrando lo
+   * sincronizado).
+   *
+   * `route_stops` no es un ledger: una parada pendiente no dejó ningún
+   * registro contable detrás, así que la fila se borra de verdad en vez de
+   * marcarse. Quitar una parada de origen ORDER libera el pedido
+   * (`route_stops_order_id_key`), que vuelve a estar disponible para otra
+   * ruta — es justo lo que la oficina quiere al sacar un pedido del camión.
+   *
+   * Las posiciones se recompactan en la misma transacción para que sigan
+   * siendo 1..N contiguas, la misma garantía que mantiene `addStop`; sin eso
+   * un hueco haría que la siguiente parada agregada reutilizara una posición
+   * ya usada.
+   */
+  async removeStop(routeId: string, stopId: string, actor: RouteActor): Promise<void> {
+    const route = await this.getOwnedRouteOrThrow(routeId, actor);
+    assertRouteIsTouchable(route.status, "quitar paradas");
+
+    const stop = await this.prisma.routeStop.findFirst({
+      where: { id: stopId, routeId },
+      select: { id: true, status: true, position: true },
+    });
+    if (stop === null) {
+      throw new NotFoundException(`La parada "${stopId}" no existe en esta ruta`);
+    }
+    if (stop.status !== StopStatus.PENDING) {
+      throw new ConflictException(
+        `Solo se puede quitar una parada pendiente; esta está en ${stop.status}`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.routeStop.delete({ where: { id: stopId } });
+      await tx.routeStop.updateMany({
+        where: { routeId, position: { gt: stop.position } },
+        data: { position: { decrement: 1 } },
+      });
+    });
+  }
+
+  /**
    * DELIVERED or FAILED, and nothing else — never back to PENDING. Only
    * while the route is IN_PROGRESS: marking before the route starts or
    * after it finished has no real-world counterpart.

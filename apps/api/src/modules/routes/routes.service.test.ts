@@ -131,6 +131,7 @@ function buildPrismaMock() {
     },
     routeStop: {
       create: jest.fn<() => Promise<unknown>>(),
+      delete: jest.fn<() => Promise<unknown>>(),
       findFirst: jest.fn<() => Promise<unknown>>(),
       findMany: jest.fn<() => Promise<unknown>>(),
       findUniqueOrThrow: jest.fn<() => Promise<unknown>>(),
@@ -660,6 +661,60 @@ describe("RoutesService", () => {
           otherDriverActor,
         ),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe("removeStop", () => {
+    it("deletes a PENDING stop and closes the gap its position left", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.routeStop.findFirst.mockResolvedValue(buildStop({ position: 2 }));
+
+      await service.removeStop(ROUTE_ID, STOP_ID, adminActor);
+
+      expect(prisma.routeStop.delete).toHaveBeenCalledWith({ where: { id: STOP_ID } });
+      expect(prisma.routeStop.updateMany).toHaveBeenCalledWith({
+        where: { routeId: ROUTE_ID, position: { gt: 2 } },
+        data: { position: { decrement: 1 } },
+      });
+    });
+
+    // Una parada resuelta tiene venta, movimientos y quizá cobro colgando:
+    // borrarla sería editar el libro.
+    it("refuses to remove a stop that was already delivered", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+      prisma.routeStop.findFirst.mockResolvedValue(buildStop({ status: StopStatus.DELIVERED }));
+
+      await expect(service.removeStop(ROUTE_ID, STOP_ID, adminActor)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(prisma.routeStop.delete).not.toHaveBeenCalled();
+    });
+
+    it("refuses to remove a stop from a FINISHED route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.FINISHED }));
+
+      await expect(service.removeStop(ROUTE_ID, STOP_ID, adminActor)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(prisma.routeStop.delete).not.toHaveBeenCalled();
+    });
+
+    it("throws NotFoundException for a stop that does not belong to the route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+      prisma.routeStop.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.removeStop(ROUTE_ID, FOREIGN_STOP_ID, adminActor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("refuses a driver removing a stop from another driver's route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute());
+
+      await expect(service.removeStop(ROUTE_ID, STOP_ID, otherDriverActor)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(prisma.routeStop.delete).not.toHaveBeenCalled();
     });
   });
 
