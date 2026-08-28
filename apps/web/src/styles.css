@@ -96,11 +96,18 @@ h2 {
   flex-direction: column;
 }
 
+/* Con trece enlaces la barra deja de entrar en una línea por debajo de unos
+   1550px, o sea en cualquier portátil, y a partir de ahí baja de fila. El
+   `padding` de bloque y el `row-gap` son para esa segunda fila, que hasta
+   ahora quedaba pegada al borde inferior; con una sola fila la barra sigue
+   midiendo exactamente los mismos 56px. El `wrap` propio es la red por
+   debajo: sin él, a 640px la barra desbordaba a lo ancho. */
 .app-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-5);
-  padding: 0 var(--space-5);
+  gap: var(--space-2) var(--space-5);
+  padding: var(--space-1) var(--space-5);
   min-height: 56px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -121,15 +128,23 @@ h2 {
   flex: 1;
 }
 
+/* El grupo también envuelve. La nav ya envolvía desde el PR #88, pero el
+   grupo no: por debajo de 864px se encogía entero y partía en dos líneas los
+   textos de sus cuatro enlaces. */
 .app-bar__nav-group {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
   padding-left: var(--space-3);
   margin-left: var(--space-2);
   border-left: 1px solid var(--border);
 }
 
+/* Un enlace no se parte por la mitad: o entra entero, o baja de línea.
+   "Tipos de envase" y "Cuadre de envases" son dos palabras que nombran una
+   pantalla, no un párrafo. */
 .app-bar__link {
+  white-space: nowrap;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
