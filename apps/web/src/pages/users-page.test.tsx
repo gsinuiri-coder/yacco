@@ -487,6 +487,45 @@ describe("UsersPage", () => {
     expect(screen.queryByText(/Contraseña cambiada/)).not.toBeInTheDocument();
   });
 
+  // La otra puerta de la misma carrera: los botones de la fila se deshabilitan
+  // mientras el PATCH viaja, pero los filtros no —mirar otra lista no congela
+  // la pantalla— y la respuesta llega cuando la tabla ya es otra.
+  it("no deja un aviso huérfano si la lista cambió mientras el cambio viajaba", async () => {
+    const user = userEvent.setup();
+    stubList([SELF, DRIVER, RETIRED]);
+
+    let releasePatch!: () => void;
+    const patchInFlight = new Promise<void>((resolve) => {
+      releasePatch = resolve;
+    });
+    server.use(
+      http.patch(`${API_BASE_URL}/users/${DRIVER_ID}`, async () => {
+        await patchInFlight;
+        return HttpResponse.json(DRIVER);
+      }),
+    );
+
+    renderPage();
+    await openReset(user, "Luis Quispe");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "clave-nueva-de-luis");
+    await user.click(saveNewPassword());
+
+    // Con el PATCH todavía en vuelo, el administrador se va a mirar otra lista.
+    await user.selectOptions(screen.getByLabelText("Estado"), "inactive");
+    await screen.findByText("Ana Retirada");
+
+    releasePatch();
+
+    // El bloque se cierra igual —el cambio se aplicó— pero el aviso no aparece:
+    // nombraría a alguien que ya no está en la tabla que se está mirando.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("form", { name: "Cambiar la contraseña de Luis Quispe" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Contraseña cambiada/)).not.toBeInTheDocument();
+  });
+
   it("sin usuarios con ese filtro lo dice", async () => {
     stubList([]);
 

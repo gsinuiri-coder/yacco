@@ -55,7 +55,7 @@ export interface CreateUserBody {
 
 /**
  * UpdateUserDto, recortado a lo que la pantalla de usuarios ofrece: renombrar,
- * activar/desactivar y reponer la contraseña. La API también acepta `roles`,
+ * activar/desactivar y cambiar la contraseña. La API también acepta `roles`,
  * pero esta pantalla no los expone — ver docs/backlog-tecnico.md, "La gestión
  * de usuarios no cambia roles".
  *

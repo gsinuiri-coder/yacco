@@ -216,7 +216,7 @@ test("refresh: resetting a user's password does NOT invalidate a refresh token a
     .post("/api/v1/users")
     .set("Authorization", `Bearer ${adminToken}`)
     .send({
-      name: "Le Reponen La Clave",
+      name: "Le Cambian La Clave",
       username: "password-reset-after-refresh",
       password: "throwaway-password",
       roles: ["DRIVER"],
