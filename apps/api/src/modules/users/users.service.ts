@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateUserDto } from "./dto/create-user.dto.js";
+import type { ListUsersQueryDto } from "./dto/list-users-query.dto.js";
 import type { UpdateUserDto } from "./dto/update-user.dto.js";
 import type { UserResponseDto } from "./dto/user-response.dto.js";
 
@@ -66,8 +67,22 @@ export class UsersService {
     }
   }
 
-  async findAll(): Promise<UserResponseDto[]> {
+  /**
+   * `active` por defecto en true, misma regla que ZonesService.findAll: un
+   * select de chofer nunca debe ofrecer un usuario desactivado, y
+   * RoutesService.create rechaza a un chofer inactivo con 400, así que
+   * ofrecerlo sería construir un error. La pantalla de gestión de usuarios,
+   * el día que exista, pide active=false explícito.
+   *
+   * `roles: { some: ... }` y no un match exacto: un usuario con SELLER y
+   * DRIVER es un chofer válido para role=DRIVER.
+   */
+  async findAll(query: ListUsersQueryDto): Promise<UserResponseDto[]> {
     const users = await this.prisma.user.findMany({
+      where: {
+        active: query.active ?? true,
+        ...(query.role === undefined ? {} : { roles: { some: { role: { name: query.role } } } }),
+      },
       include: { roles: { include: { role: true } } },
       orderBy: { name: "asc" },
     });
