@@ -44,6 +44,34 @@ function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
+const BUSINESS_DATE_TEXT = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * "2026-08-28" -> "28/08/2026", para un mensaje que va a leer una persona.
+ * Toda la UI muestra las fechas de negocio así; un error que devuelve el
+ * formato del cable la hace hablar en dos idiomas en la misma pantalla, y la
+ * web muestra el mensaje del backend tal cual a propósito —para que no se
+ * despegue del que mantiene la API—, así que el formato tiene que salir bien
+ * de acá.
+ *
+ * Parte el texto en vez de pasar por `Date`, igual que `lib/business-date.ts`
+ * en la web y por la misma razón: `new Date("2026-08-28")` es medianoche UTC
+ * y en America/Lima (UTC-5) se lee un día antes. Si el valor no tiene la
+ * forma esperada se devuelve tal cual, que es preferible a inventar una fecha
+ * dentro de un mensaje de error.
+ *
+ * Vive acá y no en un módulo común porque este es el ÚNICO mensaje de toda
+ * la API que interpola una fecha de negocio: los demás hablan de fechas sin
+ * nombrar ninguna ("La fecha desde no puede ser posterior a la fecha hasta").
+ * El día que aparezca el segundo, se muda.
+ */
+function formatBusinessDateForMessage(businessDate: string): string {
+  const match = BUSINESS_DATE_TEXT.exec(businessDate);
+  if (match === null) return businessDate;
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+}
+
 // `customer` viaja con la locación, no aparte: una parada nombra un lugar,
 // y el lugar es de alguien. Sin el cliente, toda parada se muestra como
 // "Principal" (el nombre de la locación principal de cualquier cliente).
@@ -201,7 +229,7 @@ export class RoutesService {
     } catch (error) {
       if (isPrismaKnownError(error, "P2002")) {
         throw new BadRequestException(
-          `El chofer "${driver.name}" ya tiene una ruta planificada para el ${dto.date}`,
+          `El chofer "${driver.name}" ya tiene una ruta planificada para el ${formatBusinessDateForMessage(dto.date)}`,
         );
       }
       throw error;
