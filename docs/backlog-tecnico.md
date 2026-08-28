@@ -660,8 +660,24 @@ decisión es que el estado del pedido no siga a la parada.
 
 ## Los errores de rutas escriben la fecha en formato ISO
 
-**Estado:** abierto. **Disparador:** cuando el dueño de la planta reporte
-que un mensaje de error «habla en otro idioma».
+**Estado:** RESUELTA. `RoutesService.create` formatea la fecha con
+`formatBusinessDateForMessage` (`DD/MM/AAAA`, partiendo el texto y nunca a
+través de `Date`), y hay test unitario y de integración que afirman las dos
+mitades: que el mensaje dice `05/09/2026` y que **no** dice `2026-09-05`.
+
+Al cerrarla se verificó el alcance real, que era más chico de lo que la
+entrada sugería: recorriendo `apps/api/src/modules/**/*.service.ts`, ese es
+el **único** mensaje de toda la API que interpola una fecha de negocio. Los
+demás hablan de fechas sin nombrar ninguna («La fecha desde no puede ser
+posterior a la fecha hasta», «La fecha del pago no puede ser futura»), así
+que no hay nada más que convertir. Por eso el ayudante vive junto a su único
+llamador en vez de en un módulo común: se muda el día que aparezca el
+segundo.
+
+_Texto original de la entrada, tal como se escribió cuando estaba abierta:_
+
+**Estado (original):** abierto. **Disparador:** cuando el dueño de la planta
+reporte que un mensaje de error «habla en otro idioma».
 
 Los 400 de `RoutesService.create` interpolan la fecha tal como llegó en el
 cuerpo: «El chofer "Julio Ramírez" ya tiene una ruta planificada para el

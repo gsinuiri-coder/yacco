@@ -285,6 +285,22 @@ describe("RoutesService", () => {
         service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID),
       ).rejects.toThrow("ya tiene una ruta planificada");
     });
+
+    // La web muestra el mensaje del backend tal cual: si acá sale en ISO, el
+    // usuario ve dos formatos de fecha en la misma pantalla.
+    it("escribe la fecha del mensaje como la lee una persona, no como viaja en el cable", async () => {
+      prisma.user.findUnique.mockResolvedValue(activeDriver());
+      prisma.route.create.mockRejectedValue(
+        Object.assign(new Error("Unique constraint"), { code: "P2002" }),
+      );
+
+      const attempt = service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID);
+
+      await expect(attempt).rejects.toThrow("para el 25/08/2026");
+      await expect(
+        service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID),
+      ).rejects.not.toThrow("2026-08-25");
+    });
   });
 
   describe("findAll", () => {
