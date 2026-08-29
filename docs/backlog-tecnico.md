@@ -966,29 +966,59 @@ Una salida intermedia, si el precio no vale: dejar el sembrado por HTTP y
 agregar un paso final, en proceso, que solo retroceda `occurred_at` de lo ya
 escrito. Feo —toca un ledger inmutable— pero acotado, y no toca la ruta pública.
 
-## El chofer se lleva los vacíos y no vuelven nunca a la planta
+## Descargar los vacíos al volver de ruta no tiene camino en la app
 
 **Estado:** abierto. **Disparador:** antes del piloto de campo, o cuando el
 inventario muestre un montón de «vacíos en camión» que el dueño no reconozca.
 
-`EMPTY_UNLOAD` (`EMPTY_ON_ROUTE` → `EMPTY_AT_PLANT`) está en
-`CONTAINER_MOVEMENT_TRANSITIONS` y **ningún servicio lo emite**. Es el único
-tipo de movimiento de la matriz sin productor.
+> **Corrección (29/08/2026).** Esta entrada decía que `EMPTY_UNLOAD` era «el
+> único tipo de movimiento sin productor» y que no se podía registrar «por
+> ningún endpoint». Las dos cosas eran falsas, y la conclusión se apoyaba en
+> ellas. Reescrita sobre lo verificado.
 
-Consecuencia: todo lo que el chofer recoge en una parada (`EMPTY_PICKUP`) se
-queda en `EMPTY_ON_ROUTE` para siempre. Con los datos de demo, el inventario
-abre con 34 «Con caño» y 3 «Sin caño» en camión que no se pueden descargar por
-ninguna pantalla ni por ningún endpoint. En la planta real esos envases vuelven
-al galpón el mismo día y se vuelven a llenar; acá se pierden del ciclo.
+**Lo que sí es cierto.** Cuatro de los doce tipos no tienen productor
+automático —ningún servicio los emite— y los cuatro se pueden registrar a mano
+por `POST /api/v1/container-movements`, que solo rechaza `OPENING_BALANCE` y
+`COUNT_ADJUSTMENT` (`INTERNAL_ONLY_MOVEMENT_TYPES`):
 
-Se encontró al sembrar devoluciones en la demo: antes de eso no había ningún
+| Tipo               | Productor automático | Lo ofrece la web | Cada cuánto ocurre |
+| ------------------ | -------------------- | ---------------- | ------------------ |
+| `FLEET_ENTRY`      | ninguno              | sí               | al comprar parque  |
+| `DAMAGE_WRITE_OFF` | ninguno              | sí               | a veces            |
+| `LOSS_WRITE_OFF`   | ninguno              | sí               | a veces            |
+| `EMPTY_UNLOAD`     | ninguno              | **no**           | **todos los días** |
+
+**Dónde está la omisión, y por qué el contraste la demuestra.** Que dar de baja
+un envase por daño o por pérdida sea manual es una decisión, no un olvido: pasa
+de vez en cuando, alguien tiene que mirarlo y decidirlo, y por eso
+`container-movements-page.tsx` les da un formulario. Lo mismo el alta de parque
+nuevo. Descargar los vacíos al volver de ruta no es de esa familia: ocurre al
+cierre de **cada** ruta, todos los días, y no tiene ni camino automático ni
+formulario — `AllowedMovementType` en
+`apps/web/src/lib/container-movement-transitions.ts` lista exactamente los otros
+tres. Un evento diario que solo se puede registrar con un `curl` no está
+resuelto.
+
+Que `EMPTY_UNLOAD` tenga etiqueta en `container-movement-labels.ts` («Descarga
+de vacíos») y aparezca en el historial refuerza el punto: el sistema sabe
+nombrar el movimiento, pero no tiene por dónde producirlo.
+
+**Consecuencia hoy:** todo lo que el chofer recoge en una parada
+(`EMPTY_PICKUP`) se queda en `EMPTY_ON_ROUTE`. Con los datos de demo el
+inventario abre con 34 «Con caño» y 3 «Sin caño» en camión. En la planta real
+esos envases vuelven al galpón el mismo día y se vuelven a llenar.
+
+Se encontró al sembrar devoluciones en la demo (#112): antes no había ningún
 `EMPTY_PICKUP`, así que el agujero no tenía cómo notarse.
 
-**Para cerrarla:** decidir dónde se registra la descarga. El lugar natural es
-la liquidación de ruta —`route-settlement` ya cuenta los `EMPTY_PICKUP` del
-libro contra el conteo físico de la puerta— pero hoy liquida sin emitir el
-movimiento que devolvería esos vacíos al stock. Es una decisión de dominio, no
-un endpoint que falte.
+**Para cerrarla:** decidir dónde se registra la descarga, sabiendo que el
+endpoint ya existe y que lo que falta es el camino. El lugar natural es la
+liquidación de ruta —`route-settlement` ya cuenta los `EMPTY_PICKUP` del libro
+contra el conteo físico de la puerta— pero hoy liquida sin emitir el movimiento
+que devolvería esos vacíos al stock. La alternativa barata es agregar
+`EMPTY_UNLOAD` a `AllowedMovementType` y que la oficina lo registre a mano como
+un write-off, que es tratar un evento diario como si fuera excepcional. Es una
+decisión de dominio.
 
 ## Regla: los mensajes de error que llegan a pantalla van en español
 
