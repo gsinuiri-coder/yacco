@@ -925,6 +925,27 @@ debe verse «En ruta» en la bandeja de pedidos, y en ese caso mover
 (y a DELIVERED/FAILED al marcarla), o corregir HU-10 E1 en la spec si la
 decisión es que el estado del pedido no siga a la parada.
 
+## Regla: los mensajes de error que llegan a pantalla van en español
+
+**Estado:** resuelta, y anotada acá porque no había dónde mirarla.
+
+La web muestra el mensaje del backend **tal cual** —decisión deliberada, la
+misma que explica la entrada de abajo— así que el mensaje de una excepción HTTP
+no es código: es texto que lee una persona, y va en español como cualquier otro
+texto de interfaz. Los identificadores, los nombres de las excepciones y los
+comentarios siguen en inglés; la regla de idioma no cambia.
+
+La pregunta para el próximo módulo es **si el mensaje puede terminar en
+pantalla**. Si solo va a un log o solo lo lee quien mantiene la API, puede
+quedarse en inglés.
+
+`users.service.ts` era el único módulo que la incumplía —sus cuatro mensajes
+estaban en inglés mientras los `message:` de sus propios DTOs ya estaban en
+español—, y el caso alcanzable y frecuente era el 409 del alta con un nombre de
+usuario repetido. Corregido; la regla vive también en el docblock de
+`UsersService`, y los tres mensajes con guarda propia tienen su texto fijado por
+test, no solo la clase de excepción.
+
 ## Los errores de rutas escriben la fecha en formato ISO
 
 **Estado:** RESUELTA. `RoutesService.create` formatea la fecha con

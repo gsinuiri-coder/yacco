@@ -85,14 +85,22 @@ describe("UsersService", () => {
         Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
       );
 
-      await expect(
-        service.create({
+      const error = await service
+        .create({
           name: "Duplicado",
           username: "admin",
           password: "s3cr3t-password",
           roles: [UserRole.ADMIN],
-        }),
-      ).rejects.toBeInstanceOf(ConflictException);
+        })
+        .catch((thrown: unknown) => thrown);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      // El texto se fija, no solo la clase: la web lo muestra tal cual, así
+      // que el idioma del mensaje es una decisión de producto (ver el
+      // docblock de UsersService).
+      expect((error as Error).message).toBe(
+        'Ya existe un usuario con el nombre de usuario "admin"',
+      );
     });
   });
 
@@ -194,18 +202,22 @@ describe("UsersService", () => {
      */
     describe("guarda de auto-degradación", () => {
       it("el actor no puede desactivarse a sí mismo", async () => {
-        await expect(
-          service.update(ADMIN_ACTOR, { active: false }, ADMIN_ACTOR),
-        ).rejects.toBeInstanceOf(BadRequestException);
+        const error = await service
+          .update(ADMIN_ACTOR, { active: false }, ADMIN_ACTOR)
+          .catch((thrown: unknown) => thrown);
 
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as Error).message).toBe("No puedes desactivar tu propio usuario");
         expect(prisma.user.update).not.toHaveBeenCalled();
       });
 
       it("el actor no puede quitarse a sí mismo el rol ADMIN", async () => {
-        await expect(
-          service.update(ADMIN_ACTOR, { roles: [UserRole.SELLER] }, ADMIN_ACTOR),
-        ).rejects.toBeInstanceOf(BadRequestException);
+        const error = await service
+          .update(ADMIN_ACTOR, { roles: [UserRole.SELLER] }, ADMIN_ACTOR)
+          .catch((thrown: unknown) => thrown);
 
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as Error).message).toBe("No puedes quitarte a ti mismo la administración");
         expect(prisma.userRoleAssignment.deleteMany).not.toHaveBeenCalled();
       });
 
