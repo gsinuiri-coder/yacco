@@ -1135,15 +1135,43 @@ Y el texto se fija por test, como se hizo con los de `users` y con el 409 de
 
 ## Descargar los vacíos al volver de ruta no tiene camino en la app
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo, o cuando el
-inventario muestre un montón de «vacíos en camión» que el dueño no reconozca.
+**Estado:** resuelta. **La liquidación es el productor automático de
+`EMPTY_UNLOAD`**: al liquidar, cada tipo de envase contado en la puerta vuelve
+al galpón con su propio movimiento (`EMPTY_ON_ROUTE` -> `EMPTY_AT_PLANT`),
+dentro de la misma transacción que cierra la ruta.
 
-> **La decisión de dominio ya se tomó (29/08/2026):** la liquidación emite los
-> `EMPTY_UNLOAD` que devuelven los vacíos al galpón, automáticamente dentro de
-> `settle` y desde lo contado en la puerta. Está anotada en
-> [`supuestos-por-validar.md`](./supuestos-por-validar.md), en **Validados**.
-> La entrada sigue **abierta** porque la decisión está tomada y el código no
-> está escrito: lo escribe el PR siguiente, que es el que la cierra.
+**Cómo se cerró.** `emptiesCollected` dejó de ser un entero y pasó a ser un
+desglose por tipo de envase —un movimiento siempre nombra de qué tipo es, así
+que un total no alcanzaba para escribirlo—. No hizo falta migración:
+`empties_collected` sigue guardando el total y el desglose se reconstruye del
+ledger, por la misma razón por la que `differences` se calcula y no se
+persiste. La pantalla de liquidación cuenta ahora una línea por tipo, con lo
+que dice el libro al lado y la diferencia mientras se escribe.
+
+**Se emite desde lo CONTADO, no desde el libro**, y de ahí sale la
+consecuencia que se acepta a conciencia: no hay ninguna guarda de stock sobre
+`EMPTY_ON_ROUTE` —las que existen son sobre llenos—, así que si el chofer
+devuelve 40 de un tipo y el libro registró 34, el parque queda en −6 para ese
+tipo. **Ese negativo es la información**: dice que hay seis recogidas que nadie
+registró. Es el mismo razonamiento que ya rige el saldo negativo de un cliente
+(«CHECK de no negatividad en customer_container_balances», arriba), y está
+fijado por un test de integración para que nadie lo «arregle» más adelante.
+
+**Lo que se descartó, y por qué.** La alternativa barata que esta entrada
+proponía —agregar `EMPTY_UNLOAD` a `AllowedMovementType` para que la oficina lo
+cargara a mano desde la pantalla de movimientos— quedó afuera: habría **dos
+productores del mismo evento diario** y ninguna forma de saber cuál lo mandó, y
+descargar el camión no es una decisión que alguien tome cada tarde, como sí lo
+son una baja por daño o por pérdida. Los otros tres tipos sin productor
+automático (`FLEET_ENTRY`, `DAMAGE_WRITE_OFF`, `LOSS_WRITE_OFF`) siguen siendo
+manuales, y eso sigue estando bien.
+
+El seed de demo liquida todas sus rutas menos la última, así que el inventario
+ya no abre con los vacíos de las jornadas cerradas varados en el camión.
+
+_Texto original de la entrada, tal como se escribió cuando estaba abierta —su
+tabla dice «productor automático: ninguno» para `EMPTY_UNLOAD`, que es
+justamente lo que este cierre cambió:_
 
 > **Corrección (29/08/2026).** Esta entrada decía que `EMPTY_UNLOAD` era «el
 > único tipo de movimiento sin productor» y que no se podía registrar «por
@@ -1193,6 +1221,43 @@ que devolvería esos vacíos al stock. La alternativa barata es agregar
 `EMPTY_UNLOAD` a `AllowedMovementType` y que la oficina lo registre a mano como
 un write-off, que es tratar un evento diario como si fuera excepcional. Es una
 decisión de dominio.
+
+## Devolver llenos al galpón no repone el lote del que salieron
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo, o cuando el
+conteo físico de llenos en planta no cierre contra la suma de
+`batch_items.available_qty`.
+
+Al liquidar, `fullReturned` se guarda como número y **no emite ningún
+movimiento**: los llenos que vuelven sin entregar se quedan, para el libro, en
+`FULL_ON_ROUTE`. Quedó explícitamente afuera del PR que hizo que la liquidación
+emitiera los `EMPTY_UNLOAD` («Descargar los vacíos al volver de ruta no tiene
+camino en la app», arriba), y no por alcance: **no es simétrico con los
+vacíos**.
+
+Un vacío que vuelve al galpón no pertenece a ningún lote —un vacío es un vacío—
+así que `EMPTY_ON_ROUTE -> EMPTY_AT_PLANT` es todo lo que hay que escribir. Un
+lleno que vuelve sí: salió de un `batch_item` concreto, con su
+`available_qty` decrementado en el `ROUTE_LOAD`, y devolverlo al galpón sin
+reponer ese contador dejaría stock que existe físicamente y no se puede volver
+a cargar en ninguna ruta. **Y el ledger no dice de qué lote salió cada envase
+que está en el camión:** `container_movements` guarda `batchId` en el
+`ROUTE_LOAD`, pero una ruta puede haber cargado de varios lotes, y nada
+atribuye los llenos que sobran a uno u otro. Reponer exige decidir esa
+atribución primero — FIFO inverso, proporcional, o preguntándoselo a quien
+liquida.
+
+`RoutesService.removeLoad` ya resuelve el caso fácil, y por eso mismo se ve
+que este no lo es: ahí se corrige UNA carga concreta, con la ruta todavía
+PLANNED, así que el lote es conocido y la reposición es exacta
+(`availableQty` + `FULL_RETURN`). Acá lo que vuelve es un sobrante de la ruta
+entera, después de operar.
+
+**Para cerrarla:** decidir con el dueño de la planta la regla de atribución de
+lote de los llenos que vuelven, y recién entonces emitir el `FULL_RETURN`
+(`FULL_ON_ROUTE -> FULL_AT_PLANT`) con la reposición de `available_qty` dentro
+de la misma transacción de `settle`. Hasta entonces `fullReturned` sigue siendo
+un número que se registra y se concilia, no un movimiento.
 
 ## Regla: los mensajes de error que llegan a pantalla van en español
 

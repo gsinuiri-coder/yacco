@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
+import { listContainerTypes } from "../api/container-types";
+import type { ContainerType } from "../api/container-types";
 import { ApiError } from "../api/errors";
 import {
   containerDifference,
@@ -20,8 +22,11 @@ import { SLOW_REQUEST_MESSAGE } from "../api/timing";
 import { useAuth } from "../auth/use-auth";
 import { AppShell } from "../components/app-shell";
 import { RouteStatusBadge } from "../components/route-status-badge";
+import { SettlementEmptiesCount } from "../components/settlement-empties-count";
+import type { EmptiesCountType } from "../components/settlement-empties-count";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatBusinessDate, formatBusinessDateTime } from "../lib/business-date";
+import { formatDifference } from "../lib/difference";
 import { formatMoney } from "../lib/money";
 
 function parseCount(value: string): number | null {
@@ -29,12 +34,27 @@ function parseCount(value: string): number | null {
   return Number(value.trim());
 }
 
+/** Un campo vacío es cero: al volver de ruta el camión se descarga entero. */
+function parseEmptiesCount(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return 0;
+  return parseCount(trimmed);
+}
+
 /**
- * "+2" / "-3": el signo es la información. Un faltante y un sobrante son dos
- * hallazgos distintos y la pantalla nunca los mezcla en un valor absoluto.
+ * Los tipos que se pueden contar: el catálogo activo MÁS cualquiera que el
+ * libro diga que se recogió. Un tipo retirado que todavía vuelve del camión
+ * tiene que poder contarse, y `GET /container-types` no lo devuelve.
  */
-function formatDifference(value: number): string {
-  return value > 0 ? `+${String(value)}` : String(value);
+function countableTypes(
+  containerTypes: ContainerType[],
+  expected: RouteSettlementExpected,
+): EmptiesCountType[] {
+  const fromCatalog = containerTypes.map((type) => ({ id: type.id, name: type.name }));
+  const missing = expected.emptiesPickedUpByType
+    .filter((line) => !containerTypes.some((type) => type.id === line.containerTypeId))
+    .map((line) => ({ id: line.containerTypeId, name: line.containerTypeName }));
+  return [...fromCatalog, ...missing];
 }
 
 /**
@@ -55,13 +75,15 @@ export function RouteSettlementPage() {
 
   const [route, setRoute] = useState<Route | null>(null);
   const [view, setView] = useState<RouteSettlementView | null>(null);
+  const [containerTypes, setContainerTypes] = useState<ContainerType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const isSlowLoad = useSlowRequest(isLoading);
 
   const [fullReturned, setFullReturned] = useState("");
-  const [emptiesCollected, setEmptiesCollected] = useState("");
+  /** Lo escrito por tipo de envase, en crudo, indexado por su id. */
+  const [emptiesByType, setEmptiesByType] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -74,11 +96,18 @@ export function RouteSettlementPage() {
     setIsLoading(true);
     setLoadError(null);
 
-    Promise.all([getRoute(apiClient, routeId), getRouteSettlement(apiClient, routeId)])
-      .then(([routeResponse, viewResponse]) => {
+    Promise.all([
+      getRoute(apiClient, routeId),
+      getRouteSettlement(apiClient, routeId),
+      // El catálogo se lee de su propio endpoint, nunca se deriva de otro
+      // recurso: es lo que arma la hoja de conteo de vacíos por tipo.
+      listContainerTypes(apiClient),
+    ])
+      .then(([routeResponse, viewResponse, containerTypesResponse]) => {
         if (ignore) return;
         setRoute(routeResponse);
         setView(viewResponse);
+        setContainerTypes(containerTypesResponse);
       })
       .catch((error: unknown) => {
         if (ignore) return;
@@ -102,13 +131,15 @@ export function RouteSettlementPage() {
     if (isSubmitting || !routeId) return;
 
     const returned = parseCount(fullReturned);
-    const empties = parseCount(emptiesCollected);
     if (returned === null) {
       setValidationError("Los llenos que volvieron deben ser un número entero, 0 o más");
       return;
     }
-    if (empties === null) {
-      setValidationError("Los vacíos descargados deben ser un número entero, 0 o más");
+    const invalid = countedEmpties.find((row) => row.quantity === null);
+    if (invalid !== undefined) {
+      setValidationError(
+        `Los vacíos contados de ${invalid.type.name} deben ser un número entero, 0 o más`,
+      );
       return;
     }
 
@@ -117,7 +148,10 @@ export function RouteSettlementPage() {
     setSubmitError(null);
     settleRoute(apiClient, routeId, {
       fullReturned: returned,
-      emptiesCollected: empties,
+      // Solo las líneas con algo: contar cero de un tipo no es un movimiento.
+      emptiesCollected: countedEmpties
+        .filter((row) => (row.quantity ?? 0) > 0)
+        .map((row) => ({ containerTypeId: row.type.id, quantity: row.quantity as number })),
       ...(notes.trim() === "" ? {} : { notes: notes.trim() }),
     })
       .then((response) => {
@@ -140,6 +174,24 @@ export function RouteSettlementPage() {
   const notFound = loadError instanceof ApiError && loadError.status === 404;
   const settlement = view?.settlement ?? null;
   const canSettle = route?.status === "FINISHED" && settlement === null;
+
+  const emptiesTypes = view === null ? [] : countableTypes(containerTypes, view.expected);
+  const countedEmpties = emptiesTypes.map((type) => ({
+    type,
+    quantity: parseEmptiesCount(emptiesByType[type.id] ?? ""),
+  }));
+  const emptiesTotal = countedEmpties.reduce((sum, row) => sum + (row.quantity ?? 0), 0);
+  const emptiesAreValid = countedEmpties.every((row) => row.quantity !== null);
+  /**
+   * El aviso agregado no aparece hasta que alguien escribió algo: un campo
+   * vacío vale cero, pero abrir la pantalla ya con una diferencia en rojo
+   * gritaría antes de que nadie cuente nada. La tabla, en cambio, sí muestra
+   * la diferencia línea por línea desde el arranque — ahí es una columna, no
+   * un aviso, y es lo que hace visible que un campo vacío es un cero.
+   */
+  const someEmptiesTyped = emptiesTypes.some(
+    (type) => (emptiesByType[type.id] ?? "").trim() !== "",
+  );
 
   return (
     <AppShell>
@@ -238,7 +290,7 @@ export function RouteSettlementPage() {
               <div className="card__body">
                 <h2>Lo que se contó en la puerta</h2>
                 <p className="text-muted">
-                  Los dos únicos números que se cuentan a mano. Todo lo demás sale del libro.
+                  Lo único que se cuenta a mano. Todo lo demás sale del libro.
                 </p>
               </div>
               <form
@@ -268,26 +320,6 @@ export function RouteSettlementPage() {
                       Según el libro deberían volver {expectedFullReturn(view.expected)}.
                     </span>
                   </div>
-                  <div className="field">
-                    <label className="field__label" htmlFor="emptiesCollected">
-                      Vacíos contados al descargar
-                    </label>
-                    <input
-                      id="emptiesCollected"
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={emptiesCollected}
-                      disabled={isSubmitting || !canSettle}
-                      onChange={(event) => {
-                        setEmptiesCollected(event.target.value);
-                        setValidationError(null);
-                      }}
-                    />
-                    <span className="field__hint">
-                      Según el libro se recogieron {view.expected.emptiesPickedUp}.
-                    </span>
-                  </div>
                   <div className="field form-grid__full">
                     <label className="field__label" htmlFor="settlementNotes">
                       Nota (opcional)
@@ -306,10 +338,26 @@ export function RouteSettlementPage() {
                   </div>
                 </div>
 
+                <h3>Vacíos contados al descargar</h3>
+                <p className="text-muted">
+                  Uno por tipo de envase: cada línea vuelve al galpón como su propio movimiento. Un
+                  campo vacío cuenta como cero.
+                </p>
+                <SettlementEmptiesCount
+                  types={emptiesTypes}
+                  pickedUpByType={view.expected.emptiesPickedUpByType}
+                  counted={emptiesByType}
+                  disabled={isSubmitting || !canSettle}
+                  onChange={(containerTypeId, value) => {
+                    setEmptiesByType((current) => ({ ...current, [containerTypeId]: value }));
+                    setValidationError(null);
+                  }}
+                />
+
                 <LiveDifferences
                   expected={view.expected}
                   fullReturned={parseCount(fullReturned)}
-                  emptiesCollected={parseCount(emptiesCollected)}
+                  emptiesCollected={someEmptiesTyped && emptiesAreValid ? emptiesTotal : null}
                 />
 
                 {validationError && (
@@ -470,6 +518,22 @@ function LiveDifferences({
   );
 }
 
+/**
+ * "(faltan 2)" al lado de un tipo, solo cuando su diferencia no es cero. El
+ * total y sus dos diferencias de arriba siguen mostrándose siempre; esto es lo
+ * que el total puede estar escondiendo cuando dos tipos se compensan.
+ */
+function describeTypeDifference(
+  differences: RouteSettlementDifferences,
+  line: { containerTypeId: string },
+): string {
+  const found = differences.emptiesByType.find(
+    (row) => row.containerTypeId === line.containerTypeId,
+  );
+  if (found === undefined || found.difference === 0) return "";
+  return `(${formatDifference(found.difference)}: ${found.difference > 0 ? "faltan" : "sobran"} ${Math.abs(found.difference)} respecto del libro)`;
+}
+
 function SettledSection({
   settlement,
   expected,
@@ -524,6 +588,22 @@ function SettledSection({
             </span>
           </div>
         </div>
+        {/* Lo contado, tipo por tipo: es lo que volvió al galpón, reconstruido
+            del libro. Las diferencias por tipo solo llegan en la respuesta del
+            POST; al volver a entrar quedan el total y las dos de arriba. */}
+        {settlement.emptiesCollectedByType.length > 0 && (
+          <>
+            <h3>Vacíos descargados, por tipo</h3>
+            <ul>
+              {settlement.emptiesCollectedByType.map((line) => (
+                <li key={line.containerTypeId}>
+                  {line.containerTypeName}: {line.quantity}
+                  {differences !== null && <> {describeTypeDifference(differences, line)}</>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         {settlement.notes && (
           <p>
             <strong>Nota:</strong> {settlement.notes}

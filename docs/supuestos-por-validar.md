@@ -221,8 +221,10 @@ que dijo que sí.
   la demo abriendo con 34 «Con caño» en camión —envases que en la planta real
   vuelven al galpón el mismo día— con la propuesta de emitirlos desde la
   liquidación, y dijo que sí.
-- **Construido encima:** todavía nada. La decisión está tomada y el código lo
-  escribe el PR siguiente. Es el que cierra «Descargar los vacíos al volver de
-  ruta no tiene camino en la app», en
-  [`backlog-tecnico.md`](./backlog-tecnico.md), que hasta entonces sigue
-  abierta.
+- **Construido encima:** el PR «la liquidación devuelve los vacíos al galpón»,
+  que cerró «Descargar los vacíos al volver de ruta no tiene camino en la app»
+  en [`backlog-tecnico.md`](./backlog-tecnico.md): `settle` emite un
+  `EMPTY_UNLOAD` por cada tipo contado, `emptiesCollected` viaja desglosado por
+  tipo, la pantalla de liquidación cuenta línea por línea y el seed de demo
+  liquida todas sus rutas menos la última. `fullReturned` quedó afuera, con su
+  propia entrada abierta en el backlog.

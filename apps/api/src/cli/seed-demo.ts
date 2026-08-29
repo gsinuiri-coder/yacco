@@ -154,6 +154,15 @@ interface RouteResponse {
 interface RouteStopResponse {
   id: string;
 }
+/** Lo que hace falta de GET /routes/:id/settlement para liquidar cuadrado. */
+interface SettlementViewResponse {
+  expected: {
+    fullOut: number;
+    fullDelivered: number;
+    fullSold: number;
+    emptiesPickedUpByType: { containerTypeId: string; quantity: number }[];
+  };
+}
 interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -491,7 +500,7 @@ async function runRouteForDay(
   productIdByKey: Record<ProductKey, string>,
   paymentMethodIdByKey: Record<PaymentMethodKey, string>,
   containerTypeIdByKey: Record<ContainerTypeKey, string>,
-): Promise<void> {
+): Promise<string> {
   const route = await apiFetch<RouteResponse>("/routes", token, {
     method: "POST",
     body: { driverId, date },
@@ -515,6 +524,50 @@ async function runRouteForDay(
   });
 
   console.log(`Ruta del ${date}: ${dayDeliveries.length} entregas registradas.`);
+  return route.id;
+}
+
+/**
+ * Liquida las rutas de la demo menos la última, que queda terminada y sin
+ * liquidar para poder mostrar la liquidación en vivo con el dueño delante.
+ *
+ * Sin esto, la demo mostraba el sistema arreglado y el inventario igual de
+ * roto: todo lo que el chofer recogía se quedaba en «vacíos en camión» —34
+ * «Con caño» y 3 «Sin caño» al abrir— porque nadie liquidaba nunca.
+ *
+ * Cada liquidación se arma desde su PROPIA vista previa: los llenos que
+ * deberían volver y los vacíos que el libro dice que se recogieron. Así la
+ * demo cuadra por construcción, en vez de inventar una diferencia que el dueño
+ * tendría que explicar.
+ */
+async function settleRoutes(token: string, routes: { id: string; date: string }[]): Promise<void> {
+  if (routes.length < 2) {
+    throw new Error(
+      `La demo necesita al menos dos rutas con entregas para dejar una sin liquidar, y hay ${routes.length}. ` +
+        "Revisá DEMO_DELIVERIES en seed-demo-plan.ts antes de seguir.",
+    );
+  }
+
+  for (const route of routes.slice(0, -1)) {
+    const safeRouteId = assertUuid(route.id, "id de ruta");
+    const view = await apiFetch<SettlementViewResponse>(`/routes/${safeRouteId}/settlement`, token);
+    const { fullOut, fullDelivered, fullSold, emptiesPickedUpByType } = view.expected;
+    const fullReturned = fullOut - fullDelivered - fullSold;
+    const emptiesCollected = emptiesPickedUpByType.map((line) => ({
+      containerTypeId: line.containerTypeId,
+      quantity: line.quantity,
+    }));
+
+    await apiFetch(`/routes/${safeRouteId}/settlement`, token, {
+      method: "POST",
+      body: { fullReturned, emptiesCollected },
+    });
+
+    const emptiesTotal = emptiesCollected.reduce((sum, item) => sum + item.quantity, 0);
+    console.log(
+      `Ruta del ${route.date}: liquidada (${fullReturned} llenos de vuelta, ${emptiesTotal} vacíos descargados).`,
+    );
+  }
 }
 
 /**
@@ -618,12 +671,15 @@ export async function run(): Promise<void> {
   const deliveriesGroupedByDay = deliveriesByDay(DEMO_DELIVERIES);
   const loadsGroupedByDay = loadsNeededByDay(DEMO_DELIVERIES);
 
+  // Solo los días con entregas producen ruta, así que la lista se arma con lo
+  // que efectivamente se creó y no con el índice del día.
+  const routes: { id: string; date: string }[] = [];
   for (let dayIndex = 0; dayIndex < dates.length; dayIndex += 1) {
     const date = dates[dayIndex] as string;
     const dayDeliveries = deliveriesGroupedByDay.get(dayIndex) ?? [];
     if (dayDeliveries.length === 0) continue;
 
-    await runRouteForDay(
+    const routeId = await runRouteForDay(
       token,
       driver.id,
       date,
@@ -635,8 +691,10 @@ export async function run(): Promise<void> {
       paymentMethodIdByKey,
       containerTypeIdByKey,
     );
+    routes.push({ id: routeId, date });
   }
 
+  await settleRoutes(token, routes);
   await seedContainerCounts(token, locationIdByKey, containerTypeIdByKey);
   await printSummary(token);
 }
