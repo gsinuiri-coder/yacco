@@ -1,10 +1,12 @@
 import {
+  DEMO_CONTAINER_COUNTS,
   DEMO_CUSTOMERS,
   DEMO_DELIVERIES,
   DEMO_HISTORY_DAYS,
   PRODUCT_NAMES,
   PRODUCT_UNIT_PRICE,
   businessDatesGoingBack,
+  computeExpectedContainerBalances,
   computeExpectedDebtByCustomer,
   deliveriesByDay,
   findProductPriceMismatches,
@@ -174,6 +176,89 @@ describe("demo roster shape", () => {
     for (const delivery of DEMO_DELIVERIES) {
       expect(delivery.dayIndex).toBeGreaterThanOrEqual(0);
       expect(delivery.dayIndex).toBeLessThan(DEMO_HISTORY_DAYS);
+    }
+  });
+});
+
+/*
+ * El plan de envases existe para que la pantalla de cuadre (#100) se pueda
+ * ver con una de cada situación. Estos tests fijan esas situaciones: si
+ * alguien cambia una entrega o una devolución y sin querer deja la demo sin
+ * descuadre, sin ubicación cuadrada o sin ninguna sin contar, la pantalla
+ * vuelve a no poder mostrarse y esto es lo que avisa.
+ */
+describe("plan de envases de la demo", () => {
+  const balances = computeExpectedContainerBalances(DEMO_DELIVERIES);
+
+  test("devolver es lo habitual, no la excepción", () => {
+    const withReturns = DEMO_DELIVERIES.filter(
+      (delivery) => (delivery.containersReturned ?? []).length > 0,
+    );
+    // Si la única devolución de la demo fuera la del descuadre, la pantalla
+    // enseñaría que devolver de más es lo normal.
+    expect(withReturns.length).toBeGreaterThan(1);
+    expect(withReturns.length).toBeGreaterThan(DEMO_DELIVERIES.length / 4);
+  });
+
+  test("exactamente una ubicación queda en negativo, y es small_a", () => {
+    const negativeKeys = [...balances.entries()]
+      .filter(([, byType]) => Object.values(byType).some((quantity) => quantity < 0))
+      .map(([customerKey]) => customerKey);
+
+    expect(negativeKeys).toEqual(["small_a"]);
+    expect(balances.get("small_a")).toEqual({ CON_CANO: -3 });
+  });
+
+  test("el resto de los saldos son los que la operación normal deja", () => {
+    expect(balances.get("estrella")).toEqual({ CON_CANO: 4 });
+    expect(balances.get("debt0_a")).toEqual({ CON_CANO: 1 });
+    expect(balances.get("debt0_b")).toEqual({ SIN_CANO: 2 });
+    expect(balances.get("small_b")).toEqual({ SIN_CANO: 3 });
+    expect(balances.get("near_limit")).toEqual({ CON_CANO: 2 });
+    expect(balances.get("pending_yape")).toEqual({ SIN_CANO: 2 });
+    expect(balances.get("pending_transferencia")).toEqual({ CON_CANO: 3 });
+  });
+
+  test("las devoluciones no mueven la deuda monetaria", () => {
+    const debts = computeExpectedDebtByCustomer(DEMO_DELIVERIES);
+    // Los mismos números que antes de que existieran las devoluciones: el
+    // dinero y los envases son dos deudas independientes (CLAUDE.md).
+    expect(debts.get("estrella")).toBe("148.00");
+    expect(debts.get("small_a")).toBe("16.00");
+    expect(debts.get("near_limit")).toBe("64.00");
+  });
+
+  test("los conteos dejan una cuadrada, dos con ajuste, y varias sin contar", () => {
+    const countedKeys = new Set(DEMO_CONTAINER_COUNTS.map((count) => count.customerKey));
+    const uncounted = DEMO_CUSTOMERS.filter((customer) => !countedKeys.has(customer.key));
+
+    // Las dos mitades del contador de progreso.
+    expect(countedKeys.size).toBeGreaterThan(0);
+    expect(uncounted.length).toBeGreaterThan(0);
+
+    const deltaFor = (customerKey: string): number => {
+      const count = DEMO_CONTAINER_COUNTS.find((entry) => entry.customerKey === customerKey);
+      if (count === undefined) throw new Error(`Sin conteo para ${customerKey}`);
+      const expected = balances.get(customerKey)?.[count.containerTypeKey] ?? 0;
+      return count.countedQuantity - expected;
+    };
+
+    expect(deltaFor("debt0_a")).toBe(0); // cuadrada: no deja ajuste
+    expect(deltaFor("estrella")).toBe(-1); // ajuste hacia abajo
+    expect(deltaFor("near_limit")).toBe(1); // ajuste hacia arriba
+  });
+
+  test("la ubicación en negativo se deja sin contar, o la demo pierde su descuadre", () => {
+    const countedKeys = new Set(DEMO_CONTAINER_COUNTS.map((count) => count.customerKey));
+    expect(countedKeys.has("small_a")).toBe(false);
+  });
+
+  test("cada conteo apunta a un cliente del padrón y a un tipo que ese cliente tiene", () => {
+    const knownKeys = new Set(DEMO_CUSTOMERS.map((customer) => customer.key));
+    for (const count of DEMO_CONTAINER_COUNTS) {
+      expect(knownKeys.has(count.customerKey)).toBe(true);
+      expect(balances.get(count.customerKey)?.[count.containerTypeKey]).toBeDefined();
+      expect(count.countedQuantity).toBeGreaterThanOrEqual(0);
     }
   });
 });

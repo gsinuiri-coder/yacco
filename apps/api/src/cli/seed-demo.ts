@@ -2,11 +2,13 @@ import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import {
   CONTAINER_TYPE_NAMES,
+  DEMO_CONTAINER_COUNTS,
   DEMO_CUSTOMERS,
   DEMO_DELIVERIES,
   DEMO_DRIVER_NAME,
   DEMO_DRIVER_USERNAME,
   DEMO_HISTORY_DAYS,
+  FLEET_ENTRY_PLAN,
   PAYMENT_METHOD_NAMES,
   PRODUCT_NAMES,
   PRODUCTION_BATCH_CODE,
@@ -433,6 +435,7 @@ async function deliverRouteStops(
   stopIdByCustomerKey: Map<string, string>,
   productIdByKey: Record<ProductKey, string>,
   paymentMethodIdByKey: Record<PaymentMethodKey, string>,
+  containerTypeIdByKey: Record<ContainerTypeKey, string>,
 ): Promise<void> {
   const safeRouteId = assertUuid(routeId, "id de ruta");
   const deliveriesByCustomerKey = groupDeliveriesByCustomer(dayDeliveries);
@@ -445,12 +448,25 @@ async function deliverRouteStops(
       quantity: line.quantity,
     }));
     const payment = lines.find((line) => line.payment !== undefined)?.payment;
+    // Los vacíos que el cliente devuelve en esta misma visita. Se mandan por
+    // el mismo PATCH que la entrega, que es como los registra el chofer:
+    // `SalesService` los aplica en pleno y reporta el saldo resultante sin
+    // validarlo contra nada, así que una devolución mayor a lo entregado deja
+    // el saldo en negativo por el camino real (CLAUDE.md: alertar, no
+    // bloquear). Es el descuadre que la demo necesita mostrar.
+    const containersReturned = lines.flatMap((line) =>
+      (line.containersReturned ?? []).map((returned) => ({
+        containerTypeId: containerTypeIdByKey[returned.containerTypeKey],
+        quantity: returned.quantity,
+      })),
+    );
 
     await apiFetch(`/routes/${safeRouteId}/stops/${assertUuid(stopId, "id de parada")}`, token, {
       method: "PATCH",
       body: {
         status: "DELIVERED",
         items,
+        ...(containersReturned.length > 0 ? { containersReturned } : {}),
         ...(payment !== undefined
           ? {
               payment: {
@@ -474,6 +490,7 @@ async function runRouteForDay(
   locationIdByKey: Map<string, string>,
   productIdByKey: Record<ProductKey, string>,
   paymentMethodIdByKey: Record<PaymentMethodKey, string>,
+  containerTypeIdByKey: Record<ContainerTypeKey, string>,
 ): Promise<void> {
   const route = await apiFetch<RouteResponse>("/routes", token, {
     method: "POST",
@@ -491,12 +508,68 @@ async function runRouteForDay(
     stopIdByCustomerKey,
     productIdByKey,
     paymentMethodIdByKey,
+    containerTypeIdByKey,
   );
   await apiFetch(`/routes/${assertUuid(route.id, "id de ruta")}/finish`, token, {
     method: "PATCH",
   });
 
   console.log(`Ruta del ${date}: ${dayDeliveries.length} entregas registradas.`);
+}
+
+/**
+ * El parque inicial, ANTES del lote: `FILLING` consume vacíos en planta, así
+ * que sin esta entrada la demo llenaba envases que no existían y el
+ * inventario abría con un negativo y su aviso en rojo.
+ */
+async function seedFleetEntry(
+  token: string,
+  containerTypeIdByKey: Record<ContainerTypeKey, string>,
+): Promise<void> {
+  for (const line of FLEET_ENTRY_PLAN) {
+    await apiFetch("/container-movements", token, {
+      method: "POST",
+      body: {
+        type: "FLEET_ENTRY",
+        containerTypeId: containerTypeIdByKey[line.containerType],
+        quantity: line.quantity,
+        toState: "EMPTY_AT_PLANT",
+      },
+    });
+  }
+  const total = FLEET_ENTRY_PLAN.reduce((sum, line) => sum + line.quantity, 0);
+  console.log(`Parque inicial dado de alta: ${total} envases vacíos en planta.`);
+}
+
+/**
+ * Conteos físicos, DESPUÉS de todas las rutas: cada uno se compara contra el
+ * saldo final de esa ubicación, así que sembrarlos antes contaría contra un
+ * saldo intermedio y dejaría ajustes que no significan nada.
+ *
+ * Todos caen en el mismo instante, y no hay forma de evitarlo desde acá:
+ * `CreateContainerCountDto` no acepta fecha a propósito. Por eso el filtro
+ * «contadas antes de» de la pantalla de cuadre no se puede demostrar con
+ * estos datos — anotado en docs/backlog-tecnico.md.
+ */
+async function seedContainerCounts(
+  token: string,
+  locationIdByKey: Map<string, string>,
+  containerTypeIdByKey: Record<ContainerTypeKey, string>,
+): Promise<void> {
+  for (const count of DEMO_CONTAINER_COUNTS) {
+    const locationId = locationIdByKey.get(count.customerKey);
+    if (locationId === undefined) continue;
+
+    await apiFetch("/container-counts", token, {
+      method: "POST",
+      body: {
+        locationId: assertUuid(locationId, "id de ubicación"),
+        containerTypeId: containerTypeIdByKey[count.containerTypeKey],
+        countedQuantity: count.countedQuantity,
+      },
+    });
+  }
+  console.log(`Conteos de envases registrados: ${DEMO_CONTAINER_COUNTS.length}.`);
 }
 
 async function printSummary(token: string): Promise<void> {
@@ -531,6 +604,7 @@ export async function run(): Promise<void> {
     await resolveCatalog(token);
   assertPricesMatchCatalog(products);
 
+  await seedFleetEntry(token, containerTypeIdByKey);
   const driver = await createDriver(token);
   const locationIdByKey = await createCustomers(token);
 
@@ -559,9 +633,11 @@ export async function run(): Promise<void> {
       locationIdByKey,
       productIdByKey,
       paymentMethodIdByKey,
+      containerTypeIdByKey,
     );
   }
 
+  await seedContainerCounts(token, locationIdByKey, containerTypeIdByKey);
   await printSummary(token);
 }
 
