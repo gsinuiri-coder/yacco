@@ -3,9 +3,13 @@
 ## Project
 
 Management system for a water purification plant in Peru (currency: soles, S/).
-pnpm monorepo: `apps/api` (NestJS modular monolith + Prisma/PostgreSQL),
-`apps/web` (React + Vite), `apps/mobile` (Expo, offline-first),
-`packages/shared` (DTO contracts), `packages/sync-engine` (pure-TS offline queue).
+pnpm monorepo. **Built today:** `apps/api` (NestJS modular monolith +
+Prisma/PostgreSQL), `apps/web` (React + Vite), `packages/shared` (DTO
+contracts) — that is the whole of `packages/`. **Reserved, not built:**
+`apps/mobile` (Expo, offline-first driver app) holds a `.gitkeep` and nothing
+else, and `packages/sync-engine` (pure-TS offline queue) has no directory at
+all. Both are planned scope (spec §1.3, §4.2), not code you can import or
+point a reader at.
 The spec at `docs/yacco-documentacion.md` is the source of truth. If code and
 spec disagree, STOP and ask before proceeding.
 
@@ -71,13 +75,6 @@ spec disagree, STOP and ask before proceeding.
   a la base local, se resuelve con `prisma migrate reset` en Docker, nunca
   tocando a mano la tabla `_prisma_migrations`.
 - Every operational row records `created_at` and `recorded_by`/`created_by`.
-- Driver field writes enter ONLY through `POST /api/v1/sync/operations`
-  (idempotent by device-generated UUID; duplicates -> DUPLICATE, never re-applied).
-- Sync batches are ALL-OR-NOTHING: one transaction per batch. An operation that
-  fails validation twice goes to quarantine (status REJECTED + email alert) and
-  the rest of the batch proceeds. Never partially apply a batch silently.
-- Sync envelopes are versioned (`type`, `version`, `payload`); the server accepts
-  older versions and normalizes. Never break an envelope shape in place.
 - Route planning reserves stock: `ROUTE_LOAD` movement at plan time. Cancelling a
   route emits the inverse movement.
 - A settlement with a mismatch still closes, recording the difference and reason.
@@ -91,6 +88,31 @@ spec disagree, STOP and ask before proceeding.
 - All timestamps are `timestamptz` in UTC. Business days (`routes.date`,
   `orders.delivery_date`) are calendar `date` in America/Lima; convert at the
   edges, never store local time in a timestamp.
+
+## Sync protocol — agreed design, NOT built
+
+These are not invariants: they govern no code, so nothing can violate them.
+There is no sync module — `POST /api/v1/sync/operations` has no controller and
+no service (only the `sync_operations` table, modelled ahead of time), and
+`apps/mobile` is empty. They are the agreed shape of the protocol and they
+apply WHEN that module exists. Whether the driver app gets built at all is an
+open decision, taken with the plant owner. Full design in skill
+`sync-protocol`; status note in spec §4.3.
+
+- **Field writes.** TODAY a driver registers a delivery through
+  `PATCH /api/v1/routes/:id/stops/:stopId`: `routes.controller.ts` declares
+  `@Roles(ADMIN, SELLER, DRIVER)` at class level and that PATCH inherits it.
+  In practice the office records each stop from the web — the driver dictates
+  or writes on paper and someone loads it (spec §4.3). WHEN sync exists,
+  driver field writes enter through `POST /api/v1/sync/operations` (idempotent
+  by device-generated UUID; duplicates -> DUPLICATE, never re-applied), and
+  the PATCH stays as the office path or is restricted to ADMIN/SELLER. That
+  call is made together with the sync module, not before.
+- Sync batches are ALL-OR-NOTHING: one transaction per batch. An operation that
+  fails validation twice goes to quarantine (status REJECTED + email alert) and
+  the rest of the batch proceeds. Never partially apply a batch silently.
+- Sync envelopes are versioned (`type`, `version`, `payload`); the server accepts
+  older versions and normalizes. Never break an envelope shape in place.
 
 ## Workflow
 

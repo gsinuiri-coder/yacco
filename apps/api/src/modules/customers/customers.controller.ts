@@ -32,8 +32,8 @@ import { UpdateCustomerDto } from "./dto/update-customer.dto.js";
 
 /**
  * ADMIN and SELLER manage the customer roster (spec HU-05 is written for the
- * seller). DRIVER is excluded: the field app reads customer data through the
- * day's route and writes only via POST /api/v1/sync/operations.
+ * seller). DRIVER is excluded: a driver reaches customer data through the
+ * day's route, never through the roster.
  */
 @ApiTags("customers")
 @ApiBearerAuth()

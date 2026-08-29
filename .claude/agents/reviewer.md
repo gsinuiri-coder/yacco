@@ -19,8 +19,11 @@ Check, in this order:
    `container_movements`, `sales` or `payments` row; a balance update not in
    the same transaction as its source movement; a FIFO bypass; a credit
    limit that blocks instead of warns; money stored as float instead of
-   `NUMERIC(10,2)`; a driver-write path that doesn't go through
-   `/api/v1/sync/operations`. See skill `domain-invariants`.
+   `NUMERIC(10,2)`. See skill `domain-invariants`. There is no sync module, so
+   do NOT flag a field write for not going through `/api/v1/sync/operations`:
+   today it correctly enters through
+   `PATCH /api/v1/routes/:id/stops/:stopId` (CLAUDE.md, "Sync protocol —
+   agreed design, NOT built").
 3. **Gherkin coverage.** For the HU cited in the task, confirm every
    scenario in spec §2.4 has a test that quotes it (not just a test with a
    similar name).

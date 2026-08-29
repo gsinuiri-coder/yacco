@@ -1,12 +1,28 @@
 ---
 name: sync-protocol
-description: The offline sync protocol between the driver app and the API.
-  Use for anything touching packages/sync-engine, the mobile local queue, or
-  POST /api/v1/sync/operations — envelope shape, ordering, idempotency,
-  batching, quarantine.
+description: The agreed DESIGN of the offline sync protocol between the driver
+  app and the API — a protocol not built yet (no sync module, no
+  packages/sync-engine, empty apps/mobile). Use when designing or building
+  that module, or when deciding what POST /api/v1/sync/operations should look
+  like — envelope shape, ordering, idempotency, batching, quarantine. Not a
+  description of code that exists today.
 ---
 
 # Sync protocol (mobile offline queue <-> API)
+
+> **Estado real, decidido con el dueño de la planta:** este documento es el
+> diseño acordado del protocolo, no una descripción del código. El módulo de
+> sincronización **no existe**: `POST /api/v1/sync/operations` no tiene
+> controller ni servicio —solo la tabla `sync_operations`, modelada por
+> adelantado—, `apps/mobile` contiene únicamente un `.gitkeep` y
+> `packages/sync-engine` no existe como directorio. Hoy **la oficina registra
+> cada parada desde la web**, con `PATCH /api/v1/routes/:id/stops/:stopId`
+> (spec §4.3).
+>
+> Todo lo que sigue está en presente porque describe cómo debe comportarse el
+> protocolo **cuando se construya**, y sigue siendo la decisión vigente sobre
+> su forma. Construir la app del repartidor sigue siendo una decisión abierta,
+> que se toma con el dueño de la planta; este diseño no la prejuzga.
 
 ## Operation envelope
 
