@@ -303,11 +303,14 @@ describe("RouteDetailPage", () => {
       expect(screen.getByRole("button", { name: "Terminar ruta" })).toBeInTheDocument();
     });
 
-    it("terminar avisa cuántas paradas quedan sin resolver y no bloquea", async () => {
+    it("con todas las paradas resueltas, confirmar termina la ruta", async () => {
       const user = userEvent.setup();
       const inProgress = buildRoute({
         status: "IN_PROGRESS",
-        stops: [stop({ position: 1 }), stop({ position: 2, status: "DELIVERED" })],
+        stops: [
+          stop({ position: 1, status: "DELIVERED" }),
+          stop({ position: 2, status: "FAILED", failureReason: "Local cerrado" }),
+        ],
       });
       stubRoute(inProgress);
       let called = false;
@@ -322,7 +325,7 @@ describe("RouteDetailPage", () => {
       await user.click(await screen.findByRole("button", { name: "Terminar ruta" }));
 
       const confirm = screen.getByRole("group", { name: "Confirmar el fin de la ruta" });
-      expect(confirm).toHaveTextContent("Queda 1 parada sin resolver");
+      expect(confirm).toHaveTextContent("Todas las paradas están resueltas.");
       expect(called).toBe(false);
 
       await user.click(within(confirm).getByRole("button", { name: "Sí, terminar la ruta" }));
@@ -331,9 +334,51 @@ describe("RouteDetailPage", () => {
       expect(await screen.findByText("Terminada")).toBeInTheDocument();
     });
 
+    // La regla nueva: con paradas pendientes la ruta no se puede terminar, así
+    // que el diálogo no ofrece confirmar algo que la API va a rechazar. El
+    // botón «Terminar ruta» sigue habilitado: es el diálogo el que enseña.
+    it("con una parada sin resolver, el diálogo explica y no ofrece confirmar", async () => {
+      const user = userEvent.setup();
+      stubRoute(
+        buildRoute({
+          status: "IN_PROGRESS",
+          stops: [stop({ position: 1 }), stop({ position: 2, status: "DELIVERED" })],
+        }),
+      );
+      let called = false;
+      server.use(
+        http.patch(`${API_BASE_URL}/routes/${ROUTE_ID}/finish`, () => {
+          called = true;
+          return HttpResponse.json(buildRoute({ status: "FINISHED" }));
+        }),
+      );
+
+      renderPage();
+      const finishButton = await screen.findByRole("button", { name: "Terminar ruta" });
+      expect(finishButton).toBeEnabled();
+      await user.click(finishButton);
+
+      const confirm = screen.getByRole("group", { name: "Confirmar el fin de la ruta" });
+      expect(confirm).toHaveTextContent(
+        "Todavía no se puede terminar la ruta: queda 1 parada sin resolver. Cada parada tiene que quedar marcada como entregada o no entregada, o quitarse de la ruta.",
+      );
+      expect(
+        within(confirm).queryByRole("button", { name: "Sí, terminar la ruta" }),
+      ).not.toBeInTheDocument();
+
+      await user.click(within(confirm).getByRole("button", { name: "Entendido" }));
+
+      expect(
+        screen.queryByRole("group", { name: "Confirmar el fin de la ruta" }),
+      ).not.toBeInTheDocument();
+      expect(called).toBe(false);
+    });
+
     it("«No, todavía no» cierra la confirmación sin llamar a la API", async () => {
       const user = userEvent.setup();
-      stubRoute(buildRoute({ status: "IN_PROGRESS", stops: [stop({ position: 1 })] }));
+      stubRoute(
+        buildRoute({ status: "IN_PROGRESS", stops: [stop({ position: 1, status: "DELIVERED" })] }),
+      );
       let called = false;
       server.use(
         http.patch(`${API_BASE_URL}/routes/${ROUTE_ID}/finish`, () => {
@@ -385,14 +430,23 @@ describe("RouteDetailPage", () => {
       renderPage();
       await user.click(await screen.findByRole("button", { name: "Terminar ruta" }));
 
-      expect(screen.getByRole("group", { name: "Confirmar el fin de la ruta" })).toHaveTextContent(
-        "Quedan 2 paradas sin resolver",
+      const confirm = screen.getByRole("group", { name: "Confirmar el fin de la ruta" });
+      expect(confirm).toHaveTextContent(
+        "Todavía no se puede terminar la ruta: quedan 2 paradas sin resolver.",
       );
+      expect(
+        within(confirm).queryByRole("button", { name: "Sí, terminar la ruta" }),
+      ).not.toBeInTheDocument();
     });
 
+    // El caso de carrera: la pantalla ve todas las paradas resueltas y ofrece
+    // confirmar, pero entre la carga y el clic la ruta cambió. El 409 del
+    // backend se muestra tal cual, como cualquier otro.
     it("un 409 al terminar muestra el mensaje del backend y cierra la confirmación", async () => {
       const user = userEvent.setup();
-      stubRoute(buildRoute({ status: "IN_PROGRESS", stops: [stop({ position: 1 })] }));
+      stubRoute(
+        buildRoute({ status: "IN_PROGRESS", stops: [stop({ position: 1, status: "DELIVERED" })] }),
+      );
       server.use(
         http.patch(`${API_BASE_URL}/routes/${ROUTE_ID}/finish`, () =>
           HttpResponse.json(

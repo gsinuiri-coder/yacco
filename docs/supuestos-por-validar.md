@@ -26,6 +26,32 @@ dijo. Cuando se cae, se borra de acá y se abre lo que corresponda en
 `backlog-tecnico.md`. Un supuesto no se queda en esta lista después de tener
 respuesta.
 
+**Una decisión puede aterrizar en Validados sin haber pasado nunca por
+Pendientes.** Pasa cada vez que el dueño resuelve algo que nadie llegó a anotar
+como supuesto —porque la pregunta apareció y se le hizo en el mismo día, o
+porque el tema se descubrió ya con él delante—. Esas entradas se escriben
+directamente abajo; no se inventa un pendiente retroactivo para que el
+documento parezca más prolijo de lo que fue.
+
+Cada entrada validada lleva, además de la fecha, una línea **Cómo se resolvió**
+con uno de dos valores, y la diferencia importa:
+
+- **Respondió la pregunta** — se le preguntó en el vocabulario de la planta, sin
+  insinuar la respuesta que nos convenía, y eligió.
+- **Aprobó la recomendación** — le llevamos una propuesta razonada, con lo que
+  implicaba, y dijo que sí.
+
+Las dos son decisiones suyas y ninguna vale menos, pero no son lo mismo: el día
+que diga otra cosa, el documento tiene que poder mostrar cuál de las dos fue —si
+eligió entre opciones o si aceptó la nuestra.
+
+Las entradas validadas tienen tres líneas:
+
+- **Qué se decidió** — la decisión, en una frase, con lo que quedó explícitamente
+  afuera.
+- **Cómo se resolvió** — uno de los dos valores de arriba.
+- **Construido encima** — qué código la implementa, o que todavía no hay ninguno.
+
 **Regla para escribir código nuevo:** si una decisión de producto se toma sin
 preguntarle, se anota acá y el comentario del código dice que es un supuesto.
 Lo que no se puede es escribirla como si él la hubiera pedido — el día que
@@ -156,4 +182,47 @@ que dijo que sí.
 
 ## Validados
 
-_Ninguno todavía._
+### Terminar una ruta exige sus paradas resueltas — 29/08/2026
+
+- **Qué se decidió:** una ruta no puede terminarse mientras le quede una parada
+  sin resolver; hay que marcar cada una como entregada o no entregada, o
+  quitarla de la ruta. Se descartaron las dos alternativas: **no** se
+  autocompletan las paradas al terminar (sería inventar un hecho de campo que
+  nadie observó) y **no** se liberan los pedidos de las paradas pendientes
+  (sería devolverlos a la bandeja como si nunca hubieran salido en un camión).
+  Una ruta que nunca tuvo paradas sí se puede terminar.
+- **Cómo se resolvió:** aprobó la recomendación. Se le llevó el caso —un pedido
+  que queda «en ruta» para siempre porque su parada quedó a medias— con la
+  propuesta de no dejar cerrar la ruta hasta resolverlas, y dijo que sí.
+- **Construido encima:** el PR «terminar una ruta exige que sus paradas estén
+  resueltas»: la guarda dentro del `WHERE` de `RoutesService.finish`, el 409 con
+  el número de paradas que faltan, y el diálogo de «Terminar ruta» de la
+  pantalla de detalle, que dejó de ofrecer confirmar cuando quedan paradas. El
+  detalle de por qué este bloqueo no contradice el «avisa, no bloquea» del
+  sistema está en «Terminar una ruta no exigía sus paradas resueltas», en
+  [`backlog-tecnico.md`](./backlog-tecnico.md).
+
+### La liquidación emite los `EMPTY_UNLOAD` que devuelven los vacíos al galpón — 29/08/2026
+
+- **Qué se decidió:** al liquidar una ruta, los vacíos contados en la puerta
+  vuelven al galpón con su movimiento `EMPTY_UNLOAD`, en vez de quedarse en
+  `EMPTY_ON_ROUTE` para siempre. Cuatro cosas quedaron fijadas con la decisión:
+  `emptiesCollected` deja de ser un entero y pasa a ser un **desglose por tipo
+  de envase**, porque un movimiento de envases nombra siempre su tipo; el
+  movimiento se emite **desde lo contado** en la puerta, no desde lo que dice el
+  libro, que es justo el número contra el que se cuenta; es **automático dentro
+  de `settle`** y no un paso aparte, porque descargar el camión no es una
+  decisión que alguien tome cada tarde; y **no lleva migración** —
+  `empties_collected` sigue guardando el total y el desglose se reconstruye del
+  ledger, que es la fuente de verdad. `fullReturned` queda explícitamente
+  **afuera**: los llenos que vuelven son otra conversación, y meterla acá
+  duplicaría el alcance.
+- **Cómo se resolvió:** aprobó la recomendación. Se le mostró el inventario de
+  la demo abriendo con 34 «Con caño» en camión —envases que en la planta real
+  vuelven al galpón el mismo día— con la propuesta de emitirlos desde la
+  liquidación, y dijo que sí.
+- **Construido encima:** todavía nada. La decisión está tomada y el código lo
+  escribe el PR siguiente. Es el que cierra «Descargar los vacíos al volver de
+  ruta no tiene camino en la app», en
+  [`backlog-tecnico.md`](./backlog-tecnico.md), que hasta entonces sigue
+  abierta.

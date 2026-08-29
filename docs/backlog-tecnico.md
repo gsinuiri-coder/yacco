@@ -903,6 +903,11 @@ PR de cobranza de oficina.
 **Estado:** resuelta. `Order.status` sigue a su parada, que es lo que HU-10 E1
 pedía.
 
+> **Consecuencia descubierta después de cerrarla:** al seguir el pedido a su
+> parada, una parada que quedaba `PENDING` con la ruta ya `FINISHED` dejaba su
+> pedido en `ON_ROUTE` sin ninguna salida. Ver «Terminar una ruta no exigía sus
+> paradas resueltas», más abajo, que es donde se cerró.
+
 **Cómo se cerró.** Cuatro escrituras, cada una DENTRO de la transacción de la
 operación que la causa —nunca en una segunda transacción ni después de
 responder—, y ninguna toca una parada de origen `VAN_SALE`, que no tiene
@@ -976,6 +981,73 @@ debe verse «En ruta» en la bandeja de pedidos, y en ese caso mover
 (y a DELIVERED/FAILED al marcarla), o corregir HU-10 E1 en la spec si la
 decisión es que el estado del pedido no siga a la parada.
 
+## Terminar una ruta no exigía sus paradas resueltas
+
+**Estado:** resuelta.
+
+**Qué pasaba.** `RoutesService.finish` tenía dos guardas —dueño de la ruta y
+`WHERE status = IN_PROGRESS`— y ninguna miraba las paradas. Una ruta con una
+parada todavía `PENDING` pasaba a `FINISHED` sin decir nada.
+
+**Por qué era una trampa y no un descuido cosmético.** Desde que el pedido
+sigue a su parada («Un pedido asignado a una parada sigue en PENDING», arriba),
+esa parada pendiente arrastra un pedido en `ON_ROUTE`, y con la ruta terminada
+las tres salidas están cerradas, cada una por su propia guarda:
+
+| Salida                 | Su guarda                                      | Por qué no aplica |
+| ---------------------- | ---------------------------------------------- | ----------------- |
+| `markStop`             | `route.status === IN_PROGRESS`                 | la ruta terminó   |
+| `removeStop`           | `assertRouteIsTouchable` (PLANNED/IN_PROGRESS) | la ruta terminó   |
+| `OrdersService.cancel` | pedido `PENDING`                               | está `ON_ROUTE`   |
+
+Y nada en `apps/api/src` devuelve una ruta a `IN_PROGRESS`. El pedido quedaba
+congelado para siempre: ni entregado, ni fallado, ni cancelable.
+
+**La decisión del dueño de la planta fue bloquear**, no autocompletar las
+paradas ni liberar los pedidos. Autocompletar inventaría un hecho de campo que
+nadie observó; liberar el pedido lo devolvería a la bandeja como si nunca
+hubiera salido en un camión.
+
+**Por qué bloquear no contradice «avisa, no bloquea».** Esa filosofía —el
+límite de crédito advierte, una liquidación descuadrada cierra igual, un saldo
+de envases puede quedar negativo— es para **juicios de negocio**, donde el dato
+incómodo se registra en vez de suprimirse. Esto es la **máquina de estados**: no
+hay ningún dato que registrar, solo un pedido sin salida. Bloquear acá es lo
+mismo que ya hacen `start()` con una ruta no planificada o `cancel` con un
+pedido no pendiente. La distinción está escrita en el docblock de `finish`, no
+solo acá.
+
+**Cómo se cerró.** La guarda vive DENTRO del `WHERE` del `updateMany`
+(`stops: { none: { status: PENDING } }`), igual que la de estado, no en una
+lectura previa que una llamada concurrente pueda adelantar. Con `count === 0`
+hay dos causas, así que una lectura desambiguadora —el mismo idioma que
+`throwAlreadyMarkedConflict`— relee el estado y cuenta las paradas pendientes
+para que el 409 nombre la verdadera. El mensaje nuevo usa el vocabulario de la
+planta («entregada o no entregada», el de `STOP_STATUS_LABELS`) y **no**
+interpola ningún enum. En la web, el diálogo de «Terminar ruta» dejó de ofrecer
+confirmar cuando quedan paradas: explica cuántas faltan y qué hacer con cada
+una, y su único botón es «Entendido».
+
+**Lo que queda abierto a conciencia:** la carrera del subquery. El filtro de
+relación no bloquea las filas de `route_stops`, así que un `addStop` que
+confirme dentro de la ventana entre el subquery y el UPDATE puede dejar una ruta
+`FINISHED` con una parada `PENDING`. Es la misma clase que ya tiene `addStop`,
+cuya lectura de «ruta tocable» también vive fuera de su transacción, y cerrarla
+pide un lock sobre las paradas de la ruta en las dos operaciones. Con una sola
+oficina agregando paradas no se paga ese precio hoy; el disparador es el mismo
+que el de «Sin lock sobre customer_container_balances»: que el piloto traiga
+varias personas operando la misma ruta a la vez.
+
+**Efecto en la liquidación, que no se tocó:** `unresolvedStops` de
+`getSettlementView` pasa a ser estructuralmente `0` para toda ruta terminada de
+acá en adelante. El aviso de la pantalla de liquidación **se queda**: sigue
+sirviendo para las rutas ya terminadas antes de este cambio, que son las únicas
+que pueden traer paradas sin resolver.
+
+**Una ruta sin paradas se puede terminar**, y es deliberado: `none` es cierto
+sobre el conjunto vacío, y una ruta que nunca tuvo paradas no congela ningún
+pedido.
+
 ## Los datos de demo no tienen profundidad temporal en el libro
 
 **Estado:** abierto. **Disparador:** cuando haga falta demostrar, o probar a
@@ -1019,9 +1091,23 @@ escrito. Feo —toca un ledger inmutable— pero acotado, y no toca la ruta púb
 
 ## Seis mensajes de RoutesService interpolan el enum crudo
 
-**Estado:** abierto. **Disparador:** el próximo PR que toque `RoutesService`,
-o el primero que arme pantallas donde alguno de estos seis errores sea
-alcanzable a mano.
+**Estado:** abierto. **Disparador (reescrito el 29/08/2026):** el primer PR que
+arme pantallas donde alguno de estos seis errores sea alcanzable a mano, o
+cualquier PR que **cambie el texto** de alguno de los seis.
+
+> El disparador anterior decía «el próximo PR que toque `RoutesService`». El PR
+> de «Terminar una ruta no exigía sus paradas resueltas» lo tocó y **no** cerró
+> la deuda: se difirió a propósito, y queda escrito acá en vez de ignorarse en
+> silencio. Es otra tarea —dos mapas de labels (`RouteStatus` y `StopStatus`),
+> seis mensajes y los tests que fijan cada texto—, y meterla en un PR que va
+> sobre la máquina de estados habría mezclado dos diffs que se revisan distinto.
+> Un disparador que se cumple y se ignora sin decirlo enseña a ignorar
+> disparadores; por eso el nuevo se dispara con lo que sí obliga a mirar estos
+> textos, y no con tocar el archivo.
+>
+> Ese PR agregó un séptimo mensaje a `finish` —el de las paradas sin resolver—
+> que **no** interpola ningún enum: usa «entregada o no entregada», el
+> vocabulario de `STOP_STATUS_LABELS`. La deuda no creció.
 
 Incumplen la regla de «los mensajes de error que llegan a pantalla van en
 español», más abajo: están redactados en español pero terminan con el nombre
@@ -1051,6 +1137,13 @@ Y el texto se fija por test, como se hizo con los de `users` y con el 409 de
 
 **Estado:** abierto. **Disparador:** antes del piloto de campo, o cuando el
 inventario muestre un montón de «vacíos en camión» que el dueño no reconozca.
+
+> **La decisión de dominio ya se tomó (29/08/2026):** la liquidación emite los
+> `EMPTY_UNLOAD` que devuelven los vacíos al galpón, automáticamente dentro de
+> `settle` y desde lo contado en la puerta. Está anotada en
+> [`supuestos-por-validar.md`](./supuestos-por-validar.md), en **Validados**.
+> La entrada sigue **abierta** porque la decisión está tomada y el código no
+> está escrito: lo escribe el PR siguiente, que es el que la cierra.
 
 > **Corrección (29/08/2026).** Esta entrada decía que `EMPTY_UNLOAD` era «el
 > único tipo de movimiento sin productor» y que no se podía registrar «por
