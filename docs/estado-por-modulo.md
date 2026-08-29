@@ -72,10 +72,15 @@ usan el mismo `ZONE_SELECT` / `CONTAINER_TYPE_SELECT` /
 una relación que el listado no trae, deja de aplicar y esa fila vuelve a
 `Parcial`.
 
-Los endpoints **no se borran**: el consumidor que los justifica es el móvil,
-que mantiene su propia copia local de los catálogos y necesita resolver un id
-suelto cuando esa copia quedó vieja (spec §4.3, `POST /sync/operations`). Cada
-controller lo dice en su `GET /:id`.
+Los endpoints **no se borran**: el consumidor que los justificaría es el
+móvil, que mantendría su propia copia local de los catálogos y necesitaría
+resolver un id suelto cuando esa copia quedara vieja (spec §4.3, `POST
+/sync/operations`). Ese consumidor **todavía no existe**: `apps/mobile` está
+vacío y el módulo de sincronización no está construido. La regla se sostiene
+igual —mantener un `GET /:id` que comparte `select` y DTO con el listado
+cuesta cero, y reponerlo después costaría más que dejarlo—, pero se sostiene
+por eso, no por un cliente que ya lo esté llamando. Cada controller lo dice en
+su `GET /:id`, y lo dice en futuro.
 
 ## Tabla
 

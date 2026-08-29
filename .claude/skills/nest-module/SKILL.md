@@ -25,8 +25,11 @@ apps/api/src/modules/<module-name>/
 - Business logic lives in the **service**, never in the controller. The
   controller only validates the request shape (via DTOs) and delegates.
 - Every DTO uses `class-validator` decorators (`@IsUUID`, `@IsInt`,
-  `@Min(0)`, `@IsEnum(...)`, etc.) — never trust an unvalidated payload,
-  especially from `/sync/operations` (see skill `sync-protocol`).
+  `@Min(0)`, `@IsEnum(...)`, etc.) — never trust an unvalidated payload. The
+  sharpest case today is `PATCH /routes/:id/stops/:stopId`, where a `DRIVER`
+  posts a whole delivery — sale, containers and payment — in one body; it is
+  also why the not-yet-built `/sync/operations` will need the same discipline
+  (see skill `sync-protocol`).
 - Every endpoint that isn't public carries a role guard
   (`@Roles(UserRole.ADMIN)`, etc.) matching spec §1.4 / HU-22, HU-23. A
   route with no guard is a bug unless it's `/health` or `/auth/login`.
