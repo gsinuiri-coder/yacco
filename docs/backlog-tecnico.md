@@ -925,6 +925,71 @@ debe verse «En ruta» en la bandeja de pedidos, y en ese caso mover
 (y a DELIVERED/FAILED al marcarla), o corregir HU-10 E1 en la spec si la
 decisión es que el estado del pedido no siga a la parada.
 
+## Los datos de demo no tienen profundidad temporal en el libro
+
+**Estado:** abierto. **Disparador:** cuando haga falta demostrar, o probar a
+mano, cualquier pantalla que agrupe o filtre por `occurred_at`.
+
+**No es solo la pantalla de cuadre.** Afecta a todo lo que mire el instante de
+un movimiento en vez de la fecha de negocio de su ruta: el historial de
+`container-movements-page` con sus filtros de fecha, cualquier reporte por
+periodo que se construya sobre el ledger, y el filtro «contadas antes del» de
+`container-counts-page`, que es donde se descubrió.
+
+`seed-demo.ts` crea las rutas con su fecha de negocio —cinco días hacia
+atrás— pero el `occurred_at` de cada movimiento es el instante en que corrió el
+CLI, porque los servicios lo estampan con `now()` y la API pública no acepta
+otra cosa. Los cinco días de historia son cinco días en `routes.date` y **un
+solo instante** en `container_movements`. Lo mismo con los conteos:
+`CreateContainerCountDto` no acepta fecha a propósito —su docblock dice que
+retrodatar existe solo para el cargador de padrón—, así que los tres conteos de
+la demo caen juntos y «contadas antes del» no puede devolver un subconjunto que
+signifique algo.
+
+**Qué costaría arreglarlo:** pasar el CLI de HTTP puro al patrón de
+`load-roster.ts`, que levanta un contexto de Nest
+(`NestFactory.createApplicationContext`) y llama a los servicios en proceso,
+donde `createWithinTransaction` y `ContainerCountsService.create` ya aceptan
+`occurredAt`. La capacidad existe; lo que falta es alcanzarla.
+
+**Qué se perdería, y hay que saberlo antes de tomarla:** hoy cada
+`pnpm demo:data` ejercita los endpoints públicos de punta a punta —login,
+catálogos, alta de clientes, lote, ruta, carga, paradas, entregas con cobro,
+conteos— y es el único humo que este repo tiene sobre el flujo de despacho, que
+no tiene pantalla web (ver `docs/estado-por-modulo.md`). El propio docblock de
+`seed-demo.ts` lo dice. Cambiar a llamadas en proceso **elimina esa
+verificación**: un 400 nuevo en `POST /routes/:id/stops/:stopId` dejaría de
+aparecer al sembrar. Quien tome esta entrada está pagando ese precio, no solo
+ganando fechas.
+
+Una salida intermedia, si el precio no vale: dejar el sembrado por HTTP y
+agregar un paso final, en proceso, que solo retroceda `occurred_at` de lo ya
+escrito. Feo —toca un ledger inmutable— pero acotado, y no toca la ruta pública.
+
+## El chofer se lleva los vacíos y no vuelven nunca a la planta
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo, o cuando el
+inventario muestre un montón de «vacíos en camión» que el dueño no reconozca.
+
+`EMPTY_UNLOAD` (`EMPTY_ON_ROUTE` → `EMPTY_AT_PLANT`) está en
+`CONTAINER_MOVEMENT_TRANSITIONS` y **ningún servicio lo emite**. Es el único
+tipo de movimiento de la matriz sin productor.
+
+Consecuencia: todo lo que el chofer recoge en una parada (`EMPTY_PICKUP`) se
+queda en `EMPTY_ON_ROUTE` para siempre. Con los datos de demo, el inventario
+abre con 34 «Con caño» y 3 «Sin caño» en camión que no se pueden descargar por
+ninguna pantalla ni por ningún endpoint. En la planta real esos envases vuelven
+al galpón el mismo día y se vuelven a llenar; acá se pierden del ciclo.
+
+Se encontró al sembrar devoluciones en la demo: antes de eso no había ningún
+`EMPTY_PICKUP`, así que el agujero no tenía cómo notarse.
+
+**Para cerrarla:** decidir dónde se registra la descarga. El lugar natural es
+la liquidación de ruta —`route-settlement` ya cuenta los `EMPTY_PICKUP` del
+libro contra el conteo físico de la puerta— pero hoy liquida sin emitir el
+movimiento que devolvería esos vacíos al stock. Es una decisión de dominio, no
+un endpoint que falte.
+
 ## Regla: los mensajes de error que llegan a pantalla van en español
 
 **Estado:** resuelta, y anotada acá porque no había dónde mirarla.

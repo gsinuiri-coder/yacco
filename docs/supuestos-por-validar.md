@@ -134,6 +134,26 @@ que dijo que sí.
   con la liquidación pendiente. No es un campo editable: es una operación con su
   propia forma, y probablemente su propia entrada de backlog.
 
+### 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento
+
+- **Asumimos** que el ciclo normal es: el chofer deja llenos hoy y se lleva los
+  vacíos de la visita anterior, así que un cliente habitual queda con más o
+  menos una visita de envases en la mano. También asumimos que un saldo
+  negativo es raro y viene del cuaderno de papel —envases entregados que nadie
+  anotó— y no de la operación de todos los días.
+- **Construido encima:** el plan de `seed-demo-plan.ts`. De nueve visitas con
+  devolución, ocho devuelven lo de la visita anterior y una devuelve de más,
+  que es el descuadre que la pantalla de cuadre necesita mostrar. Esa
+  proporción es la que enseña, a quien mire la demo, qué es normal y qué es
+  excepción.
+- **Preguntar:** cuando su chofer llega a un cliente, ¿se trae los envases
+  vacíos de la vez pasada, o el cliente se los va guardando y se los entrega
+  cada tanto? ¿Cuántos envases suele tener un cliente habitual en la mano?
+- **Si dice que no:** barato, y solo toca la demo. Si los clientes acumulan
+  varias visitas antes de devolver, cambian las cantidades del plan y los
+  saldos quedan más altos; el descuadre se sigue produciendo igual. Nada de
+  esto toca el código de producción.
+
 ## Validados
 
 _Ninguno todavía._

@@ -102,6 +102,22 @@ export const PRODUCTION_PLAN: { containerType: ContainerTypeKey; producedQty: nu
   { containerType: "SIN_CANO", producedQty: 20 },
 ];
 
+/**
+ * Los envases con los que la planta arranca, comprados antes de que existiera
+ * el sistema (`FLEET_ENTRY`: entran a la flota como vacíos en planta).
+ *
+ * Sin esto la demo llenaba lotes de envases que nunca habían entrado, y el
+ * inventario mostraba "vacíos en planta" en negativo con su aviso en rojo
+ * —"se registraron más envases llenados que vacíos disponibles"— que no tiene
+ * nada que ver con lo que la demo quiere mostrar. Cubre exactamente lo que el
+ * lote va a llenar: el parque no aparece de la nada ni sobra.
+ */
+export const FLEET_ENTRY_PLAN: { containerType: ContainerTypeKey; quantity: number }[] =
+  PRODUCTION_PLAN.map((line) => ({
+    containerType: line.containerType,
+    quantity: line.producedQty,
+  }));
+
 export interface DemoCustomerPlan {
   key: string;
   name: string;
@@ -176,6 +192,12 @@ export const DEMO_CUSTOMERS: DemoCustomerPlan[] = [
   },
 ];
 
+/** Vacíos que el cliente entrega en esa misma visita (`containersReturned`). */
+export interface DemoContainerReturn {
+  containerTypeKey: ContainerTypeKey;
+  quantity: number;
+}
+
 export interface DemoDeliveryPlan {
   customerKey: string;
   /** 0 = oldest day of history, DEMO_HISTORY_DAYS - 1 = today. */
@@ -183,6 +205,16 @@ export interface DemoDeliveryPlan {
   productKey: ProductKey;
   quantity: number;
   payment?: { methodKey: PaymentMethodKey; amount: string };
+  /**
+   * Devolver es lo normal, no la excepción: en la operación real el chofer
+   * deja llenos y se lleva los vacíos de la visita anterior. Sin esto la demo
+   * entregaba y nunca recogía, y el saldo de envases de cada cliente solo
+   * podía crecer.
+   *
+   * No mueve deuda monetaria: `computeExpectedDebtByCustomer` no lo mira, y
+   * no debe.
+   */
+  containersReturned?: DemoContainerReturn[];
 }
 
 // Verified against SalesService.registerStopDeliveryWithinTransaction: debt
@@ -200,16 +232,30 @@ export const DEMO_DELIVERIES: DemoDeliveryPlan[] = [
     productKey: "R_CC",
     quantity: 4,
     payment: { methodKey: "YAPE", amount: "20.00" },
+    containersReturned: [{ containerTypeKey: "CON_CANO", quantity: 5 }],
   },
-  { customerKey: "estrella", dayIndex: 2, productKey: "R_CC", quantity: 5 },
+  {
+    customerKey: "estrella",
+    dayIndex: 2,
+    productKey: "R_CC",
+    quantity: 5,
+    containersReturned: [{ containerTypeKey: "CON_CANO", quantity: 4 }],
+  },
   {
     customerKey: "estrella",
     dayIndex: 3,
     productKey: "R_CC",
     quantity: 3,
     payment: { methodKey: "EFECTIVO", amount: "20.00" },
+    containersReturned: [{ containerTypeKey: "CON_CANO", quantity: 5 }],
   },
-  { customerKey: "estrella", dayIndex: 4, productKey: "R_CC", quantity: 4 },
+  {
+    customerKey: "estrella",
+    dayIndex: 4,
+    productKey: "R_CC",
+    quantity: 4,
+    containersReturned: [{ containerTypeKey: "CON_CANO", quantity: 3 }],
+  },
 
   // debt0_a / debt0_b: every delivery paid in full, on the spot, Efectivo.
   {
@@ -225,6 +271,7 @@ export const DEMO_DELIVERIES: DemoDeliveryPlan[] = [
     productKey: "R_CC",
     quantity: 1,
     payment: { methodKey: "EFECTIVO", amount: "8.00" },
+    containersReturned: [{ containerTypeKey: "CON_CANO", quantity: 2 }],
   },
   {
     customerKey: "debt0_b",
@@ -239,10 +286,26 @@ export const DEMO_DELIVERIES: DemoDeliveryPlan[] = [
     productKey: "R_SC",
     quantity: 2,
     payment: { methodKey: "EFECTIVO", amount: "16.00" },
+    containersReturned: [{ containerTypeKey: "SIN_CANO", quantity: 3 }],
   },
 
   // small_a / small_b: one unpaid delivery each, small debt.
-  { customerKey: "small_a", dayIndex: 0, productKey: "R_CC", quantity: 2 },
+  //
+  // small_a es el descuadre de la demo, y nace como nace en la planta: en la
+  // primera visita que el sistema registra, el cliente devuelve los 5 envases
+  // que tenía acumulados del cuaderno de papel, y el libro solo sabía de los 2
+  // que se le acababan de entregar. Queda en -3, que no es un error de datos:
+  // dice que hubo entregas que nadie anotó. Va en el día 0 a propósito —así el
+  // negativo no depende de agregar una entrega que movería la deuda esperada—
+  // y esta ubicación se deja SIN CONTAR, porque el saldo negativo es
+  // justamente lo que manda a alguien a contarla.
+  {
+    customerKey: "small_a",
+    dayIndex: 0,
+    productKey: "R_CC",
+    quantity: 2,
+    containersReturned: [{ containerTypeKey: "CON_CANO", quantity: 5 }],
+  },
   { customerKey: "small_b", dayIndex: 2, productKey: "R_SC", quantity: 3 },
 
   // near_limit: three unpaid/partial deliveries that land close under its
@@ -254,8 +317,15 @@ export const DEMO_DELIVERIES: DemoDeliveryPlan[] = [
     productKey: "R_CC",
     quantity: 4,
     payment: { methodKey: "EFECTIVO", amount: "32.00" },
+    containersReturned: [{ containerTypeKey: "CON_CANO", quantity: 6 }],
   },
-  { customerKey: "near_limit", dayIndex: 3, productKey: "R_CC", quantity: 2 },
+  {
+    customerKey: "near_limit",
+    dayIndex: 3,
+    productKey: "R_CC",
+    quantity: 2,
+    containersReturned: [{ containerTypeKey: "CON_CANO", quantity: 4 }],
+  },
 
   // pending_yape / pending_transferencia: exist to give the payment
   // confirmation tray something to show (GET /payments?status=PENDING).
@@ -273,6 +343,70 @@ export const DEMO_DELIVERIES: DemoDeliveryPlan[] = [
     quantity: 3,
     payment: { methodKey: "TRANSFERENCIA", amount: "24.00" },
   },
+];
+
+/**
+ * Saldo de envases que el plan deja en cada ubicación, por tipo: entregado
+ * menos devuelto. Es la misma cuenta que hacen `LOAN_DELIVERY` y
+ * `EMPTY_PICKUP` sobre `customer_container_balances`, hecha acá para poder
+ * verificar el plan sin levantar un servidor — igual que
+ * `computeExpectedDebtByCustomer` con la deuda.
+ *
+ * Puede dar NEGATIVO, y eso es información, no un error: significa que el
+ * cliente devolvió envases que nadie registró haberle entregado.
+ */
+export function computeExpectedContainerBalances(
+  deliveries: DemoDeliveryPlan[],
+): Map<string, Partial<Record<ContainerTypeKey, number>>> {
+  const result = new Map<string, Partial<Record<ContainerTypeKey, number>>>();
+  const add = (customerKey: string, type: ContainerTypeKey, delta: number): void => {
+    const byType = result.get(customerKey) ?? {};
+    byType[type] = (byType[type] ?? 0) + delta;
+    result.set(customerKey, byType);
+  };
+
+  for (const delivery of deliveries) {
+    add(delivery.customerKey, PRODUCT_CONTAINER_TYPE[delivery.productKey], delivery.quantity);
+    for (const returned of delivery.containersReturned ?? []) {
+      add(delivery.customerKey, returned.containerTypeKey, -returned.quantity);
+    }
+  }
+  return result;
+}
+
+/**
+ * Un conteo físico de la demo. `countedQuantity` es lo que "se encontró en el
+ * mostrador": comparado con el saldo del libro, `ContainerCountsService`
+ * decide solo si emite un `COUNT_ADJUSTMENT` y guarda su `adjustmentId`.
+ */
+export interface DemoContainerCountPlan {
+  customerKey: string;
+  containerTypeKey: ContainerTypeKey;
+  countedQuantity: number;
+}
+
+/**
+ * Los conteos existen para que la pantalla de cuadre (#100) se pueda ver con
+ * una de cada situación que sabe distinguir. Se siembran DESPUÉS de todas las
+ * rutas, porque cada conteo se compara contra el saldo final.
+ *
+ * Quién queda en cada estado, y por qué:
+ * - `debt0_a` (1 esperado, 1 contado): contada y cuadrada. `delta === 0`, así
+ *   que no deja ajuste — la fecha del conteo es su única huella.
+ * - `estrella` (4 esperados, 3 contados): faltó uno. Ajuste hacia abajo.
+ * - `near_limit` (2 esperados, 3 contados): había uno de más. Ajuste hacia
+ *   arriba, la otra dirección que admite `COUNT_ADJUSTMENT`.
+ * - `small_a`, `small_b`, `debt0_b`, `pending_yape`, `pending_transferencia`:
+ *   sin contar, para que el contador de progreso tenga sus dos mitades y el
+ *   filtro de sin contar devuelva un conjunto distinto al de descuadres.
+ *
+ * `small_a` NO se cuenta a propósito: contarla resolvería el negativo y la
+ * demo se quedaría sin descuadre que mostrar.
+ */
+export const DEMO_CONTAINER_COUNTS: DemoContainerCountPlan[] = [
+  { customerKey: "debt0_a", containerTypeKey: "CON_CANO", countedQuantity: 1 },
+  { customerKey: "estrella", containerTypeKey: "CON_CANO", countedQuantity: 3 },
+  { customerKey: "near_limit", containerTypeKey: "CON_CANO", countedQuantity: 3 },
 ];
 
 /**
