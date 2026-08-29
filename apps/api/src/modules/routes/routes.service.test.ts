@@ -131,6 +131,9 @@ function buildPrismaMock() {
     },
     routeStop: {
       create: jest.fn<() => Promise<unknown>>(),
+      // Solo lo usa la rama desambiguadora de `finish`, para decir cuántas
+      // paradas quedaron sin resolver.
+      count: jest.fn<() => Promise<unknown>>(),
       delete: jest.fn<() => Promise<unknown>>(),
       findFirst: jest.fn<() => Promise<unknown>>(),
       findMany: jest.fn<() => Promise<unknown>>(),
@@ -204,6 +207,9 @@ describe("RoutesService", () => {
       Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => Promise<unknown>)(prisma),
     );
     prisma.sale.findFirst.mockResolvedValue(null);
+    // Por defecto no quedan paradas pendientes: los tests de `finish` que van
+    // sobre esa rama lo dicen explícitamente.
+    prisma.routeStop.count.mockResolvedValue(0);
     // Por defecto, el lote pedido ES el más antiguo con stock: así los tests
     // de carga que no van sobre el FIFO no tienen que decirlo cada vez.
     prisma.batchItem.findFirst.mockResolvedValue({
@@ -498,15 +504,24 @@ describe("RoutesService", () => {
     });
   });
 
+  // Estos unitarios mockean `route.updateMany` y devuelven `{ count: 0 }` a
+  // mano, así que NO pueden probar que la base rechace terminar con paradas
+  // pendientes: lo único que fijan acá es la forma del WHERE y qué mensaje sale
+  // de cada rama. La prueba de verdad es de integración, contra Postgres
+  // (`routes.int.test.ts`).
   describe("finish", () => {
-    it("IN_PROGRESS -> FINISHED", async () => {
+    it("IN_PROGRESS -> FINISHED, con «ninguna parada PENDING» dentro del WHERE", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.FINISHED }));
       prisma.route.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.finish(ROUTE_ID, adminActor);
 
       expect(prisma.route.updateMany).toHaveBeenCalledWith({
-        where: { id: ROUTE_ID, status: RouteStatus.IN_PROGRESS },
+        where: {
+          id: ROUTE_ID,
+          status: RouteStatus.IN_PROGRESS,
+          stops: { none: { status: StopStatus.PENDING } },
+        },
         data: { status: RouteStatus.FINISHED },
       });
       expect(result.status).toBe(RouteStatus.FINISHED);
@@ -524,6 +539,35 @@ describe("RoutesService", () => {
       prisma.route.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.finish(ROUTE_ID, adminActor)).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    // La rama desambiguadora: la ruta SÍ está en curso, así que lo que sobró
+    // son paradas, y el mensaje tiene que decir cuántas en vez de repetir el
+    // de estado.
+    it("con la ruta en curso, el 409 cuenta las paradas que faltan (singular)", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+      prisma.route.updateMany.mockResolvedValue({ count: 0 });
+      prisma.routeStop.count.mockResolvedValue(1);
+
+      await expect(service.finish(ROUTE_ID, adminActor)).rejects.toThrow(
+        "No se puede terminar la ruta: queda 1 parada sin resolver. Cada parada tiene que quedar marcada (entregada o no entregada) o quitarse de la ruta.",
+      );
+      expect(prisma.routeStop.count).toHaveBeenCalledWith({
+        where: { routeId: ROUTE_ID, status: StopStatus.PENDING },
+      });
+    });
+
+    it("con la ruta en curso y varias paradas, el 409 va en plural y no nombra ningún enum", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+      prisma.route.updateMany.mockResolvedValue({ count: 0 });
+      prisma.routeStop.count.mockResolvedValue(3);
+
+      const attempt = service.finish(ROUTE_ID, adminActor);
+
+      await expect(attempt).rejects.toThrow(
+        "No se puede terminar la ruta: quedan 3 paradas sin resolver. Cada parada tiene que quedar marcada (entregada o no entregada) o quitarse de la ruta.",
+      );
+      await expect(service.finish(ROUTE_ID, adminActor)).rejects.not.toThrow(StopStatus.PENDING);
     });
   });
 

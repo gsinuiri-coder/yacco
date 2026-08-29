@@ -82,6 +82,10 @@ spec disagree, STOP and ask before proceeding.
   route emits the inverse movement.
 - A settlement with a mismatch still closes, recording the difference and reason.
   Never block a settlement.
+- Finishing a route REQUIRES every stop resolved (DELIVERED or FAILED); a route
+  with a PENDING stop cannot reach FINISHED. That block is state machine, not a
+  business judgement: it does not contradict "warns, never blocks" — a stop left
+  PENDING on a FINISHED route strands its order in ON_ROUTE with no exit.
 - Field mistakes are corrected by ADMIN-issued inverse movements from the web,
   never by editing or deleting synced records.
 - All timestamps are `timestamptz` in UTC. Business days (`routes.date`,

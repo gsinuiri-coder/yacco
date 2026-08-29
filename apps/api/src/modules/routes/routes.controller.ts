@@ -120,10 +120,16 @@ export class RoutesController {
     return this.routesService.start(id, actorFrom(request));
   }
 
-  @ApiOperation({ summary: "Termina la ruta: IN_PROGRESS -> FINISHED" })
+  @ApiOperation({
+    summary: "Termina la ruta: IN_PROGRESS -> FINISHED",
+    description:
+      "Exige que todas las paradas estén resueltas (DELIVERED o FAILED); una ruta sin paradas sí se puede terminar",
+  })
   @ApiResponse({ status: 200, type: RouteResponseDto })
   @ApiNotFoundResponse({ description: "Route id does not exist" })
-  @ApiConflictResponse({ description: "Route is not IN_PROGRESS" })
+  @ApiConflictResponse({
+    description: "Route is not IN_PROGRESS, or it still has PENDING stops",
+  })
   @Patch(":id/finish")
   finish(
     @Param("id", ParseUUIDPipe) id: string,

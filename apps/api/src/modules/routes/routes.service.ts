@@ -308,20 +308,71 @@ export class RoutesService {
     return this.findOne(id, actor);
   }
 
-  /** IN_PROGRESS -> FINISHED, and nothing else. Same idiom as start(). */
+  /**
+   * IN_PROGRESS -> FINISHED, y solo con TODAS sus paradas resueltas. Same
+   * idiom as start(): las dos condiciones viven en el WHERE del update, no en
+   * una lectura previa que una llamada concurrente pueda adelantar.
+   *
+   * Bloquear acá NO contradice el «avisa, no bloquea» del sistema —el límite
+   * de crédito advierte, una liquidación descuadrada cierra igual—: esa
+   * filosofía es para juicios de negocio, donde el dato incómodo se registra
+   * en vez de suprimirse. Esto es la máquina de estados. Una parada que queda
+   * PENDING cuando la ruta pasa a FINISHED deja su pedido en ON_ROUTE sin
+   * ninguna salida: `markStop` exige la ruta IN_PROGRESS, `removeStop` exige
+   * que se pueda tocar, `OrdersService.cancel` exige el pedido PENDING, y
+   * nada devuelve una ruta a IN_PROGRESS. No es un aviso que el dueño pueda
+   * ignorar: es un pedido congelado para siempre.
+   *
+   * Dos cosas que quedan así a propósito:
+   *
+   * - **Una ruta sin paradas se puede terminar.** `none` es cierto sobre el
+   *   conjunto vacío, y una ruta que nunca tuvo paradas no congela ningún
+   *   pedido.
+   * - **La carrera del subquery no se cierra acá.** El filtro de relación no
+   *   bloquea las filas de `route_stops`, así que un `addStop` que confirme
+   *   dentro de la ventana puede dejar una ruta FINISHED con una parada
+   *   PENDING. Es la misma clase que ya tiene `addStop`, cuya lectura de «ruta
+   *   tocable» también vive fuera de su transacción. Anotada en el backlog.
+   */
   async finish(id: string, actor: RouteActor): Promise<RouteResponseDto> {
-    const route = await this.getOwnedRouteOrThrow(id, actor);
+    await this.getOwnedRouteOrThrow(id, actor);
 
     const { count } = await this.prisma.route.updateMany({
-      where: { id, status: RouteStatus.IN_PROGRESS },
+      where: {
+        id,
+        status: RouteStatus.IN_PROGRESS,
+        stops: { none: { status: StopStatus.PENDING } },
+      },
       data: { status: RouteStatus.FINISHED },
     });
     if (count === 0) {
+      await this.throwCannotFinishConflict(id);
+    }
+    return this.findOne(id, actor);
+  }
+
+  /**
+   * `count === 0` tiene ahora dos causas —la ruta no está en curso, o le
+   * quedan paradas sin resolver— y el mensaje tiene que nombrar la verdadera.
+   * Se releen las dos acá en vez de deducirlas de la lectura previa, por la
+   * misma razón que `throwAlreadyMarkedConflict` relee la parada: entre
+   * aquella lectura y el UPDATE pudo pasar cualquier cosa, y quien lee el
+   * error necesita saber qué es la ruta ahora.
+   */
+  private async throwCannotFinishConflict(id: string): Promise<never> {
+    const [route, pendingStops] = await this.prisma.$transaction([
+      this.prisma.route.findUnique({ where: { id }, select: { status: true } }),
+      this.prisma.routeStop.count({ where: { routeId: id, status: StopStatus.PENDING } }),
+    ]);
+    if (route === null) {
+      throw new NotFoundException(`La ruta "${id}" no existe`);
+    }
+    if (route.status !== RouteStatus.IN_PROGRESS) {
       throw new ConflictException(
         `Solo se puede terminar una ruta en curso; esta está en ${route.status}`,
       );
     }
-    return this.findOne(id, actor);
+    throw new ConflictException(unresolvedStopsMessage(pendingStops));
   }
 
   /**
@@ -918,6 +969,22 @@ async function assertIsOldestBatchItemWithStock(
   throw new BadRequestException(
     `Primero hay que cargar el lote "${oldest.batch.code}", que es el más antiguo con unidades disponibles de ese tipo de envase`,
   );
+}
+
+/**
+ * El 409 de terminar una ruta con paradas pendientes, en singular y en plural.
+ *
+ * «Entregada / no entregada» es el vocabulario de `STOP_STATUS_LABELS` en la
+ * web (`components/route-status-badge.tsx`): quien lee el error ve en la misma
+ * pantalla esas dos palabras en los badges de sus paradas. El mensaje **no**
+ * interpola ningún enum a propósito — hay una deuda abierta por seis mensajes
+ * de este mismo servicio que sí lo hacen («Seis mensajes de RoutesService
+ * interpolan el enum crudo», en `docs/backlog-tecnico.md`), y este no la
+ * agranda.
+ */
+function unresolvedStopsMessage(pendingStops: number): string {
+  const count = pendingStops === 1 ? "queda 1 parada" : `quedan ${pendingStops} paradas`;
+  return `No se puede terminar la ruta: ${count} sin resolver. Cada parada tiene que quedar marcada (entregada o no entregada) o quitarse de la ruta.`;
 }
 
 /** PLANNED and IN_PROGRESS may still be edited; FINISHED never is. */

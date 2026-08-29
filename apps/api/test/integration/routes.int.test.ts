@@ -591,6 +591,119 @@ describe("PATCH /api/v1/routes/:id/start and /finish", () => {
     expect(messagesOf(response)).toContain(RouteStatus.FINISHED);
   });
 
+  // Terminar exige que las paradas estén resueltas. No es «avisa, no bloquea»
+  // al revés: eso rige juicios de negocio (el límite de crédito, una
+  // liquidación descuadrada), y esto es la máquina de estados. Una parada
+  // PENDING en una ruta FINISHED deja su pedido en ON_ROUTE sin ninguna
+  // salida — es lo que prueba el último test de este bloque.
+  test("refuses to finish a route with a stop still PENDING, saying how many are left", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addVanSaleStop(adminToken, routeId);
+    await startRoute(adminToken, routeId);
+
+    const response = await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(409);
+    expect(messagesOf(response)).toBe(
+      "No se puede terminar la ruta: queda 1 parada sin resolver. Cada parada tiene que quedar marcada (entregada o no entregada) o quitarse de la ruta.",
+    );
+    const route = await prisma.route.findUniqueOrThrow({ where: { id: routeId } });
+    expect(route.status).toBe(RouteStatus.IN_PROGRESS);
+  });
+
+  test("el mensaje va en plural cuando falta más de una parada", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addVanSaleStop(adminToken, routeId);
+    await addVanSaleStop(adminToken, routeId);
+    await addVanSaleStop(adminToken, routeId);
+    await startRoute(adminToken, routeId);
+
+    const response = await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(409);
+    expect(messagesOf(response)).toBe(
+      "No se puede terminar la ruta: quedan 3 paradas sin resolver. Cada parada tiene que quedar marcada (entregada o no entregada) o quitarse de la ruta.",
+    );
+  });
+
+  // Resuelta no es lo mismo que entregada: una parada que no se pudo entregar
+  // también cierra su pedido, y no traba la ruta.
+  test("finishes once every stop is resolved, a FAILED one included", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(5, locId);
+    const failedStopId = await addVanSaleStop(adminToken, routeId);
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${failedStopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Local cerrado" })
+      .expect(200);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    const response = await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe(RouteStatus.FINISHED);
+  });
+
+  // `none` es cierto sobre el conjunto vacío, y una ruta que nunca tuvo
+  // paradas no congela ningún pedido: se termina como siempre.
+  test("a route with no stops can still be finished", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await startRoute(adminToken, routeId);
+
+    const response = await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe(RouteStatus.FINISHED);
+    expect(response.body.stops).toEqual([]);
+  });
+
+  // El que cierra el bucle: el 409 no es el punto, el punto es que el pedido
+  // de la parada pendiente todavía tiene salida. Con la ruta FINISHED y la
+  // parada PENDING no la tendría — `markStop` exige la ruta en curso,
+  // `removeStop` exige que se pueda tocar, y `OrdersService.cancel` exige el
+  // pedido PENDING.
+  test("tras el 409, el pedido de la parada pendiente todavía puede cerrarse", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const orderId = await createPendingOrder(adminToken);
+    const stop = await request(server())
+      .post(`/api/v1/routes/${routeId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+    await startRoute(adminToken, routeId);
+
+    const refused = await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(refused.status).toBe(409);
+    const stillOnRoute = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    expect(stillOnRoute.status).toBe(OrderStatus.ON_ROUTE);
+
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stop.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Local cerrado" })
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    expect(order.status).toBe(OrderStatus.FAILED);
+  });
+
   test("an unknown id is rejected with 404", async () => {
     const response = await request(server())
       .patch(`/api/v1/routes/${MISSING_UUID}/start`)
@@ -936,6 +1049,13 @@ describe("PATCH /api/v1/routes/:id/stops/reorder", () => {
     const routeId = await createRoute(adminToken, { date: "2026-10-23" });
     const stopId = await addVanSaleStop(adminToken, routeId);
     await startRoute(adminToken, routeId);
+    // La parada se resuelve antes de terminar porque terminar lo exige; lo que
+    // este test mira sigue siendo el reorden de una ruta ya cerrada.
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Local cerrado" })
+      .expect(200);
     await request(server())
       .patch(`/api/v1/routes/${routeId}/finish`)
       .set("Authorization", `Bearer ${adminToken}`)
@@ -1583,6 +1703,14 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId — DELIVERED registers the del
   test("refuses to deliver a stop on a route that already FINISHED", async () => {
     const { locationId: locId } = await createFreshLocation();
     const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    // La parada se marca FAILED antes de terminar —terminar exige resolverlas
+    // todas— y el intento de entrega posterior sigue chocando con la guarda
+    // que este test mira: la ruta ya no está en curso.
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Local cerrado" })
+      .expect(200);
     await request(server())
       .patch(`/api/v1/routes/${routeId}/finish`)
       .set("Authorization", `Bearer ${adminToken}`)

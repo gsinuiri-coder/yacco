@@ -177,33 +177,58 @@ export function RouteDetailPage() {
         <MarkOutcomeNotice stopName={markResult.stopName} result={markResult.result} />
       )}
 
+      {/* El botón «Terminar ruta» sigue visible y habilitado aunque queden
+          paradas: es este diálogo el que explica por qué todavía no se puede y
+          qué hacer con cada parada. Un botón deshabilitado sin explicación no
+          enseña nada. Lo que no se hace es ofrecer confirmar algo que la API
+          va a rechazar. */}
       {isConfirmingFinish && (
         <div className="card card__body" role="group" aria-label="Confirmar el fin de la ruta">
-          <p>
-            {pendingStops === 0
-              ? "Todas las paradas están resueltas. Al terminar la ruta ya no se pueden marcar paradas ni cambiar su orden."
-              : pendingStops === 1
-                ? "Queda 1 parada sin resolver. Se puede terminar igual, pero después ya no se puede marcar."
-                : `Quedan ${pendingStops} paradas sin resolver. Se puede terminar igual, pero después ya no se pueden marcar.`}
-          </p>
-          <div className="form-actions">
-            <button
-              type="button"
-              className="button button--secondary"
-              disabled={isActing}
-              onClick={() => setIsConfirmingFinish(false)}
-            >
-              No, todavía no
-            </button>
-            <button
-              type="button"
-              className="button button--primary"
-              disabled={isActing}
-              onClick={handleFinish}
-            >
-              {isActing ? "Terminando…" : "Sí, terminar la ruta"}
-            </button>
-          </div>
+          {pendingStops === 0 ? (
+            <>
+              <p>
+                Todas las paradas están resueltas. Al terminar la ruta ya no se pueden marcar
+                paradas ni cambiar su orden.
+              </p>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  disabled={isActing}
+                  onClick={() => setIsConfirmingFinish(false)}
+                >
+                  No, todavía no
+                </button>
+                <button
+                  type="button"
+                  className="button button--primary"
+                  disabled={isActing}
+                  onClick={handleFinish}
+                >
+                  {isActing ? "Terminando…" : "Sí, terminar la ruta"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>
+                {pendingStops === 1
+                  ? "Todavía no se puede terminar la ruta: queda 1 parada sin resolver."
+                  : `Todavía no se puede terminar la ruta: quedan ${pendingStops} paradas sin resolver.`}{" "}
+                Cada parada tiene que quedar marcada como entregada o no entregada, o quitarse de la
+                ruta.
+              </p>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onClick={() => setIsConfirmingFinish(false)}
+                >
+                  Entendido
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
