@@ -719,7 +719,7 @@ describe("UsersPage", () => {
   it("muestra el error del backend al corregir roles", async () => {
     const user = userEvent.setup();
     stubList([SELF, DRIVER]);
-    stubUpdate(DRIVER_ID, 400, { message: "You cannot remove your own ADMIN role" });
+    stubUpdate(DRIVER_ID, 400, { message: "No puedes quitarte a ti mismo la administración" });
 
     renderPage();
     const form = await openRoles(user, "Luis Quispe");
@@ -727,7 +727,7 @@ describe("UsersPage", () => {
     await user.click(within(form).getByRole("button", { name: "Guardar roles" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "You cannot remove your own ADMIN role",
+      "No puedes quitarte a ti mismo la administración",
     );
   });
 

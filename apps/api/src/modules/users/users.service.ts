@@ -39,6 +39,21 @@ function toSafeUser(user: UserScalars, roles: UserRole[]): UserResponseDto {
   };
 }
 
+/**
+ * Los mensajes de excepción de este servicio van en ESPAÑOL, a diferencia de
+ * los identificadores y los comentarios.
+ *
+ * No es una excepción a la regla de idioma: es la regla. El mensaje de una
+ * excepción HTTP no es código, es texto que lee una persona — la web lo muestra
+ * tal cual, sin traducir (`errorMessage()` en `users-page.tsx` devuelve
+ * `error.message` a propósito, para que el 409 nombre el usuario repetido en
+ * vez de esconderlo detrás de un genérico). Es el mismo criterio que ya siguen
+ * los `message:` de los DTOs de este módulo y los servicios de `customers`,
+ * `orders`, `routes` y el resto.
+ *
+ * Un mensaje que solo va a un log o que solo lee un desarrollador puede
+ * quedarse en inglés; la pregunta a hacerse es si puede terminar en pantalla.
+ */
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -66,7 +81,9 @@ export class UsersService {
       });
     } catch (error) {
       if (isPrismaKnownError(error, "P2002")) {
-        throw new ConflictException(`Username "${dto.username}" is already taken`);
+        throw new ConflictException(
+          `Ya existe un usuario con el nombre de usuario "${dto.username}"`,
+        );
       }
       throw error;
     }
@@ -113,10 +130,10 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto, actorId: string): Promise<UserResponseDto> {
     if (actorId === id) {
       if (dto.active === false) {
-        throw new BadRequestException("You cannot deactivate your own user");
+        throw new BadRequestException("No puedes desactivar tu propio usuario");
       }
       if (dto.roles !== undefined && !dto.roles.includes(UserRole.ADMIN)) {
-        throw new BadRequestException("You cannot remove your own ADMIN role");
+        throw new BadRequestException("No puedes quitarte a ti mismo la administración");
       }
     }
 
@@ -160,7 +177,7 @@ export class UsersService {
       });
     } catch (error) {
       if (isPrismaKnownError(error, "P2025")) {
-        throw new NotFoundException(`User "${id}" not found`);
+        throw new NotFoundException(`El usuario "${id}" no existe`);
       }
       throw error;
     }
