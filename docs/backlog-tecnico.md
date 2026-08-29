@@ -1315,3 +1315,93 @@ significaría parsear el mensaje del servidor, que es peor.
 **Para cerrarla:** que la API formatee la fecha de negocio en los mensajes
 dirigidos a personas (`DD/MM/AAAA`), en `RoutesService` y en cualquier otro
 servicio que interpole una fecha de negocio dentro de un mensaje de error.
+
+## El aviso de inventario negativo diagnostica una causa que puede no ser la real
+
+**Estado:** abierto. **Disparador:** la próxima vez que una liquidación deje un
+tipo en negativo y alguien lea el aviso; a más tardar, antes del piloto de campo.
+
+La página de inventario no se limita a señalar el negativo: le atribuye una
+causa. El banner (`apps/web/src/pages/inventory-page.tsx:89-90`) dice «Hay
+valores negativos: se registraron más envases llenados que vacíos disponibles.
+Faltan registrar entradas de envases», y la celda repite el diagnóstico para
+lectores de pantalla (`:156`: «hay más envases llenados que vacíos registrados,
+faltan registrar entradas de envases»).
+
+Esa es UNA causa posible, y desde #116 ya no es la única. Reproducido en el
+navegador: liquidar una ruta contando MÁS vacíos de un tipo que los que el libro
+esperaba deja «Vacíos en camión» (`EMPTY_ON_ROUTE`) en negativo para ese tipo.
+Lo dice el propio código que lo produce
+(`apps/api/src/modules/route-settlement/route-settlement.service.ts:310-315`):
+el `EMPTY_UNLOAD` se emite desde lo contado en la puerta y no desde el libro,
+sin guarda de stock sobre `EMPTY_ON_ROUTE`, «así que si el chofer devuelve 40 de
+un tipo y el libro registró 34, el parque queda en −6 para ese tipo».
+
+Nada de eso tiene que ver con producción ni con entradas de envases faltantes.
+El negativo es correcto y es exactamente la información que se quiere ver —la
+aritmética del parque sigue cuadrando, y `hasNegativeQuantity` lo detecta por
+estado y por total (`apps/web/src/lib/container-inventory.ts:71-75`)—; lo que
+está mal es la explicación que lo acompaña. El dueño que lea el aviso va a ir a
+registrar entradas que no faltan, y el negativo va a seguir ahí.
+
+**Para cerrarla:** que el aviso describa el hecho sin atribuirle causa, o que
+distinga por estado —un negativo en `EMPTY_AT_PLANT` o `FULL_AT_PLANT` sí sugiere
+entradas sin registrar; uno en `EMPTY_ON_ROUTE` apunta a una liquidación que
+contó de más—. Cuál de las dos, se decide después de la demo: puede que al dueño
+le sirva más una sola frase neutra que dos diagnósticos.
+
+## Los textos de diferencia de la liquidación no concuerdan en singular
+
+**Estado:** abierto. **Disparador:** la próxima diferencia de una sola unidad en
+una liquidación, que es el caso más común de todos.
+
+`apps/web/src/pages/route-settlement-page.tsx` elige entre «faltan» y «sobran»
+mirando solo el signo, y deja el verbo en plural siempre. Son tres lugares con la
+misma forma —`{empties > 0 ? "faltan" : "sobran"} {Math.abs(empties)}`—: el aviso
+previo al cierre, para llenos (`:505`) y para vacíos (`:511`), y
+`describeTypeDifference`, que anota la diferencia de cada tipo en la vista de
+resultado (`:534`).
+
+Observado en pantalla, liquidando con un vacío de más: «-1: sobran 1 respecto del
+libro». Con la diferencia en el otro sentido diría «faltan 1».
+
+La regla ya existe en el repo, y no hace falta ir lejos a buscarla: este mismo
+archivo la aplica 240 líneas más arriba, en el aviso de paradas sin resolver que
+entró con #115 (`:266-267`, «Queda 1 parada» frente a «Quedan N paradas»). Es la
+pantalla la que no se sigue a sí misma.
+
+**Para cerrarla:** concordar el verbo con la magnitud en los tres lugares
+(«falta 1» / «sobra 1» / «faltan 2»), preferentemente en un solo ayudante que
+arme la frase entera, porque el ternario está repetido tres veces y la entrada de
+abajo pide la misma frase en un cuarto lugar.
+
+## La columna «Diferencia» del formulario de conteo se lee al revés sin la palabra
+
+**Estado:** abierto. **Disparador:** la primera vez que alguien corrija un conteo
+para «arreglar» un número que estaba bien.
+
+`apps/web/src/lib/difference.ts` formatea con signo, y el signo es
+esperado − contado: lo fija
+`apps/web/src/components/settlement-empties-count.tsx:67`
+(`const difference = parsed === null ? pickedUp - 0 : pickedUp - parsed`). Con
+ese orden, «+2» significa **faltan 2**.
+
+El formulario imprime ese valor pelado bajo un encabezado que solo dice
+«Diferencia» (valor en `settlement-empties-count.tsx:86`, encabezado en `:57`).
+Observado: con el libro esperando 3 y un conteo de 1, la fila muestra «+2», que
+un lector natural interpreta como dos de más.
+
+La vista de RESULTADO sí agrega la palabra —`route-settlement-page.tsx:534`
+imprime «+2: faltan 2 respecto del libro»—, así que la asimetría quedó al revés
+de lo útil: el formulario es donde se decide qué número escribir, y el resultado
+es donde ya no se puede hacer nada.
+
+El comentario de `difference.ts:2-3` defiende el signo como información —«un
+faltante y un sobrante son dos hallazgos distintos y la pantalla nunca los mezcla
+en un valor absoluto»— y tiene razón. Esta entrada **no** pide volver al valor
+absoluto: pide la palabra al lado del signo.
+
+**Para cerrarla:** que la celda del formulario diga «+2: faltan 2» / «-2: sobran
+2», con la concordancia de singular que pide la entrada de arriba, y que salga
+del mismo ayudante que las tres frases de `route-settlement-page.tsx`. Hoy
+`formatDifference` da el signo y cada llamador arma la frase por su cuenta.
