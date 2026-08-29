@@ -538,7 +538,11 @@ describe("OrdersService", () => {
       prisma.order.findUnique.mockResolvedValue({ status: OrderStatus.ON_ROUTE });
 
       await expect(service.cancel(ORDER_ID)).rejects.toBeInstanceOf(ConflictException);
-      await expect(service.cancel(ORDER_ID)).rejects.toThrow(OrderStatus.ON_ROUTE);
+      // El estado va traducido, no como nombre de enum: este mensaje llega tal
+      // cual a la pantalla de pedidos.
+      await expect(service.cancel(ORDER_ID)).rejects.toThrow(
+        "Solo se puede cancelar un pedido pendiente; este está en ruta",
+      );
     });
 
     it("throws NotFoundException when the order does not exist at all", async () => {

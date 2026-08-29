@@ -2,6 +2,7 @@ import request from "supertest";
 import {
   ContainerMovementType,
   ContainerState,
+  OrderStatus,
   RouteStatus,
   StopOrigin,
   StopStatus,
@@ -1719,5 +1720,135 @@ describe("auth", () => {
     const response = await request(server()).get("/api/v1/routes");
 
     expect(response.status).toBe(401);
+  });
+});
+
+/*
+ * HU-10 E1: el pedido sigue a su parada. Antes de esto `OrderStatus.ON_ROUTE`
+ * y `FAILED` eran valores muertos del enum —no se escribían en ningún punto de
+ * la API— y un pedido asignado a una parada seguía figurando como pendiente.
+ *
+ * Cada escritura del pedido va DENTRO de la transacción de la operación que la
+ * causa; estos tests miran el resultado, y el de "cancelar un pedido asignado
+ * devuelve 409" (en orders.int.test.ts) es el que fija el agujero que se cerró.
+ */
+describe("HU-10 E1: Order.status sigue a su parada", () => {
+  async function plannedRouteWithOrder(): Promise<{
+    routeId: string;
+    stopId: string;
+    orderId: string;
+  }> {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const orderId = await createPendingOrder(adminToken);
+    const response = await request(server())
+      .post(`/api/v1/routes/${routeId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+    return { routeId, stopId: response.body.id, orderId };
+  }
+
+  async function orderStatus(id: string): Promise<string> {
+    const order = await prisma.order.findUniqueOrThrow({ where: { id } });
+    return order.status;
+  }
+
+  test("asignar un pedido a una parada lo deja ON_ROUTE", async () => {
+    const { orderId } = await plannedRouteWithOrder();
+
+    expect(await orderStatus(orderId)).toBe(OrderStatus.ON_ROUTE);
+  });
+
+  test("GET /orders?status=ON_ROUTE devuelve el pedido asignado", async () => {
+    const { orderId } = await plannedRouteWithOrder();
+
+    const response = await request(server())
+      .get("/api/v1/orders?status=ON_ROUTE")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.data.map((order: { id: string }) => order.id)).toContain(orderId);
+  });
+
+  test("marcar la parada DELIVERED deja el pedido DELIVERED", async () => {
+    const { routeId, stopId, orderId } = await plannedRouteWithOrder();
+    const batchItemId = await createBatchItem(10);
+    await addLoad(adminToken, routeId, batchItemId, 10).then((r) => expect(r.status).toBe(201));
+    await startRoute(adminToken, routeId);
+
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    expect(await orderStatus(orderId)).toBe(OrderStatus.DELIVERED);
+  });
+
+  // Nunca vuelve a PENDING: `deliveryDate` es una fecha de negocio, así que
+  // reintentar mañana es otro pedido. Si volviera a PENDING, uno fallado tres
+  // veces se vería idéntico a uno recién tomado.
+  test("marcar la parada FAILED deja el pedido FAILED, no PENDING", async () => {
+    const { routeId, stopId, orderId } = await plannedRouteWithOrder();
+    await startRoute(adminToken, routeId);
+
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Local cerrado" })
+      .expect(200);
+
+    expect(await orderStatus(orderId)).toBe(OrderStatus.FAILED);
+  });
+
+  test("quitar la parada devuelve el pedido a PENDING y se lo puede reasignar", async () => {
+    const { routeId, stopId, orderId } = await plannedRouteWithOrder();
+
+    await request(server())
+      .delete(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(204);
+
+    expect(await orderStatus(orderId)).toBe(OrderStatus.PENDING);
+
+    // Lo que el docblock de removeStop promete: el pedido queda libre. Sin la
+    // vuelta a PENDING, addStop lo rechazaría y quedaría inasignable.
+    const otherRouteId = await createRoute(adminToken, { date: nextDate() });
+    await request(server())
+      .post(`/api/v1/routes/${otherRouteId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+
+    expect(await orderStatus(orderId)).toBe(OrderStatus.ON_ROUTE);
+  });
+
+  test("una parada VAN_SALE no toca ningún pedido en ninguna de las cuatro operaciones", async () => {
+    const orderId = await createPendingOrder(adminToken);
+    const { locationId: locId } = await createFreshLocation();
+
+    // Agregar y quitar una parada de autoventa.
+    const plannedRouteId = await createRoute(adminToken, { date: nextDate() });
+    const vanStopId = await addVanSaleStop(adminToken, plannedRouteId);
+    expect(await orderStatus(orderId)).toBe(OrderStatus.PENDING);
+    await request(server())
+      .delete(`/api/v1/routes/${plannedRouteId}/stops/${vanStopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(204);
+    expect(await orderStatus(orderId)).toBe(OrderStatus.PENDING);
+
+    // Entregar una parada de autoventa.
+    const delivered = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, delivered.routeId, delivered.stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    }).then((r) => expect(r.status).toBe(200));
+    expect(await orderStatus(orderId)).toBe(OrderStatus.PENDING);
+
+    // Fallar una parada de autoventa.
+    const failed = await routeInProgressWithStock(10, locId);
+    await request(server())
+      .patch(`/api/v1/routes/${failed.routeId}/stops/${failed.stopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Nadie atendió" })
+      .expect(200);
+    expect(await orderStatus(orderId)).toBe(OrderStatus.PENDING);
   });
 });
