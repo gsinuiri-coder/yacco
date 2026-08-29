@@ -54,10 +54,13 @@ export class RouteSettlementController {
   @ApiOperation({
     summary: "Liquida la ruta: FINISHED -> SETTLED, conciliando envases y dinero (solo ADMIN)",
     description:
+      "Emite un EMPTY_UNLOAD por cada tipo de envase contado, devolviendo esos vacíos al galpón. " +
       "Nunca bloquea por una diferencia de envases ni por un pago PENDING: ambos quedan registrados",
   })
   @ApiResponse({ status: 201, type: CreateRouteSettlementResponseDto })
-  @ApiBadRequestResponse({ description: "Validation failed" })
+  @ApiBadRequestResponse({
+    description: "Validation failed, or the empties list repeats a container type",
+  })
   @ApiNotFoundResponse({ description: "Route id does not exist" })
   @ApiConflictResponse({ description: "Route is not FINISHED, or was already settled" })
   @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })

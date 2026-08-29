@@ -1,5 +1,24 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
+/**
+ * Una cantidad de envases atribuida a su tipo.
+ *
+ * El nombre viaja con el id a propósito: `GET /container-types` filtra por
+ * `active` y no tiene un modo «todos», así que un tipo retirado que todavía
+ * vuelve del camión no estaría en el catálogo que la pantalla carga, y se
+ * mostraría como un UUID pelado.
+ */
+export class ContainerQuantityLineDto {
+  @ApiProperty({ format: "uuid" })
+  containerTypeId!: string;
+
+  @ApiProperty({ example: "Con caño" })
+  containerTypeName!: string;
+
+  @ApiProperty({ example: 8 })
+  quantity!: number;
+}
+
 /** Everything derivable from the ledger alone — no physical count involved. */
 export class RouteSettlementExpectedDto {
   @ApiProperty({ description: "Suma de RouteLoad.quantity de la ruta" })
@@ -20,6 +39,15 @@ export class RouteSettlementExpectedDto {
    */
   @ApiProperty({ description: "Vacíos recogidos según el libro (EMPTY_PICKUP)" })
   emptiesPickedUp!: number;
+
+  /**
+   * El mismo número de arriba, abierto por tipo de envase: es contra cada una
+   * de estas líneas que se cuenta en la puerta, y es de acá que la pantalla
+   * arma su hoja de conteo. El total se queda porque hay pantallas y tests
+   * que lo leen; ninguno pierde su número.
+   */
+  @ApiProperty({ type: [ContainerQuantityLineDto], description: "Lo mismo, por tipo de envase" })
+  emptiesPickedUpByType!: ContainerQuantityLineDto[];
 
   @ApiProperty({ type: String, example: "320.00" })
   totalSold!: string;
@@ -66,6 +94,16 @@ export class RouteSettlementDto {
   @ApiProperty({ description: "Contado físicamente al cierre" })
   emptiesCollected!: number;
 
+  /**
+   * El desglose de lo contado, reconstruido de los `EMPTY_UNLOAD` que emitió
+   * la liquidación — no de una columna. `empties_collected` guarda el total y
+   * el ledger guarda de qué tipo era cada uno, así que no hizo falta ninguna
+   * migración: es la misma razón por la que `differences` se calcula y no se
+   * persiste.
+   */
+  @ApiProperty({ type: [ContainerQuantityLineDto], description: "Lo mismo, por tipo de envase" })
+  emptiesCollectedByType!: ContainerQuantityLineDto[];
+
   @ApiProperty({ type: String, example: "320.00" })
   totalSold!: string;
 
@@ -91,6 +129,21 @@ export class RouteSettlementDto {
   settledAt!: Date;
 }
 
+/** La diferencia de un tipo de envase: recogido según el libro menos contado. */
+export class ContainerDifferenceLineDto {
+  @ApiProperty({ format: "uuid" })
+  containerTypeId!: string;
+
+  @ApiProperty({ example: "Con caño" })
+  containerTypeName!: string;
+
+  @ApiProperty({
+    example: -2,
+    description: "Recogidos según el libro menos contados; positivo = faltan, negativo = sobran",
+  })
+  difference!: number;
+}
+
 export class RouteSettlementDifferencesDto {
   @ApiProperty({
     description: "fullOut - (fullDelivered + fullSold + fullReturned); 0 significa que cuadró",
@@ -102,6 +155,19 @@ export class RouteSettlementDifferencesDto {
       "Recogidos según el ledger (EMPTY_PICKUP) menos los contados; 0 significa que cuadró",
   })
   empties!: number;
+
+  /**
+   * El total de arriba puede dar cero mientras dos tipos se compensan: +3 de
+   * uno y −3 de otro son dos hallazgos distintos, no un cuadre. Por eso el
+   * desglose existe.
+   *
+   * El conjunto de tipos es la UNIÓN de lo recogido y lo contado: un tipo que
+   * el libro registró y nadie contó da diferencia positiva, y uno contado que
+   * el libro no registró da negativa. Ninguno de los dos se descarta —
+   * justamente son el hallazgo.
+   */
+  @ApiProperty({ type: [ContainerDifferenceLineDto], description: "Lo mismo, por tipo de envase" })
+  emptiesByType!: ContainerDifferenceLineDto[];
 }
 
 /** Response of GET .../settlement — served whether the route is settled or not. */

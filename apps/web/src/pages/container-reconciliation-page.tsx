@@ -11,11 +11,7 @@ import { ErrorState } from "../components/error-state";
 import { SlowRequestNotice } from "../components/slow-request-notice";
 import { useSlowRequest } from "../hooks/use-slow-request";
 import { formatBusinessDateTime } from "../lib/business-date";
-
-/** "+3" / "-2": el signo dice de qué lado está el faltante. */
-function formatDifference(value: number): string {
-  return value > 0 ? `+${String(value)}` : String(value);
-}
+import { formatDifference } from "../lib/difference";
 
 /**
  * Qué significa la diferencia, en una frase, para no obligar a nadie a

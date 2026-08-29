@@ -1,5 +1,11 @@
 import request from "supertest";
-import { RouteStatus, StopOrigin, StopStatus } from "@prisma/client";
+import {
+  ContainerMovementType,
+  ContainerState,
+  RouteStatus,
+  StopOrigin,
+  StopStatus,
+} from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
@@ -184,6 +190,40 @@ function postSettlement(
     .send(body);
 }
 
+/**
+ * Cuántos vacíos de ese tipo quedan en camión, según el libro: todo lo que
+ * entró a EMPTY_ON_ROUTE menos todo lo que salió. Los tests que lo usan crean
+ * su propio tipo de envase, así que el número es solo suyo.
+ *
+ * Puede dar NEGATIVO, y eso es justamente lo que un test comprueba: liquidar
+ * emite desde lo contado en la puerta, no desde el libro.
+ */
+async function emptiesOnRoute(typeId: string): Promise<number> {
+  const [into, outOf] = await Promise.all([
+    prisma.containerMovement.aggregate({
+      where: { containerTypeId: typeId, toState: ContainerState.EMPTY_ON_ROUTE },
+      _sum: { quantity: true },
+    }),
+    prisma.containerMovement.aggregate({
+      where: { containerTypeId: typeId, fromState: ContainerState.EMPTY_ON_ROUTE },
+      _sum: { quantity: true },
+    }),
+  ]);
+  return (into._sum.quantity ?? 0) - (outOf._sum.quantity ?? 0);
+}
+
+let extraTypeSeq = 0;
+/** Un tipo de envase propio del test, para que su parque no lo mueva nadie más. */
+async function createContainerType(): Promise<string> {
+  extraTypeSeq += 1;
+  const response = await request(server())
+    .post("/api/v1/container-types")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ name: `Bidón liquidación ${extraTypeSeq}` })
+    .expect(201);
+  return response.body.id;
+}
+
 /** A fresh FINISHED route with one delivered stop and no payment — enough
  * to settle, without caring about the exact money/container numbers. */
 async function freshFinishedRoute(): Promise<{ routeId: string }> {
@@ -310,10 +350,16 @@ describe("full reconciliation: LOAN_DELIVERY + FULL_SALE + a rejected payment", 
     // fullOut=10, fullDelivered=3(A)+1(C)=4, fullSold=2(B) -> fullReturned=4
     // for the identity to hold exactly. emptiesCollected ledger = 3 (only A
     // returned containers) -> entering 3 matches exactly too.
-    const response = await postSettlement(routeId, { fullReturned: 4, emptiesCollected: 3 });
+    const response = await postSettlement(routeId, {
+      fullReturned: 4,
+      emptiesCollected: [{ containerTypeId, quantity: 3 }],
+    });
 
     expect(response.status).toBe(201);
-    expect(response.body.differences).toEqual({ containers: 0, empties: 0 });
+    expect(response.body.differences).toMatchObject({ containers: 0, empties: 0 });
+    expect(response.body.differences.emptiesByType).toEqual([
+      { containerTypeId, containerTypeName: "Con caño", difference: 0 },
+    ]);
 
     const settlement = response.body.settlement;
     expect(settlement.fullOut).toBe(10);
@@ -355,7 +401,7 @@ describe("a container shortfall settles anyway and reports it", () => {
 
     // fullOut=5, fullDelivered=3, fullSold=0 -> a matching fullReturned would
     // be 2; entering 0 leaves a shortfall of 2 unaccounted for.
-    const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: 0 });
+    const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
 
     expect(response.status).toBe(201);
     expect(response.body.differences.containers).toBe(2);
@@ -365,14 +411,239 @@ describe("a container shortfall settles anyway and reports it", () => {
   });
 });
 
+/**
+ * Liquidar es lo que devuelve los vacíos al galpón: hasta que existió este
+ * productor, todo lo que el chofer recogía se quedaba en EMPTY_ON_ROUTE para
+ * siempre. Estos tests miran el ledger, que es donde eso se ve.
+ */
+describe("liquidar descarga los vacíos al galpón (EMPTY_UNLOAD)", () => {
+  /** Una ruta terminada que recogió estos vacíos, listos para descargar. */
+  async function routeWithPickups(
+    containersReturned: { containerTypeId: string; quantity: number }[],
+  ): Promise<string> {
+    const { locationId } = await createFreshLocation();
+    const batchItemId = await createBatchItem(5);
+    const routeId = await createRoute();
+    await addLoad(routeId, batchItemId, 5);
+    const stopId = await addStop(routeId, locationId);
+    await startRoute(routeId);
+    await deliverStop(routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+      containersReturned,
+    }).then((r) => expect(r.status).toBe(200));
+    await finishRoute(routeId);
+    return routeId;
+  }
+
+  function unloadsOf(routeId: string) {
+    return prisma.containerMovement.findMany({
+      where: { routeId, type: ContainerMovementType.EMPTY_UNLOAD },
+      orderBy: { quantity: "desc" },
+    });
+  }
+
+  test("emite un EMPTY_UNLOAD por tipo contado, de EMPTY_ON_ROUTE a EMPTY_AT_PLANT", async () => {
+    const typeA = await createContainerType();
+    const typeB = await createContainerType();
+    const routeId = await routeWithPickups([
+      { containerTypeId: typeA, quantity: 3 },
+      { containerTypeId: typeB, quantity: 2 },
+    ]);
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 4,
+      emptiesCollected: [
+        { containerTypeId: typeA, quantity: 3 },
+        { containerTypeId: typeB, quantity: 2 },
+      ],
+    });
+
+    expect(response.status).toBe(201);
+    const unloads = await unloadsOf(routeId);
+    expect(unloads).toHaveLength(2);
+    for (const movement of unloads) {
+      expect(movement.fromState).toBe(ContainerState.EMPTY_ON_ROUTE);
+      expect(movement.toState).toBe(ContainerState.EMPTY_AT_PLANT);
+      // La descarga es de la ruta entera y no toca "en cliente": ni parada ni
+      // ubicación.
+      expect(movement.stopId).toBeNull();
+      expect(movement.locationId).toBeNull();
+      expect(movement.recordedById).toBe(adminUserId);
+    }
+    expect(unloads.map((m) => [m.containerTypeId, m.quantity])).toEqual([
+      [typeA, 3],
+      [typeB, 2],
+    ]);
+    // Lo que entró al camión salió de vuelta al galpón.
+    expect(await emptiesOnRoute(typeA)).toBe(0);
+    expect(await emptiesOnRoute(typeB)).toBe(0);
+  });
+
+  // El test que fija la decisión del dueño: se emite lo CONTADO, no lo que
+  // dice el libro. Si el chofer trae más de lo que alguien registró, el parque
+  // queda negativo — y ese negativo es la información, no un error a corregir.
+  test("emite lo contado aunque el libro diga menos, y el parque queda negativo", async () => {
+    const typeId = await createContainerType();
+    const routeId = await routeWithPickups([{ containerTypeId: typeId, quantity: 2 }]);
+    expect(await emptiesOnRoute(typeId)).toBe(2);
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 4,
+      emptiesCollected: [{ containerTypeId: typeId, quantity: 5 }],
+    });
+
+    expect(response.status).toBe(201);
+    const unloads = await unloadsOf(routeId);
+    expect(unloads).toHaveLength(1);
+    expect(unloads[0]?.quantity).toBe(5);
+    expect(await emptiesOnRoute(typeId)).toBe(-3);
+    expect(response.body.differences.empties).toBe(-3);
+    expect(response.body.differences.emptiesByType).toEqual([
+      expect.objectContaining({ containerTypeId: typeId, difference: -3 }),
+    ]);
+  });
+
+  test("una línea en cero no emite nada, y un tipo que no se contó queda como diferencia", async () => {
+    const counted = await createContainerType();
+    const zeroed = await createContainerType();
+    const uncounted = await createContainerType();
+    const routeId = await routeWithPickups([
+      { containerTypeId: counted, quantity: 2 },
+      { containerTypeId: uncounted, quantity: 1 },
+    ]);
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 4,
+      emptiesCollected: [
+        { containerTypeId: counted, quantity: 2 },
+        { containerTypeId: zeroed, quantity: 0 },
+      ],
+    });
+
+    expect(response.status).toBe(201);
+    const unloads = await unloadsOf(routeId);
+    expect(unloads).toHaveLength(1);
+    expect(unloads[0]?.containerTypeId).toBe(counted);
+    expect(response.body.settlement.emptiesCollected).toBe(2);
+    // El tipo recogido que nadie contó no se descarta: es el hallazgo.
+    expect(response.body.differences.emptiesByType).toContainEqual(
+      expect.objectContaining({ containerTypeId: uncounted, difference: 1 }),
+    );
+    expect(await emptiesOnRoute(uncounted)).toBe(1);
+  });
+
+  // Retirar un tipo es "no entregar más", nunca "no puede volver": el envase
+  // que ya está afuera tiene que poder llegar al galpón.
+  test("un tipo de envase retirado se descarga igual", async () => {
+    const typeId = await createContainerType();
+    const routeId = await routeWithPickups([{ containerTypeId: typeId, quantity: 2 }]);
+    await request(server())
+      .patch(`/api/v1/container-types/${typeId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ active: false })
+      .expect(200);
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 4,
+      emptiesCollected: [{ containerTypeId: typeId, quantity: 2 }],
+    });
+
+    expect(response.status).toBe(201);
+    expect(await unloadsOf(routeId)).toHaveLength(1);
+    expect(await emptiesOnRoute(typeId)).toBe(0);
+  });
+
+  // La única prueba de por qué el desglose existe: el total dice que cuadró y
+  // esconde dos hallazgos distintos.
+  test("dos tipos que se compensan: el total da cero y el desglose no", async () => {
+    const typeA = await createContainerType();
+    const typeB = await createContainerType();
+    const routeId = await routeWithPickups([
+      { containerTypeId: typeA, quantity: 5 },
+      { containerTypeId: typeB, quantity: 2 },
+    ]);
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 4,
+      emptiesCollected: [
+        { containerTypeId: typeA, quantity: 2 },
+        { containerTypeId: typeB, quantity: 5 },
+      ],
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.differences.empties).toBe(0);
+    const byType = response.body.differences.emptiesByType as {
+      containerTypeId: string;
+      difference: number;
+    }[];
+    expect(byType.find((row) => row.containerTypeId === typeA)?.difference).toBe(3);
+    expect(byType.find((row) => row.containerTypeId === typeB)?.difference).toBe(-3);
+  });
+
+  test("un segundo intento de liquidar no agrega movimientos", async () => {
+    const typeId = await createContainerType();
+    const routeId = await routeWithPickups([{ containerTypeId: typeId, quantity: 2 }]);
+    const body = { fullReturned: 4, emptiesCollected: [{ containerTypeId: typeId, quantity: 2 }] };
+
+    await postSettlement(routeId, body).then((r) => expect(r.status).toBe(201));
+    const second = await postSettlement(routeId, body);
+
+    expect(second.status).toBe(409);
+    expect(await unloadsOf(routeId)).toHaveLength(1);
+    expect(await emptiesOnRoute(typeId)).toBe(0);
+  });
+
+  test("la vista de una ruta liquidada trae lo contado por tipo, reconstruido del libro", async () => {
+    const typeId = await createContainerType();
+    const routeId = await routeWithPickups([{ containerTypeId: typeId, quantity: 3 }]);
+    await postSettlement(routeId, {
+      fullReturned: 4,
+      emptiesCollected: [{ containerTypeId: typeId, quantity: 3 }],
+    }).then((r) => expect(r.status).toBe(201));
+
+    const view = await getSettlement(routeId);
+
+    expect(view.status).toBe(200);
+    expect(view.body.settlement.emptiesCollected).toBe(3);
+    expect(view.body.settlement.emptiesCollectedByType).toEqual([
+      expect.objectContaining({ containerTypeId: typeId, quantity: 3 }),
+    ]);
+    expect(view.body.expected.emptiesPickedUpByType).toEqual([
+      expect.objectContaining({ containerTypeId: typeId, quantity: 3 }),
+    ]);
+  });
+
+  // La invariante que pide la skill de dominio: el saldo materializado sigue
+  // siendo reconstruible del ledger después de liquidar.
+  test("la reconciliación de envases sigue cuadrando después de liquidar", async () => {
+    const typeId = await createContainerType();
+    const routeId = await routeWithPickups([{ containerTypeId: typeId, quantity: 3 }]);
+    await postSettlement(routeId, {
+      fullReturned: 4,
+      emptiesCollected: [{ containerTypeId: typeId, quantity: 3 }],
+    }).then((r) => expect(r.status).toBe(201));
+
+    const reconciliation = await request(server())
+      .get("/api/v1/container-reconciliation")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const finding = reconciliation.body.discrepancies.find(
+      (row: { containerTypeId: string }) => row.containerTypeId === typeId,
+    );
+    expect(finding).toBeUndefined();
+  });
+});
+
 describe("idempotency and route state guards", () => {
   test("a second POST is rejected with 409 and only one settlement row exists", async () => {
     const { routeId } = await freshFinishedRoute();
 
-    const first = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: 0 });
+    const first = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
     expect(first.status).toBe(201);
 
-    const second = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: 0 });
+    const second = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
     expect(second.status).toBe(409);
 
     const count = await prisma.routeSettlement.count({ where: { routeId } });
@@ -385,7 +656,7 @@ describe("idempotency and route state guards", () => {
     await addStop(routeId, locationId);
     await startRoute(routeId);
 
-    const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: 0 });
+    const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
 
     expect(response.status).toBe(409);
     expect(messagesOf(response)).toContain("IN_PROGRESS");
@@ -394,7 +665,7 @@ describe("idempotency and route state guards", () => {
   test("a route still PLANNED is rejected with 409", async () => {
     const routeId = await createRoute();
 
-    const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: 0 });
+    const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
 
     expect(response.status).toBe(409);
     expect(messagesOf(response)).toContain("PLANNED");
@@ -406,7 +677,7 @@ describe("idempotency and route state guards", () => {
 
     const postResponse = await postSettlement(MISSING_UUID, {
       fullReturned: 0,
-      emptiesCollected: 0,
+      emptiesCollected: [],
     });
     expect(postResponse.status).toBe(404);
   });
@@ -416,17 +687,43 @@ describe("validation", () => {
   test("a negative fullReturned is rejected with 400", async () => {
     const { routeId } = await freshFinishedRoute();
 
-    const response = await postSettlement(routeId, { fullReturned: -1, emptiesCollected: 0 });
+    const response = await postSettlement(routeId, { fullReturned: -1, emptiesCollected: [] });
 
     expect(response.status).toBe(400);
   });
 
-  test("a non-integer emptiesCollected is rejected with 400", async () => {
+  test("a non-integer quantity in a line is rejected with 400", async () => {
     const { routeId } = await freshFinishedRoute();
 
-    const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: 2.5 });
+    const response = await postSettlement(routeId, {
+      fullReturned: 0,
+      emptiesCollected: [{ containerTypeId, quantity: 2.5 }],
+    });
 
     expect(response.status).toBe(400);
+  });
+
+  test("repeating a container type in the empties list is rejected with 400", async () => {
+    const { routeId } = await freshFinishedRoute();
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 0,
+      emptiesCollected: [
+        { containerTypeId, quantity: 2 },
+        { containerTypeId, quantity: 3 },
+      ],
+    });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("no puede repetir un tipo de envase");
+    // Ni la ruta ni el libro se tocaron: la lista se rechaza antes de todo.
+    const route = await prisma.route.findUniqueOrThrow({ where: { id: routeId } });
+    expect(route.status).toBe(RouteStatus.FINISHED);
+    expect(
+      await prisma.containerMovement.count({
+        where: { routeId, type: ContainerMovementType.EMPTY_UNLOAD },
+      }),
+    ).toBe(0);
   });
 });
 
@@ -436,7 +733,7 @@ describe("roles", () => {
 
     const response = await postSettlement(
       routeId,
-      { fullReturned: 0, emptiesCollected: 0 },
+      { fullReturned: 0, emptiesCollected: [] },
       driverToken,
     );
 
@@ -451,7 +748,7 @@ describe("roles", () => {
 
     const write = await postSettlement(
       routeId,
-      { fullReturned: 0, emptiesCollected: 0 },
+      { fullReturned: 0, emptiesCollected: [] },
       sellerToken,
     );
     expect(write.status).toBe(403);
@@ -471,7 +768,7 @@ describe("GET .../settlement before and after settling", () => {
     // número que se cuentan los vacíos al descargar el camión.
     expect(before.body.expected.emptiesPickedUp).toBe(0);
 
-    await postSettlement(routeId, { fullReturned: 3, emptiesCollected: 0 }).then((r) =>
+    await postSettlement(routeId, { fullReturned: 3, emptiesCollected: [] }).then((r) =>
       expect(r.status).toBe(201),
     );
 

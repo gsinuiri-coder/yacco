@@ -42,6 +42,16 @@ Two independent debts per customer: container balance (units) and money debt
 (S/). Never mix them — a container write-off is never converted to a monetary
 charge implicitly, and vice versa.
 
+`EMPTY_UNLOAD` has exactly one automatic producer: **settling the route**
+(`RouteSettlementService.settle`), one movement per container type counted at
+the plant door. It is emitted from that PHYSICAL COUNT, never from the ledger's
+own `EMPTY_PICKUP` total — so if the driver hands back more than anyone
+recorded, `EMPTY_ON_ROUTE` goes negative for that type. That sign is the
+finding ("there are pickups nobody registered"), same reasoning as a negative
+customer balance: never block it, never clamp it to zero. `fullReturned` is
+NOT symmetric and emits nothing — see the backlog entry, it needs a batch
+attribution rule first.
+
 ## Reconciliation routine
 
 Any change to `ContainersService`/`SalesService` must keep this true:

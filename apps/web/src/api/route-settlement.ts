@@ -8,6 +8,24 @@
 import type { ApiClient } from "./api-client";
 
 /**
+ * ContainerQuantityLineDto: una cantidad de envases con su tipo. El nombre
+ * viaja con el id porque `GET /container-types` solo devuelve los activos, y
+ * un tipo retirado que todavía vuelve del camión se vería como un UUID.
+ */
+export interface ContainerQuantityLine {
+  containerTypeId: string;
+  containerTypeName: string;
+  quantity: number;
+}
+
+/** ContainerDifferenceLineDto: recogido según el libro menos contado. */
+export interface ContainerDifferenceLine {
+  containerTypeId: string;
+  containerTypeName: string;
+  difference: number;
+}
+
+/**
  * RouteSettlementExpectedDto: todo lo que sale del libro, sin ningún conteo
  * físico de por medio.
  */
@@ -16,6 +34,7 @@ export interface RouteSettlementExpected {
   fullDelivered: number;
   fullSold: number;
   emptiesPickedUp: number;
+  emptiesPickedUpByType: ContainerQuantityLine[];
   totalSold: string;
   /** CONFIRMED + PENDING; un pago REJECTED nunca suma acá. */
   totalCollected: string;
@@ -24,7 +43,7 @@ export interface RouteSettlementExpected {
   totalOnCredit: string;
 }
 
-/** RouteSettlementDto: la fila persistida, con los dos conteos físicos. */
+/** RouteSettlementDto: la fila persistida, con los conteos físicos. */
 export interface RouteSettlement {
   routeId: string;
   fullOut: number;
@@ -32,6 +51,8 @@ export interface RouteSettlement {
   fullSold: number;
   fullReturned: number;
   emptiesCollected: number;
+  /** Reconstruido de los EMPTY_UNLOAD que emitió la liquidación. */
+  emptiesCollectedByType: ContainerQuantityLine[];
   totalSold: string;
   totalCollected: string;
   totalCashCollected: string;
@@ -46,6 +67,8 @@ export interface RouteSettlement {
 export interface RouteSettlementDifferences {
   containers: number;
   empties: number;
+  /** El total puede dar cero mientras dos tipos se compensan. */
+  emptiesByType: ContainerDifferenceLine[];
 }
 
 /** GetRouteSettlementResponseDto: se sirve esté liquidada la ruta o no. */
@@ -62,13 +85,16 @@ export interface CreateRouteSettlementResponse {
 }
 
 /**
- * CreateRouteSettlementDto: los dos únicos números que escribe una persona,
- * contados físicamente en la puerta de la planta. Todo lo demás lo deriva la
- * API del libro y nunca se acepta del cliente.
+ * CreateRouteSettlementDto: lo único que escribe una persona, contado
+ * físicamente en la puerta de la planta. Todo lo demás lo deriva la API del
+ * libro y nunca se acepta del cliente.
+ *
+ * Los vacíos van por tipo: la liquidación emite un movimiento de envases por
+ * cada línea, y un movimiento siempre nombra de qué tipo es.
  */
 export interface CreateRouteSettlementBody {
   fullReturned: number;
-  emptiesCollected: number;
+  emptiesCollected: { containerTypeId: string; quantity: number }[];
   notes?: string;
 }
 
