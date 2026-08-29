@@ -362,11 +362,16 @@ export class RoutesService {
       if (order === null) {
         throw new BadRequestException(`El pedido "${dto.orderId}" no existe`);
       }
-      if (order.status !== OrderStatus.PENDING) {
-        throw new BadRequestException(`El pedido "${dto.orderId}" no está pendiente`);
-      }
+      // "Ya asignado" se pregunta ANTES que "no está pendiente", y el orden
+      // importa desde que el pedido sigue a su parada: un pedido con parada
+      // está además en ON_ROUTE, así que preguntar por el estado primero
+      // taparía la causa específica con una genérica. Las dos son ciertas; la
+      // que le sirve a quien la lee es la que nombra la otra parada.
       if (order.routeStop !== null) {
         throw new BadRequestException(`El pedido "${dto.orderId}" ya está asignado a otra parada`);
+      }
+      if (order.status !== OrderStatus.PENDING) {
+        throw new BadRequestException(`El pedido "${dto.orderId}" no está pendiente`);
       }
       locationId = order.locationId;
       orderId = dto.orderId;
@@ -395,7 +400,7 @@ export class RoutesService {
           orderBy: { position: "desc" },
           select: { position: true },
         });
-        return tx.routeStop.create({
+        const created = await tx.routeStop.create({
           data: {
             routeId,
             locationId,
@@ -406,6 +411,29 @@ export class RoutesService {
           },
           include: STOP_INCLUDE,
         });
+
+        // HU-10 E1: el pedido pasa a ON_ROUTE en el momento de la asignación,
+        // no al iniciar la ruta. Escribirlo en `start()` dejaría una ventana en
+        // la que un pedido ya planificado se puede cancelar mientras el chofer
+        // lo lleva en la hoja de ruta.
+        //
+        // Va en ESTA transacción: si la escritura del pedido falla, la parada
+        // no queda creada. Y el `status: PENDING` del WHERE no es decorativo —
+        // la lectura de más arriba ocurrió fuera de la transacción, así que
+        // esta es la única comprobación que no puede ser adelantada por una
+        // cancelación concurrente. Solo las paradas ORDER tienen `orderId`;
+        // una de VAN_SALE no toca ningún pedido.
+        if (orderId !== null) {
+          const { count } = await tx.order.updateMany({
+            where: { id: orderId, status: OrderStatus.PENDING },
+            data: { status: OrderStatus.ON_ROUTE },
+          });
+          if (count === 0) {
+            throw new BadRequestException(`El pedido "${orderId}" no está pendiente`);
+          }
+        }
+
+        return created;
       });
       return toStopResponse(stop);
     } catch (error) {
@@ -441,7 +469,7 @@ export class RoutesService {
 
     const stop = await this.prisma.routeStop.findFirst({
       where: { id: stopId, routeId },
-      select: { id: true, status: true, position: true },
+      select: { id: true, status: true, position: true, orderId: true },
     });
     if (stop === null) {
       throw new NotFoundException(`La parada "${stopId}" no existe en esta ruta`);
@@ -458,6 +486,18 @@ export class RoutesService {
         where: { routeId, position: { gt: stop.position } },
         data: { position: { decrement: 1 } },
       });
+
+      // Devolver el pedido a PENDING no es opcional: `addStop` exige
+      // PENDING, así que sin esto "liberar el pedido" —lo que el docblock de
+      // arriba promete— dejaría un pedido que ninguna ruta puede volver a
+      // tomar. En la misma transacción que el borrado, o la parada
+      // desaparece y el pedido queda ON_ROUTE sin parada.
+      if (stop.orderId !== null) {
+        await tx.order.update({
+          where: { id: stop.orderId },
+          data: { status: OrderStatus.PENDING },
+        });
+      }
     });
   }
 
@@ -466,9 +506,10 @@ export class RoutesService {
    * while the route is IN_PROGRESS: marking before the route starts or
    * after it finished has no real-world counterpart.
    *
-   * FAILED stays a plain status flip. DELIVERED is not: it registers the
-   * whole delivery (sale, container movements, collection) in one
-   * transaction — see `markStopDelivered` and
+   * Las dos son transacciones, y las dos mueven el pedido de la parada si lo
+   * hay. FAILED es la más chica —el flip más el estado del pedido—; DELIVERED
+   * además registra la entrega entera (venta, movimientos de envases, cobro)
+   * en esa misma transacción — see `markStopDelivered` and
    * `SalesService.registerStopDeliveryWithinTransaction`.
    */
   async markStop(
@@ -508,24 +549,48 @@ export class RoutesService {
     return this.markStopDelivered(routeId, stopId, dto, actor);
   }
 
+  /**
+   * Pasó a ser transacción cuando el pedido empezó a seguir a su parada: el
+   * flip de la parada y el estado del pedido tienen que confirmarse o
+   * deshacerse juntos, igual que en `markStopDelivered`. Antes era un
+   * `updateMany` suelto porque no había nada más que escribir.
+   *
+   * El pedido queda en FAILED y NUNCA vuelve a PENDING. `Order.deliveryDate`
+   * es una fecha de negocio: reintentar mañana es otro día de entrega y se
+   * registra como un pedido nuevo. Devolverlo a PENDING haría que un pedido
+   * fallado tres veces se viera idéntico a uno recién tomado.
+   */
   private async markStopFailed(
     routeId: string,
     stopId: string,
     failureReason: string,
   ): Promise<RouteStopResponseDto> {
-    const { count } = await this.prisma.routeStop.updateMany({
-      where: { id: stopId, routeId, status: StopStatus.PENDING },
-      data: { status: StopStatus.FAILED, failureReason },
-    });
-    if (count === 0) {
-      await this.throwAlreadyMarkedConflict(this.prisma, routeId, stopId);
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.routeStop.updateMany({
+        where: { id: stopId, routeId, status: StopStatus.PENDING },
+        data: { status: StopStatus.FAILED, failureReason },
+      });
+      if (count === 0) {
+        await this.throwAlreadyMarkedConflict(tx, routeId, stopId);
+      }
 
-    const stop = await this.prisma.routeStop.findUniqueOrThrow({
-      where: { id: stopId },
-      include: STOP_INCLUDE,
+      const stop = await tx.routeStop.findUniqueOrThrow({
+        where: { id: stopId },
+        include: STOP_INCLUDE,
+      });
+
+      // El flip de arriba, guardado por `status: PENDING`, es lo que serializa
+      // dos marcas concurrentes de la misma parada: exactamente un UPDATE toca
+      // la fila, así que acá el pedido se escribe sin más guarda.
+      if (stop.orderId !== null) {
+        await tx.order.update({
+          where: { id: stop.orderId },
+          data: { status: OrderStatus.FAILED },
+        });
+      }
+
+      return toStopResponse(stop);
     });
-    return toStopResponse(stop);
   }
 
   /**
@@ -557,6 +622,16 @@ export class RoutesService {
         where: { id: stopId },
         include: STOP_INCLUDE,
       });
+
+      // El pedido sigue a su parada, en esta misma transacción: si la venta o
+      // los movimientos de envase fallan más abajo, el pedido tampoco queda
+      // entregado. Una parada de VAN_SALE no tiene pedido que mover.
+      if (stop.orderId !== null) {
+        await tx.order.update({
+          where: { id: stop.orderId },
+          data: { status: OrderStatus.DELIVERED },
+        });
+      }
 
       const delivery = await this.salesService.registerStopDeliveryWithinTransaction(tx, {
         routeId,

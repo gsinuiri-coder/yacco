@@ -154,7 +154,14 @@ function buildPrismaMock() {
     },
     user: { findUnique: jest.fn<() => Promise<unknown>>() },
     zone: { findUnique: jest.fn<() => Promise<unknown>>() },
-    order: { findUnique: jest.fn<() => Promise<unknown>>() },
+    order: {
+      findUnique: jest.fn<() => Promise<unknown>>(),
+      // El pedido sigue a su parada (HU-10 E1): `addStop` lo mueve con un
+      // `updateMany` guardado por PENDING, y las otras tres operaciones con
+      // `update`.
+      updateMany: jest.fn<() => Promise<unknown>>(),
+      update: jest.fn<() => Promise<unknown>>(),
+    },
     customerLocation: { findUnique: jest.fn<() => Promise<unknown>>() },
     // Only reached by throwAlreadyMarkedConflict, to name the date/who of an
     // already-DELIVERED stop; defaults to "no sale on file" so every markStop
@@ -533,12 +540,20 @@ describe("RoutesService", () => {
       prisma.routeStop.create.mockResolvedValue(
         buildStop({ origin: StopOrigin.ORDER, orderId: ORDER_ID, position: 1 }),
       );
+      // HU-10 E1: la asignación mueve el pedido a ON_ROUTE en la misma
+      // transacción que crea la parada.
+      prisma.order.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.addStop(
         ROUTE_ID,
         { origin: StopOrigin.ORDER, orderId: ORDER_ID },
         adminActor,
       );
+
+      expect(prisma.order.updateMany).toHaveBeenCalledWith({
+        where: { id: ORDER_ID, status: OrderStatus.PENDING },
+        data: { status: OrderStatus.ON_ROUTE },
+      });
 
       expect(prisma.routeStop.create).toHaveBeenCalledWith(
         expect.objectContaining({

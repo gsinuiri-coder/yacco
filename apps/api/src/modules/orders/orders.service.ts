@@ -16,6 +16,33 @@ import type { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.
  * order has no direct customer FK any more, only a location one (spec: an
  * order belongs to the location the truck delivers to).
  */
+/**
+ * El estado del pedido, en las palabras de la planta y conjugado para caer
+ * después de «este está».
+ *
+ * Existe porque el 409 de `cancel` llega tal cual a la pantalla de pedidos
+ * (la web muestra `error.message` sin traducir, a propósito), y hasta ahora
+ * decía «este está en ON_ROUTE» — el nombre del enum, que no significa nada
+ * para quien lo lee. Ver la regla en docs/backlog-tecnico.md, «los mensajes
+ * de error que llegan a pantalla van en español».
+ *
+ * Las palabras son las mismas que `ORDER_STATUS_LABELS` en
+ * `apps/web/src/components/order-status-badge.tsx`: el mensaje de error y el
+ * badge de la fila tienen que llamar igual al mismo estado, o el usuario cree
+ * que son dos cosas distintas.
+ *
+ * `RoutesService` tiene el mismo defecto en seis mensajes que interpolan
+ * `RouteStatus`/`StopStatus`; queda anotado en el backlog y este mapa es el
+ * patrón a seguir.
+ */
+const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  PENDING: "pendiente",
+  ON_ROUTE: "en ruta",
+  DELIVERED: "entregado",
+  FAILED: "no entregado",
+  CANCELLED: "cancelado",
+};
+
 const ORDER_INCLUDE = {
   location: {
     select: {
@@ -206,6 +233,13 @@ export class OrdersService {
    * The status guard lives in the WHERE clause rather than in a prior read:
    * a check-then-update could be overtaken by a route being planned in
    * between, and would cancel an order that is already ON_ROUTE.
+   *
+   * Esa protección estuvo escrita e INERTE hasta que el pedido empezó a seguir
+   * a su parada: nadie escribía `ON_ROUTE`, así que un pedido asignado seguía
+   * en PENDING y esta guarda lo dejaba cancelar igual, con el chofer llevándolo
+   * en la hoja de ruta. Desde `RoutesService.addStop` sí lo escribe, y el test
+   * de integración «cancelar un pedido ya asignado devuelve 409» es lo que
+   * impide que vuelva a quedar inerte sin que nada avise.
    */
   async cancel(id: string): Promise<OrderResponseDto> {
     const { count } = await this.prisma.order.updateMany({
@@ -222,7 +256,7 @@ export class OrdersService {
         throw new NotFoundException(`El pedido "${id}" no existe`);
       }
       throw new ConflictException(
-        `Solo se puede cancelar un pedido pendiente; este está en ${existing.status}`,
+        `Solo se puede cancelar un pedido pendiente; este está ${ORDER_STATUS_LABELS[existing.status]}`,
       );
     }
 

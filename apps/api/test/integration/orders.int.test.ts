@@ -468,8 +468,12 @@ describe("GET /api/v1/orders", () => {
 
 // El selector de paradas de una ruta ofrece exactamente lo que
 // `RoutesService.addStop` acepta: PENDING y sin parada asignada. Sin este
-// filtro, la lista mostraría opciones que fallan con 400 al hacer clic —
-// un pedido asignado a una parada sigue en PENDING (ver el backlog técnico).
+// filtro, la lista mostraría opciones que fallan con 400 al hacer clic.
+//
+// El filtro nació cuando un pedido asignado seguía en PENDING y era la ÚNICA
+// forma de distinguirlo. Desde HU-10 E1 ese pedido pasa a ON_ROUTE, así que
+// `status=PENDING` ya lo deja afuera solo; `hasRouteStop` sigue siendo la
+// respuesta exacta a "¿tiene parada?", que no es lo mismo que su estado.
 describe("GET /api/v1/orders?hasRouteStop", () => {
   let assignedOrderId: string;
   let freeOrderId: string;
@@ -624,25 +628,55 @@ describe("PATCH /api/v1/orders/:id/cancel", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(second.status).toBe(409);
-    expect(messagesOf(second)).toContain(OrderStatus.CANCELLED);
+    // El estado va traducido: este mensaje llega tal cual a la pantalla de
+    // pedidos, y "CANCELLED" no significa nada para quien lo lee.
+    expect(messagesOf(second)).toContain("este está cancelado");
+    expect(messagesOf(second)).not.toContain(OrderStatus.CANCELLED);
   });
 
-  // The routes module is what moves an order to ON_ROUTE; simulated here so
-  // the guard is proven against the state a real route would leave behind.
+  /*
+   * ESTE es el test que fija el agujero que cerró HU-10 E1, y por eso arma una
+   * ruta de verdad en vez de escribir ON_ROUTE con Prisma como hacía antes.
+   *
+   * La guarda `WHERE status = PENDING` de `cancel` está escrita desde siempre,
+   * pero era INERTE mientras nadie escribía ON_ROUTE: un pedido asignado
+   * seguía en PENDING y la oficina lo podía cancelar con el chofer llevándolo
+   * en la hoja de ruta. Simulando el estado, este test pasaba igual con el
+   * agujero abierto. Asignando la parada de verdad, falla si alguien revierte
+   * la escritura de `RoutesService.addStop`.
+   */
   test("refuses to cancel an order a route already picked up", async () => {
-    const orderId = await createOrder(adminToken);
-    const prisma = ctx.app.get(PrismaService);
-    await prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.ON_ROUTE },
-    });
+    const orderId = await createOrder(adminToken, { deliveryDate: "2026-09-21" });
+    const drivers = await request(server())
+      .get("/api/v1/users?role=DRIVER")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    const driverId = drivers.body.find(
+      (user: { username: string }) => user.username === "repartidor-pedidos",
+    ).id;
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: "2026-09-21" })
+      .expect(201);
+    await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
 
     const response = await request(server())
       .patch(`/api/v1/orders/${orderId}/cancel`)
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain(OrderStatus.ON_ROUTE);
+    expect(messagesOf(response)).toContain("este está en ruta");
+    expect(messagesOf(response)).not.toContain(OrderStatus.ON_ROUTE);
+
+    // Y no lo canceló.
+    const prisma = ctx.app.get(PrismaService);
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    expect(order.status).toBe(OrderStatus.ON_ROUTE);
   });
 
   test("an unknown id is rejected with 404", async () => {

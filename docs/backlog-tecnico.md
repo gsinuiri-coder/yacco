@@ -900,8 +900,59 @@ PR de cobranza de oficina.
 
 ## Un pedido asignado a una parada sigue en PENDING
 
-**Estado:** abierto. **Disparador:** cuando la oficina necesite ver en la
-lista de pedidos cuáles ya están arriba del camión.
+**Estado:** resuelta. `Order.status` sigue a su parada, que es lo que HU-10 E1
+pedía.
+
+**Cómo se cerró.** Cuatro escrituras, cada una DENTRO de la transacción de la
+operación que la causa —nunca en una segunda transacción ni después de
+responder—, y ninguna toca una parada de origen `VAN_SALE`, que no tiene
+pedido:
+
+| Operación                | El pedido queda |
+| ------------------------ | --------------- |
+| `addStop` (origen ORDER) | `ON_ROUTE`      |
+| `markStop` → DELIVERED   | `DELIVERED`     |
+| `markStop` → FAILED      | `FAILED`        |
+| `removeStop`             | `PENDING`       |
+
+`markStopFailed` pasó a ser transacción para esto: era un `updateMany` suelto
+porque no había nada más que escribir junto al flip de la parada.
+
+**Las tres decisiones de dominio que quedaron fijadas:**
+
+- **`ON_ROUTE` se escribe al asignar la parada, no al iniciar la ruta.** HU-10
+  E1 lo dice en el momento de la asignación, y hacerlo en `start()` dejaría una
+  ventana en la que un pedido ya planificado se puede cancelar mientras el
+  chofer lo lleva en la hoja de ruta.
+- **Una parada FAILED deja el pedido en FAILED, nunca de vuelta en PENDING.**
+  `Order.deliveryDate` es una fecha de negocio: reintentar mañana es otro día de
+  entrega y se registra como un pedido nuevo. Volver a PENDING haría que un
+  pedido fallado tres veces se viera idéntico a uno recién tomado.
+- **`removeStop` devuelve el pedido a PENDING, y es obligatorio.** Sin eso
+  `removeStop` rompe su propio contrato documentado —«libera el pedido»—,
+  porque `addStop` exige PENDING y el pedido quedaría inasignable para siempre.
+
+**Lo que esto destrabó de paso:** la guarda `WHERE status = PENDING` de
+`OrdersService.cancel` estaba escrita desde siempre y era **inerte**. Su
+docblock decía que existía para no cancelar un pedido «que ya está ON_ROUTE»,
+pero como nadie escribía ese estado, la oficina podía cancelar un pedido que
+iba en el camión, y también uno ya entregado.
+
+**Qué quedó fijado por test** (integración, contra Postgres real): las cuatro
+transiciones, que `GET /orders?status=ON_ROUTE` devuelve el asignado, que un
+pedido liberado se puede reasignar a otra ruta, y que una parada `VAN_SALE` no
+toca ningún pedido en ninguna de las cuatro operaciones.
+
+El test que fija el agujero es «refuses to cancel an order a route already
+picked up», en `orders.int.test.ts`. **Existía y no servía**: simulaba el
+`ON_ROUTE` con una escritura directa de Prisma, así que pasaba igual con el
+agujero abierto. Ahora arma la ruta y asigna la parada de verdad, y falla si
+alguien revierte la escritura de `addStop`.
+
+_Texto original de la entrada, tal como se escribió cuando estaba abierta:_
+
+**Estado (original):** abierto. **Disparador:** cuando la oficina necesite ver
+en la lista de pedidos cuáles ya están arriba del camión.
 
 HU-10 E1 dice, textual: «los pedidos asignados pasan a "en ruta"».
 `RoutesService.addStop` no toca `Order.status`, y `OrderStatus.ON_ROUTE` no
@@ -965,6 +1016,36 @@ ganando fechas.
 Una salida intermedia, si el precio no vale: dejar el sembrado por HTTP y
 agregar un paso final, en proceso, que solo retroceda `occurred_at` de lo ya
 escrito. Feo —toca un ledger inmutable— pero acotado, y no toca la ruta pública.
+
+## Seis mensajes de RoutesService interpolan el enum crudo
+
+**Estado:** abierto. **Disparador:** el próximo PR que toque `RoutesService`,
+o el primero que arme pantallas donde alguno de estos seis errores sea
+alcanzable a mano.
+
+Incumplen la regla de «los mensajes de error que llegan a pantalla van en
+español», más abajo: están redactados en español pero terminan con el nombre
+del enum, que no significa nada para quien lo lee. La oficina ve «esta está en
+IN_PROGRESS» donde el badge de la misma pantalla dice «En curso».
+
+En `apps/api/src/modules/routes/routes.service.ts`:
+
+- `Solo se puede iniciar una ruta planificada; esta está en ${route.status}`
+- `Solo se puede terminar una ruta en curso; esta está en ${route.status}`
+- `Solo se puede quitar una parada pendiente; esta está en ${stop.status}`
+- `Solo se pueden marcar paradas de una ruta en curso; esta está en ${route.status}`
+- `Solo se puede corregir una carga mientras la ruta está planificada; esta está en ${route.status}`
+- `No se pueden ${action} de una ruta en estado ${status}`
+
+**Para cerrarla:** el patrón ya existe, es `ORDER_STATUS_LABELS` en
+`orders.service.ts` — un mapa `Record<Enum, string>` con las mismas palabras
+que usa el badge de la web, conjugado para caer después de «esta está». Hacen
+falta dos, uno para `RouteStatus` y otro para `StopStatus`. Con tres mapas en
+dos módulos probablemente convenga un solo lugar; con uno no hacía falta
+inventarlo.
+
+Y el texto se fija por test, como se hizo con los de `users` y con el 409 de
+`cancel`: sin eso nada impide que el próximo cambio vuelva al enum.
 
 ## Descargar los vacíos al volver de ruta no tiene camino en la app
 
