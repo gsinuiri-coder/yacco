@@ -83,8 +83,17 @@ spec disagree, STOP and ask before proceeding.
   with a PENDING stop cannot reach FINISHED. That block is state machine, not a
   business judgement: it does not contradict "warns, never blocks" — a stop left
   PENDING on a FINISHED route strands its order in ON_ROUTE with no exit.
-- Field mistakes are corrected by ADMIN-issued inverse movements from the web,
-  never by editing or deleting synced records.
+- Once an operational record is written, a mistake in it is NEVER corrected by
+  editing or deleting that row, whatever its origin: loaded from the office,
+  written in the field, or arriving through a sync when that exists. The
+  correction is always an inverse movement issued by ADMIN from the web. The
+  rule carries no qualifier on purpose. It used to read "never by editing or
+  deleting synced records", and that adjective selected nothing: there are no
+  synced records today — no sync module, and `sync_operations` /
+  `evidences.synced` are modelled without a line of code reading or writing
+  them — while every operational row IS office-loaded (each stop through
+  `PATCH /api/v1/routes/:id/stops/:stopId`). Read literally, it left an
+  unsynced row editable, and unsynced is all there is.
 - All timestamps are `timestamptz` in UTC. Business days (`routes.date`,
   `orders.delivery_date`) are calendar `date` in America/Lima; convert at the
   edges, never store local time in a timestamp.
