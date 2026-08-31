@@ -7,6 +7,7 @@ import {
   StopStatus,
 } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
+import { SalesService } from "../../src/modules/sales/sales.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
@@ -108,7 +109,7 @@ function nextBatchDate(): string {
   const base = Date.UTC(2026, 7, 1);
   return new Date(base - batchCounter * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
-async function createBatchItem(producedQty: number): Promise<string> {
+async function createBatchItem(producedQty: number, ofType = containerTypeId): Promise<string> {
   batchCounter += 1;
   const response = await request(server())
     .post("/api/v1/production-batches")
@@ -116,10 +117,37 @@ async function createBatchItem(producedQty: number): Promise<string> {
     .send({
       code: `LOTE-LIQUIDACION-${batchCounter}`,
       date: nextBatchDate(),
-      items: [{ containerTypeId, producedQty }],
+      items: [{ containerTypeId: ofType, producedQty }],
     })
     .expect(201);
   return response.body.items[0].id;
+}
+
+let extraProductSeq = 0;
+/** Un producto propio del test, para el tipo de envase que el test creó. */
+async function createProductFor(
+  ofType: string,
+  type: "REFILL" | "CONTAINER_SALE",
+): Promise<string> {
+  extraProductSeq += 1;
+  const product = await prisma.product.create({
+    data: {
+      containerTypeId: ofType,
+      name: `${type} anulación ${extraProductSeq}`,
+      type,
+      listPrice: type === "REFILL" ? "8.00" : "30.00",
+    },
+  });
+  return product.id;
+}
+
+/** Cuántos envases de ese tipo cree el sistema que tiene esta ubicación. */
+async function customerBalance(locationId: string, ofType: string): Promise<number> {
+  const balance = await prisma.customerContainerBalance.findUnique({
+    where: { locationId_containerTypeId: { locationId, containerTypeId: ofType } },
+    select: { quantity: true },
+  });
+  return balance?.quantity ?? 0;
 }
 
 async function createRoute(): Promise<string> {
@@ -817,6 +845,111 @@ describe("GET .../settlement before and after settling", () => {
  * hará esa operación; el UPDATE sobre `sales` es lo único que ningún código
  * de producción tiene permitido hacer.
  */
+describe("la liquidación no cuenta lo anulado", () => {
+  /**
+   * El puente entre las dos mitades de la feature: acá la anulación la escribe
+   * la operación REAL, y quien la lee es la liquidación. Los tests de más
+   * abajo arman el estado anulado a mano —siguen valiendo, porque prueban la
+   * aritmética del lector con números que eligen ellos— pero solo este prueba
+   * que lo que el emisor escribe es lo que el lector sabe restar.
+   */
+  test("anular la parada de verdad deja el expected neto, con los tres tipos a la vez", async () => {
+    const typeId = await createContainerType();
+    const { locationId } = await createFreshLocation();
+    const batchItemId = await createBatchItem(10, typeId);
+    const routeId = await createRoute();
+    await addLoad(routeId, batchItemId, 10);
+    const stopId = await addStop(routeId, locationId);
+    await startRoute(routeId);
+    const refill = await createProductFor(typeId, "REFILL");
+    const containerSale = await createProductFor(typeId, "CONTAINER_SALE");
+    const delivered = await deliverStop(routeId, stopId, {
+      // Las tres cosas que una parada puede escribir en el libro de envases:
+      // 4 entregadas en préstamo, 2 vendidas, 3 vacíos recogidos.
+      items: [
+        { productId: refill, quantity: 4 },
+        { productId: containerSale, quantity: 2 },
+      ],
+      containersReturned: [{ containerTypeId: typeId, quantity: 3 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "10.00" },
+    });
+    expect(delivered.status).toBe(200);
+    await finishRoute(routeId);
+
+    const before = await getSettlement(routeId);
+    expect(before.body.expected.fullDelivered).toBe(4);
+    expect(before.body.expected.fullSold).toBe(2);
+    expect(before.body.expected.emptiesPickedUp).toBe(3);
+    expect(before.body.expected.totalCashCollected).toBe("10.00");
+
+    const sales = ctx.app.get(SalesService);
+    const result = await prisma.$transaction((tx) =>
+      sales.voidStopDeliveryWithinTransaction(tx, {
+        stopId,
+        voidedById: adminUserId,
+        voidReason: "Se anotó la parada equivocada",
+      }),
+    );
+    // Los tres tipos de anulación, uno por cada movimiento que hubo.
+    expect(result.voidMovements).toHaveLength(3);
+
+    const after = await getSettlement(routeId);
+
+    // Todo en cero: la parada entera dejó de existir para la liquidación.
+    expect(after.body.expected.fullDelivered).toBe(0);
+    expect(after.body.expected.fullSold).toBe(0);
+    expect(after.body.expected.emptiesPickedUp).toBe(0);
+    expect(after.body.expected.totalSold).toBe("0.00");
+    expect(after.body.expected.totalCashCollected).toBe("0.00");
+    // Lo que salió del galpón salió: anular no descarga el camión.
+    expect(after.body.expected.fullOut).toBe(10);
+    // La línea por tipo de envase SE CONSERVA en cero — que se haya recogido y
+    // anulado entero es información, no ausencia.
+    const line = (
+      after.body.expected.emptiesPickedUpByType as {
+        containerTypeId: string;
+        quantity: number;
+      }[]
+    ).find((row) => row.containerTypeId === typeId);
+    expect(line?.quantity).toBe(0);
+
+    // Y los llenos volvieron al camión: 4 del préstamo y 2 de la venta, que
+    // es lo que `getRouteFullStock` lee por estados sin saber que estos tipos
+    // existen.
+    expect(await fullsOnRoute(typeId)).toBe(10);
+  });
+
+  test("anular devuelve el saldo de envases del cliente, en los dos sentidos", async () => {
+    const typeId = await createContainerType();
+    const { locationId } = await createFreshLocation();
+    const batchItemId = await createBatchItem(10, typeId);
+    const routeId = await createRoute();
+    await addLoad(routeId, batchItemId, 10);
+    const stopId = await addStop(routeId, locationId);
+    await startRoute(routeId);
+    const refill = await createProductFor(typeId, "REFILL");
+    await deliverStop(routeId, stopId, {
+      // 5 entregadas menos 2 recogidas: el cliente queda debiendo 3.
+      items: [{ productId: refill, quantity: 5 }],
+      containersReturned: [{ containerTypeId: typeId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+    expect(await customerBalance(locationId, typeId)).toBe(3);
+
+    const sales = ctx.app.get(SalesService);
+    await prisma.$transaction((tx) =>
+      sales.voidStopDeliveryWithinTransaction(tx, {
+        stopId,
+        voidedById: adminUserId,
+        voidReason: "Se anotó la parada equivocada",
+      }),
+    );
+
+    // Vuelve a cero: LOAN_DELIVERY_VOID resta 5 y EMPTY_PICKUP_VOID suma 2,
+    // cada uno por sus estados, sin que nadie lea su `type`.
+    expect(await customerBalance(locationId, typeId)).toBe(0);
+  });
+});
+
 describe("la liquidación no cuenta lo anulado", () => {
   test("una entrega, una recogida y una venta anuladas salen netas del expected", async () => {
     const { locationId } = await createFreshLocation();

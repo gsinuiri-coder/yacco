@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import request from "supertest";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
+import { SalesService } from "../../src/modules/sales/sales.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
@@ -114,7 +115,14 @@ async function deliver(
   locationId: string,
   quantity: number,
   payment?: { paymentMethodId: string; amount: string },
-): Promise<{ saleId: string; paymentId: string | null; total: string }> {
+): Promise<{
+  saleId: string;
+  paymentId: string | null;
+  total: string;
+  stopId: string;
+  routeId: string;
+  soldAt: string;
+}> {
   const batchItemId = await createBatchItem(10);
   const route = await request(server())
     .post("/api/v1/routes")
@@ -146,11 +154,59 @@ async function deliver(
     });
   expect(delivered.status).toBe(200);
 
+  const sale = await prisma.sale.findUniqueOrThrow({
+    where: { id: delivered.body.sale.id },
+    select: { soldAt: true },
+  });
   return {
     saleId: delivered.body.sale.id,
     paymentId: delivered.body.payment?.id ?? null,
     total: delivered.body.sale.total,
+    stopId: stop.body.id,
+    routeId,
+    soldAt: sale.soldAt.toISOString(),
   };
+}
+
+/** Una parada que se visitó y no se pudo entregar: sin venta y sin cobro. */
+async function failedStop(locationId: string): Promise<string> {
+  const batchItemId = await createBatchItem(5);
+  const route = await request(server())
+    .post("/api/v1/routes")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ driverId, date: nextDate(), zoneId })
+    .expect(201);
+  const routeId = route.body.id;
+  await request(server())
+    .post(`/api/v1/routes/${routeId}/loads`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ batchItemId, quantity: 5 })
+    .expect(201);
+  const stop = await request(server())
+    .post(`/api/v1/routes/${routeId}/stops`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ origin: "VAN_SALE", locationId })
+    .expect(201);
+  await request(server())
+    .patch(`/api/v1/routes/${routeId}/start`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .expect(200);
+  await request(server())
+    .patch(`/api/v1/routes/${routeId}/stops/${stop.body.id}`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "FAILED", failureReason: "El cliente no estaba" })
+    .expect(200);
+  return stop.body.id;
+}
+
+/** Cuántos envases cree el sistema que tiene esta ubicación, del tipo que
+ * usan estos tests. Cero cuando la fila todavía no existe. */
+async function locationContainerBalance(locationId: string): Promise<number> {
+  const balance = await prisma.customerContainerBalance.findUnique({
+    where: { locationId_containerTypeId: { locationId, containerTypeId } },
+    select: { quantity: true },
+  });
+  return balance?.quantity ?? 0;
 }
 
 async function officePayment(
@@ -421,34 +477,32 @@ describe("validation and access", () => {
 });
 
 /**
- * Quien ESCRIBE una anulación es la operación de corrección, que todavía no
- * existe: acá el estado anulado se arma a mano, con un UPDATE que ningún
- * código de producción tiene permitido hacer. Es legítimo justamente porque lo
- * que se prueba es la aritmética de quien LEE el libro — y la base, que es la
- * que se niega a guardar una anulación a medias.
+ * La anulación la escribe ahora `SalesService.voidStopDeliveryWithinTransaction`
+ * — la operación real, no un UPDATE a mano. Se la invoca envuelta en su propia
+ * transacción porque el método exige un `tx` abierto por quien llama: la venta,
+ * los cobros, la deuda y los movimientos de envases son UNA corrección.
  */
 describe("una venta y un cobro anulados", () => {
-  async function markVoided(table: "sale" | "payment", id: string): Promise<Date> {
-    const voidedAt = new Date();
-    const data = { voidedAt, voidedById: adminUserId, voidReason: "Se anotó la parada equivocada" };
-    if (table === "sale") {
-      await prisma.sale.update({ where: { id }, data });
-    } else {
-      await prisma.payment.update({ where: { id }, data });
-    }
-    return voidedAt;
+  async function voidStop(stopId: string): Promise<void> {
+    const sales = ctx.app.get(SalesService);
+    await prisma.$transaction((tx) =>
+      sales.voidStopDeliveryWithinTransaction(tx, {
+        stopId,
+        voidedById: adminUserId,
+        voidReason: "Se anotó la parada equivocada",
+      }),
+    );
   }
 
   test("siguen apareciendo con su monto original, pero no mueven el saldo", async () => {
     const { customerId, locationId } = await createFreshLocation();
-    const vigente = await deliver(locationId, 1);
-    const anulada = await deliver(locationId, 3, {
+    const live = await deliver(locationId, 1);
+    const voided = await deliver(locationId, 3, {
       paymentMethodId: cashPaymentMethodId,
       amount: "5.00",
     });
-    expect(anulada.paymentId).not.toBeNull();
-    await markVoided("sale", anulada.saleId);
-    await markVoided("payment", anulada.paymentId as string);
+    expect(voided.paymentId).not.toBeNull();
+    await voidStop(voided.stopId);
 
     const response = await getStatement(customerId);
     expect(response.status).toBe(200);
@@ -460,34 +514,146 @@ describe("una venta y un cobro anulados", () => {
       runningBalance: string;
       voidedAt: string | null;
     }[];
-    const vigenteEntry = entries.find((entry) => entry.saleId === vigente.saleId);
-    const anuladaEntry = entries.find((entry) => entry.saleId === anulada.saleId);
-    const cobroEntry = entries.find((entry) => entry.paymentId === anulada.paymentId);
+    const liveEntry = entries.find((entry) => entry.saleId === live.saleId);
+    const voidedEntry = entries.find((entry) => entry.saleId === voided.saleId);
+    const voidedPaymentEntry = entries.find((entry) => entry.paymentId === voided.paymentId);
 
     // Las tres filas se ven: nada se borra ni se esconde.
-    expect(vigenteEntry?.voidedAt).toBeNull();
-    expect(anuladaEntry?.voidedAt).not.toBeNull();
-    expect(cobroEntry?.voidedAt).not.toBeNull();
+    expect(liveEntry?.voidedAt).toBeNull();
+    expect(voidedEntry?.voidedAt).not.toBeNull();
+    expect(voidedPaymentEntry?.voidedAt).not.toBeNull();
     // Con su monto original, no en cero.
-    expect(anuladaEntry?.amount).toBe(anulada.total);
-    expect(cobroEntry?.amount).toBe("5.00");
-    // Y el saldo reconstruido es solo el de la venta vigente.
-    expect(response.body.closingBalance).toBe(vigente.total);
-    expect(anuladaEntry?.runningBalance).toBe(vigente.total);
-    expect(cobroEntry?.runningBalance).toBe(vigente.total);
+    expect(voidedEntry?.amount).toBe(voided.total);
+    expect(voidedPaymentEntry?.amount).toBe("5.00");
+    // Y el saldo reconstruido es solo el de la venta live.
+    expect(response.body.closingBalance).toBe(live.total);
+    expect(voidedEntry?.runningBalance).toBe(live.total);
+    expect(voidedPaymentEntry?.runningBalance).toBe(live.total);
 
-    // Y acá se ve lo que a este PR le falta para ser la feature entera.
-    // `debtBalance` sigue arrastrando la venta y el cobro anulados, porque
-    // este test los anuló a mano y un UPDATE no es la operación de
-    // corrección. La divergencia se afirma a propósito, en vez de dejarse
-    // pasar: es el trabajo del PR 2, que tiene que mover `debtBalance` en la
-    // MISMA transacción que escribe la anulación — el saldo materializado
-    // siempre reconstruible desde su ledger (CLAUDE.md). El día que exista,
-    // este expect se invierte a `toBe(response.body.closingBalance)`.
-    expect(response.body.customer.debtBalance).not.toBe(response.body.closingBalance);
+    // Y acá está lo que este PR agrega. `debtBalance` es un saldo
+    // materializado y tiene que ser siempre reconstruible desde su ledger
+    // (CLAUDE.md): la anulación lo movió en la MISMA transacción en la que
+    // marcó la venta y el cobro, así que el número cacheado y el reconstruido
+    // vuelven a coincidir. Hasta que existió esta operación, divergían.
+    expect(response.body.customer.debtBalance).toBe(response.body.closingBalance);
+    expect(await customerDebtBalance(customerId)).toBe(live.total);
+  });
+
+  test("devuelve los envases al camión y el saldo de envases del cliente", async () => {
+    const { locationId } = await createFreshLocation();
+    const delivery = await deliver(locationId, 2);
+
+    const before = await locationContainerBalance(locationId);
+    expect(before).toBe(2);
+
+    await voidStop(delivery.stopId);
+
+    // El saldo de envases vuelve a cero: esos dos bidones nunca se entregaron.
+    expect(await locationContainerBalance(locationId)).toBe(0);
+    // Y la reversa quedó en el libro, fechada en la ENTREGA y colgada de la
+    // misma ruta, que es lo que la liquidación necesita para netearla.
+    const voids = await prisma.containerMovement.findMany({
+      where: { stopId: delivery.stopId, type: "LOAN_DELIVERY_VOID" },
+    });
+    expect(voids).toHaveLength(1);
+    expect(voids[0]?.quantity).toBe(2);
+    expect(voids[0]?.routeId).toBe(delivery.routeId);
+    expect(voids[0]?.occurredAt.toISOString()).toBe(delivery.soldAt);
+  });
+
+  test("anular dos veces no duplica la reversa ni la devolución de deuda", async () => {
+    const { customerId, locationId } = await createFreshLocation();
+    const delivery = await deliver(locationId, 2);
+
+    await voidStop(delivery.stopId);
+    const afterFirst = await customerDebtBalance(customerId);
+
+    // La segunda pasada no encuentra venta vigente: no escribe nada.
+    await voidStop(delivery.stopId);
+
+    expect(await customerDebtBalance(customerId)).toBe(afterFirst);
+    expect(await locationContainerBalance(locationId)).toBe(0);
+    const voids = await prisma.containerMovement.findMany({
+      where: { stopId: delivery.stopId, type: "LOAN_DELIVERY_VOID" },
+    });
+    expect(voids).toHaveLength(1);
+  });
+
+  test("un cobro PENDING se marca anulado pero no devuelve deuda", async () => {
+    const { customerId, locationId } = await createFreshLocation();
+    const delivery = await deliver(locationId, 1, {
+      paymentMethodId: yapePaymentMethodId,
+      amount: "4.00",
+    });
+    // Yape exige confirmación: el cobro nace PENDING y nunca bajó la deuda.
+    const before = await customerDebtBalance(customerId);
+    expect(before).toBe(delivery.total);
+
+    await voidStop(delivery.stopId);
+
+    // Vuelve a cero por la venta, y ni un centavo por el cobro.
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+    const payment = await prisma.payment.findUniqueOrThrow({
+      where: { id: delivery.paymentId as string },
+    });
+    expect(payment.voidedAt).not.toBeNull();
+    // Anular no es rechazar: el estado no se toca.
+    expect(payment.status).toBe("PENDING");
+  });
+
+  test("un cobro confirmado DESPUÉS devuelve su monto: manda el estado de hoy", async () => {
+    const { customerId, locationId } = await createFreshLocation();
+    const delivery = await deliver(locationId, 1, {
+      paymentMethodId: yapePaymentMethodId,
+      amount: "4.00",
+    });
+    await confirmPayment(delivery.paymentId as string);
+    // Confirmar ya bajó la deuda: total - 4.00.
     expect(await customerDebtBalance(customerId)).toBe(
-      new Prisma.Decimal(vigente.total).plus(anulada.total).minus("5.00").toFixed(2),
+      new Prisma.Decimal(delivery.total).minus("4.00").toFixed(2),
     );
+
+    await voidStop(delivery.stopId);
+
+    // Si la anulación mirara el estado de NACIMIENTO (PENDING) no devolvería
+    // los 4.00 y el cliente quedaría con un crédito fantasma de -4.00.
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+  });
+
+  // Anular NO cambia el estado del cobro, así que un Yape anulado sigue
+  // PENDING y la bandeja de confirmación lo lista igual que a uno vivo. Sin
+  // guarda, la oficina lo confirmaría y bajaría la deuda por un cobro cuya
+  // venta ya se revirtió entera: un crédito fantasma, y `debtBalance` dejando
+  // de coincidir con el saldo que el estado de cuenta reconstruye.
+  test("un cobro anulado ya no se puede confirmar: no hay crédito fantasma", async () => {
+    const { customerId, locationId } = await createFreshLocation();
+    const delivery = await deliver(locationId, 1, {
+      paymentMethodId: yapePaymentMethodId,
+      amount: "4.00",
+    });
+    await voidStop(delivery.stopId);
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+
+    const response = await request(server())
+      .post(`/api/v1/payments/${delivery.paymentId as string}/confirm`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(409);
+    expect(JSON.stringify(response.body)).toMatch(/anulado junto con su entrega/);
+    // Y lo que importa: la deuda no se movió.
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
+
+    const statement = await getStatement(customerId);
+    expect(statement.body.customer.debtBalance).toBe(statement.body.closingBalance);
+  });
+
+  test("una parada sin venta no es un error: no hay nada que anular", async () => {
+    const { customerId, locationId } = await createFreshLocation();
+    const stopId = await failedStop(locationId);
+
+    await expect(voidStop(stopId)).resolves.toBeUndefined();
+
+    expect(await customerDebtBalance(customerId)).toBe("0.00");
   });
 
   test.each(["sale", "payment"] as const)(

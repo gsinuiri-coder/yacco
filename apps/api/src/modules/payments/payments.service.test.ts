@@ -108,7 +108,7 @@ describe("PaymentsService", () => {
       const result = await service.confirm(PAYMENT_ID, ADMIN_ID);
 
       expect(prisma.payment.updateMany).toHaveBeenCalledWith({
-        where: { id: PAYMENT_ID, status: PaymentStatus.PENDING },
+        where: { id: PAYMENT_ID, status: PaymentStatus.PENDING, voidedAt: null },
         data: expect.objectContaining({
           status: PaymentStatus.CONFIRMED,
           confirmedById: ADMIN_ID,
@@ -138,7 +138,10 @@ describe("PaymentsService", () => {
       // Second call: the same guarded UPDATE now affects nothing (status is
       // already CONFIRMED), so it must abort before touching debtBalance again.
       prisma.payment.updateMany.mockResolvedValueOnce({ count: 0 });
-      prisma.payment.findUnique.mockResolvedValueOnce({ status: PaymentStatus.CONFIRMED });
+      prisma.payment.findUnique.mockResolvedValueOnce({
+        status: PaymentStatus.CONFIRMED,
+        voidedAt: null,
+      });
 
       await expect(service.confirm(PAYMENT_ID, ADMIN_ID)).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.customer.update).toHaveBeenCalledTimes(1);
@@ -146,7 +149,10 @@ describe("PaymentsService", () => {
 
     it("confirming an already-CONFIRMED payment (e.g. cash from dispatch) is rejected with 409", async () => {
       prisma.payment.updateMany.mockResolvedValue({ count: 0 });
-      prisma.payment.findUnique.mockResolvedValue({ status: PaymentStatus.CONFIRMED });
+      prisma.payment.findUnique.mockResolvedValue({
+        status: PaymentStatus.CONFIRMED,
+        voidedAt: null,
+      });
 
       await expect(service.confirm(PAYMENT_ID, ADMIN_ID)).rejects.toThrow(
         /ya está en estado CONFIRMED/,
@@ -183,7 +189,7 @@ describe("PaymentsService", () => {
       );
 
       expect(prisma.payment.updateMany).toHaveBeenCalledWith({
-        where: { id: PAYMENT_ID, status: PaymentStatus.PENDING },
+        where: { id: PAYMENT_ID, status: PaymentStatus.PENDING, voidedAt: null },
         data: {
           status: PaymentStatus.REJECTED,
           rejectedAt: expect.any(Date) as Date,
@@ -199,7 +205,10 @@ describe("PaymentsService", () => {
 
     it("rejecting an already-REJECTED payment is rejected with 409", async () => {
       prisma.payment.updateMany.mockResolvedValue({ count: 0 });
-      prisma.payment.findUnique.mockResolvedValue({ status: PaymentStatus.REJECTED });
+      prisma.payment.findUnique.mockResolvedValue({
+        status: PaymentStatus.REJECTED,
+        voidedAt: null,
+      });
 
       await expect(service.reject(PAYMENT_ID, { reason: "otro motivo" }, ADMIN_ID)).rejects.toThrow(
         /ya está en estado REJECTED/,
@@ -208,7 +217,10 @@ describe("PaymentsService", () => {
 
     it("rejecting an already-CONFIRMED payment is rejected with 409", async () => {
       prisma.payment.updateMany.mockResolvedValue({ count: 0 });
-      prisma.payment.findUnique.mockResolvedValue({ status: PaymentStatus.CONFIRMED });
+      prisma.payment.findUnique.mockResolvedValue({
+        status: PaymentStatus.CONFIRMED,
+        voidedAt: null,
+      });
 
       await expect(
         service.reject(PAYMENT_ID, { reason: "otro motivo" }, ADMIN_ID),

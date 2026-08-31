@@ -8,6 +8,7 @@ import {
   StopStatus,
 } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
+import { SalesService } from "../../src/modules/sales/sales.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
@@ -1678,6 +1679,36 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId — DELIVERED registers the del
     expect(messagesOf(response)).toMatch(/ya fue registrada/);
     // Exactly one sale/movement from the first call — the rejected retry left nothing.
     expect(await prisma.sale.count({ where: { stopId } })).toBe(1);
+  });
+
+  test("tras anular la entrega, el conflicto ya no cita una venta que no vale", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    const items = [{ productId: refillProductId, quantity: 1 }];
+    await deliverStop(adminToken, routeId, stopId, { items }).then((r) =>
+      expect(r.status).toBe(200),
+    );
+    const sales = ctx.app.get(SalesService);
+    await prisma.$transaction((tx) =>
+      sales.voidStopDeliveryWithinTransaction(tx, {
+        stopId,
+        voidedById: adminUserId,
+        voidReason: "Se anotó la parada equivocada",
+      }),
+    );
+
+    const response = await deliverStop(adminToken, routeId, stopId, { items });
+
+    // Sigue siendo 409 —la parada quedó DELIVERED y devolverla a PENDING es
+    // otro trabajo— pero el mensaje ya no puede nombrar la fecha ni el autor
+    // de una entrega que se deshizo: eso mandaría a la oficina a buscar un
+    // cobro que ya no existe. Cae al mensaje genérico de estado.
+    expect(response.status).toBe(409);
+    expect(messagesOf(response)).not.toMatch(/ya fue registrada/);
+    expect(messagesOf(response)).toMatch(/ya está en estado DELIVERED/);
+    // La venta sigue en la tabla, anulada: nada se borró.
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(1);
+    expect(await prisma.sale.count({ where: { stopId, voidedAt: null } })).toBe(0);
   });
 
   test("real concurrency: two requests marking the same stop — exactly one wins, the loser leaves no trace", async () => {
