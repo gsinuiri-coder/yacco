@@ -198,18 +198,28 @@ function postSettlement(
  * Puede dar NEGATIVO, y eso es justamente lo que un test comprueba: liquidar
  * emite desde lo contado en la puerta, no desde el libro.
  */
-async function emptiesOnRoute(typeId: string): Promise<number> {
+async function netInState(typeId: string, state: ContainerState): Promise<number> {
   const [into, outOf] = await Promise.all([
     prisma.containerMovement.aggregate({
-      where: { containerTypeId: typeId, toState: ContainerState.EMPTY_ON_ROUTE },
+      where: { containerTypeId: typeId, toState: state },
       _sum: { quantity: true },
     }),
     prisma.containerMovement.aggregate({
-      where: { containerTypeId: typeId, fromState: ContainerState.EMPTY_ON_ROUTE },
+      where: { containerTypeId: typeId, fromState: state },
       _sum: { quantity: true },
     }),
   ]);
   return (into._sum.quantity ?? 0) - (outOf._sum.quantity ?? 0);
+}
+
+function emptiesOnRoute(typeId: string): Promise<number> {
+  return netInState(typeId, ContainerState.EMPTY_ON_ROUTE);
+}
+
+/** Lo mismo para los llenos: así se ve que un movimiento de anulación los
+ * devuelve al camión sin que nadie lea su `type`. */
+function fullsOnRoute(typeId: string): Promise<number> {
+  return netInState(typeId, ContainerState.FULL_ON_ROUTE);
 }
 
 let extraTypeSeq = 0;
@@ -796,6 +806,168 @@ describe("GET .../settlement before and after settling", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.unresolvedStops).toBe(1);
+  });
+});
+
+/**
+ * Quien ESCRIBE una anulación es la operación de corrección, que todavía no
+ * existe: acá los movimientos de anulación y las columnas de la venta se
+ * escriben a mano. Es legítimo justamente porque lo que se prueba es la
+ * aritmética de quien LEE el libro. El INSERT en el ledger es el mismo que
+ * hará esa operación; el UPDATE sobre `sales` es lo único que ningún código
+ * de producción tiene permitido hacer.
+ */
+describe("la liquidación no cuenta lo anulado", () => {
+  test("una entrega, una recogida y una venta anuladas salen netas del expected", async () => {
+    const { locationId } = await createFreshLocation();
+    const batchItemId = await createBatchItem(10);
+    const routeId = await createRoute();
+    await addLoad(routeId, batchItemId, 10);
+    const stopId = await addStop(routeId, locationId);
+    await startRoute(routeId);
+    const delivered = await deliverStop(routeId, stopId, {
+      // 4 recargas (LOAN_DELIVERY 4) y 2 bidones vendidos (FULL_SALE 2),
+      // con 3 vacíos recogidos.
+      items: [
+        { productId: refillProductId, quantity: 4 },
+        { productId: containerSaleProductId, quantity: 2 },
+      ],
+      containersReturned: [{ containerTypeId, quantity: 3 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "10.00" },
+    });
+    expect(delivered.status).toBe(200);
+    await finishRoute(routeId);
+
+    const before = await getSettlement(routeId);
+    expect(before.status).toBe(200);
+    expect(before.body.expected.fullDelivered).toBe(4);
+    expect(before.body.expected.fullSold).toBe(2);
+    expect(before.body.expected.emptiesPickedUp).toBe(3);
+    const soldBefore = before.body.expected.totalSold;
+    expect(before.body.expected.totalCashCollected).toBe("10.00");
+
+    // La corrección: se anota que 1 de las 4 entregas, 1 de las 2 ventas y 1
+    // de las 3 recogidas nunca pasaron, y se anulan la venta y su cobro.
+    await prisma.containerMovement.createMany({
+      data: [
+        {
+          routeId,
+          type: ContainerMovementType.LOAN_DELIVERY_VOID,
+          containerTypeId,
+          quantity: 1,
+          fromState: ContainerState.WITH_CUSTOMER,
+          toState: ContainerState.FULL_ON_ROUTE,
+          occurredAt: new Date(),
+          recordedById: adminUserId,
+        },
+        {
+          routeId,
+          type: ContainerMovementType.FULL_SALE_VOID,
+          containerTypeId,
+          quantity: 1,
+          fromState: null,
+          toState: ContainerState.FULL_ON_ROUTE,
+          occurredAt: new Date(),
+          recordedById: adminUserId,
+        },
+        {
+          routeId,
+          type: ContainerMovementType.EMPTY_PICKUP_VOID,
+          containerTypeId,
+          quantity: 1,
+          fromState: ContainerState.EMPTY_ON_ROUTE,
+          toState: ContainerState.WITH_CUSTOMER,
+          occurredAt: new Date(),
+          recordedById: adminUserId,
+        },
+      ],
+    });
+    const voided = {
+      voidedAt: new Date(),
+      voidedById: adminUserId,
+      voidReason: "Se anotó la parada equivocada",
+    };
+    await prisma.sale.update({ where: { id: delivered.body.sale.id }, data: voided });
+    await prisma.payment.update({ where: { id: delivered.body.payment.id }, data: voided });
+
+    const after = await getSettlement(routeId);
+
+    expect(after.status).toBe(200);
+    expect(after.body.expected.fullDelivered).toBe(3);
+    expect(after.body.expected.fullSold).toBe(1);
+    expect(after.body.expected.emptiesPickedUp).toBe(2);
+    // Lo que salió del galpón salió: anular no descarga el camión.
+    expect(after.body.expected.fullOut).toBe(10);
+    // Y la plata anulada deja de pedírsele al chofer en la puerta.
+    expect(soldBefore).not.toBe("0.00");
+    expect(after.body.expected.totalSold).toBe("0.00");
+    expect(after.body.expected.totalCollected).toBe("0.00");
+    expect(after.body.expected.totalCashCollected).toBe("0.00");
+  });
+
+  test("un tipo recogido y anulado entero conserva su línea en cero", async () => {
+    const typeId = await createContainerType();
+    const { locationId } = await createFreshLocation();
+    const batchItemId = await createBatchItem(5);
+    const routeId = await createRoute();
+    await addLoad(routeId, batchItemId, 5);
+    const stopId = await addStop(routeId, locationId);
+    await startRoute(routeId);
+    await deliverStop(routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+      containersReturned: [{ containerTypeId: typeId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+    await finishRoute(routeId);
+
+    await prisma.containerMovement.create({
+      data: {
+        routeId,
+        type: ContainerMovementType.EMPTY_PICKUP_VOID,
+        containerTypeId: typeId,
+        quantity: 2,
+        fromState: ContainerState.EMPTY_ON_ROUTE,
+        toState: ContainerState.WITH_CUSTOMER,
+        occurredAt: new Date(),
+        recordedById: adminUserId,
+      },
+    });
+
+    const response = await getSettlement(routeId);
+
+    expect(response.status).toBe(200);
+    // La línea SE CONSERVA en cero: que se haya recogido y anulado entero es
+    // información. Sin ella sería indistinguible de un tipo que nunca pasó por
+    // la ruta, porque la diferencia por tipo lee la ausencia como cero.
+    const line = (
+      response.body.expected.emptiesPickedUpByType as {
+        containerTypeId: string;
+        quantity: number;
+      }[]
+    ).find((row) => row.containerTypeId === typeId);
+    expect(line).toBeDefined();
+    expect(line?.quantity).toBe(0);
+    expect(response.body.expected.emptiesPickedUp).toBe(0);
+  });
+
+  test("los llenos vuelven al camión solos: el stock se lee por estados, no por tipo", async () => {
+    const typeId = await createContainerType();
+    const before = await fullsOnRoute(typeId);
+
+    await prisma.containerMovement.create({
+      data: {
+        type: ContainerMovementType.LOAN_DELIVERY_VOID,
+        containerTypeId: typeId,
+        quantity: 6,
+        fromState: ContainerState.WITH_CUSTOMER,
+        toState: ContainerState.FULL_ON_ROUTE,
+        occurredAt: new Date(),
+        recordedById: adminUserId,
+      },
+    });
+
+    // getRouteFullStock e inventory() no saben que estos tipos existen y no
+    // hizo falta que lo supieran: calculan por fromState/toState.
+    expect(await fullsOnRoute(typeId)).toBe(before + 6);
   });
 });
 

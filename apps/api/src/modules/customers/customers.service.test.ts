@@ -453,6 +453,7 @@ describe("CustomersService", () => {
         soldAt: new Date("2026-08-10T15:00:00.000Z"),
         total: new Prisma.Decimal((total as string | undefined) ?? "24.99"),
         isOpeningBalance: false,
+        voidedAt: null,
         location: { name: "Principal" },
         ...rest,
       };
@@ -466,6 +467,7 @@ describe("CustomersService", () => {
         amount: new Prisma.Decimal((amount as string | undefined) ?? "24.99"),
         status: PaymentStatus.CONFIRMED,
         isOpeningBalance: false,
+        voidedAt: null,
         paymentMethod: { name: "Efectivo" },
         ...rest,
       };
@@ -560,6 +562,54 @@ describe("CustomersService", () => {
       expect(result.entries[2]?.status).toBe(PaymentStatus.PENDING);
       expect(result.entries[3]?.status).toBe(PaymentStatus.REJECTED);
       expect(result.closingBalance).toBe("14.99");
+    });
+
+    // El estado anulado lo escribe la operación de corrección, que todavía no
+    // existe: acá se arma a mano a propósito. Lo que se prueba es la
+    // aritmética de quien LEE el libro, no la de quien lo escribe.
+    it("una venta y un cobro anulados aparecen con su monto original y efecto cero", async () => {
+      const voidedAt = new Date("2026-08-11T09:00:00.000Z");
+      prisma.customer.findUnique.mockResolvedValue(
+        buildCustomer({ debtBalance: new Prisma.Decimal("10.00") }),
+      );
+      prisma.sale.findMany.mockResolvedValue([
+        sale({ id: "sale-vigente", soldAt: new Date("2026-08-10T10:00:00.000Z"), total: "10.00" }),
+        sale({
+          id: "sale-anulada",
+          soldAt: new Date("2026-08-10T11:00:00.000Z"),
+          total: "24.99",
+          voidedAt,
+        }),
+      ]);
+      prisma.payment.findMany.mockResolvedValue([
+        payment({
+          id: "payment-anulado",
+          paidAt: new Date("2026-08-10T12:00:00.000Z"),
+          amount: "24.99",
+          status: PaymentStatus.CONFIRMED,
+          voidedAt,
+        }),
+      ]);
+
+      const result = await service.getAccountStatement("customer-1", {
+        limit: ACCOUNT_STATEMENT_DEFAULT_LIMIT,
+      });
+
+      // Las tres filas se ven; solo la vigente mueve el saldo. Un cobro
+      // anulado no resta aunque esté CONFIRMED: el efectivo volvió al cliente.
+      expect(result.entries).toHaveLength(3);
+      expect(result.entries.map((entry) => entry.runningBalance)).toEqual([
+        "10.00", // cargo vigente
+        "10.00", // venta anulada: sin efecto
+        "10.00", // cobro anulado: sin efecto, aunque siga CONFIRMED
+      ]);
+      // El monto original SE CONSERVA: la fila del libro no se edita nunca.
+      expect(result.entries[1]?.amount).toBe("24.99");
+      expect(result.entries[2]?.amount).toBe("24.99");
+      expect(result.entries[1]?.voidedAt).toEqual(voidedAt);
+      expect(result.entries[2]?.voidedAt).toEqual(voidedAt);
+      expect(result.entries[0]?.voidedAt).toBeNull();
+      expect(result.closingBalance).toBe("10.00");
     });
 
     it("entries from different tables interleave by instant, not grouped by type", async () => {

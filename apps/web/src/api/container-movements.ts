@@ -32,7 +32,10 @@ export type ContainerMovementType =
   | "DAMAGE_WRITE_OFF"
   | "LOSS_WRITE_OFF"
   | "OPENING_BALANCE"
-  | "COUNT_ADJUSTMENT";
+  | "COUNT_ADJUSTMENT"
+  | "LOAN_DELIVERY_VOID"
+  | "EMPTY_PICKUP_VOID"
+  | "FULL_SALE_VOID";
 
 /** ContainerMovementContainerTypeDto. */
 export interface ContainerMovementContainerType {

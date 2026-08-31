@@ -48,6 +48,14 @@ enum ContainerMovementType {
   LOSS_WRITE_OFF
   OPENING_BALANCE
   COUNT_ADJUSTMENT
+  // Las tres anulaciones: no registran que algo se haya movido, registran que
+  // algo que se anotó NO pasó. Son tipos propios y no pares nuevos sobre los
+  // tipos que anulan porque la liquidación agrega por `type`, no por estados
+  // — una reversa tipada LOAN_DELIVERY sumaría a fullDelivered en vez de
+  // restarle. Ver container-movement-transitions.ts.
+  LOAN_DELIVERY_VOID
+  EMPTY_PICKUP_VOID
+  FULL_SALE_VOID
 
   @@map("container_movement_type")
 }
@@ -157,9 +165,11 @@ model User {
   routeStopsAdded               RouteStop[]          @relation("RouteStopAddedBy")
   salesRecorded                 Sale[]               @relation("SaleRecordedBy")
   salesPriceOverridesAuthorized Sale[]               @relation("SalePriceOverrideAuthorizedBy")
+  salesVoided                   Sale[]               @relation("SaleVoidedBy")
   paymentsRecorded              Payment[]            @relation("PaymentRecordedBy")
   paymentsConfirmed             Payment[]            @relation("PaymentConfirmedBy")
   paymentsRejected              Payment[]            @relation("PaymentRejectedBy")
+  paymentsVoided                Payment[]            @relation("PaymentVoidedBy")
   routeSettlements              RouteSettlement[]
   syncOperations                SyncOperation[]
 
@@ -540,12 +550,12 @@ model RouteStop {
 // --- Sales & collections ----------------------------------------------------
 
 model Sale {
-  id                          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  locationId                  String   @map("location_id") @db.Uuid
-  stopId                      String?  @map("stop_id") @db.Uuid
-  soldAt                      DateTime @map("sold_at") @db.Timestamptz(6)
-  total                       Decimal  @db.Decimal(10, 2)
-  creditLimitExceeded         Boolean  @default(false) @map("credit_limit_exceeded")
+  id                          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId                  String    @map("location_id") @db.Uuid
+  stopId                      String?   @map("stop_id") @db.Uuid
+  soldAt                      DateTime  @map("sold_at") @db.Timestamptz(6)
+  total                       Decimal   @db.Decimal(10, 2)
+  creditLimitExceeded         Boolean   @default(false) @map("credit_limit_exceeded")
   // Marks the charge that carries the customer's debt from the paper ledger
   // into the system at cutover. It is not a sale: it has no items, because
   // nobody knows what was actually sold to produce that debt, and faking
@@ -554,25 +564,35 @@ model Sale {
   // reconciliation, a route settlement, or a products-sold report: that
   // money and those products moved before the system existed, and counting
   // them would throw off the day's own numbers.
-  isOpeningBalance            Boolean  @default(false) @map("is_opening_balance")
+  isOpeningBalance            Boolean   @default(false) @map("is_opening_balance")
   // Reference to the record in the system this row was imported from (the
   // roster loader's source). Unique when present — hand-written partial
   // index sales_external_id_key — so a second run of the loader finds the
   // charge it already created instead of creating it again. Null for every
   // sale the system itself registers: those come from no import.
-  externalId                  String?  @map("external_id")
-  recordedById                String   @map("recorded_by") @db.Uuid
+  externalId                  String?   @map("external_id")
+  recordedById                String    @map("recorded_by") @db.Uuid
   // Who authorized charging a price different from the one CustomerPrices
   // would have resolved. Required by the service whenever the caller's
   // unitPrice disagrees with the resolved one — the sale is never blocked,
   // but an unauthorized override is (spec: alert without blocking is only
   // for credit limit and container shortfalls, not for who OK'd a price).
-  priceOverrideAuthorizedById String?  @map("price_override_authorized_by") @db.Uuid
+  priceOverrideAuthorizedById String?   @map("price_override_authorized_by") @db.Uuid
+  // La anulación de un cargo mal anotado. La fila NUNCA se edita ni se borra
+  // (CLAUDE.md): estas tres columnas la marcan como anulada y todo lo que
+  // suma dinero deja de contarla, mientras la fila original sigue ahí con su
+  // monto para que el estado de cuenta la muestre en cero. Las tres van
+  // juntas o ninguna — CHECK escrito a mano en la migración, Prisma no sabe
+  // expresarlo.
+  voidedAt                    DateTime? @map("voided_at") @db.Timestamptz(6)
+  voidedById                  String?   @map("voided_by") @db.Uuid
+  voidReason                  String?   @map("void_reason")
 
   location                  CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
   stop                      RouteStop?       @relation(fields: [stopId], references: [id], onDelete: Restrict)
   recordedBy                User             @relation("SaleRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
   priceOverrideAuthorizedBy User?            @relation("SalePriceOverrideAuthorizedBy", fields: [priceOverrideAuthorizedById], references: [id], onDelete: Restrict)
+  voidedBy                  User?            @relation("SaleVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
   items                     SaleItem[]
   payments                  Payment[]
 
@@ -637,6 +657,15 @@ model Payment {
   // UNIQUE constraint's duplicate check, so any number of keyless payments
   // coexist with the keyed ones.
   idempotencyKey   String?       @unique @map("idempotency_key") @db.Uuid
+  // La anulación de un cobro mal anotado, y NO es PaymentStatus.REJECTED:
+  // rechazar dice que el dinero nunca llegó y por eso no hay nada que
+  // revertir (ver el comentario del enum), mientras que el efectivo de una
+  // entrega mal anotada sí tocó debtBalance y sí hay que devolverlo. Estas
+  // columnas viven acá y no se leen de la venta: un pago existe sin venta
+  // —la cobranza de oficina— y cada fila del libro se explica sola.
+  voidedAt         DateTime?     @map("voided_at") @db.Timestamptz(6)
+  voidedById       String?       @map("voided_by") @db.Uuid
+  voidReason       String?       @map("void_reason")
 
   customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
   location      CustomerLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
@@ -646,6 +675,7 @@ model Payment {
   recordedBy    User              @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
   confirmedBy   User?             @relation("PaymentConfirmedBy", fields: [confirmedById], references: [id], onDelete: Restrict)
   rejectedBy    User?             @relation("PaymentRejectedBy", fields: [rejectedById], references: [id], onDelete: Restrict)
+  voidedBy      User?             @relation("PaymentVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
 
   @@index([paidAt, paymentMethodId])
   // The office collection screen (HU-18) loads a customer's recent payments

@@ -20,6 +20,9 @@ export const CONTAINER_MOVEMENT_TYPE_LABELS: Record<ContainerMovementType, strin
   LOSS_WRITE_OFF: "Baja por pérdida",
   OPENING_BALANCE: "Saldo de apertura",
   COUNT_ADJUSTMENT: "Ajuste por conteo",
+  LOAN_DELIVERY_VOID: "Anulación de entrega",
+  EMPTY_PICKUP_VOID: "Anulación de recogida",
+  FULL_SALE_VOID: "Anulación de venta",
 };
 
 /** "de dónde sale" phrasing for the origin picker — plain-language, not the enum. */

@@ -314,6 +314,15 @@ export class PaymentsService {
    * not derived from `data`: the office needs "how much Yape is sitting
    * unconfirmed today" across the whole filtered set, not just the 20 rows
    * on screen.
+   *
+   * `voidedAt` NO se filtra acá, a diferencia de las cuatro sumas de
+   * `RouteSettlementService.computeExpected`, y la diferencia es deliberada:
+   * ese total describe LA LISTA, no un saldo. Tiene que sumar exactamente las
+   * filas que se muestran —por eso comparte el `where` con la página— y ya
+   * incluye los REJECTED por la misma razón. Filtrar lo anulado acá dejaría
+   * un total que no cuadra con lo que el ojo suma en pantalla. Si un cobro
+   * anulado debe desaparecer de la bandeja, eso se decide en el filtro de la
+   * pantalla, no en el total.
    */
   async findAll(query: ListPaymentsQueryDto): Promise<PaginatedPaymentsDto> {
     const { page, limit } = query;
