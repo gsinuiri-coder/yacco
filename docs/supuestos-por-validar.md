@@ -224,6 +224,37 @@ que dijo que sí.
   de lo ya corregido desde las ventas anuladas, y una pantalla que hoy no
   existe. No es una columna más: es un modelo.
 
+### 10. Corregir hacia arriba deja el camión en negativo en vez de frenar
+
+- **Asumimos** que cuando el dueño corrige una visita y dice que se entregaron
+  más bidones de los que el sistema creía que llevaba el camión, lo que hay que
+  hacer es creerle y anotarlo: el camión ya volvió, el hecho físico está
+  consumado, y frenarlo lo mandaría de vuelta al Excel, que es lo que esta
+  operación existe para impedir. Asumimos también que el caso típico detrás de
+  ese descuadre es una CARGA mal anotada, no una entrega inventada.
+- **Construido encima:** `allowStockShortfall` en
+  `SalesService.registerStopDeliveryWithinTransaction`, que solo prende
+  `RoutesService.correctStop`. El chequeo de llenos en el camión deja de
+  bloquear, el faltante viaja en `stockShortfall` para que la pantalla lo
+  avise (PR de la web) y la corrección se registra igual. Tiene dos
+  consecuencias que conviene tener presentes: el saldo de ese camión queda
+  **negativo** en `FULL_ON_ROUTE` —y por lo tanto también en el inventario
+  general, igual que ya pasa con los saldos de envases de un cliente—, y si la
+  ruta todavía está en curso, la siguiente entrega normal de esa ruta se
+  rechaza con «hay -2». En una ruta ya terminada no molesta a nadie. Al
+  registrar una entrega normal el chequeo **sigue bloqueando**: entregar lo que
+  el camión no tiene no es un error de anotación, es imposible.
+- **Preguntar:** si al corregir una visita resulta que se entregaron más
+  bidones de los que figuraban cargados en el camión, ¿prefiere que el sistema
+  lo anote igual y le avise, o que no lo deje y le pida primero arreglar la
+  carga del camión?
+- **Si dice que no:** barato del lado del código —es apagar el `true` en
+  `correctStop`— pero caro de operación: la oficina tendría que corregir
+  primero la carga de la ruta, y hoy `DELETE /routes/:id/loads/:loadId` solo
+  funciona con la ruta PLANNED. Es decir, la alternativa no existe todavía:
+  antes de apagarlo hay que darle a la oficina una forma de corregir la carga
+  de una ruta que ya salió.
+
 ## Validados
 
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026

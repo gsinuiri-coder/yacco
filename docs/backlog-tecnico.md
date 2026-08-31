@@ -885,10 +885,17 @@ decisión está tomada. **No se bloquea** —`RoutesService.correctStop` acepta
 `IN_PROGRESS`, `FINISHED` y `SETTLED`, y solo rechaza `PLANNED`, donde no hay
 nada registrado que corregir— **y no se agrega columna**: la liquidación se
 muestra desactualizada de forma **derivada**, comparando su `settledAt`
-contra el `voidedAt` más reciente de las ventas de esa ruta. Una columna
+contra el `corrected_at` más reciente de las paradas de esa ruta. Una columna
 `outdated` sería un tercer estado que hay que mantener en sincronía con dos
 hechos que ya están escritos, y volvería a quedar mintiendo con la primera
 corrección que se olvide de tocarla.
+
+El comparador es `route_stops.corrected_at`, **no** el `voidedAt` más
+reciente de las ventas de la ruta, que era la primera idea y se queda corta:
+corregir una parada que estaba FAILED no anula ninguna venta —no había—
+pero sí escribe una venta nueva y sus movimientos, así que `max(voidedAt)`
+no se movería y la liquidación se vería al día estando mal. `corrected_at`
+se estampa en las dos direcciones y cubre el caso entero.
 
 Mostrarlo es **lectura, no escritura**, así que no le toca al endpoint de
 corrección sino al PR de la auditoría visible (la venta de cada parada en el

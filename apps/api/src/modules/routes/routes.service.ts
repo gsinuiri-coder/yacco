@@ -709,6 +709,14 @@ export class RoutesService {
    * no información falsa —ese ADMIN sí autorizó este registro—, y el precio
    * cobrado queda escrito tal cual en la venta.
    *
+   * **El cuerpo describe la parada ENTERA como quedó, no el pedacito que
+   * cambia.** Corregir es anular y volver a registrar, así que lo que el
+   * cuerpo no diga no se re-registra: mandar solo `items` para arreglar una
+   * cantidad borra el cobro y los vacíos que la parada tenía, porque la
+   * anulación ya los deshizo y nada los vuelve a escribir. Es reemplazo, no
+   * parche, y quien llama tiene que repetir `payment` y `containersReturned`
+   * si siguen valiendo.
+   *
    * Una ruta SETTLED NO bloquea: la liquidación pasa a estar desactualizada, y
    * mostrarlo es lectura, no escritura. PLANNED sí, porque no hay nada
    * registrado que corregir.
@@ -767,11 +775,19 @@ export class RoutesService {
       });
 
       // EL ORDEN IMPORTA Y NO ES CASUAL: anular ANTES de volver a registrar.
-      // Los LOAN_DELIVERY_VOID y FULL_SALE_VOID entran a FULL_ON_ROUTE y
-      // `getRouteFullStock` agrega por ESTADO, así que la anulación devuelve
-      // los llenos al camión justo antes de que la re-registración se los
-      // pida. Al revés, corregir la misma cantidad sobre un camión que quedó
-      // vacío fallaría por stock contra un camión que en realidad los tenía.
+      //
+      // La razón que manda es que `emitStopVoidMovements` netea sobre TODOS
+      // los movimientos de este `stopId`: al revés, el LOAN_DELIVERY recién
+      // escrito entraría en ese neteo y la anulación revertiría justo la
+      // entrega que acababa de registrarse. No es una preferencia de estilo
+      // —`allowStockShortfall` no la vuelve opcional—, es la diferencia entre
+      // corregir y dejar la parada sin nada.
+      //
+      // La segunda razón es el stock: los LOAN_DELIVERY_VOID y FULL_SALE_VOID
+      // entran a FULL_ON_ROUTE y `getRouteFullStock` agrega por ESTADO, así
+      // que la anulación devuelve los llenos al camión justo antes de que la
+      // re-registración se los pida. Al revés, corregir la misma cantidad
+      // sobre un camión que quedó vacío contaría un faltante que no existe.
       //
       // No-op silencioso si la parada estaba FAILED y no había venta.
       const voided = await this.salesService.voidStopDeliveryWithinTransaction(tx, {

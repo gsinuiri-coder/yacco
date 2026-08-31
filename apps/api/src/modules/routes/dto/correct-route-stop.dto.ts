@@ -4,7 +4,10 @@ import { MarkRouteStopDto } from "./mark-route-stop.dto.js";
 
 /**
  * Corregir una parada es volver a marcarla, así que el cuerpo es el mismo que
- * el de marcarla más el motivo. Extiende `MarkRouteStopDto` en vez de repetir
+ * el de marcarla más el motivo — y como el de marcarla, describe la parada
+ * ENTERA tal como quedó, no el pedacito que cambia: lo que no se repita acá
+ * (`payment`, `containersReturned`) no se vuelve a registrar, porque la
+ * anulación ya lo deshizo. Extiende `MarkRouteStopDto` en vez de repetir
  * sus cuatro sub-DTOs: `DeliverySaleItemDto`, `ContainerReturnDto` y
  * `DeliveryPaymentDto` son idénticos en las dos operaciones y copiarlos sería
  * duplicación pura —dos definiciones del mismo contrato que se despegan a la

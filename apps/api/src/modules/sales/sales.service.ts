@@ -944,9 +944,16 @@ export class SalesService {
         locationId: true,
         routeId: true,
       },
-      // Ordenado para que la lectura sea determinista: de acá salen tanto el
-      // neto como la ubicación y la ruta con las que se cuelga la reversa, y
-      // `findMany` sin `orderBy` no promete ningún orden.
+      // `findMany` sin `orderBy` no promete ningún orden, así que se pide uno.
+      // Ojo: desde que corregir una parada re-registra la entrega heredando el
+      // `soldAt` de la venta anulada, los movimientos de un mismo `stopId`
+      // COMPARTEN `occurredAt` y este orden ya no los desempata. No importa
+      // para lo que se lee acá —la suma es conmutativa, y `locationId` y
+      // `routeId` son los mismos en todos los movimientos originales de una
+      // parada, así que cuál gane la asignación da igual— pero no queda
+      // ninguna garantía de orden que invocar. `ContainerMovement` no tiene
+      // `created_at` con el cual desempatar; el día que haga falta, es eso lo
+      // que falta.
       orderBy: { occurredAt: "asc" },
     });
 

@@ -138,6 +138,13 @@ export class RouteStopResponseDto {
   @ApiProperty({ enum: StopStatus })
   status!: StopStatus;
 
+  /**
+   * OJO al mostrarlo: una parada corregida de FAILED a DELIVERED CONSERVA el
+   * motivo de falla original a propósito (es la evidencia de que hubo un error
+   * de anotación — ver `RoutesService.correctStop`), así que este campo puede
+   * venir lleno con `status = DELIVERED`. Se muestra únicamente cuando la
+   * parada está FAILED; si no, la pantalla diría «Entregada — Nadie atendió».
+   */
   @ApiPropertyOptional({ nullable: true })
   failureReason!: string | null;
 

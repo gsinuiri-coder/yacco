@@ -2107,6 +2107,65 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId/correction", () => {
     expect(stop.correctedAt).toBeInstanceOf(Date);
   });
 
+  test("el cuerpo describe la parada entera: repetir el cobro y los vacíos los vuelve a registrar; omitirlos los borra", async () => {
+    const { customerId: custId, locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(20, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+      containersReturned: [{ containerTypeId, quantity: 1 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "37.50" },
+    }).then((r) => expect(r.status).toBe(200));
+    expect(await customerDebtBalance(custId)).toBe("0.00");
+
+    // Corrección que repite todo lo que sigue valiendo: 2 en vez de 3, mismo
+    // vacío devuelto, cobro por el nuevo total.
+    const restated = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+      containersReturned: [{ containerTypeId, quantity: 1 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "25.00" },
+    });
+
+    expect(restated.status).toBe(200);
+    expect(restated.body.payment).toMatchObject({ status: "CONFIRMED", amount: "25.00" });
+    expect(await customerDebtBalance(custId)).toBe("0.00");
+    expect(await customerDebtBalance(custId)).toBe(await rebuiltDebt(custId));
+    // 2 entregados menos 1 devuelto.
+    expect(await containerBalance(locId)).toBe(1);
+
+    // Y la otra mitad de la regla: una corrección que NO repite el cobro ni
+    // los vacíos no los vuelve a registrar. Es reemplazo, no parche — quien
+    // llama tiene que mandar la parada entera.
+    const partial = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    });
+
+    expect(partial.status).toBe(200);
+    expect(partial.body.payment).toBeNull();
+    expect(await customerDebtBalance(custId)).toBe("25.00");
+    expect(await customerDebtBalance(custId)).toBe(await rebuiltDebt(custId));
+    expect(await containerBalance(locId)).toBe(2);
+  });
+
+  test("un motivo de corrección de solo espacios es 400, y no toca nada", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+      correctionReason: "   ",
+    });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toMatch(/motivo de la corrección/);
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(1);
+  });
+
   test("DELIVERED -> FAILED: no queda venta vigente y el pedido pasa a FAILED", async () => {
     const { customerId: custId, locationId: locId } = await createFreshLocation();
     const { routeId, stopId } = await routeInProgressWithStock(10, locId);

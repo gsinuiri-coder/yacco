@@ -242,7 +242,7 @@ export class RoutesController {
   @ApiOperation({
     summary: "Corrige una parada ya registrada: anula lo anotado y lo vuelve a registrar",
     description:
-      "No edita nada: la venta anterior queda anulada con su motivo y los envases vuelven con movimientos inversos. Una ruta ya liquidada se corrige igual — la liquidación queda desactualizada, no se bloquea la corrección.",
+      "No edita nada: la venta anterior queda anulada con su motivo y los envases vuelven con movimientos inversos. El cuerpo describe la parada ENTERA como quedó, no solo lo que cambia: lo que no se repita (payment, containersReturned) no se vuelve a registrar. Una ruta ya liquidada se corrige igual — la liquidación queda desactualizada, no se bloquea la corrección.",
   })
   @ApiResponse({ status: 200, type: RouteStopResponseDto })
   @ApiNotFoundResponse({ description: "Route or stop id does not exist" })
