@@ -163,6 +163,83 @@ describe("PaymentsPage", () => {
     expect(within(table).getByText("vendedor1")).toBeInTheDocument();
   });
 
+  /**
+   * El cobro va PENDING y anulado a la vez, que es el estado real: anular no
+   * cambia el estado. Con CONFIRMED los botones ya no salían por el estado y
+   * el test no mediría nada nuevo.
+   */
+  it("un cobro anulado sigue PENDING pero no ofrece Confirmar ni Rechazar", async () => {
+    stubPayments(() =>
+      buildPage({
+        data: [
+          buildPayment({
+            status: "PENDING",
+            voidedAt: "2026-08-26T14:00:00.000Z",
+            voidReason: "Se anotó al cliente equivocado",
+          }),
+        ],
+      }),
+    );
+
+    renderPage();
+
+    const table = await screen.findByRole("table");
+    // Se queda listado, con su monto original: la bandeja no lo esconde.
+    expect(within(table).getByText("Bodega Santa Rosa")).toBeInTheDocument();
+    expect(within(table).getByText("S/ 25.00")).toBeInTheDocument();
+    expect(within(table).getByText("Pendiente")).toBeInTheDocument();
+    expect(within(table).getByText("Anulado")).toBeInTheDocument();
+    expect(
+      within(table).getByText("Motivo de la anulación: Se anotó al cliente equivocado"),
+    ).toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rechazar" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * Anular las cobranzas de una venta corregida no filtra por estado
+   * (SalesService.voidStopDeliveryWithinTransaction), así que un cobro
+   * rechazado puede además quedar anulado y arrastrar los dos motivos. Cada
+   * uno se nombra: dos líneas que empezaran igual no dejarían saber cuál es
+   * cuál.
+   */
+  it("un cobro rechazado y además anulado nombra cada motivo por separado", async () => {
+    stubPayments(() =>
+      buildPage({
+        data: [
+          buildPayment({
+            status: "REJECTED",
+            rejectionReason: "El Yape nunca llegó",
+            voidedAt: "2026-08-26T14:00:00.000Z",
+            voidReason: "Se anotó al cliente equivocado",
+          }),
+        ],
+      }),
+    );
+
+    renderPage();
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Rechazado")).toBeInTheDocument();
+    expect(within(table).getByText("Anulado")).toBeInTheDocument();
+    expect(within(table).getByText("Motivo del rechazo: El Yape nunca llegó")).toBeInTheDocument();
+    expect(
+      within(table).getByText("Motivo de la anulación: Se anotó al cliente equivocado"),
+    ).toBeInTheDocument();
+  });
+
+  it("un cobro pendiente sin anular sigue ofreciendo Confirmar y Rechazar", async () => {
+    stubPayments(() => buildPage());
+
+    renderPage();
+
+    await screen.findByRole("table");
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rechazar" })).toBeInTheDocument();
+    expect(screen.queryByText("Anulado")).not.toBeInTheDocument();
+  });
+
   it("el resumen muestra el total del filtro completo, no de la página", async () => {
     stubPayments(() => buildPage({ totals: { count: 37, amount: "925.50" } }));
 

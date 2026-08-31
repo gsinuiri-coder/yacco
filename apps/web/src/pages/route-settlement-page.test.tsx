@@ -123,6 +123,21 @@ function stubViewSequence(settlement: RouteSettlement): void {
   );
 }
 
+/** Una ruta ya liquidada, con control de `settlementOutdated` y de `expected`. */
+function stubSettledView(options: {
+  expected: RouteSettlementExpected;
+  settlement: RouteSettlement;
+  settlementOutdated: boolean;
+}): void {
+  stubContainerTypes();
+  server.use(
+    http.get(`${API_BASE_URL}/routes/${ROUTE_ID}`, () => HttpResponse.json(buildRoute("SETTLED"))),
+    http.get(`${API_BASE_URL}/routes/${ROUTE_ID}/settlement`, () =>
+      HttpResponse.json({ ...options, unresolvedStops: 0 }),
+    ),
+  );
+}
+
 function stubSettle(status: number, payload: JsonBodyType): { body: unknown } {
   const captured: { body: unknown } = { body: undefined };
   server.use(
@@ -362,6 +377,72 @@ describe("RouteSettlementPage", () => {
     renderPage();
 
     expect(await screen.findByText(/el libro hoy dice S\/ 150\.00 cobrado/)).toBeInTheDocument();
+  });
+
+  /**
+   * Las dos causas de la misma deriva. `settlementOutdated` mide una sola:
+   * se corrigió una parada después del cierre. Cuando eso pasó, el aviso de
+   * dinero no puede seguir atribuyéndole la diferencia a un pago resuelto —
+   * sería la causa equivocada.
+   */
+  it("una corrección posterior al cierre se avisa, y el aviso de dinero no nombra los pagos", async () => {
+    stubSettledView({
+      expected: { ...EXPECTED, totalCollected: "150.00", totalPendingConfirmation: "0.00" },
+      settlement: buildSettlement(),
+      settlementOutdated: true,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText(/Se corrigió una parada después de cerrar esta liquidación/),
+    ).toBeInTheDocument();
+    // El hecho, sin causa: el aviso de arriba es el que la explica. La frase
+    // se afirma entera, no por el "El" inicial: si sólo se mirara esa palabra,
+    // una reescritura del texto viejo pasaría por el nuevo.
+    expect(
+      screen.getByText(
+        /^Estos son los montos del momento en que se liquidó\. El libro hoy dice S\/ 150\.00 cobrado\.$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/pago que estaba por confirmar/)).not.toBeInTheDocument();
+  });
+
+  it("sin corrección posterior, la deriva de dinero se sigue atribuyendo al pago resuelto", async () => {
+    stubSettledView({
+      expected: { ...EXPECTED, totalCollected: "150.00", totalPendingConfirmation: "0.00" },
+      settlement: buildSettlement(),
+      settlementOutdated: false,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        /Desde entonces se resolvió algún pago que estaba por confirmar, así que el libro hoy dice S\/ 150\.00 cobrado/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Se corrigió una parada después de cerrar esta liquidación/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sin corrección posterior y con el dinero igual al libro, ningún aviso", async () => {
+    stubSettledView({
+      expected: EXPECTED,
+      settlement: buildSettlement(),
+      settlementOutdated: false,
+    });
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Liquidada" });
+    expect(
+      screen.queryByText(/Se corrigió una parada después de cerrar esta liquidación/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Estos son los montos del momento en que se liquidó/),
+    ).not.toBeInTheDocument();
   });
 
   it("una ruta en curso no deja liquidar y lo explica", async () => {

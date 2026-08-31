@@ -389,6 +389,7 @@ export function RouteSettlementPage() {
               settlement={settlement}
               expected={view.expected}
               differences={differences}
+              settlementOutdated={view.settlementOutdated}
             />
           )}
         </>
@@ -538,6 +539,7 @@ function SettledSection({
   settlement,
   expected,
   differences,
+  settlementOutdated,
 }: {
   settlement: RouteSettlement;
   expected: RouteSettlementExpected;
@@ -547,6 +549,12 @@ function SettledSection({
    * API; la de vacíos se recalcula contra `expected.emptiesPickedUp`.
    */
   differences: RouteSettlementDifferences | null;
+  /**
+   * Lo manda la vista tal cual (`GET /routes/:id/settlement`); no se deriva
+   * de ninguna otra cosa de esta pantalla. Mide una sola cosa: se corrigió
+   * una parada después del cierre.
+   */
+  settlementOutdated: boolean;
 }) {
   const containers = differences?.containers ?? containerDifference(settlement);
   const empties = differences?.empties ?? expected.emptiesPickedUp - settlement.emptiesCollected;
@@ -564,6 +572,15 @@ function SettledSection({
   return (
     <section className="card">
       <div className="card__body">
+        {/* Dice lo que el flag mide y nada más: se corrigió una parada después
+            del cierre. NO dice que la liquidación esté mal ni que no cuadre —
+            corregir una ruta ya liquidada está permitido a propósito. */}
+        {settlementOutdated && (
+          <p className="notice notice--warning" role="status">
+            Se corrigió una parada después de cerrar esta liquidación. Los números de abajo son los
+            del momento del cierre.
+          </p>
+        )}
         <h2>Liquidada</h2>
         <p className="text-muted">Cerrada el {formatBusinessDateTime(settlement.settledAt)}.</p>
         <div className="form-grid">
@@ -613,11 +630,28 @@ function SettledSection({
 
       <div className="card__body">
         <h3>Dinero de la ruta</h3>
+        {/* La misma deriva tiene dos causas distintas y solo una se puede
+            nombrar con certeza. Con `settlementOutdated` en false, lo único
+            que pudo mover el dinero es que se resolviera un pago pendiente, y
+            el aviso lo dice. Con el flag en true hay además una corrección
+            posterior al cierre, que también mueve `totalCollected`: atribuirlo
+            entonces a los pagos sería nombrar la causa equivocada, así que
+            este aviso se queda en el hecho y la causa la explica el de
+            arriba. */}
         {moneyDrifted && (
           <p className="notice notice--warning" role="status">
-            Estos son los montos del momento en que se liquidó. Desde entonces se resolvió algún
-            pago que estaba por confirmar, así que el libro hoy dice{" "}
-            {formatMoney(expected.totalCollected)} cobrado.
+            {settlementOutdated ? (
+              <>
+                Estos son los montos del momento en que se liquidó. El libro hoy dice{" "}
+                {formatMoney(expected.totalCollected)} cobrado.
+              </>
+            ) : (
+              <>
+                Estos son los montos del momento en que se liquidó. Desde entonces se resolvió algún
+                pago que estaba por confirmar, así que el libro hoy dice{" "}
+                {formatMoney(expected.totalCollected)} cobrado.
+              </>
+            )}
           </p>
         )}
         <div className="form-grid">

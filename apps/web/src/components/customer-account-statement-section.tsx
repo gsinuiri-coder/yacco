@@ -56,6 +56,13 @@ const PAYMENT_STATUS_BADGE_CLASS: Record<NonNullPaymentStatus, string> = {
  * pantalla ofrece un filtro `from`/`to`, openingBalance pasaría a
  * representar algo real y esta nota (y la razón para ignorarlo) quedaría
  * obsoleta — pero no lo agregues antes de eso.
+ *
+ * Una fila anulada se MUESTRA, marcada, en vez de esconderse: el cliente vio
+ * esa entrega y va a preguntar por ella, y el dueño tiene que poder contarle
+ * qué pasó. Su `runningBalance` ya viene sin el efecto de la fila, calculado
+ * por la API: acá no se recalcula ni se marca el saldo. El DTO no trae el
+ * motivo de la anulación, solo `voidedAt`, y con la fecha alcanza para decir
+ * "esto se anotó y después se corrigió".
  */
 export function CustomerAccountStatementSection({
   customerId,
@@ -143,8 +150,21 @@ export function CustomerAccountStatementSection({
                           <span className="badge badge--muted">Saldo inicial</span>
                         </>
                       )}
+                      {entry.voidedAt !== null && (
+                        <>
+                          {" "}
+                          <span className="badge badge--danger">Anulada</span>
+                        </>
+                      )}
                     </td>
-                    <td className="table__numeric">{formatMoney(entry.amount)}</td>
+                    {/* El tachado refuerza al badge, nunca lo reemplaza. */}
+                    <td
+                      className={
+                        entry.voidedAt !== null ? "table__numeric money--voided" : "table__numeric"
+                      }
+                    >
+                      {formatMoney(entry.amount)}
+                    </td>
                     <td className="table__numeric">{formatMoney(entry.runningBalance)}</td>
                     <td>
                       {entry.type === "PAYMENT" ? (

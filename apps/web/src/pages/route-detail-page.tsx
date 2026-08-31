@@ -450,7 +450,8 @@ function RouteStopsSection({
         <div className="table-scroll">
           <table className="table">
             <caption className="visually-hidden">
-              Paradas de la ruta con su orden, cliente, dirección, origen y estado
+              Paradas de la ruta con su orden, cliente, dirección, origen y estado, incluida la
+              corrección de la parada cuando la hubo
             </caption>
             <thead>
               <tr>
@@ -481,8 +482,35 @@ function RouteStopsSection({
                   <td>{STOP_ORIGIN_LABELS[stop.origin]}</td>
                   <td>
                     <StopStatusBadge status={stop.status} />
-                    {stop.failureReason && (
+                    {stop.correction !== null && (
+                      <>
+                        {" "}
+                        <span className="badge badge--info">Corregida</span>
+                      </>
+                    )}
+                    {/* El motivo va condicionado al estado, no a que exista:
+                        una parada corregida de FAILED a DELIVERED CONSERVA su
+                        motivo de falla original, y eso es deliberado — es la
+                        evidencia de que hubo un error de anotación, y así lo
+                        advierte RouteStopResponseDto en la API. Sin esta
+                        condición la fila se lee "Entregada / Nadie atendió".
+                        No lo "arregles" al revés borrando el motivo del
+                        backend: la evidencia tiene que quedar. */}
+                    {stop.status === "FAILED" && stop.failureReason && (
                       <div className="cell-secondary">{stop.failureReason}</div>
+                    )}
+                    {stop.correction !== null && (
+                      <>
+                        <div className="cell-secondary">
+                          Corregida el {formatBusinessDateTime(stop.correction.correctedAt)} por{" "}
+                          {stop.correction.correctedBy.name}
+                        </div>
+                        {stop.correction.correctionReason !== null && (
+                          <div className="cell-secondary">
+                            Motivo: {stop.correction.correctionReason}
+                          </div>
+                        )}
+                      </>
                     )}
                   </td>
                   {editable && (

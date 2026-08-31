@@ -77,9 +77,8 @@ export interface RouteStopCorrectedBy {
  * qué. `null` mientras nunca se corrigió, y guarda SÓLO LA ÚLTIMA: la historia
  * completa vive en las ventas anuladas y en el libro de movimientos.
  *
- * Declarado acá y todavía sin pintar: este archivo es el contrato y se
- * actualiza contra el DTO real, pero mostrar la corrección en la hoja de ruta
- * es el PR siguiente.
+ * Se pinta en la celda de Estado de la hoja de ruta (RouteDetailPage): el
+ * badge "Corregida", quién la corrigió y cuándo, y el motivo si vino.
  */
 export interface RouteStopCorrection {
   correctedAt: string;
@@ -92,7 +91,10 @@ export interface RouteStopCorrection {
  * que el camión tenía. Solo puede venir de corregir una parada, que registra
  * contra un hecho físico ya consumado y por eso avisa en vez de bloquear.
  *
- * Declarado acá y todavía sin pintar, por la misma razón que `correction`.
+ * Declarado acá y todavía sin pintar: este archivo es el contrato y se
+ * actualiza contra el DTO real, pero avisar el faltante todavía no tiene
+ * pantalla — llega sólo en la respuesta de corregir una parada, y ese
+ * formulario no existe.
  */
 export interface RouteStopStockShortfall {
   containerTypeId: string;

@@ -178,6 +178,54 @@ describe("CustomerAccountStatementSection", () => {
     expect(screen.queryByText(/999\.00/)).not.toBeInTheDocument();
   });
 
+  /**
+   * Dos cargos del MISMO monto, uno anulado y otro vivo: así la marca no
+   * puede pasar por casualidad. La fila anulada se muestra en vez de
+   * esconderse — el cliente vio esa entrega y va a preguntar por ella — y su
+   * `runningBalance` llega ya sin el efecto de la fila, calculado por la API.
+   */
+  it("una fila anulada se marca, y la viva del mismo monto no", async () => {
+    stubStatement([
+      {
+        date: "2026-08-10T13:00:00.000Z",
+        type: "CHARGE",
+        amount: "60.00",
+        runningBalance: "60.00",
+        isOpeningBalance: false,
+        saleId: "s-viva",
+        locationName: "Local Centro",
+        paymentId: null,
+        paymentMethodName: null,
+        status: null,
+        voidedAt: null,
+      },
+      {
+        date: "2026-08-11T13:00:00.000Z",
+        type: "CHARGE",
+        amount: "60.00",
+        runningBalance: "60.00",
+        isOpeningBalance: false,
+        saleId: "s-anulada",
+        locationName: "Local Centro",
+        paymentId: null,
+        paymentMethodName: null,
+        status: null,
+        voidedAt: "2026-08-12T13:00:00.000Z",
+      },
+    ]);
+
+    renderSection();
+
+    await screen.findByRole("table");
+
+    // Los dos cargos son de S/ 60.00 (monto y saldo de cada fila: 4 celdas).
+    expect(screen.getAllByText("S/ 60.00")).toHaveLength(4);
+
+    const marks = screen.getAllByText("Anulada");
+    expect(marks).toHaveLength(1);
+    expect((marks[0] as HTMLElement).closest("tr")?.textContent).toContain("11/08/2026");
+  });
+
   it("el arrastre del padrón se marca como 'Saldo inicial'", async () => {
     stubStatement();
 
