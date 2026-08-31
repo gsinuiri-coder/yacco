@@ -870,6 +870,19 @@ sido diseñar para un caso sin decidir con el dueño si una liquidación
 puede reabrirse (fuera de alcance de este PR: "reabrir o corregir una
 liquidación ya registrada").
 
+**Ampliada por la anulación de una parada.**
+`SalesService.voidStopDeliveryWithinTransaction` escribe sus movimientos
+`*_VOID` colgados de la ruta sin mirar en qué estado está, así que anular
+una parada de una ruta ya liquidada deja la fila de `route_settlements`
+afirmando llenos entregados y vendidos que el libro ya no sostiene — el
+mismo desfase que el pago rechazado, por una puerta más ancha: acá se
+mueven envases, no solo dinero. El emisor es el lugar correcto para NO
+decidirlo, porque no sabe qué quiere la oficina; quien tiene que resolverlo
+es el endpoint de corrección (PR 2b), y las opciones son bloquear la
+corrección sobre una ruta `SETTLED`, permitirla marcando la liquidación
+como desactualizada, o permitir reabrirla. Es una decisión del dueño, no
+del código.
+
 **Para cerrarla:** decidir con el dueño de la planta si una liquidación
 liquidada debe reabrirse cuando esto ocurre, o si basta con que el reporte
 de cobranza (`GET /reports/collections`, aún no construido) lea el estado

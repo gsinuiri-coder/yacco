@@ -65,6 +65,90 @@ export interface RegisterStopDeliveryResult {
   containerBalances: StopDeliveryContainerBalanceResult[];
 }
 
+export interface VoidStopDeliveryParams {
+  stopId: string;
+  voidedById: string;
+  voidReason: string;
+}
+
+export interface VoidStopDeliveryPaymentResult {
+  id: string;
+  amount: string;
+  /** El estado al momento de anular, que es el que decide si devuelve deuda. */
+  status: PaymentStatus;
+}
+
+export interface VoidStopDeliveryMovementResult {
+  type: ContainerMovementType;
+  containerTypeId: string;
+  quantity: number;
+}
+
+export interface VoidStopDeliveryResult {
+  /** `null` cuando la parada no tenía ninguna venta vigente: no había nada
+   * que anular y no se escribió nada. */
+  sale: { id: string; total: string } | null;
+  payments: VoidStopDeliveryPaymentResult[];
+  /** Cuánto se movió `debtBalance`, con signo — negativo cuando la anulación
+   * baja la deuda, que es el caso normal. `"0.00"` en el no-op. */
+  debtDelta: string;
+  voidMovements: VoidStopDeliveryMovementResult[];
+}
+
+/**
+ * Los tres movimientos que una entrega puede haber escrito, cada uno con el
+ * tipo que lo deshace. Una sola lista para las dos direcciones que hace falta
+ * leer: de original a anulación, para saber qué emitir, y de anulación a
+ * original, para saber contra qué netear lo ya anulado.
+ */
+const VOIDABLE_MOVEMENT_PAIRS = [
+  [ContainerMovementType.LOAN_DELIVERY, ContainerMovementType.LOAN_DELIVERY_VOID],
+  [ContainerMovementType.EMPTY_PICKUP, ContainerMovementType.EMPTY_PICKUP_VOID],
+  [ContainerMovementType.FULL_SALE, ContainerMovementType.FULL_SALE_VOID],
+] as const;
+
+type VoidableMovementType = (typeof VOIDABLE_MOVEMENT_PAIRS)[number][0];
+type VoidMovementType = (typeof VOIDABLE_MOVEMENT_PAIRS)[number][1];
+
+const VOID_TYPE_BY_ORIGIN: ReadonlyMap<ContainerMovementType, VoidMovementType> = new Map(
+  VOIDABLE_MOVEMENT_PAIRS,
+);
+const ORIGIN_TYPE_BY_VOID: ReadonlyMap<ContainerMovementType, VoidableMovementType> = new Map(
+  VOIDABLE_MOVEMENT_PAIRS.map(([origin, mirror]) => [mirror, origin] as const),
+);
+
+/**
+ * El par de estados de cada anulación, copiado de
+ * CONTAINER_MOVEMENT_TRANSITIONS, que es donde vive la regla. `FULL_SALE_VOID`
+ * NO tiene `fromState`: la venta sacó esos bidones de la flota y el libro no
+ * dice de cuál de los dos orígenes válidos salieron, así que la anulación
+ * entra sin origen. La clave está OMITIDA de esa entrada, no puesta en
+ * `undefined` — `exactOptionalPropertyTypes` no acepta lo segundo, y por eso
+ * esta tabla se esparce tal cual sobre el DTO en vez de armarse con ifs.
+ */
+const VOID_TRANSITION: Readonly<
+  Record<VoidMovementType, { fromState?: ContainerState; toState: ContainerState }>
+> = {
+  [ContainerMovementType.LOAN_DELIVERY_VOID]: {
+    fromState: ContainerState.WITH_CUSTOMER,
+    toState: ContainerState.FULL_ON_ROUTE,
+  },
+  [ContainerMovementType.EMPTY_PICKUP_VOID]: {
+    fromState: ContainerState.EMPTY_ON_ROUTE,
+    toState: ContainerState.WITH_CUSTOMER,
+  },
+  [ContainerMovementType.FULL_SALE_VOID]: { toState: ContainerState.FULL_ON_ROUTE },
+};
+
+/** Lo que queda por revertir de un par (tipo, tipo de envase) de una parada. */
+interface PendingVoid {
+  type: VoidableMovementType;
+  containerTypeId: string;
+  quantity: number;
+  locationId: string | null;
+  routeId: string | null;
+}
+
 function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
@@ -647,5 +731,217 @@ export class SalesService {
         quantity: balance.quantity,
       })),
     };
+  }
+
+  /**
+   * La mitad "deshacer" de registrar una entrega, y simétrica con ella: anula
+   * la venta de la parada, sus cobros, la deuda que movieron y los movimientos
+   * de envases que escribió. Recibe un `tx` abierto por quien llama, igual que
+   * su hermana, porque las cuatro cosas son UNA corrección y tienen que
+   * confirmarse o deshacerse juntas — una anulación a medias deja los bidones
+   * de vuelta en el camión con la deuda todavía en pie.
+   *
+   * Nada se edita ni se borra (CLAUDE.md). La venta y los cobros conservan su
+   * monto y solo ganan sus tres columnas de anulación; los envases se corrigen
+   * con movimientos inversos, nunca tocando los originales.
+   *
+   * **Sin venta vigente no hace nada y no falla.** Es deliberado: quien va a
+   * llamar a este método también corrige paradas que estaban FAILED, donde no
+   * hubo entrega y no hay nada que anular, y eso no es un error del que llama.
+   *
+   * **Los dos instantes son distintos y es a propósito** — es lo primero que un
+   * lector futuro va a creer que es un bug. `voidedAt` de la venta y de los
+   * cobros es AHORA, porque es cuándo alguien corrigió. El `occurredAt` de los
+   * tres movimientos de anulación es `sale.soldAt`, el instante de la entrega
+   * original, porque la reversa pertenece al día del hecho y no al día en que
+   * se notó: el libro de envases tiene que poder cerrar un día y quedarse
+   * cerrado, y un movimiento fechado hoy contra una entrega de la semana pasada
+   * movería un parque que ya se contó.
+   *
+   * **La deuda se devuelve por el efecto acumulado real, mirando el estado
+   * ACTUAL de cada cobro, no el que tuvo al nacer.** Un pago que nació PENDING
+   * y la oficina confirmó después ya bajó la deuda en
+   * `PaymentsService.confirm`, y no devolverla dejaría al cliente con un
+   * crédito fantasma. Un PENDING o un REJECTED se marcan anulados pero no
+   * mueven nada, porque nunca movieron nada. Que la misma fórmula sirva para
+   * los tres casos no es casualidad: `confirm()` y `reject()` dejan siempre
+   * `debtBalance` de acuerdo con el estado actual, así que deshacer "el total
+   * menos lo que hoy está CONFIRMED" es exactamente deshacer lo que la deuda
+   * avanzó.
+   */
+  async voidStopDeliveryWithinTransaction(
+    tx: Prisma.TransactionClient,
+    params: VoidStopDeliveryParams,
+  ): Promise<VoidStopDeliveryResult> {
+    const sale = await tx.sale.findFirst({
+      where: { stopId: params.stopId, voidedAt: null },
+      select: {
+        id: true,
+        total: true,
+        soldAt: true,
+        location: { select: { customerId: true } },
+        payments: {
+          where: { voidedAt: null },
+          select: { id: true, amount: true, status: true },
+          orderBy: { paidAt: "asc" },
+        },
+      },
+    });
+    if (sale === null) {
+      return { sale: null, payments: [], debtDelta: "0.00", voidMovements: [] };
+    }
+
+    // Las tres columnas van juntas o ninguna — hay un CHECK en la base que lo
+    // exige, así que se escriben desde un solo objeto en los dos lugares.
+    const voidColumns = {
+      voidedAt: new Date(),
+      voidedById: params.voidedById,
+      voidReason: params.voidReason,
+    };
+
+    // La guarda `voidedAt: null` va en el WHERE del UPDATE, no solo en la
+    // lectura de arriba: mismo idioma que `PaymentsService.confirm`, y por la
+    // misma razón. Bajo READ COMMITTED dos anulaciones simultáneas de la misma
+    // parada leen las dos la venta vigente; la perdedora se queda esperando el
+    // lock y, sin esta cláusula, volvería a estampar las columnas y aplicaría
+    // su propio `debtDelta` — la deuda se devolvería DOS veces. Con ella,
+    // `count === 0` y la perdedora sale por el mismo no-op que una parada sin
+    // venta. Los envases se salvaban solos porque su `findMany` corre después
+    // del commit de la ganadora y netea; la plata no, porque los cobros se
+    // leyeron antes.
+    const { count } = await tx.sale.updateMany({
+      where: { id: sale.id, voidedAt: null },
+      data: voidColumns,
+    });
+    if (count === 0) {
+      return { sale: null, payments: [], debtDelta: "0.00", voidMovements: [] };
+    }
+
+    if (sale.payments.length > 0) {
+      await tx.payment.updateMany({
+        where: { id: { in: sale.payments.map((payment) => payment.id) }, voidedAt: null },
+        data: voidColumns,
+      });
+    }
+
+    let debtDelta = sale.total.negated();
+    for (const payment of sale.payments) {
+      if (payment.status === PaymentStatus.CONFIRMED) {
+        debtDelta = debtDelta.plus(payment.amount);
+      }
+    }
+    await tx.customer.update({
+      where: { id: sale.location.customerId },
+      data: { debtBalance: { increment: debtDelta } },
+    });
+
+    const voidMovements = await this.emitStopVoidMovements(tx, params, sale.soldAt);
+
+    return {
+      sale: { id: sale.id, total: sale.total.toFixed(2) },
+      payments: sale.payments.map((payment) => ({
+        id: payment.id,
+        amount: payment.amount.toFixed(2),
+        status: payment.status,
+      })),
+      debtDelta: debtDelta.toFixed(2),
+      voidMovements,
+    };
+  }
+
+  /**
+   * Emite la reversa de los envases de una parada, NETA de lo ya anulado: por
+   * cada par (tipo de movimiento, tipo de envase) se resta lo que las
+   * anulaciones existentes ya deshicieron y solo se emite la diferencia.
+   *
+   * El neteo no es una precaución teórica. Corregir una parada es anular y
+   * volver a registrar, así que una parada corregida dos veces tiene, sobre el
+   * mismo `stopId`, la entrega original ya anulada Y la segunda entrega
+   * vigente. Sin netear, la segunda anulación emitiría también la reversa de la
+   * primera y devolvería al camión bidones que ya habían vuelto.
+   *
+   * `locationId` y `routeId` salen del movimiento original, no de quien llama:
+   * la anulación tiene que quedar colgada de la misma ruta que el movimiento
+   * que deshace o la liquidación no la resta, y de la misma ubicación o el
+   * saldo de envases se le movería a otro cliente.
+   */
+  private async emitStopVoidMovements(
+    tx: Prisma.TransactionClient,
+    params: VoidStopDeliveryParams,
+    occurredAt: Date,
+  ): Promise<VoidStopDeliveryMovementResult[]> {
+    const movements = await tx.containerMovement.findMany({
+      where: {
+        stopId: params.stopId,
+        type: { in: [...ORIGIN_TYPE_BY_VOID.keys(), ...VOID_TYPE_BY_ORIGIN.keys()] },
+      },
+      select: {
+        type: true,
+        containerTypeId: true,
+        quantity: true,
+        locationId: true,
+        routeId: true,
+      },
+      // Ordenado para que la lectura sea determinista: de acá salen tanto el
+      // neto como la ubicación y la ruta con las que se cuelga la reversa, y
+      // `findMany` sin `orderBy` no promete ningún orden.
+      orderBy: { occurredAt: "asc" },
+    });
+
+    const pending = new Map<string, PendingVoid>();
+    for (const movement of movements) {
+      const originType = ORIGIN_TYPE_BY_VOID.get(movement.type);
+      const isVoid = originType !== undefined;
+      const groupType = originType ?? (movement.type as VoidableMovementType);
+      const key = `${groupType}:${movement.containerTypeId}`;
+      const entry = pending.get(key) ?? {
+        type: groupType,
+        containerTypeId: movement.containerTypeId,
+        quantity: 0,
+        locationId: null,
+        routeId: null,
+      };
+      entry.quantity += isVoid ? -movement.quantity : movement.quantity;
+      if (!isVoid) {
+        entry.locationId = movement.locationId;
+        entry.routeId = movement.routeId;
+      }
+      pending.set(key, entry);
+    }
+
+    const emitted: VoidStopDeliveryMovementResult[] = [];
+    // Ordenado por la clave para que dos corridas emitan en el mismo orden, y
+    // con una comparación binaria en vez de `localeCompare`: las claves son
+    // nombres de enum y UUIDs, así que el orden no debe depender del locale.
+    for (const [, entry] of [...pending].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      // Cero significa que ya estaba todo anulado; negativo, que se anuló de
+      // más en alguna corrección anterior. En los dos casos no queda nada por
+      // deshacer, y emitir sería inventar bidones.
+      if (entry.quantity <= 0) continue;
+      const voidType = VOID_TYPE_BY_ORIGIN.get(entry.type);
+      if (voidType === undefined) continue;
+      await this.containerMovementsService.createWithinTransaction(
+        tx,
+        {
+          type: voidType,
+          containerTypeId: entry.containerTypeId,
+          quantity: entry.quantity,
+          ...VOID_TRANSITION[voidType],
+          ...(entry.locationId !== null ? { locationId: entry.locationId } : {}),
+        },
+        params.voidedById,
+        {
+          stopId: params.stopId,
+          occurredAt,
+          ...(entry.routeId !== null ? { routeId: entry.routeId } : {}),
+        },
+      );
+      emitted.push({
+        type: voidType,
+        containerTypeId: entry.containerTypeId,
+        quantity: entry.quantity,
+      });
+    }
+    return emitted;
   }
 }

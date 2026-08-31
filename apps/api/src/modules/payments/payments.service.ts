@@ -360,11 +360,18 @@ export class PaymentsService {
    * clicks on the same payment must have exactly one of them reduce
    * `debtBalance`, not both. `debtBalance` moves by exactly `amount` in the
    * SAME transaction as the status flip — the whole point of this PR.
+   *
+   * `voidedAt: null` va en esa misma guarda: un cobro anulado sigue PENDING
+   * —anular no cambia el estado— y la bandeja de confirmación lo lista igual
+   * que a uno vivo, así que sin esta cláusula la oficina podría confirmarlo y
+   * bajar la deuda por un cobro cuya venta ya se revirtió entera. Sería un
+   * crédito fantasma, y encima haría diverger `debtBalance` del saldo que el
+   * estado de cuenta reconstruye, que es justo lo que la anulación arregló.
    */
   async confirm(id: string, actorId: string): Promise<PaymentActionResponseDto> {
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.payment.updateMany({
-        where: { id, status: PaymentStatus.PENDING },
+        where: { id, status: PaymentStatus.PENDING, voidedAt: null },
         data: { status: PaymentStatus.CONFIRMED, confirmedAt: new Date(), confirmedById: actorId },
       });
       if (count === 0) {
@@ -386,9 +393,11 @@ export class PaymentsService {
   }
 
   /**
-   * PENDING -> REJECTED. Same idempotent guard as confirm(), but this one
-   * touches no balance at all: a PENDING payment never reduced debtBalance,
-   * so there is nothing here to put back.
+   * PENDING -> REJECTED. Same idempotent guard as confirm(), `voidedAt: null`
+   * included, but this one touches no balance at all: a PENDING payment never
+   * reduced debtBalance, so there is nothing here to put back. Rechazar un
+   * cobro anulado no movería plata, pero escribiría sobre él un motivo de
+   * rechazo que contradice el de la anulación, y son hechos distintos.
    */
   async reject(
     id: string,
@@ -397,7 +406,7 @@ export class PaymentsService {
   ): Promise<PaymentActionResponseDto> {
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.payment.updateMany({
-        where: { id, status: PaymentStatus.PENDING },
+        where: { id, status: PaymentStatus.PENDING, voidedAt: null },
         data: {
           status: PaymentStatus.REJECTED,
           rejectedAt: new Date(),
@@ -426,9 +435,20 @@ export class PaymentsService {
     client: Prisma.TransactionClient,
     id: string,
   ): Promise<never> {
-    const existing = await client.payment.findUnique({ where: { id }, select: { status: true } });
+    const existing = await client.payment.findUnique({
+      where: { id },
+      select: { status: true, voidedAt: true },
+    });
     if (existing === null) {
       throw new NotFoundException(`El pago "${id}" no existe`);
+    }
+    // Un cobro anulado sigue PENDING: anular no cambia el estado. Decir "ya
+    // está en estado PENDING" mandaría a la oficina a reintentar para siempre,
+    // así que el motivo real se nombra primero.
+    if (existing.voidedAt !== null) {
+      throw new ConflictException(
+        "Este cobro fue anulado junto con su entrega: no se puede confirmar ni rechazar",
+      );
     }
     throw new ConflictException(`Este pago ya está en estado ${existing.status}`);
   }

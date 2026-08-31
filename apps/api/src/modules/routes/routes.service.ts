@@ -707,6 +707,12 @@ export class RoutesService {
    * the same delivery. `soldAt` is a timestamptz (an instant, not a business
    * date — CLAUDE.md's date-formatting rule doesn't apply here), so a plain
    * ISO string is enough for a message nobody parses back.
+   *
+   * `voidedAt: null` en la búsqueda de la venta: una parada corregida deja su
+   * venta anulada en la tabla, y sin ese filtro este mensaje citaría la fecha
+   * y el nombre de una entrega que ya no vale — "ya fue registrada el ... por
+   * ..." apuntando a algo que se deshizo, que es peor que no decir nada. Sin
+   * venta vigente cae al mensaje genérico de estado, que es lo correcto.
    */
   private async throwAlreadyMarkedConflict(
     client: Prisma.TransactionClient | PrismaService,
@@ -722,7 +728,7 @@ export class RoutesService {
     }
     if (existing.status === StopStatus.DELIVERED) {
       const sale = await client.sale.findFirst({
-        where: { stopId },
+        where: { stopId, voidedAt: null },
         select: { soldAt: true, recordedBy: { select: { name: true } } },
       });
       if (sale !== null) {
