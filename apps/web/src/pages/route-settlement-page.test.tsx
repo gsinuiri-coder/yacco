@@ -445,6 +445,45 @@ describe("RouteSettlementPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  /**
+   * "Diferencia de vacíos" NO viene de la fila persistida como "Diferencia de
+   * llenos": se recalcula contra `expected.emptiesPickedUp`, que la API
+   * reconstruye en vivo del libro y que una corrección posterior mueve. El
+   * aviso general de arriba ya no dice "los números de abajo son los del
+   * cierre" por eso — esta celda es la excepción, y lo aclara ella misma.
+   */
+  it("con la liquidación desactualizada, la diferencia de vacíos aclara que compara contra el libro de hoy", async () => {
+    stubSettledView({
+      expected: EXPECTED,
+      settlement: buildSettlement(),
+      settlementOutdated: true,
+    });
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Liquidada" });
+    expect(
+      within(statOf("Diferencia de vacíos")).getByText(
+        "Comparado contra el libro de hoy, que ya incluye la corrección.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("sin corrección posterior, la diferencia de vacíos no lleva ninguna aclaración", async () => {
+    stubSettledView({
+      expected: EXPECTED,
+      settlement: buildSettlement(),
+      settlementOutdated: false,
+    });
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Liquidada" });
+    expect(
+      within(statOf("Diferencia de vacíos")).queryByText(/Comparado contra el libro de hoy/),
+    ).not.toBeInTheDocument();
+  });
+
   it("una ruta en curso no deja liquidar y lo explica", async () => {
     stubView("IN_PROGRESS", null);
 

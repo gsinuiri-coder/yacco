@@ -221,7 +221,7 @@ describe("CustomerAccountStatementSection", () => {
     // Los dos cargos son de S/ 60.00 (monto y saldo de cada fila: 4 celdas).
     expect(screen.getAllByText("S/ 60.00")).toHaveLength(4);
 
-    const marks = screen.getAllByText("Anulada");
+    const marks = screen.getAllByText("Anulado");
     expect(marks).toHaveLength(1);
     expect((marks[0] as HTMLElement).closest("tr")?.textContent).toContain("11/08/2026");
   });

@@ -150,10 +150,13 @@ export function CustomerAccountStatementSection({
                           <span className="badge badge--muted">Saldo inicial</span>
                         </>
                       )}
+                      {/* "Anulado", no "Anulada": el badge queda pegado a
+                          "Cargo" o "Abono" —los dos masculinos—, y el mismo
+                          concepto en la bandeja de pagos ya dice "Anulado". */}
                       {entry.voidedAt !== null && (
                         <>
                           {" "}
-                          <span className="badge badge--danger">Anulada</span>
+                          <span className="badge badge--danger">Anulado</span>
                         </>
                       )}
                     </td>

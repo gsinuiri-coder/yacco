@@ -500,8 +500,8 @@ textarea:disabled {
 
 /* Un monto anulado: el registro se anotó y después se corrigió, así que sigue
    a la vista con su monto original. El tachado es refuerzo y nunca el único
-   portador del sentido — el que comunica es el badge "Anulado"/"Anulada" que
-   lo acompaña, y la fila se lee igual de bien sin ver este estilo. */
+   portador del sentido — el que comunica es el badge "Anulado" que lo
+   acompaña, y la fila se lee igual de bien sin ver este estilo. */
 .money--voided {
   text-decoration: line-through;
   color: var(--text-muted);
