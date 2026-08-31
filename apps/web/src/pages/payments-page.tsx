@@ -437,7 +437,13 @@ function PaymentRowView({
   onRejected,
   onRejectStale,
 }: PaymentRowViewProps) {
-  const isPending = payment.status === "PENDING";
+  /**
+   * El estado solo no alcanza: anular NO cambia el estado, así que un cobro
+   * anulado sigue en PENDING. Ofrecer Confirmar y Rechazar sobre él le hace
+   * comer a la oficina el 409 que la API devuelve para un cobro ya anulado.
+   */
+  const canResolve = payment.status === "PENDING" && payment.voidedAt === null;
+  const isVoided = payment.voidedAt !== null;
 
   return (
     <>
@@ -447,20 +453,37 @@ function PaymentRowView({
           {payment.location && <div className="cell-secondary">{payment.location.name}</div>}
         </td>
         <td>{payment.paymentMethod.name}</td>
-        <td className="table__numeric">{formatMoney(payment.amount)}</td>
+        {/* El tachado es refuerzo, nunca el único portador del sentido: lo
+            que comunica que el cobro se anuló es el badge de al lado. */}
+        <td className={isVoided ? "table__numeric money--voided" : "table__numeric"}>
+          {formatMoney(payment.amount)}
+        </td>
         <td>
           <span className={`badge ${STATUS_BADGE_CLASS[payment.status]}`}>
             {STATUS_LABELS[payment.status]}
           </span>
+          {isVoided && (
+            <>
+              {" "}
+              <span className="badge badge--danger">Anulado</span>
+            </>
+          )}
+          {/* Cada motivo se nombra: un cobro puede estar rechazado Y anulado a
+              la vez —anular las cobranzas de una venta corregida no filtra por
+              estado (SalesService.voidStopDeliveryWithinTransaction)—, y dos
+              líneas que empiecen igual no dejarían saber cuál es cuál. */}
           {payment.status === "REJECTED" && payment.rejectionReason && (
-            <div className="cell-secondary">Motivo: {payment.rejectionReason}</div>
+            <div className="cell-secondary">Motivo del rechazo: {payment.rejectionReason}</div>
+          )}
+          {isVoided && payment.voidReason && (
+            <div className="cell-secondary">Motivo de la anulación: {payment.voidReason}</div>
           )}
         </td>
         <td>{formatBusinessDateTime(payment.paidAt)}</td>
         <td className="cell-secondary">{payment.recordedBy.username}</td>
         {isAdmin && (
           <td className="table__actions">
-            {isPending && !isRejecting && (
+            {canResolve && !isRejecting && (
               <>
                 <button
                   type="button"

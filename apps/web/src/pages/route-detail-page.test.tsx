@@ -246,6 +246,121 @@ describe("RouteDetailPage", () => {
     expect(within(failed).getByText("El local estaba cerrado")).toBeInTheDocument();
   });
 
+  describe("la corrección de una parada", () => {
+    const CORRECTION = {
+      correctedAt: "2026-08-29T16:45:00.000Z",
+      correctedBy: { id: "admin-1", name: "Giancarlo Sinuiri" },
+      correctionReason: "El chofer dictó mal: sí entregó",
+    };
+
+    const OTHER_LOCATION = {
+      id: "loc-2",
+      name: "Depósito",
+      address: "Jr. Puno 45",
+      customer: { id: "cus-2", name: "Kiosco La Esquina" },
+    };
+
+    /**
+     * El estado exacto que produce corregir de FAILED a DELIVERED: la parada
+     * quedó entregada y CONSERVA su motivo de falla original, que es la
+     * evidencia de que hubo un error de anotación. Con `failureReason` en
+     * null el test pasaría sin el arreglo.
+     */
+    it("una parada corregida a entregada ya no muestra su motivo de falla original", async () => {
+      stubRoute(
+        buildRoute({
+          status: "FINISHED",
+          stops: [
+            stop({
+              position: 1,
+              status: "DELIVERED",
+              failureReason: "Nadie atendió",
+              correction: CORRECTION,
+            }),
+          ],
+        }),
+      );
+
+      renderPage();
+
+      const row = (await screen.findByText("Bodega Central")).closest("tr") as HTMLElement;
+      expect(within(row).getByText("Entregada")).toBeInTheDocument();
+      expect(within(row).queryByText("Nadie atendió")).not.toBeInTheDocument();
+    });
+
+    it("una parada que sigue no entregada muestra su motivo", async () => {
+      stubRoute(
+        buildRoute({
+          status: "FINISHED",
+          stops: [stop({ position: 1, status: "FAILED", failureReason: "Nadie atendió" })],
+        }),
+      );
+
+      renderPage();
+
+      const row = (await screen.findByText("Bodega Central")).closest("tr") as HTMLElement;
+      expect(within(row).getByText("No entregada")).toBeInTheDocument();
+      expect(within(row).getByText("Nadie atendió")).toBeInTheDocument();
+    });
+
+    it("el sello de la corrección se pinta solo en la parada corregida", async () => {
+      stubRoute(
+        buildRoute({
+          status: "FINISHED",
+          stops: [
+            stop({ position: 1, status: "DELIVERED", correction: CORRECTION }),
+            stop({
+              position: 2,
+              status: "DELIVERED",
+              locationId: OTHER_LOCATION.id,
+              location: OTHER_LOCATION,
+            }),
+          ],
+        }),
+      );
+
+      renderPage();
+
+      const corrected = (await screen.findByText("Bodega Central")).closest("tr") as HTMLElement;
+      expect(within(corrected).getByText("Corregida")).toBeInTheDocument();
+      // Un instante, no una fecha de negocio: 16:45 UTC son las 11:45 en Lima.
+      expect(
+        within(corrected).getByText("Corregida el 29/08/2026 11:45 por Giancarlo Sinuiri"),
+      ).toBeInTheDocument();
+      expect(
+        within(corrected).getByText("Motivo: El chofer dictó mal: sí entregó"),
+      ).toBeInTheDocument();
+
+      const untouched = screen.getByText("Kiosco La Esquina").closest("tr") as HTMLElement;
+      expect(within(untouched).getByText("Entregada")).toBeInTheDocument();
+      expect(within(untouched).queryByText("Corregida")).not.toBeInTheDocument();
+      expect(within(untouched).queryByText(/Corregida el/)).not.toBeInTheDocument();
+    });
+
+    it("sin motivo, la corrección se pinta igual: quién y cuándo alcanzan", async () => {
+      stubRoute(
+        buildRoute({
+          status: "FINISHED",
+          stops: [
+            stop({
+              position: 1,
+              status: "DELIVERED",
+              correction: { ...CORRECTION, correctionReason: null },
+            }),
+          ],
+        }),
+      );
+
+      renderPage();
+
+      expect(await screen.findByText("Corregida")).toBeInTheDocument();
+      expect(
+        screen.getByText("Corregida el 29/08/2026 11:45 por Giancarlo Sinuiri"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/^Motivo:/)).not.toBeInTheDocument();
+    });
+  });
+
   it("una ruta que no existe ofrece volver a la lista", async () => {
     const user = userEvent.setup();
     server.use(

@@ -88,9 +88,10 @@ export interface RouteSettlementView {
    * también mueve `expected` y no estampa ninguna corrección. Al pintar el
    * aviso, decir lo que se midió: se corrigió una parada después del cierre.
    *
-   * Declarado acá y todavía sin pintar: este archivo es el contrato y se
-   * actualiza contra el DTO real, pero avisarlo en la pantalla de liquidación
-   * es el PR siguiente.
+   * RouteSettlementPage lo avisa en la sección de la liquidación cerrada, con
+   * ese texto y no otro, y además le saca al aviso de dinero la atribución a
+   * un pago resuelto: con una corrección de por medio, esa causa ya no se
+   * puede afirmar.
    */
   settlementOutdated: boolean;
 }

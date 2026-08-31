@@ -46,9 +46,9 @@ export interface AccountStatementEntry {
   status: PaymentStatus | null;
   /**
    * Cuándo se anuló esta fila; null si sigue en pie. Anulada, `amount` es el
-   * monto original y `runningBalance` no se movió. Declarado acá y todavía
-   * sin pintar: este archivo es el contrato y se actualiza contra el DTO real
-   * —esa es la regla de arriba—, pero mostrarlo en la tabla es el PR 3.
+   * monto original y `runningBalance` no se movió. La tabla la muestra
+   * marcada en vez de esconderla: el cliente vio esa entrega y va a preguntar
+   * por ella.
    */
   voidedAt: string | null;
 }

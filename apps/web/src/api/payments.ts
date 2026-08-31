@@ -98,9 +98,9 @@ export interface PaymentRow {
    * anular dice que llegó y se anotó mal. Un cobro anulado SIGUE viniendo en
    * la bandeja, con su monto original, y suma en `totals`.
    *
-   * Declarados acá y todavía sin pintar: este archivo es el contrato y se
-   * actualiza contra el DTO real, pero mostrar la fila tachada y sin botones
-   * es el PR siguiente.
+   * PaymentsPage pinta el badge "Anulado", el motivo de la anulación y el
+   * monto tachado, y deja de ofrecer Confirmar y Rechazar: mirar sólo el
+   * estado los ofrecería sobre algo que la API rechaza con 409.
    */
   voidedAt: string | null;
   voidReason: string | null;
