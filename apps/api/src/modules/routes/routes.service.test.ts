@@ -189,6 +189,7 @@ function buildDeliveryResult(
     sale: { id: "sale-1", total: "12.50", creditLimitExceeded: false },
     payment: null,
     containerBalances: [],
+    stockShortfall: [],
     ...overrides,
   };
 }

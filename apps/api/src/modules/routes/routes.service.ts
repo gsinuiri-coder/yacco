@@ -20,6 +20,7 @@ import { ContainerMovementsService } from "../container-movements/container-move
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { RegisterStopDeliveryResult } from "../sales/sales.service.js";
 import { SalesService } from "../sales/sales.service.js";
+import type { CorrectRouteStopDto } from "./dto/correct-route-stop.dto.js";
 import type { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import type { CreateRouteDto } from "./dto/create-route.dto.js";
 import type { CreateRouteStopDto } from "./dto/create-route-stop.dto.js";
@@ -127,6 +128,7 @@ function toStopResponse(
           sale: delivery.sale,
           payment: delivery.payment,
           containerBalances: delivery.containerBalances,
+          stockShortfall: delivery.stockShortfall,
         }
       : {}),
   };
@@ -576,26 +578,9 @@ export class RoutesService {
       );
     }
 
+    assertMarkPayloadMatchesStatus(dto);
     if (dto.status === StopStatus.FAILED) {
-      if ((dto.failureReason ?? "").trim().length === 0) {
-        throw new BadRequestException("Una parada fallida necesita un motivo");
-      }
-      if (
-        dto.items !== undefined ||
-        dto.containersReturned !== undefined ||
-        dto.payment !== undefined ||
-        dto.priceOverrideAuthorizedById !== undefined
-      ) {
-        throw new BadRequestException("Una parada fallida no lleva datos de entrega");
-      }
       return this.markStopFailed(routeId, stopId, dto.failureReason as string);
-    }
-
-    if (dto.failureReason !== undefined) {
-      throw new BadRequestException("Una parada entregada no lleva motivo de falla");
-    }
-    if (dto.items === undefined || dto.items.length === 0) {
-      throw new BadRequestException("La entrega debe indicar los ítems vendidos (items)");
     }
     return this.markStopDelivered(routeId, stopId, dto, actor);
   }
@@ -691,6 +676,10 @@ export class RoutesService {
         items: dto.items ?? [],
         containersReturned: dto.containersReturned ?? [],
         recordedById: actor.id,
+        // Explícito, no por defecto: registrar una parada es anotar lo que
+        // acaba de pasar, así que el instante es ahora. Es el otro llamador
+        // —`correctStop`— el que hereda el instante de la entrega original.
+        occurredAt: new Date(),
         ...(dto.payment !== undefined ? { payment: dto.payment } : {}),
         ...(dto.priceOverrideAuthorizedById !== undefined
           ? { priceOverrideAuthorizedById: dto.priceOverrideAuthorizedById }
@@ -699,6 +688,176 @@ export class RoutesService {
 
       return toStopResponse(stop, delivery);
     });
+  }
+
+  /**
+   * Corregir una parada ya marcada: anula lo que se anotó y vuelve a
+   * registrarla como realmente fue. No es editar la fila (CLAUDE.md: un error
+   * operativo NUNCA se corrige editando ni borrando el registro): la venta
+   * anterior queda en la tabla, anulada y con su motivo, y los envases se
+   * devuelven con movimientos inversos. Lo único que se pisa son las tres
+   * columnas de corrección de la parada, que guardan SOLO LA ÚLTIMA — la
+   * historia entera vive en las ventas anuladas y en el libro.
+   *
+   * Es exclusiva del ADMIN (`@Roles` a nivel de método en el controlador), y
+   * por eso `priceOverrideAuthorizedById` de la re-registración es SIEMPRE
+   * `actor.id`, difiera o no el precio: la operación ya lleva motivo y ya está
+   * restringida, y quien corrige es exactamente quien autoriza. Ojo con el
+   * efecto: `hasOverride` se calcula contra el precio VIGENTE HOY, así que una
+   * corrección que no toca el precio igual queda marcada como override si el
+   * `CustomerPrice` cambió desde la venta original. Es información sobrante,
+   * no información falsa —ese ADMIN sí autorizó este registro—, y el precio
+   * cobrado queda escrito tal cual en la venta.
+   *
+   * **El cuerpo describe la parada ENTERA como quedó, no el pedacito que
+   * cambia.** Corregir es anular y volver a registrar, así que lo que el
+   * cuerpo no diga no se re-registra: mandar solo `items` para arreglar una
+   * cantidad borra el cobro y los vacíos que la parada tenía, porque la
+   * anulación ya los deshizo y nada los vuelve a escribir. Es reemplazo, no
+   * parche, y quien llama tiene que repetir `payment` y `containersReturned`
+   * si siguen valiendo.
+   *
+   * Una ruta SETTLED NO bloquea: la liquidación pasa a estar desactualizada, y
+   * mostrarlo es lectura, no escritura. PLANNED sí, porque no hay nada
+   * registrado que corregir.
+   */
+  async correctStop(
+    routeId: string,
+    stopId: string,
+    dto: CorrectRouteStopDto,
+    actor: RouteActor,
+  ): Promise<RouteStopResponseDto> {
+    const route = await this.getOwnedRouteOrThrow(routeId, actor);
+    if (route.status === RouteStatus.PLANNED) {
+      throw new ConflictException(
+        "En una ruta planificada todavía no se registró ninguna parada, así que no hay nada que corregir",
+      );
+    }
+    if (dto.correctionReason.trim().length === 0) {
+      throw new BadRequestException("El motivo de la corrección no puede estar vacío");
+    }
+    // Prohibido en el cuerpo aunque el DTO lo herede: acá lo pone el servicio
+    // —el ADMIN que corrige— y aceptarlo dejaría creer que otro usuario puede
+    // autorizar el precio de una corrección.
+    if (dto.priceOverrideAuthorizedById !== undefined) {
+      throw new BadRequestException(
+        "En una corrección el precio lo autoriza quien corrige; no se envía priceOverrideAuthorizedById",
+      );
+    }
+    assertMarkPayloadMatchesStatus(dto);
+
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.routeStop.updateMany({
+        where: { id: stopId, routeId, status: { in: [StopStatus.DELIVERED, StopStatus.FAILED] } },
+        data: {
+          status: dto.status,
+          correctedAt: new Date(),
+          correctedById: actor.id,
+          correctionReason: dto.correctionReason,
+          // Yendo a FAILED se escribe el motivo nuevo. Yendo a DELIVERED el
+          // `failureReason` original SE CONSERVA, no se limpia: es lo que el
+          // chofer dijo que había pasado, y borrarlo destruiría la evidencia
+          // de que hubo un error de anotación. La parada queda DELIVERED con
+          // un motivo de falla viejo colgando, que se lee raro pero es cierto.
+          // El próximo lector va a querer limpiarlo: no lo hagas.
+          ...(dto.status === StopStatus.FAILED
+            ? { failureReason: dto.failureReason as string }
+            : {}),
+        },
+      });
+      if (count === 0) {
+        await this.throwNothingToCorrectConflict(tx, routeId, stopId);
+      }
+
+      const stop = await tx.routeStop.findUniqueOrThrow({
+        where: { id: stopId },
+        include: STOP_INCLUDE,
+      });
+
+      // EL ORDEN IMPORTA Y NO ES CASUAL: anular ANTES de volver a registrar.
+      //
+      // La razón que manda es que `emitStopVoidMovements` netea sobre TODOS
+      // los movimientos de este `stopId`: al revés, el LOAN_DELIVERY recién
+      // escrito entraría en ese neteo y la anulación revertiría justo la
+      // entrega que acababa de registrarse. No es una preferencia de estilo
+      // —`allowStockShortfall` no la vuelve opcional—, es la diferencia entre
+      // corregir y dejar la parada sin nada.
+      //
+      // La segunda razón es el stock: los LOAN_DELIVERY_VOID y FULL_SALE_VOID
+      // entran a FULL_ON_ROUTE y `getRouteFullStock` agrega por ESTADO, así
+      // que la anulación devuelve los llenos al camión justo antes de que la
+      // re-registración se los pida. Al revés, corregir la misma cantidad
+      // sobre un camión que quedó vacío contaría un faltante que no existe.
+      //
+      // No-op silencioso si la parada estaba FAILED y no había venta.
+      const voided = await this.salesService.voidStopDeliveryWithinTransaction(tx, {
+        stopId,
+        voidedById: actor.id,
+        voidReason: dto.correctionReason,
+      });
+
+      // El pedido sigue a su parada, igual que al marcarla, y nunca vuelve a
+      // PENDING: una corrección no deshace que el pedido salió en un camión.
+      if (stop.orderId !== null) {
+        await tx.order.update({
+          where: { id: stop.orderId },
+          data: {
+            status:
+              dto.status === StopStatus.DELIVERED ? OrderStatus.DELIVERED : OrderStatus.FAILED,
+          },
+        });
+      }
+
+      if (dto.status !== StopStatus.DELIVERED) {
+        return toStopResponse(stop);
+      }
+
+      // La entrega corregida es la MISMA entrega, del mismo día: hereda el
+      // `soldAt` de la venta que se acaba de anular. Si la parada estaba
+      // FAILED no hay ninguna, y el instante sale del día de la ruta, al
+      // mediodía de Lima — la hora de reparto, y la que menos se corre al
+      // cruzar el borde del día en cualquier lectura por fecha de negocio.
+      const occurredAt = voided.sale?.soldAt ?? limaNoonOfBusinessDate(route.date, new Date());
+
+      const delivery = await this.salesService.registerStopDeliveryWithinTransaction(tx, {
+        routeId,
+        stopId,
+        locationId: stop.locationId,
+        items: dto.items ?? [],
+        containersReturned: dto.containersReturned ?? [],
+        recordedById: actor.id,
+        occurredAt,
+        priceOverrideAuthorizedById: actor.id,
+        allowStockShortfall: true,
+        ...(dto.payment !== undefined ? { payment: dto.payment } : {}),
+      });
+
+      return toStopResponse(stop, delivery);
+    });
+  }
+
+  /**
+   * El 409 de "no hay nada que corregir". No reusa `throwAlreadyMarkedConflict`
+   * a propósito: ese mensaje habla de una entrega YA registrada para frenar un
+   * doble cobro, que es exactamente lo contrario de lo que pasa acá. Corregir
+   * falla cuando la parada nunca se marcó —sigue PENDING, y entonces se marca,
+   * no se corrige— o cuando no existe en esta ruta.
+   */
+  private async throwNothingToCorrectConflict(
+    client: Prisma.TransactionClient,
+    routeId: string,
+    stopId: string,
+  ): Promise<never> {
+    const existing = await client.routeStop.findFirst({
+      where: { id: stopId, routeId },
+      select: { status: true },
+    });
+    if (existing === null) {
+      throw new NotFoundException(`La parada "${stopId}" no existe en esta ruta`);
+    }
+    throw new ConflictException(
+      "Esta parada todavía no se registró, así que no hay nada que corregir: primero hay que marcarla como entregada o no entregada",
+    );
   }
 
   /**
@@ -923,10 +1082,12 @@ export class RoutesService {
   private async getOwnedRouteOrThrow(
     id: string,
     actor: RouteActor,
-  ): Promise<{ id: string; driverId: string; status: RouteStatus }> {
+  ): Promise<{ id: string; driverId: string; status: RouteStatus; date: Date }> {
     const route = await this.prisma.route.findUnique({
       where: { id },
-      select: { id: true, driverId: true, status: true },
+      // `date` lo usa `correctStop` para fechar la venta de una parada que
+      // estaba FAILED y no tiene ninguna venta de la cual heredar el instante.
+      select: { id: true, driverId: true, status: true, date: true },
     });
     if (route === null) {
       throw new NotFoundException(`La ruta "${id}" no existe`);
@@ -991,6 +1152,57 @@ async function assertIsOldestBatchItemWithStock(
 function unresolvedStopsMessage(pendingStops: number): string {
   const count = pendingStops === 1 ? "queda 1 parada" : `quedan ${pendingStops} paradas`;
   return `No se puede terminar la ruta: ${count} sin resolver. Cada parada tiene que quedar marcada (entregada o no entregada) o quitarse de la ruta.`;
+}
+
+/**
+ * Qué campos admite cada estado destino, para marcar y para corregir por
+ * igual: la combinación válida es la misma en las dos operaciones —una parada
+ * no entregada no tiene qué vender y una entregada no tiene motivo de falla—
+ * así que la regla vive una sola vez.
+ *
+ * `status` decide qué es obligatorio y qué está prohibido, algo que un
+ * decorador de class-validator no expresa; por eso queda acá y no en el DTO
+ * (misma nota que ya llevan `MarkRouteStopDto` y `CreateRouteStopDto`).
+ */
+function assertMarkPayloadMatchesStatus(dto: MarkRouteStopDto): void {
+  if (dto.status === StopStatus.FAILED) {
+    if ((dto.failureReason ?? "").trim().length === 0) {
+      throw new BadRequestException("Una parada fallida necesita un motivo");
+    }
+    if (
+      dto.items !== undefined ||
+      dto.containersReturned !== undefined ||
+      dto.payment !== undefined ||
+      dto.priceOverrideAuthorizedById !== undefined
+    ) {
+      throw new BadRequestException("Una parada fallida no lleva datos de entrega");
+    }
+    return;
+  }
+
+  if (dto.failureReason !== undefined) {
+    throw new BadRequestException("Una parada entregada no lleva motivo de falla");
+  }
+  if (dto.items === undefined || dto.items.length === 0) {
+    throw new BadRequestException("La entrega debe indicar los ítems vendidos (items)");
+  }
+}
+
+/**
+ * Lima está en UTC-5 todo el año (no tiene horario de verano), así que su
+ * mediodía es siempre las 17:00 UTC. `routes.date` es una columna `date` y
+ * Prisma la entrega como la medianoche UTC de ese día calendario, de modo que
+ * el mediodía de Lima es esa medianoche más 17 horas — la misma conversión que
+ * `limaDayStartUtc` en container-movements, corrida medio día.
+ *
+ * Se acota por el instante actual porque `ContainerMovementsService` rechaza un
+ * movimiento con fecha futura: corregir una parada de la ruta de HOY antes del
+ * mediodía mandaría un instante que todavía no ocurrió y la corrección se
+ * caería con un mensaje que no tiene nada que ver con lo que el usuario hizo.
+ */
+function limaNoonOfBusinessDate(businessDate: Date, now: Date): Date {
+  const limaNoon = new Date(businessDate.getTime() + 17 * 60 * 60 * 1000);
+  return limaNoon.getTime() > now.getTime() ? now : limaNoon;
 }
 
 /** PLANNED and IN_PROGRESS may still be edited; FINISHED never is. */

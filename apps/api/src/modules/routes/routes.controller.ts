@@ -27,6 +27,7 @@ import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
+import { CorrectRouteStopDto } from "./dto/correct-route-stop.dto.js";
 import { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import { CreateRouteStopDto } from "./dto/create-route-stop.dto.js";
 import { CreateRouteDto } from "./dto/create-route.dto.js";
@@ -231,6 +232,37 @@ export class RoutesController {
     @Req() request: AuthenticatedRequest,
   ): Promise<RouteStopResponseDto> {
     return this.routesService.markStop(id, stopId, dto, actorFrom(request));
+  }
+
+  // Solo ADMIN, y por eso el @Roles va acá y no en la clase: corregir
+  // contradice lo que ya firmó otra persona, y la invariante de CLAUDE.md dice
+  // que la corrección de un registro operativo la emite el ADMIN desde la web,
+  // venga el error de donde venga. El chofer que se equivocó al dictar no es
+  // quien decide cómo queda el libro.
+  @ApiOperation({
+    summary: "Corrige una parada ya registrada: anula lo anotado y lo vuelve a registrar",
+    description:
+      "No edita nada: la venta anterior queda anulada con su motivo y los envases vuelven con movimientos inversos. El cuerpo describe la parada ENTERA como quedó, no solo lo que cambia: lo que no se repita (payment, containersReturned) no se vuelve a registrar. Una ruta ya liquidada se corrige igual — la liquidación queda desactualizada, no se bloquea la corrección.",
+  })
+  @ApiResponse({ status: 200, type: RouteStopResponseDto })
+  @ApiNotFoundResponse({ description: "Route or stop id does not exist" })
+  @ApiBadRequestResponse({
+    description:
+      "Validation failed, correctionReason is missing, or the body carries priceOverrideAuthorizedById",
+  })
+  @ApiConflictResponse({
+    description:
+      "Route is PLANNED (nothing registered to correct), or the stop is still PENDING / not on this route",
+  })
+  @Roles(UserRole.ADMIN)
+  @Patch(":id/stops/:stopId/correction")
+  correctStop(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("stopId", ParseUUIDPipe) stopId: string,
+    @Body() dto: CorrectRouteStopDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RouteStopResponseDto> {
+    return this.routesService.correctStop(id, stopId, dto, actorFrom(request));
   }
 
   // Cargo is office work, same as planning: a DRIVER only ever reads what
