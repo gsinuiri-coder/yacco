@@ -3,7 +3,10 @@ import type { ContainerMovementType } from "../api/container-movements";
 import { CONTAINER_STATE_LABELS } from "./container-inventory";
 
 /** Every ContainerMovementType, not just the three this screen can register:
- * the history shows the whole ledger, including what other processes emit. */
+ * the history shows the whole ledger, including what other processes emit.
+ * El `Record` es total sobre la unión, así que un tipo nuevo sin etiqueta no
+ * compila — pero eso solo sirve mientras la unión esté completa contra el
+ * enum de Prisma; ver el comentario en api/container-movements.ts. */
 export const CONTAINER_MOVEMENT_TYPE_LABELS: Record<ContainerMovementType, string> = {
   FLEET_ENTRY: "Ingreso de envases nuevos",
   FILLING: "Llenado",
@@ -15,6 +18,8 @@ export const CONTAINER_MOVEMENT_TYPE_LABELS: Record<ContainerMovementType, strin
   FULL_SALE: "Venta",
   DAMAGE_WRITE_OFF: "Baja por daño",
   LOSS_WRITE_OFF: "Baja por pérdida",
+  OPENING_BALANCE: "Saldo de apertura",
+  COUNT_ADJUSTMENT: "Ajuste por conteo",
 };
 
 /** "de dónde sale" phrasing for the origin picker — plain-language, not the enum. */

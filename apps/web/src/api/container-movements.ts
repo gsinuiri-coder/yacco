@@ -11,7 +11,15 @@ import type { ApiClient } from "./api-client";
 
 /** Enum ContainerMovementType en Prisma — every value, not just the three this
  * screen can register: the history/filter also shows movements other
- * processes emit (production's FILLING, the route app's future entries). */
+ * processes emit (production's FILLING, the route app's future entries).
+ *
+ * "Every value" used to be a claim, not a fact: OPENING_BALANCE and
+ * COUNT_ADJUSTMENT existed in the Prisma enum and were missing here, so
+ * `Record<ContainerMovementType, string>` in container-movement-labels.ts
+ * looked exhaustive while those two rows rendered with an empty label in the
+ * history. Completing the union is the real fix — with it, the compiler
+ * catches the next omission instead of the screen swallowing it. Keep it in
+ * step with the enum. */
 export type ContainerMovementType =
   | "FLEET_ENTRY"
   | "FILLING"
@@ -22,7 +30,9 @@ export type ContainerMovementType =
   | "EMPTY_UNLOAD"
   | "FULL_SALE"
   | "DAMAGE_WRITE_OFF"
-  | "LOSS_WRITE_OFF";
+  | "LOSS_WRITE_OFF"
+  | "OPENING_BALANCE"
+  | "COUNT_ADJUSTMENT";
 
 /** ContainerMovementContainerTypeDto. */
 export interface ContainerMovementContainerType {
