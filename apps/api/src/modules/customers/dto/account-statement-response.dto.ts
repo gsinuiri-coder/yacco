@@ -32,8 +32,9 @@ export class AccountStatementEntryDto {
 
   /**
    * The balance right after this entry is applied — a CONFIRMED payment
-   * decreases it, a charge increases it, a PENDING/REJECTED payment leaves
-   * it exactly where it was (see CustomersService.getAccountStatement).
+   * decreases it, a charge increases it, and a PENDING/REJECTED payment or
+   * any voided row leaves it exactly where it was (see
+   * CustomersService.getAccountStatement).
    */
   @ApiProperty({ type: String, example: "64.99" })
   runningBalance!: string;
@@ -55,6 +56,14 @@ export class AccountStatementEntryDto {
 
   @ApiPropertyOptional({ enum: PaymentStatus, nullable: true })
   status!: PaymentStatus | null;
+
+  /**
+   * Cuándo se anuló este cargo o este cobro; null si sigue en pie. Anulado,
+   * `amount` sigue siendo el monto original y `runningBalance` no se mueve:
+   * la fila está para verse, no para contarse.
+   */
+  @ApiPropertyOptional({ format: "date-time", nullable: true })
+  voidedAt!: Date | null;
 }
 
 export class AccountStatementResponseDto {

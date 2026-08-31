@@ -38,6 +38,33 @@ it is wrong.
 | `DAMAGE_WRITE_OFF` | any state in plant → write-off                     | none (plant-side damage)                  |
 | `LOSS_WRITE_OFF`   | with customer → write-off                          | **−N** (loss declared, balance clears)    |
 
+Plus `OPENING_BALANCE` and `COUNT_ADJUSTMENT` (cutover and physical count),
+and the three anulaciones — `LOAN_DELIVERY_VOID`, `EMPTY_PICKUP_VOID`,
+`FULL_SALE_VOID` — each the reverse of its own type. All five are
+INTERNAL_ONLY: they never enter through `POST /container-movements`, because
+each has a companion record it must stay in lock-step with.
+
+A void records that something written down NEVER HAPPENED — nothing moves in
+the plant, the books are what gets corrected. They are separate types, not
+new pairs on the type they undo, because `RouteSettlementService` aggregates
+by `type`: a reverse typed `LOAN_DELIVERY` would ADD to `fullDelivered`
+instead of subtracting. Two consequences that follow from that, and that any
+new code has to respect:
+
+- **Anything that reads the ledger by `type` must net its void type**;
+  anything that reads by `fromState`/`toState` needs no change at all and
+  must not get one (`getRouteFullStock`, `inventory()`, the reconciliation
+  report — the void movements correct those on their own).
+- **Every aggregate that sums money as a BALANCE filters `voidedAt: null`**
+  on `Sale`/`Payment`. A total that describes a LIST instead (the payment
+  tray's `totals`, which shares its `where` with the page it sums) does not,
+  and says so in a comment.
+- A void must carry the same `routeId` as the movement it undoes, or the
+  settlement will not net it.
+- Voiding is never an edit: `voidedAt`/`voidedById`/`voidReason` are the only
+  columns that change, all three together (DB CHECK), and the void's own
+  ledger movement plus `customers.debt_balance` move in the SAME transaction.
+
 Two independent debts per customer: container balance (units) and money debt
 (S/). Never mix them — a container write-off is never converted to a monetary
 charge implicitly, and vice versa.

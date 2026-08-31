@@ -57,14 +57,24 @@ function limaDayStartUtc(date: string): Date {
  * calling `createWithinTransaction` directly — never through this public
  * route. Each writer keeps a companion record this ledger row must stay in
  * lock-step with: the customer-roster loader's cutover entry for
- * OPENING_BALANCE, the `container_counts` row for COUNT_ADJUSTMENT. A
- * movement of either type registered here by hand would have no such
- * companion, leaving the ledger and that record diverging — exactly what
- * each of those tables exists to prevent.
+ * OPENING_BALANCE, the `container_counts` row for COUNT_ADJUSTMENT, and the
+ * voided Sale/Payment for each of the three *_VOID types. A movement of any
+ * of these registered here by hand would have no such companion, leaving the
+ * ledger and that record diverging — exactly what each of those tables
+ * exists to prevent.
+ *
+ * Para las anulaciones el desfase sería el peor de los cinco: un
+ * LOAN_DELIVERY_VOID suelto devuelve los bidones al camión y baja el saldo
+ * del cliente, pero deja la venta cobrándose y la deuda en pie. La
+ * anulación de la venta y la del movimiento son la misma corrección, y
+ * tienen que escribirse en la misma transacción.
  */
 const INTERNAL_ONLY_MOVEMENT_TYPES: ReadonlySet<ContainerMovementType> = new Set([
   ContainerMovementType.OPENING_BALANCE,
   ContainerMovementType.COUNT_ADJUSTMENT,
+  ContainerMovementType.LOAN_DELIVERY_VOID,
+  ContainerMovementType.EMPTY_PICKUP_VOID,
+  ContainerMovementType.FULL_SALE_VOID,
 ]);
 
 @Injectable()

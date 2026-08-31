@@ -32,7 +32,8 @@ interface StatementMovement {
   type: "CHARGE" | "PAYMENT";
   amount: Prisma.Decimal;
   /** Signed effect on the balance: +amount for a charge, -amount for a
-   * CONFIRMED payment, 0 for a PENDING or REJECTED one. */
+   * CONFIRMED payment, 0 for a PENDING or REJECTED one — and 0 for anything
+   * voided, whichever of the two it is. */
   effect: Prisma.Decimal;
   isOpeningBalance: boolean;
   saleId: string | null;
@@ -40,6 +41,7 @@ interface StatementMovement {
   paymentId: string | null;
   paymentMethodName: string | null;
   status: PaymentStatus | null;
+  voidedAt: Date | null;
 }
 
 /**
@@ -175,6 +177,14 @@ export class CustomersService {
    * balance — exactly the rule every other aggregate in this system already
    * follows (`debtBalance`, route settlements, the confirmation tray).
    *
+   * Una venta o un cobro ANULADOS siguen ese mismo idioma, y por la misma
+   * razón: la fila aparece con su monto original y su `voidedAt`, pero su
+   * efecto es cero y el saldo no se mueve. Es lo que hace visible "esto se
+   * anotó y después se corrigió" en vez de esconderlo — y esconderlo sería
+   * peor acá que en un pago PENDING, porque el cliente vio esa entrega y va
+   * a preguntar por ella. La fila NUNCA se edita ni se borra (CLAUDE.md):
+   * quien anula escribe `voidedAt`, y este método deja de contarla.
+   *
    * `openingBalance`/`closingBalance` are computed over every movement in
    * the window, never truncated; `limit` only caps how many of the most
    * recent `entries` are returned, so the two balances stay correct even
@@ -215,6 +225,7 @@ export class CustomersService {
           soldAt: true,
           total: true,
           isOpeningBalance: true,
+          voidedAt: true,
           location: { select: { name: true } },
         },
       }),
@@ -229,6 +240,7 @@ export class CustomersService {
           amount: true,
           status: true,
           isOpeningBalance: true,
+          voidedAt: true,
           paymentMethod: { select: { name: true } },
         },
       }),
@@ -239,20 +251,21 @@ export class CustomersService {
         date: sale.soldAt,
         type: "CHARGE",
         amount: sale.total,
-        effect: sale.total,
+        effect: sale.voidedAt === null ? sale.total : new Prisma.Decimal(0),
         isOpeningBalance: sale.isOpeningBalance,
         saleId: sale.id,
         locationName: sale.location.name,
         paymentId: null,
         paymentMethodName: null,
         status: null,
+        voidedAt: sale.voidedAt,
       })),
       ...payments.map((payment): StatementMovement => ({
         date: payment.paidAt,
         type: "PAYMENT",
         amount: payment.amount,
         effect:
-          payment.status === PaymentStatus.CONFIRMED
+          payment.voidedAt === null && payment.status === PaymentStatus.CONFIRMED
             ? payment.amount.negated()
             : new Prisma.Decimal(0),
         isOpeningBalance: payment.isOpeningBalance,
@@ -261,6 +274,7 @@ export class CustomersService {
         paymentId: payment.id,
         paymentMethodName: payment.paymentMethod.name,
         status: payment.status,
+        voidedAt: payment.voidedAt,
       })),
     ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -290,6 +304,7 @@ export class CustomersService {
         paymentId: movement.paymentId,
         paymentMethodName: movement.paymentMethodName,
         status: movement.status,
+        voidedAt: movement.voidedAt,
       });
     }
     // Every movement was before `from` (or there were none at all): the

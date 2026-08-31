@@ -124,4 +124,43 @@ describe("isValidContainerTransition", () => {
       );
     }
   });
+
+  // Las tablas generadas de arriba ya cubren que estos pares existan; lo que
+  // se afirma acá es lo que las tablas no pueden decir: cuál es el par de cada
+  // anulación, y que FULL_SALE_VOID NO es el espejo de FULL_SALE.
+  it.each([
+    [
+      ContainerMovementType.LOAN_DELIVERY_VOID,
+      ContainerState.WITH_CUSTOMER,
+      ContainerState.FULL_ON_ROUTE,
+    ],
+    [
+      ContainerMovementType.EMPTY_PICKUP_VOID,
+      ContainerState.EMPTY_ON_ROUTE,
+      ContainerState.WITH_CUSTOMER,
+    ],
+  ])("%s deshace su movimiento leyéndolo al revés", (type, from, to) => {
+    expect(isValidContainerTransition(type, from, to)).toBe(true);
+    // Y no en la dirección del movimiento que anula.
+    expect(isValidContainerTransition(type, to, from)).toBe(false);
+  });
+
+  it("FULL_SALE_VOID entra al parque sin origen, y no espeja los dos orígenes de FULL_SALE", () => {
+    expect(
+      isValidContainerTransition(
+        ContainerMovementType.FULL_SALE_VOID,
+        null,
+        ContainerState.FULL_ON_ROUTE,
+      ),
+    ).toBe(true);
+    // FULL_SALE sale del camión O de la planta; el libro no dice cuál fue, así
+    // que la anulación no puede devolverlos "a" la planta ni salir de null a
+    // ningún otro estado.
+    for (const state of ALL_STATES) {
+      if (state === ContainerState.FULL_ON_ROUTE) continue;
+      expect(isValidContainerTransition(ContainerMovementType.FULL_SALE_VOID, null, state)).toBe(
+        false,
+      );
+    }
+  });
 });

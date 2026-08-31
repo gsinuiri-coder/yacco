@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import request from "supertest";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
@@ -22,6 +23,7 @@ function nextDate(): string {
 let ctx: TestAppContext;
 let prisma: PrismaService;
 let adminToken: string;
+let adminUserId: string;
 let driverToken: string;
 let driverId: string;
 let zoneId: string;
@@ -194,6 +196,7 @@ beforeAll(async () => {
   ctx = await startTestApp();
   prisma = ctx.app.get(PrismaService);
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
+  adminUserId = (await prisma.user.findUniqueOrThrow({ where: { username: ADMIN_USERNAME } })).id;
   const driver = await createUserAndLogin("repartidor-estado-cuenta", "DRIVER");
   driverToken = driver.token;
   driverId = driver.id;
@@ -415,4 +418,99 @@ describe("validation and access", () => {
       expect(typeof entry.runningBalance).toBe("string");
     }
   });
+});
+
+/**
+ * Quien ESCRIBE una anulación es la operación de corrección, que todavía no
+ * existe: acá el estado anulado se arma a mano, con un UPDATE que ningún
+ * código de producción tiene permitido hacer. Es legítimo justamente porque lo
+ * que se prueba es la aritmética de quien LEE el libro — y la base, que es la
+ * que se niega a guardar una anulación a medias.
+ */
+describe("una venta y un cobro anulados", () => {
+  async function markVoided(table: "sale" | "payment", id: string): Promise<Date> {
+    const voidedAt = new Date();
+    const data = { voidedAt, voidedById: adminUserId, voidReason: "Se anotó la parada equivocada" };
+    if (table === "sale") {
+      await prisma.sale.update({ where: { id }, data });
+    } else {
+      await prisma.payment.update({ where: { id }, data });
+    }
+    return voidedAt;
+  }
+
+  test("siguen apareciendo con su monto original, pero no mueven el saldo", async () => {
+    const { customerId, locationId } = await createFreshLocation();
+    const vigente = await deliver(locationId, 1);
+    const anulada = await deliver(locationId, 3, {
+      paymentMethodId: cashPaymentMethodId,
+      amount: "5.00",
+    });
+    expect(anulada.paymentId).not.toBeNull();
+    await markVoided("sale", anulada.saleId);
+    await markVoided("payment", anulada.paymentId as string);
+
+    const response = await getStatement(customerId);
+    expect(response.status).toBe(200);
+
+    const entries = response.body.entries as {
+      saleId: string | null;
+      paymentId: string | null;
+      amount: string;
+      runningBalance: string;
+      voidedAt: string | null;
+    }[];
+    const vigenteEntry = entries.find((entry) => entry.saleId === vigente.saleId);
+    const anuladaEntry = entries.find((entry) => entry.saleId === anulada.saleId);
+    const cobroEntry = entries.find((entry) => entry.paymentId === anulada.paymentId);
+
+    // Las tres filas se ven: nada se borra ni se esconde.
+    expect(vigenteEntry?.voidedAt).toBeNull();
+    expect(anuladaEntry?.voidedAt).not.toBeNull();
+    expect(cobroEntry?.voidedAt).not.toBeNull();
+    // Con su monto original, no en cero.
+    expect(anuladaEntry?.amount).toBe(anulada.total);
+    expect(cobroEntry?.amount).toBe("5.00");
+    // Y el saldo reconstruido es solo el de la venta vigente.
+    expect(response.body.closingBalance).toBe(vigente.total);
+    expect(anuladaEntry?.runningBalance).toBe(vigente.total);
+    expect(cobroEntry?.runningBalance).toBe(vigente.total);
+
+    // Y acá se ve lo que a este PR le falta para ser la feature entera.
+    // `debtBalance` sigue arrastrando la venta y el cobro anulados, porque
+    // este test los anuló a mano y un UPDATE no es la operación de
+    // corrección. La divergencia se afirma a propósito, en vez de dejarse
+    // pasar: es el trabajo del PR 2, que tiene que mover `debtBalance` en la
+    // MISMA transacción que escribe la anulación — el saldo materializado
+    // siempre reconstruible desde su ledger (CLAUDE.md). El día que exista,
+    // este expect se invierte a `toBe(response.body.closingBalance)`.
+    expect(response.body.customer.debtBalance).not.toBe(response.body.closingBalance);
+    expect(await customerDebtBalance(customerId)).toBe(
+      new Prisma.Decimal(vigente.total).plus(anulada.total).minus("5.00").toFixed(2),
+    );
+  });
+
+  test.each(["sale", "payment"] as const)(
+    "la base rechaza una anulación de %s sin razón: las tres columnas van juntas",
+    async (table) => {
+      const { locationId } = await createFreshLocation();
+      const { saleId, paymentId } = await deliver(locationId, 1, {
+        paymentMethodId: cashPaymentMethodId,
+        amount: "1.00",
+      });
+      const id = table === "sale" ? saleId : (paymentId as string);
+      // Fecha y autor, sin razón: la fila quedaría anulada sin poder decir por
+      // qué. El CHECK de la migración es quien lo impide, no la aplicación.
+      const halfVoided = { voidedAt: new Date(), voidedById: adminUserId };
+
+      const attempt =
+        table === "sale"
+          ? prisma.sale.update({ where: { id }, data: halfVoided })
+          : prisma.payment.update({ where: { id }, data: halfVoided });
+
+      await expect(attempt).rejects.toThrow(
+        new RegExp(`${table === "sale" ? "sales" : "payments"}_voided_at_void_reason_check`),
+      );
+    },
+  );
 });

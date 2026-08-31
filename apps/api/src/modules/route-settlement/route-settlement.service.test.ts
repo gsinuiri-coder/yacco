@@ -33,11 +33,12 @@ interface AggregateArgs {
     type?: ContainerMovementType;
     status?: PaymentStatus | { in: PaymentStatus[] };
     paymentMethod?: unknown;
+    voidedAt?: Date | null;
   };
 }
 
 interface GroupByArgs {
-  where: { type?: ContainerMovementType };
+  where: { type: { in: ContainerMovementType[] } };
 }
 interface FindManyArgs {
   where: { id: { in: string[] } };
@@ -70,47 +71,63 @@ function settledRow(overrides: Record<string, unknown> = {}) {
 }
 
 /**
- * containerMovement.groupBy se llama una vez por EMPTY_PICKUP (lo recogido,
- * dentro de computeExpected) y otra por EMPTY_UNLOAD (lo descargado, releído
- * después de emitir) — despacha por ese filtro, igual que el mock de aggregate.
+ * containerMovement.groupBy se llama una vez por lo recogido (EMPTY_PICKUP y
+ * su anulación, dentro de computeExpected) y otra por lo descargado
+ * (EMPTY_UNLOAD solo, releído después de emitir). El filtro real es un `in`
+ * sobre los tipos, así que el mock despacha por qué tipos pide y devuelve —
+ * como Prisma con `by: ["containerTypeId", "type"]` — una fila por par
+ * (tipo de envase, tipo de movimiento). Quien resta es el servicio.
  */
 function groupByMock(rows: {
   pickedUp?: { containerTypeId: string; quantity: number }[];
+  pickedUpVoided?: { containerTypeId: string; quantity: number }[];
   unloaded?: { containerTypeId: string; quantity: number }[];
 }) {
-  return jest.fn(async (args: GroupByArgs) => {
-    const source =
-      args.where.type === ContainerMovementType.EMPTY_UNLOAD
-        ? (rows.unloaded ?? [])
-        : (rows.pickedUp ?? []);
-    return source.map((row) => ({
-      containerTypeId: row.containerTypeId,
-      _sum: { quantity: row.quantity },
-    }));
-  });
+  const byType = new Map<ContainerMovementType, { containerTypeId: string; quantity: number }[]>([
+    [ContainerMovementType.EMPTY_PICKUP, rows.pickedUp ?? []],
+    [ContainerMovementType.EMPTY_PICKUP_VOID, rows.pickedUpVoided ?? []],
+    [ContainerMovementType.EMPTY_UNLOAD, rows.unloaded ?? []],
+  ]);
+  return jest.fn(async (args: GroupByArgs) =>
+    args.where.type.in.flatMap((type) =>
+      (byType.get(type) ?? []).map((row) => ({
+        containerTypeId: row.containerTypeId,
+        type,
+        _sum: { quantity: row.quantity },
+      })),
+    ),
+  );
 }
 
 /**
- * containerMovement.aggregate is called three times per settle()/getSettlementView()
- * with different `where.type` filters — this dispatches by that filter so a
- * single mock can stand in for all three.
+ * containerMovement.aggregate is called SIX times per
+ * settle()/getSettlementView(): each of the three counts is a pair —el tipo y
+ * su anulación—, y `netSum` los resta. Despacha por `where.type` para que un
+ * solo mock cubra las seis. Los `*Voided` van sin valor en casi todos los
+ * tests: sin anulaciones, el neto es lo registrado y nada cambia.
  */
 function containerMovementAggregateMock(sums: {
   fullDelivered?: number | undefined;
+  fullDeliveredVoided?: number | undefined;
   fullSold?: number | undefined;
+  fullSoldVoided?: number | undefined;
   emptiesPickedUp?: number | undefined;
+  emptiesPickedUpVoided?: number | undefined;
 }) {
+  const byType = new Map<ContainerMovementType, number | undefined>([
+    [ContainerMovementType.LOAN_DELIVERY, sums.fullDelivered],
+    [ContainerMovementType.LOAN_DELIVERY_VOID, sums.fullDeliveredVoided],
+    [ContainerMovementType.FULL_SALE, sums.fullSold],
+    [ContainerMovementType.FULL_SALE_VOID, sums.fullSoldVoided],
+    [ContainerMovementType.EMPTY_PICKUP, sums.emptiesPickedUp],
+    [ContainerMovementType.EMPTY_PICKUP_VOID, sums.emptiesPickedUpVoided],
+  ]);
   return jest.fn(async (args: AggregateArgs) => {
-    if (args.where.type === ContainerMovementType.LOAN_DELIVERY) {
-      return { _sum: { quantity: sums.fullDelivered ?? null } };
+    const type = args.where.type;
+    if (type === undefined || !byType.has(type)) {
+      throw new Error(`unexpected containerMovement.aggregate call: ${JSON.stringify(args)}`);
     }
-    if (args.where.type === ContainerMovementType.FULL_SALE) {
-      return { _sum: { quantity: sums.fullSold ?? null } };
-    }
-    if (args.where.type === ContainerMovementType.EMPTY_PICKUP) {
-      return { _sum: { quantity: sums.emptiesPickedUp ?? null } };
-    }
-    throw new Error(`unexpected containerMovement.aggregate call: ${JSON.stringify(args)}`);
+    return { _sum: { quantity: byType.get(type) ?? null } };
   });
 }
 
@@ -152,7 +169,7 @@ function buildPrismaMock() {
       findMany: jest.fn<(args: FindManyArgs) => Promise<unknown>>(),
     },
     sale: {
-      aggregate: jest.fn<() => Promise<unknown>>(),
+      aggregate: jest.fn<(args: AggregateArgs) => Promise<unknown>>(),
     },
     payment: {
       aggregate: jest.fn<(args: AggregateArgs) => Promise<unknown>>(),
@@ -281,6 +298,86 @@ describe("RouteSettlementService", () => {
       expect(collectedCall).toBeDefined();
       const where = (collectedCall as [AggregateArgs])[0].where;
       expect(where.status).toEqual({ in: [PaymentStatus.CONFIRMED, PaymentStatus.PENDING] });
+    });
+
+    // El estado anulado lo escribe la operación de corrección, que todavía no
+    // existe: acá se arma a mano a propósito. Lo que se prueba es la
+    // aritmética de quien LEE el libro, no la de quien lo escribe.
+    it("lo anulado no se cuenta: los tres conteos salen netos de su anulación", async () => {
+      prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID });
+      prisma.routeLoad.aggregate.mockResolvedValue({ _sum: { quantity: 20 } });
+      prisma.containerMovement.aggregate.mockImplementation(
+        containerMovementAggregateMock({
+          fullDelivered: 10,
+          fullDeliveredVoided: 3,
+          fullSold: 4,
+          fullSoldVoided: 1,
+          emptiesPickedUp: 14,
+          emptiesPickedUpVoided: 5,
+        }),
+      );
+      prisma.sale.aggregate.mockResolvedValue({ _sum: { total: decimal("0.00") } });
+      prisma.payment.aggregate.mockImplementation(paymentAggregateMock({}));
+      prisma.routeSettlement.findUnique.mockResolvedValue(null);
+      prisma.routeStop.count.mockResolvedValue(0);
+
+      const result = await service.getSettlementView(ROUTE_ID);
+
+      expect(result.expected.fullDelivered).toBe(7);
+      expect(result.expected.fullSold).toBe(3);
+      expect(result.expected.emptiesPickedUp).toBe(9);
+      // fullOut no se toca: lo que salió del galpón salió, anular una entrega
+      // no descarga el camión.
+      expect(result.expected.fullOut).toBe(20);
+    });
+
+    it("el desglose por tipo también sale neto, y una línea que queda en cero se conserva", async () => {
+      prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID });
+      prisma.routeLoad.aggregate.mockResolvedValue({ _sum: { quantity: 0 } });
+      prisma.containerMovement.aggregate.mockImplementation(containerMovementAggregateMock({}));
+      prisma.sale.aggregate.mockResolvedValue({ _sum: { total: decimal("0.00") } });
+      prisma.payment.aggregate.mockImplementation(paymentAggregateMock({}));
+      prisma.containerMovement.groupBy.mockImplementation(
+        groupByMock({
+          pickedUp: [line(WITH_SPIGOT_ID, 11), line(WITHOUT_SPIGOT_ID, 3)],
+          // "Sin caño" se recogió y se anuló entero.
+          pickedUpVoided: [line(WITH_SPIGOT_ID, 4), line(WITHOUT_SPIGOT_ID, 3)],
+        }),
+      );
+      prisma.routeSettlement.findUnique.mockResolvedValue(null);
+      prisma.routeStop.count.mockResolvedValue(0);
+
+      const result = await service.getSettlementView(ROUTE_ID);
+
+      // La línea en cero SE CONSERVA: que un tipo se haya recogido y anulado
+      // entero es información. Descartarla la haría indistinguible de un tipo
+      // que nunca pasó por la ruta, porque `diffByType` lee la ausencia como
+      // cero.
+      expect(result.expected.emptiesPickedUpByType).toEqual([
+        { containerTypeId: WITH_SPIGOT_ID, containerTypeName: "Con caño", quantity: 7 },
+        { containerTypeId: WITHOUT_SPIGOT_ID, containerTypeName: "Sin caño", quantity: 0 },
+      ]);
+    });
+
+    it("las cuatro sumas de dinero filtran lo anulado", async () => {
+      prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID });
+      prisma.routeLoad.aggregate.mockResolvedValue({ _sum: { quantity: 0 } });
+      prisma.containerMovement.aggregate.mockImplementation(containerMovementAggregateMock({}));
+      prisma.sale.aggregate.mockResolvedValue({ _sum: { total: decimal("0.00") } });
+      prisma.payment.aggregate.mockImplementation(paymentAggregateMock({}));
+      prisma.routeSettlement.findUnique.mockResolvedValue(null);
+      prisma.routeStop.count.mockResolvedValue(0);
+
+      await service.getSettlementView(ROUTE_ID);
+
+      const moneyCalls = [
+        ...prisma.sale.aggregate.mock.calls,
+        ...prisma.payment.aggregate.mock.calls,
+      ];
+      expect(moneyCalls).toHaveLength(4);
+      for (const [args] of moneyCalls) {
+        expect(args.where.voidedAt).toBeNull();
+      }
     });
 
     it("after settling: returns the persisted settlement alongside expected", async () => {

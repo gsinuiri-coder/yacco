@@ -129,11 +129,55 @@ export class RouteSettlementService {
   ) {}
 
   /**
+   * Lo que esta ruta registró de un tipo de movimiento, NETO de sus
+   * anulaciones. Un LOAN_DELIVERY que después se anuló no se entregó: la
+   * liquidación tiene que contar 0, no 1 y otra vez 1.
+   *
+   * Se restan por su propio tipo y no por sus estados porque acá se agrega
+   * por `type`: si la anulación se hubiera modelado como un LOAN_DELIVERY al
+   * revés, este mismo `aggregate` la sumaría a lo entregado en vez de
+   * restarla. Ver container-movement-transitions.ts.
+   *
+   * Los dos lados filtran por `routeId`, así que quien emita la anulación
+   * tiene que etiquetarla con la MISMA ruta que el movimiento que anula. Una
+   * anulación sin `routeId` no se resta acá, y la liquidación seguiría
+   * contando como hecha una entrega que no pasó.
+   */
+  private async netSum(
+    client: Prisma.TransactionClient | PrismaService,
+    routeId: string,
+    type: ContainerMovementType,
+    voidType: ContainerMovementType,
+  ): Promise<number> {
+    const [recorded, voided] = await Promise.all([
+      client.containerMovement.aggregate({ where: { routeId, type }, _sum: { quantity: true } }),
+      client.containerMovement.aggregate({
+        where: { routeId, type: voidType },
+        _sum: { quantity: true },
+      }),
+    ]);
+    return (recorded._sum.quantity ?? 0) - (voided._sum.quantity ?? 0);
+  }
+
+  /**
    * Cuánto suma un tipo de movimiento de esta ruta, abierto por tipo de
    * envase. Parametrizado por tipo porque la liquidación necesita exactamente
    * la misma forma dos veces —lo recogido (`EMPTY_PICKUP`) y lo descargado
    * (`EMPTY_UNLOAD`)— y dos copias de un `groupBy` con su búsqueda de nombres
    * se desfasan en cuanto una de las dos cambie.
+   *
+   * `voidType` es la versión por tipo de envase de lo que hace `netSum` con el
+   * total: cuando se pasa, cada línea sale neta de sus anulaciones. Es
+   * opcional porque solo uno de los dos usos lo necesita —lo recogido puede
+   * anularse, lo descargado en la puerta no: eso se contó a mano y su
+   * corrección es otra cuenta, no una anulación—. Un solo `groupBy` sobre los
+   * dos tipos, abierto también por `type`, en vez de dos consultas: la resta
+   * se hace acá con el signo.
+   *
+   * **Una línea que queda en cero se conserva.** Que un tipo de envase se haya
+   * recogido y anulado entero es información, y `diffByType` trata la ausencia
+   * de una línea como cero — descartarla la haría indistinguible de un tipo
+   * que nunca pasó por esta ruta, que es justo lo contrario de lo que pasó.
    *
    * El nombre se busca por los ids que efectivamente aparecieron, no sobre el
    * catálogo entero: así una línea de un tipo retirado —que `GET
@@ -143,27 +187,38 @@ export class RouteSettlementService {
     client: Prisma.TransactionClient | PrismaService,
     routeId: string,
     type: ContainerMovementType,
+    voidType?: ContainerMovementType,
   ): Promise<ContainerQuantityLineDto[]> {
+    const types = voidType === undefined ? [type] : [type, voidType];
     const grouped = await client.containerMovement.groupBy({
-      by: ["containerTypeId"],
-      where: { routeId, type },
+      by: ["containerTypeId", "type"],
+      where: { routeId, type: { in: types } },
       _sum: { quantity: true },
     });
     if (grouped.length === 0) return [];
 
+    const netByContainerType = new Map<string, number>();
+    for (const row of grouped) {
+      const signed = (row._sum.quantity ?? 0) * (row.type === voidType ? -1 : 1);
+      netByContainerType.set(
+        row.containerTypeId,
+        (netByContainerType.get(row.containerTypeId) ?? 0) + signed,
+      );
+    }
+
     const containerTypes = await client.containerType.findMany({
-      where: { id: { in: grouped.map((row) => row.containerTypeId) } },
+      where: { id: { in: [...netByContainerType.keys()] } },
       select: { id: true, name: true },
     });
     const nameById = new Map(
       containerTypes.map((containerType) => [containerType.id, containerType.name]),
     );
 
-    return grouped
-      .map((row) => ({
-        containerTypeId: row.containerTypeId,
-        containerTypeName: nameById.get(row.containerTypeId) ?? row.containerTypeId,
-        quantity: row._sum.quantity ?? 0,
+    return [...netByContainerType]
+      .map(([containerTypeId, quantity]) => ({
+        containerTypeId,
+        containerTypeName: nameById.get(containerTypeId) ?? containerTypeId,
+        quantity,
       }))
       .sort((a, b) => a.containerTypeName.localeCompare(b.containerTypeName));
   }
@@ -181,6 +236,21 @@ export class RouteSettlementService {
    * elsewhere in this codebase (e.g. SalesService.assertNoOpeningBalanceExists,
    * which joins `location: { customerId }` for the same reason: Sale has no
    * customerId column of its own either).
+   *
+   * **Todo lo que se cuenta acá es neto de lo anulado.** Los tres conteos de
+   * envases pasan por `netSum`, que resta el tipo de anulación de cada uno, y
+   * los cuatro `aggregate` de dinero filtran `voidedAt: null`: una venta o un
+   * cobro anulados no son plata que el chofer tenga que rendir, así que
+   * contarlos le pediría en la puerta un dinero que nadie le dio.
+   *
+   * `ContainerMovementsService.getRouteFullStock` y `inventory()` NO aparecen
+   * acá y no es un olvido: las dos calculan por `fromState`/`toState`, no por
+   * `type`, así que los movimientos de anulación las corrigen solas —un
+   * LOAN_DELIVERY_VOID devuelve sus llenos a FULL_ON_ROUTE sin que ninguna de
+   * las dos tenga que enterarse de que existe el tipo—. Esa asimetría es la
+   * razón entera por la que las anulaciones son tipos propios y no pares
+   * nuevos: quien lee por estados no necesita cambiar, quien lee por `type`
+   * sí, y este método es el único que lee por `type`.
    */
   private async computeExpected(
     client: Prisma.TransactionClient | PrismaService,
@@ -188,9 +258,9 @@ export class RouteSettlementService {
   ): Promise<Expected> {
     const [
       fullOutAgg,
-      fullDeliveredAgg,
-      fullSoldAgg,
-      emptiesPickedUpAgg,
+      fullDelivered,
+      fullSold,
+      emptiesPickedUp,
       emptiesPickedUpByType,
       totalSoldAgg,
       collectedAgg,
@@ -198,23 +268,38 @@ export class RouteSettlementService {
       pendingAgg,
     ] = await Promise.all([
       client.routeLoad.aggregate({ where: { routeId }, _sum: { quantity: true } }),
-      client.containerMovement.aggregate({
-        where: { routeId, type: ContainerMovementType.LOAN_DELIVERY },
-        _sum: { quantity: true },
+      this.netSum(
+        client,
+        routeId,
+        ContainerMovementType.LOAN_DELIVERY,
+        ContainerMovementType.LOAN_DELIVERY_VOID,
+      ),
+      this.netSum(
+        client,
+        routeId,
+        ContainerMovementType.FULL_SALE,
+        ContainerMovementType.FULL_SALE_VOID,
+      ),
+      this.netSum(
+        client,
+        routeId,
+        ContainerMovementType.EMPTY_PICKUP,
+        ContainerMovementType.EMPTY_PICKUP_VOID,
+      ),
+      this.sumByContainerType(
+        client,
+        routeId,
+        ContainerMovementType.EMPTY_PICKUP,
+        ContainerMovementType.EMPTY_PICKUP_VOID,
+      ),
+      client.sale.aggregate({
+        where: { stop: { routeId }, voidedAt: null },
+        _sum: { total: true },
       }),
-      client.containerMovement.aggregate({
-        where: { routeId, type: ContainerMovementType.FULL_SALE },
-        _sum: { quantity: true },
-      }),
-      client.containerMovement.aggregate({
-        where: { routeId, type: ContainerMovementType.EMPTY_PICKUP },
-        _sum: { quantity: true },
-      }),
-      this.sumByContainerType(client, routeId, ContainerMovementType.EMPTY_PICKUP),
-      client.sale.aggregate({ where: { stop: { routeId } }, _sum: { total: true } }),
       client.payment.aggregate({
         where: {
           stop: { routeId },
+          voidedAt: null,
           status: { in: [PaymentStatus.CONFIRMED, PaymentStatus.PENDING] },
         },
         _sum: { amount: true },
@@ -222,13 +307,14 @@ export class RouteSettlementService {
       client.payment.aggregate({
         where: {
           stop: { routeId },
+          voidedAt: null,
           status: PaymentStatus.CONFIRMED,
           paymentMethod: { requiresConfirmation: false },
         },
         _sum: { amount: true },
       }),
       client.payment.aggregate({
-        where: { stop: { routeId }, status: PaymentStatus.PENDING },
+        where: { stop: { routeId }, voidedAt: null, status: PaymentStatus.PENDING },
         _sum: { amount: true },
       }),
     ]);
@@ -238,9 +324,9 @@ export class RouteSettlementService {
 
     return {
       fullOut: fullOutAgg._sum.quantity ?? 0,
-      fullDelivered: fullDeliveredAgg._sum.quantity ?? 0,
-      fullSold: fullSoldAgg._sum.quantity ?? 0,
-      emptiesPickedUp: emptiesPickedUpAgg._sum.quantity ?? 0,
+      fullDelivered,
+      fullSold,
+      emptiesPickedUp,
       emptiesPickedUpByType,
       totalSold,
       totalCollected,

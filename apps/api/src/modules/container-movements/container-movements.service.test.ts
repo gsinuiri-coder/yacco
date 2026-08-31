@@ -301,6 +301,31 @@ describe("ContainerMovementsService", () => {
       expect(prisma.containerType.findUnique).not.toHaveBeenCalled();
       expect(prisma.containerMovement.create).not.toHaveBeenCalled();
     });
+
+    // Un solo test para los tres: el argumento es el mismo y repetirlo tres
+    // veces solo agregaría duplicación. Cada uno tiene su registro compañero
+    // —la venta o el cobro anulados— y sueltos dejarían el libro de envases
+    // corregido con la deuda todavía en pie.
+    it.each([
+      ContainerMovementType.LOAN_DELIVERY_VOID,
+      ContainerMovementType.EMPTY_PICKUP_VOID,
+      ContainerMovementType.FULL_SALE_VOID,
+    ])("rejects %s on the public route — an anulación never travels alone", async (type) => {
+      await expect(
+        service.create(
+          {
+            type,
+            containerTypeId: CONTAINER_TYPE_ID,
+            quantity: 2,
+            toState: ContainerState.FULL_ON_ROUTE,
+            locationId: LOCATION_ID,
+          },
+          USER_ID,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.containerType.findUnique).not.toHaveBeenCalled();
+      expect(prisma.containerMovement.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("createWithinTransaction — occurredAt", () => {

@@ -72,4 +72,34 @@ describe("assertContainerTypeDeliverable", () => {
       `${ContainerMovementType.LOAN_DELIVERY}:${ContainerState.FULL_ON_ROUTE}->${ContainerState.WITH_CUSTOMER}`,
     ]);
   });
+
+  // La razón por la que el predicado dejó de ser `fromState !== null`.
+  // Anular una recogida dice que esos vacíos nunca se fueron del mostrador
+  // del cliente: no se entrega nada. Bloquearlo dejaría el saldo del cliente
+  // mintiendo para siempre en el único tipo que más urge vaciar.
+  it("no bloquea anular una recogida de un tipo retirado: nada se entrega, se corrige el libro", () => {
+    expect(() =>
+      assertContainerTypeDeliverable(
+        WITHDRAWN,
+        ContainerState.EMPTY_ON_ROUTE,
+        ContainerState.WITH_CUSTOMER,
+      ),
+    ).not.toThrow();
+  });
+
+  // Ningún tipo emite todavía este par, y por eso la tabla derivada de la
+  // matriz no puede afirmarlo: entregar un lleno DESDE LA PLANTA —un préstamo
+  // en el mostrador— es una entrega igual que hacerlo desde el camión, y el
+  // predicado tiene que bloquearla el día que exista, sin que nadie se acuerde
+  // de volver acá. FULL_SALE ya trata FULL_AT_PLANT como origen real, así que
+  // no es un caso inventado.
+  it("bloquea entregar un lleno desde la planta, aunque hoy ningún tipo lo emita", () => {
+    expect(() =>
+      assertContainerTypeDeliverable(
+        WITHDRAWN,
+        ContainerState.FULL_AT_PLANT,
+        ContainerState.WITH_CUSTOMER,
+      ),
+    ).toThrow(BadRequestException);
+  });
 });

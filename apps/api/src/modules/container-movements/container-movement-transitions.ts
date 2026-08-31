@@ -64,6 +64,36 @@ export const CONTAINER_MOVEMENT_TRANSITIONS: Record<ContainerMovementType, State
     { from: null, to: ContainerState.WITH_CUSTOMER },
     { from: ContainerState.WITH_CUSTOMER, to: null },
   ],
+  // Las tres anulaciones deshacen su movimiento: el par es el de su tipo,
+  // leído al revés.
+  //
+  // FULL_RETURN es el precedente más cercano y NO es lo mismo, aunque el par
+  // se parezca. FULL_RETURN registra algo que pasó físicamente: los llenos
+  // que el camión no vendió volvieron al galpón y hay que contarlos ahí.
+  // Estos tres registran que algo que se anotó NO pasó — el chofer no dejó
+  // esos bidones, o los dejó en otra puerta. Nada se movió el día que se
+  // emiten; lo que se corrige es el libro, no el parque. De ahí que sean
+  // tipos propios y no un par nuevo sobre LOAN_DELIVERY, EMPTY_PICKUP o
+  // FULL_SALE: `RouteSettlementService.computeExpected` agrega por `type`, no
+  // por estados, así que una reversa tipada LOAN_DELIVERY sumaría a
+  // fullDelivered en vez de restarle.
+  //
+  // La consecuencia práctica de la distinción está en la liquidación: los
+  // llenos de un FULL_RETURN se cuentan en la puerta, los de un
+  // LOAN_DELIVERY_VOID ya estaban contados en el camión y solo vuelven a
+  // estar disponibles para otra parada.
+  [ContainerMovementType.LOAN_DELIVERY_VOID]: [
+    { from: ContainerState.WITH_CUSTOMER, to: ContainerState.FULL_ON_ROUTE },
+  ],
+  [ContainerMovementType.EMPTY_PICKUP_VOID]: [
+    { from: ContainerState.EMPTY_ON_ROUTE, to: ContainerState.WITH_CUSTOMER },
+  ],
+  // Sin `from`, como toda entrada al parque: la venta sacó esos bidones de la
+  // flota y anularla los devuelve, pero devolverlos "desde" donde salieron no
+  // se puede escribir — FULL_SALE tiene DOS orígenes válidos (el camión y la
+  // planta) y el libro no dice cuál fue. Vuelven al camión, que es de donde
+  // sale toda venta de una parada, la única que esta feature corrige.
+  [ContainerMovementType.FULL_SALE_VOID]: [{ from: null, to: ContainerState.FULL_ON_ROUTE }],
 };
 
 export function isValidContainerTransition(

@@ -32,6 +32,7 @@ function buildEntries(): AccountStatementEntry[] {
       paymentId: null,
       paymentMethodName: null,
       status: null,
+      voidedAt: null,
     },
     {
       date: "2026-08-05T09:00:00.000Z",
@@ -44,6 +45,7 @@ function buildEntries(): AccountStatementEntry[] {
       paymentId: null,
       paymentMethodName: null,
       status: null,
+      voidedAt: null,
     },
     {
       date: "2026-08-06T10:00:00.000Z",
@@ -56,6 +58,7 @@ function buildEntries(): AccountStatementEntry[] {
       paymentId: "p1",
       paymentMethodName: "Yape",
       status: "PENDING",
+      voidedAt: null,
     },
     {
       date: "2026-08-07T11:00:00.000Z",
@@ -68,6 +71,7 @@ function buildEntries(): AccountStatementEntry[] {
       paymentId: "p2",
       paymentMethodName: "Efectivo",
       status: "CONFIRMED",
+      voidedAt: null,
     },
     {
       date: "2026-08-08T12:00:00.000Z",
@@ -80,6 +84,7 @@ function buildEntries(): AccountStatementEntry[] {
       paymentId: "p3",
       paymentMethodName: "Transferencia",
       status: "REJECTED",
+      voidedAt: null,
     },
   ];
 }

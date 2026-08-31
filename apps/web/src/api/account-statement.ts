@@ -30,8 +30,8 @@ export interface AccountStatementCustomer {
 /**
  * AccountStatementEntryDto: one row of the interleaved ledger.
  * `saleId`/`locationName` are set only on a CHARGE; `paymentId`/
- * `paymentMethodName`/`status` only on a PAYMENT — `isOpeningBalance`
- * applies to both.
+ * `paymentMethodName`/`status` only on a PAYMENT — `isOpeningBalance` and
+ * `voidedAt` apply to both.
  */
 export interface AccountStatementEntry {
   date: string;
@@ -44,6 +44,13 @@ export interface AccountStatementEntry {
   paymentId: string | null;
   paymentMethodName: string | null;
   status: PaymentStatus | null;
+  /**
+   * Cuándo se anuló esta fila; null si sigue en pie. Anulada, `amount` es el
+   * monto original y `runningBalance` no se movió. Declarado acá y todavía
+   * sin pintar: este archivo es el contrato y se actualiza contra el DTO real
+   * —esa es la regla de arriba—, pero mostrarlo en la tabla es el PR 3.
+   */
+  voidedAt: string | null;
 }
 
 /** AccountStatementResponseDto. */
