@@ -163,6 +163,7 @@ model User {
   routesAsDriver                Route[]              @relation("RouteDriver")
   routesCreated                 Route[]              @relation("RouteCreatedBy")
   routeStopsAdded               RouteStop[]          @relation("RouteStopAddedBy")
+  routeStopsCorrected           RouteStop[]          @relation("RouteStopCorrectedBy")
   salesRecorded                 Sale[]               @relation("SaleRecordedBy")
   salesPriceOverridesAuthorized Sale[]               @relation("SalePriceOverrideAuthorizedBy")
   salesVoided                   Sale[]               @relation("SaleVoidedBy")
@@ -534,14 +535,22 @@ model RouteStop {
   createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   addedById     String     @map("added_by") @db.Uuid
 
-  route     Route               @relation(fields: [routeId], references: [id], onDelete: Restrict)
-  location  CustomerLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  order     Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  addedBy   User                @relation("RouteStopAddedBy", fields: [addedById], references: [id], onDelete: Restrict)
-  movements ContainerMovement[]
-  sales     Sale[]
-  payments  Payment[]
-  evidences Evidence[]
+  /// Las tres guardan SOLO LA ÚLTIMA corrección de esta parada: una segunda
+  /// corrección las pisa. Es deliberado — la historia completa vive en las
+  /// ventas anuladas y en el libro de movimientos. Ver `RoutesService.correctStop`.
+  correctedAt      DateTime? @map("corrected_at") @db.Timestamptz(6)
+  correctedById    String?   @map("corrected_by") @db.Uuid
+  correctionReason String?   @map("correction_reason")
+
+  route       Route               @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  location    CustomerLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  order       Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  addedBy     User                @relation("RouteStopAddedBy", fields: [addedById], references: [id], onDelete: Restrict)
+  correctedBy User?               @relation("RouteStopCorrectedBy", fields: [correctedById], references: [id], onDelete: Restrict)
+  movements   ContainerMovement[]
+  sales       Sale[]
+  payments    Payment[]
+  evidences   Evidence[]
 
   @@index([routeId, position])
   @@map("route_stops")

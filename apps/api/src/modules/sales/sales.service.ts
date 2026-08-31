@@ -39,6 +39,30 @@ export interface RegisterStopDeliveryParams {
   payment?: StopDeliveryPaymentInput;
   priceOverrideAuthorizedById?: string;
   recordedById: string;
+  /**
+   * El instante de la ENTREGA — `soldAt` de la venta, `paidAt`/`confirmedAt`
+   * del cobro y `occurredAt` de todos los movimientos.
+   *
+   * Obligatorio, y no opcional con `new Date()` por defecto, a propósito. Hay
+   * dos llamadores y solo uno entrega hoy: el otro re-registra una parada que
+   * ya se había anotado, heredando el instante de la venta que anula.
+   * Olvidarse de pasarlo ahí fecharía esa venta hoy sin que nada falle —un bug
+   * mudo que corre el día de una entrega vieja— así que el tipo obliga a
+   * decidirlo en cada llamada.
+   */
+  occurredAt: Date;
+  /**
+   * Deja pasar el faltante de llenos en el camión en vez de bloquear, y lo
+   * devuelve en `stockShortfall`. SOLO el camino de corrección lo manda en
+   * `true`: ahí el camión ya volvió y lo que se arregla es el libro contra un
+   * hecho físico consumado, así que bloquear mandaría al dueño de vuelta al
+   * Excel, que es justo lo que esta operación existe para impedir.
+   *
+   * En el camino normal de entrega el chequeo SIGUE BLOQUEANDO y tiene que
+   * seguir haciéndolo: entregar lo que el camión no tiene no es un error de
+   * anotación, es imposible.
+   */
+  allowStockShortfall?: boolean;
 }
 
 export interface StopDeliverySaleResult {
@@ -59,10 +83,24 @@ export interface StopDeliveryContainerBalanceResult {
   quantity: number;
 }
 
+/**
+ * Un tipo de envase del que se registró más de lo que el camión tenía. Solo
+ * aparece con `allowStockShortfall`; en el camino normal el faltante es un 400
+ * y esta lista viaja vacía siempre.
+ */
+export interface StopDeliveryStockShortfallResult {
+  containerTypeId: string;
+  containerType: { id: string; name: string };
+  available: number;
+  requested: number;
+}
+
 export interface RegisterStopDeliveryResult {
   sale: StopDeliverySaleResult;
   payment: StopDeliveryPaymentResult | null;
   containerBalances: StopDeliveryContainerBalanceResult[];
+  /** Vacío en el camino normal de entrega — ver `allowStockShortfall`. */
+  stockShortfall: StopDeliveryStockShortfallResult[];
 }
 
 export interface VoidStopDeliveryParams {
@@ -87,7 +125,7 @@ export interface VoidStopDeliveryMovementResult {
 export interface VoidStopDeliveryResult {
   /** `null` cuando la parada no tenía ninguna venta vigente: no había nada
    * que anular y no se escribió nada. */
-  sale: { id: string; total: string } | null;
+  sale: { id: string; total: string; soldAt: Date } | null;
   payments: VoidStopDeliveryPaymentResult[];
   /** Cuánto se movió `debtBalance`, con signo — negativo cuando la anulación
    * baja la deuda, que es el caso normal. `"0.00"` en el no-op. */
@@ -418,7 +456,13 @@ export class SalesService {
    * products) both draw from the same physical FULL_ON_ROUTE pile per
    * container type, so the check is aggregated across both BEFORE any
    * movement is written — delivering part of what the truck doesn't have is
-   * not a bookkeeping error, it's impossible, so this one blocks.
+   * not a bookkeeping error, it's impossible, so this one blocks. La única
+   * excepción es `allowStockShortfall`, que solo prende el camino de
+   * corrección y está documentada en ese parámetro.
+   *
+   * `occurredAt` es OBLIGATORIO y fecha las cuatro cosas que este método
+   * escribe: `sale.soldAt`, `payment.paidAt`, `payment.confirmedAt` y el
+   * `occurredAt` de todos los movimientos de envases. Ver su docblock.
    *
    * `debtBalance` moves by the full sale total, then back down by the
    * payment's amount ONLY if it is born CONFIRMED: a PENDING payment (a
@@ -542,21 +586,33 @@ export class SalesService {
         (deliveredByContainerType.get(product.containerTypeId) ?? 0) + item.quantity,
       );
     }
+    const stockShortfall: StopDeliveryStockShortfallResult[] = [];
     for (const [containerTypeId, requested] of deliveredByContainerType) {
       const available = await this.containerMovementsService.getRouteFullStock(
         tx,
         params.routeId,
         containerTypeId,
       );
-      if (available < requested) {
-        const containerType = await tx.containerType.findUnique({
-          where: { id: containerTypeId },
-          select: { name: true },
-        });
+      if (available >= requested) continue;
+      const containerType = await tx.containerType.findUnique({
+        where: { id: containerTypeId },
+        select: { id: true, name: true },
+      });
+      if (params.allowStockShortfall !== true) {
         throw new BadRequestException(
           `Stock insuficiente de "${containerType?.name ?? containerTypeId}" en el camión: hay ${available}, se pidió ${requested}`,
         );
       }
+      // Con el flag prendido el faltante se acumula y la entrega sigue — ver
+      // `allowStockShortfall`. El saldo del camión queda negativo, que es
+      // exactamente lo que pasó: se entregó más de lo que el libro decía que
+      // había cargado.
+      stockShortfall.push({
+        containerTypeId,
+        containerType: containerType ?? { id: containerTypeId, name: containerTypeId },
+        available,
+        requested,
+      });
     }
 
     // Payment, if any: status comes from the method's requiresConfirmation,
@@ -612,12 +668,14 @@ export class SalesService {
       data: { debtBalance: { increment: debtDelta } },
     });
 
-    const now = new Date();
+    // El instante lo decide siempre quien llama, nunca este método — ver
+    // `occurredAt` en RegisterStopDeliveryParams.
+    const occurredAt = params.occurredAt;
     const sale = await tx.sale.create({
       data: {
         locationId: params.locationId,
         stopId: params.stopId,
-        soldAt: now,
+        soldAt: occurredAt,
         total,
         creditLimitExceeded,
         priceOverrideAuthorizedById: params.priceOverrideAuthorizedById ?? null,
@@ -636,10 +694,10 @@ export class SalesService {
           saleId: sale.id,
           stopId: params.stopId,
           paymentMethodId: resolvedPayment.paymentMethodId,
-          paidAt: now,
+          paidAt: occurredAt,
           amount: resolvedPayment.amount,
           status: resolvedPayment.status,
-          confirmedAt: confirmed ? now : null,
+          confirmedAt: confirmed ? occurredAt : null,
           confirmedById: confirmed ? params.recordedById : null,
           recordedById: params.recordedById,
         },
@@ -686,7 +744,7 @@ export class SalesService {
               : {}),
           },
           params.recordedById,
-          { routeId: params.routeId, stopId: params.stopId },
+          { routeId: params.routeId, stopId: params.stopId, occurredAt },
         );
       }
     }
@@ -706,7 +764,7 @@ export class SalesService {
           locationId: params.locationId,
         },
         params.recordedById,
-        { routeId: params.routeId, stopId: params.stopId },
+        { routeId: params.routeId, stopId: params.stopId, occurredAt },
       );
       balanceTouchedContainerTypeIds.add(item.containerTypeId);
     }
@@ -730,6 +788,7 @@ export class SalesService {
         containerType: balance.containerType,
         quantity: balance.quantity,
       })),
+      stockShortfall,
     };
   }
 
@@ -838,7 +897,10 @@ export class SalesService {
     const voidMovements = await this.emitStopVoidMovements(tx, params, sale.soldAt);
 
     return {
-      sale: { id: sale.id, total: sale.total.toFixed(2) },
+      // `soldAt` viaja de vuelta porque es de donde el camino de corrección
+      // saca el instante con el que vuelve a registrar la parada: la entrega
+      // corregida es la MISMA entrega, del mismo día, anotada distinto.
+      sale: { id: sale.id, total: sale.total.toFixed(2), soldAt: sale.soldAt },
       payments: sale.payments.map((payment) => ({
         id: payment.id,
         amount: payment.amount.toFixed(2),

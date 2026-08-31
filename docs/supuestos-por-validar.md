@@ -180,6 +180,50 @@ que dijo que sí.
   saldos quedan más altos; el descuadre se sigue produciendo igual. Nada de
   esto toca el código de producción.
 
+### 8. El administrador que corrige una parada queda como quien autorizó el precio
+
+- **Asumimos** que, en una corrección, no hace falta preguntarle a nadie más:
+  quien corrige es el administrador, la operación ya lleva su motivo escrito, y
+  que él mismo figure como el que autorizó el precio de esa venta es fiel a lo
+  que pasó. Asumimos también que al dueño no le molesta ver su propio nombre
+  como autorizador en una corrección que no tocó ningún precio.
+- **Construido encima:** `RoutesService.correctStop` manda
+  `priceOverrideAuthorizedById: actor.id` SIEMPRE al volver a registrar la
+  parada, no solo cuando el precio difiere, y el endpoint rechaza con 400 un
+  `priceOverrideAuthorizedById` que venga en el cuerpo. Tiene un efecto de
+  costado que conviene tener presente: `hasOverride` se calcula contra el
+  precio VIGENTE HOY, así que una corrección que no toca el precio igual queda
+  marcada como venta con precio autorizado si el `CustomerPrice` de ese cliente
+  cambió desde la venta original.
+- **Preguntar:** cuando usted corrige lo que se anotó de una visita, ¿alcanza
+  con que quede su nombre y el motivo, o quiere que el sistema le pregunte
+  aparte quién autorizó cobrar distinto de lo pactado?
+- **Si dice que no:** barato. `correctionReason` ya viaja obligatorio; lo que
+  cambia es dejar de forzar el autorizador y volver a exigirlo solo cuando el
+  precio difiere de verdad, con un campo más en el formulario de corrección.
+  Nada de esto toca la anulación ni el libro de movimientos.
+
+### 9. La parada muestra solo la última corrección, no todas
+
+- **Asumimos** que corregir una parada dos veces es raro, y que cuando pasa lo
+  que la oficina necesita ver es cómo quedó y por qué se cambió la última vez.
+  El historial completo de correcciones lo asumimos material de auditoría, no
+  de la pantalla del día a día.
+- **Construido encima:** las tres columnas `corrected_at` / `corrected_by` /
+  `correction_reason` de `route_stops`, que una segunda corrección PISA. No se
+  pierde nada: cada corrección deja su propia venta anulada —con su
+  `voided_at`, `voided_by` y `void_reason`— y sus movimientos `*_VOID` en el
+  libro, que es inmutable. La alternativa era una tabla
+  `route_stop_corrections` con su modelo, su endpoint y su pantalla, para
+  contar lo que esas dos fuentes ya cuentan.
+- **Preguntar:** si una visita se corrige dos veces, ¿le sirve ver solo la
+  última corrección con su motivo, o quiere la lista de todas las veces que se
+  cambió, con quién y cuándo?
+- **Si dice que no:** medio caro y toca esquema. Serían una tabla nueva de
+  correcciones, una migración que además tendría que reconstruir el historial
+  de lo ya corregido desde las ventas anuladas, y una pantalla que hoy no
+  existe. No es una columna más: es un modelo.
+
 ## Validados
 
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026

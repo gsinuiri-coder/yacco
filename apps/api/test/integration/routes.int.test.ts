@@ -3,6 +3,8 @@ import {
   ContainerMovementType,
   ContainerState,
   OrderStatus,
+  PaymentStatus,
+  Prisma,
   RouteStatus,
   StopOrigin,
   StopStatus,
@@ -2009,5 +2011,394 @@ describe("HU-10 E1: Order.status sigue a su parada", () => {
       .send({ status: StopStatus.FAILED, failureReason: "Nadie atendió" })
       .expect(200);
     expect(await orderStatus(orderId)).toBe(OrderStatus.PENDING);
+  });
+});
+/*
+ * Corregir una parada: anular lo anotado y volver a registrarlo como fue.
+ * Nada se edita ni se borra (CLAUDE.md) — la venta anterior queda en la tabla
+ * con su motivo de anulación y los envases vuelven con movimientos inversos.
+ */
+describe("PATCH /api/v1/routes/:id/stops/:stopId/correction", () => {
+  const REASON = "El chofer dictó 3 y habían sido 2";
+
+  async function correctStop(
+    token: string,
+    routeId: string,
+    stopId: string,
+    body: Record<string, unknown>,
+  ): Promise<request.Test> {
+    return request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}/correction`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ correctionReason: REASON, ...body });
+  }
+
+  /** La única venta que todavía vale para esa parada, o null si no hay. */
+  async function liveSale(stopId: string) {
+    return prisma.sale.findFirst({ where: { stopId, voidedAt: null } });
+  }
+
+  /**
+   * La deuda que el estado de cuenta reconstruiría desde los libros: todo lo
+   * vendido y no anulado, menos todo lo cobrado, confirmado y no anulado. Si
+   * `customers.debt_balance` no coincide con esto, el saldo materializado dejó
+   * de ser reconstruible desde su ledger, que es la invariante que sostiene
+   * toda la plata del sistema (CLAUDE.md).
+   */
+  async function rebuiltDebt(custId: string): Promise<string> {
+    const sales = await prisma.sale.aggregate({
+      where: { voidedAt: null, location: { customerId: custId } },
+      _sum: { total: true },
+    });
+    const payments = await prisma.payment.aggregate({
+      where: {
+        voidedAt: null,
+        status: PaymentStatus.CONFIRMED,
+        customerId: custId,
+      },
+      _sum: { amount: true },
+    });
+    const sold = sales._sum.total ?? new Prisma.Decimal(0);
+    const collected = payments._sum.amount ?? new Prisma.Decimal(0);
+    return sold.minus(collected).toFixed(2);
+  }
+
+  test("DELIVERED -> DELIVERED con otra cantidad: una sola venta vigente, la anterior anulada, y la deuda cuadra con los libros", async () => {
+    const { customerId: custId, locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+    }).then((r) => expect(r.status).toBe(200));
+    const original = await liveSale(stopId);
+    expect(original?.total.toFixed(2)).toBe("37.50");
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe(StopStatus.DELIVERED);
+    expect(response.body.sale.total).toBe("25.00");
+
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(2);
+    const voided = await prisma.sale.findFirstOrThrow({
+      where: { stopId, voidedAt: { not: null } },
+    });
+    expect(voided.id).toBe(original?.id);
+    expect(voided.voidReason).toBe(REASON);
+    expect(voided.voidedById).toBe(adminUserId);
+
+    // La entrega corregida es la MISMA entrega: hereda el instante de la vieja.
+    const corrected = await liveSale(stopId);
+    expect(corrected?.soldAt.toISOString()).toBe(original?.soldAt.toISOString());
+    expect(corrected?.total.toFixed(2)).toBe("25.00");
+
+    expect(await customerDebtBalance(custId)).toBe("25.00");
+    expect(await customerDebtBalance(custId)).toBe(await rebuiltDebt(custId));
+    // 3 entregados, 3 devueltos por la anulación, 2 entregados de nuevo.
+    expect(await containerBalance(locId)).toBe(2);
+
+    const stop = await prisma.routeStop.findUniqueOrThrow({
+      where: { id: stopId },
+    });
+    expect(stop.correctionReason).toBe(REASON);
+    expect(stop.correctedById).toBe(adminUserId);
+    expect(stop.correctedAt).toBeInstanceOf(Date);
+  });
+
+  test("DELIVERED -> FAILED: no queda venta vigente y el pedido pasa a FAILED", async () => {
+    const { customerId: custId, locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "37.50" },
+    }).then((r) => expect(r.status).toBe(200));
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.FAILED,
+      failureReason: "El cliente no estaba y no se entregó nada",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe(StopStatus.FAILED);
+    expect(response.body.failureReason).toBe("El cliente no estaba y no se entregó nada");
+    expect(await liveSale(stopId)).toBeNull();
+    // La deuda y los envases vuelven a cero: no hubo entrega ni cobro.
+    expect(await customerDebtBalance(custId)).toBe("0.00");
+    expect(await customerDebtBalance(custId)).toBe(await rebuiltDebt(custId));
+    expect(await containerBalance(locId)).toBe(0);
+  });
+
+  test("FAILED -> DELIVERED: la venta nueva se fecha al mediodía de Lima del día de la ruta y conserva el motivo de falla original", async () => {
+    const batchItemId = await createBatchItem(10);
+    // Una fecha PASADA y propia de este test, no `nextDate()`: el mediodía de
+    // Lima de un día futuro se acota a "ahora" y quedaría indistinguible de
+    // fechar la venta hoy, que es justo el error que este test tiene que ver.
+    const routeDate = "2026-07-15";
+    const routeId = await createRoute(adminToken, { date: routeDate });
+    await addLoad(adminToken, routeId, batchItemId, 10).then((r) => expect(r.status).toBe(201));
+    const stopId = await addVanSaleStop(adminToken, routeId);
+    await startRoute(adminToken, routeId);
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Nadie atendió" })
+      .expect(200);
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe(StopStatus.DELIVERED);
+
+    // Sin venta anterior de la cual heredar el instante, la venta nace al
+    // mediodía de Lima del día de la ruta — 17:00 UTC, porque Lima es UTC-5
+    // todo el año. Exacto, no aproximado: fecharla hoy sería contar una
+    // entrega de julio en el día en que alguien la corrigió.
+    const sale = await prisma.sale.findFirstOrThrow({
+      where: { stopId, voidedAt: null },
+    });
+    expect(sale.soldAt.toISOString()).toBe(`${routeDate}T17:00:00.000Z`);
+    // Y los movimientos de envases van al mismo instante, no a hoy.
+    const movement = await prisma.containerMovement.findFirstOrThrow({
+      where: { stopId, type: ContainerMovementType.LOAN_DELIVERY },
+    });
+    expect(movement.occurredAt.toISOString()).toBe(`${routeDate}T17:00:00.000Z`);
+
+    // El motivo de falla original NO se limpia: es la evidencia de que hubo un
+    // error de anotación, y borrarlo la destruiría.
+    const stop = await prisma.routeStop.findUniqueOrThrow({
+      where: { id: stopId },
+    });
+    expect(stop.failureReason).toBe("Nadie atendió");
+    expect(stop.correctionReason).toBe(REASON);
+  });
+
+  test("FAILED -> DELIVERED sobre una ruta cuyo mediodía todavía no llegó: se acota a ahora en vez de mandar una fecha futura", async () => {
+    const batchItemId = await createBatchItem(10);
+    // `nextDate()` siempre devuelve un día muy posterior a hoy, así que su
+    // mediodía de Lima es futuro. Sin el acotado, `ContainerMovementsService`
+    // rechazaría el movimiento con "La fecha del movimiento no puede ser
+    // futura" y la corrección se caería con un 400 que no tiene nada que ver
+    // con lo que el usuario hizo.
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addLoad(adminToken, routeId, batchItemId, 10).then((r) => expect(r.status).toBe(201));
+    const stopId = await addVanSaleStop(adminToken, routeId);
+    await startRoute(adminToken, routeId);
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Nadie atendió" })
+      .expect(200);
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 1 }],
+    });
+
+    expect(response.status).toBe(200);
+    const sale = await prisma.sale.findFirstOrThrow({
+      where: { stopId, voidedAt: null },
+    });
+    expect(sale.soldAt.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  test("una ruta ya liquidada se corrige igual: la liquidación queda desactualizada, no bloquea", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+    }).then((r) => expect(r.status).toBe(200));
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    await request(server())
+      .post(`/api/v1/routes/${routeId}/settlement`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ fullReturned: 7, emptiesCollected: [] })
+      .expect(201);
+    expect((await prisma.route.findUniqueOrThrow({ where: { id: routeId } })).status).toBe(
+      RouteStatus.SETTLED,
+    );
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.sale.total).toBe("25.00");
+  });
+
+  test("una ruta PLANNED no tiene nada registrado que corregir: 409", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const stopId = await addVanSaleStop(adminToken, routeId);
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 1 }],
+    });
+
+    expect(response.status).toBe(409);
+    expect(messagesOf(response)).toMatch(/no hay nada que corregir/);
+  });
+
+  test("una parada todavía PENDING se marca, no se corrige: 409", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 1 }],
+    });
+
+    expect(response.status).toBe(409);
+    expect(messagesOf(response)).toMatch(/todavía no se registró/);
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(0);
+  });
+
+  test("una parada que no es de esta ruta es 404, no 409", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId } = await routeInProgressWithStock(10, locId);
+
+    const response = await correctStop(adminToken, routeId, MISSING_UUID, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 1 }],
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  test("corregir es del ADMIN: un SELLER y un DRIVER reciben 403", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    }).then((r) => expect(r.status).toBe(200));
+    const body = {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    };
+
+    expect((await correctStop(sellerToken, routeId, stopId, body)).status).toBe(403);
+    expect((await correctStop(driverToken, routeId, stopId, body)).status).toBe(403);
+    // Nada se tocó: sigue habiendo una sola venta, la original.
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(1);
+  });
+
+  test("corregir al alza sobre un camión sin stock avisa y registra: 200 con stockShortfall, no 400", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(3, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 5 }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.stockShortfall).toEqual([
+      expect.objectContaining({ containerTypeId, available: 3, requested: 5 }),
+    ]);
+    expect((await liveSale(stopId))?.total.toFixed(2)).toBe("62.50");
+    expect(await containerBalance(locId)).toBe(5);
+  });
+
+  test("el cuerpo no puede traer priceOverrideAuthorizedById: lo pone quien corrige", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    const response = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+      priceOverrideAuthorizedById: adminUserId,
+    });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("priceOverrideAuthorizedById");
+
+    // Y sin mandarlo queda igual asentado quien corrigió, que es la decisión
+    // de dominio: el ADMIN que corrige es quien autoriza el precio.
+    const ok = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    });
+    expect(ok.status).toBe(200);
+    expect((await liveSale(stopId))?.priceOverrideAuthorizedById).toBe(adminUserId);
+  });
+
+  test("dos correcciones seguidas: una sola venta vigente, dos anuladas y las columnas con los datos de la segunda", async () => {
+    const { customerId: custId, locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(20, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+    const second = await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 4 }],
+      correctionReason: "Al final habían sido 4",
+    });
+
+    expect(second.status).toBe(200);
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(3);
+    expect(await prisma.sale.count({ where: { stopId, voidedAt: null } })).toBe(1);
+    expect((await liveSale(stopId))?.total.toFixed(2)).toBe("50.00");
+    expect(await customerDebtBalance(custId)).toBe("50.00");
+    expect(await customerDebtBalance(custId)).toBe(await rebuiltDebt(custId));
+    expect(await containerBalance(locId)).toBe(4);
+
+    // Las tres columnas guardan SOLO la última corrección, a propósito: la
+    // historia entera vive en las dos ventas anuladas y en el libro.
+    const stop = await prisma.routeStop.findUniqueOrThrow({
+      where: { id: stopId },
+    });
+    expect(stop.correctionReason).toBe("Al final habían sido 4");
+  });
+
+  test("el pedido de una parada de pedido sigue a su corrección, y nunca vuelve a PENDING", async () => {
+    const batchItemId = await createBatchItem(10);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addLoad(adminToken, routeId, batchItemId, 10).then((r) => expect(r.status).toBe(201));
+    const orderId = await createPendingOrder(adminToken);
+    const stopResponse = await request(server())
+      .post(`/api/v1/routes/${routeId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+    const stopId = stopResponse.body.id as string;
+    await startRoute(adminToken, routeId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.FAILED,
+      failureReason: "No se entregó nada",
+    }).then((r) => expect(r.status).toBe(200));
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe(
+      OrderStatus.FAILED,
+    );
+
+    await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe(
+      OrderStatus.DELIVERED,
+    );
   });
 });

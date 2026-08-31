@@ -93,6 +93,26 @@ export class RouteStopContainerBalanceDto {
   quantity!: number;
 }
 
+/**
+ * Un tipo de envase del que se registró más de lo que el camión tenía. Solo
+ * puede venir poblado desde la corrección de una parada, que registra contra un
+ * hecho físico ya consumado y por eso avisa en vez de bloquear; en una entrega
+ * normal el faltante es un 400 y esta lista viaja vacía.
+ */
+export class RouteStopStockShortfallDto {
+  @ApiProperty({ format: "uuid" })
+  containerTypeId!: string;
+
+  @ApiProperty({ type: RouteStopContainerTypeDto })
+  containerType!: RouteStopContainerTypeDto;
+
+  @ApiProperty({ example: 2, description: "Lo que el libro decía que quedaba en el camión" })
+  available!: number;
+
+  @ApiProperty({ example: 5, description: "Lo que se registró como entregado" })
+  requested!: number;
+}
+
 export class RouteStopResponseDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
@@ -129,6 +149,9 @@ export class RouteStopResponseDto {
 
   @ApiPropertyOptional({ type: RouteStopContainerBalanceDto, isArray: true })
   containerBalances?: RouteStopContainerBalanceDto[];
+
+  @ApiPropertyOptional({ type: RouteStopStockShortfallDto, isArray: true })
+  stockShortfall?: RouteStopStockShortfallDto[];
 }
 
 export class RouteResponseDto {

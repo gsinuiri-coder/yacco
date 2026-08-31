@@ -21,6 +21,10 @@ const CONTAINER_SALE_PRODUCT_ID = "77777777-7777-4777-8777-777777777777";
 const CONTAINER_TYPE_ID = "88888888-8888-4888-8888-888888888888";
 const PAYMENT_METHOD_ID = "99999999-9999-4999-8999-999999999999";
 const AUTHORIZER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+// Un instante fijo y claramente pasado: `occurredAt` es obligatorio y lo
+// decide siempre quien llama, así que los tests lo fijan en vez de dejar que
+// el método invente "ahora".
+const OCCURRED_AT = new Date("2026-08-25T18:30:00.000Z");
 
 // HU-12 §2.4 E1: "Dado una parada con 3 llenos a entregar, cuando registro 3
 // entregados y 3 vacíos recogidos, entonces el saldo del cliente no varía."
@@ -95,6 +99,7 @@ describe("SalesService.registerStopDeliveryWithinTransaction", () => {
       items: [{ productId: REFILL_PRODUCT_ID, quantity: 2 }],
       containersReturned: [],
       recordedById: RECORDED_BY_ID,
+      occurredAt: OCCURRED_AT,
       ...overrides,
     };
   }
@@ -173,7 +178,7 @@ describe("SalesService.registerStopDeliveryWithinTransaction", () => {
         toState: ContainerState.WITH_CUSTOMER,
       },
       RECORDED_BY_ID,
-      { routeId: ROUTE_ID, stopId: STOP_ID },
+      { routeId: ROUTE_ID, stopId: STOP_ID, occurredAt: OCCURRED_AT },
     );
     expect(result.payment).toEqual({
       id: "payment-1",
@@ -358,6 +363,73 @@ describe("SalesService.registerStopDeliveryWithinTransaction", () => {
     expect(containerMovements.createWithinTransaction).not.toHaveBeenCalled();
   });
 
+  it("con allowStockShortfall el faltante no bloquea: se acumula, se devuelve y la entrega se escribe igual", async () => {
+    containerMovements.getRouteFullStock.mockResolvedValue(1);
+    tx.containerType.findUnique.mockResolvedValue({
+      id: CONTAINER_TYPE_ID,
+      name: "Bidón 20L",
+    });
+
+    const result = await service.registerStopDeliveryWithinTransaction(
+      tx as never,
+      baseParams({ allowStockShortfall: true }),
+    );
+
+    expect(result.stockShortfall).toEqual([
+      {
+        containerTypeId: CONTAINER_TYPE_ID,
+        containerType: { id: CONTAINER_TYPE_ID, name: "Bidón 20L" },
+        available: 1,
+        requested: 2,
+      },
+    ]);
+    // La entrega se registró entera: la corrección arregla el libro contra un
+    // hecho físico ya consumado, no lo frena.
+    expect(tx.sale.create).toHaveBeenCalled();
+    expect(containerMovements.createWithinTransaction).toHaveBeenCalled();
+  });
+
+  it("el faltante viaja vacío cuando el camión alcanza, con el flag prendido o apagado", async () => {
+    const result = await service.registerStopDeliveryWithinTransaction(
+      tx as never,
+      baseParams({ allowStockShortfall: true }),
+    );
+
+    expect(result.stockShortfall).toEqual([]);
+  });
+
+  it("fecha la venta, el cobro y los movimientos con el occurredAt que recibe, no con ahora", async () => {
+    tx.paymentMethod.findUnique.mockResolvedValue({
+      id: PAYMENT_METHOD_ID,
+      active: true,
+      requiresConfirmation: false,
+    });
+    tx.payment.create.mockResolvedValue({
+      id: "payment-1",
+      status: PaymentStatus.CONFIRMED,
+      amount: decimal("25.00"),
+    });
+
+    await service.registerStopDeliveryWithinTransaction(
+      tx as never,
+      baseParams({ payment: { paymentMethodId: PAYMENT_METHOD_ID, amount: "25.00" } }),
+    );
+
+    expect(tx.sale.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ soldAt: OCCURRED_AT }) as unknown,
+      }),
+    );
+    expect(tx.payment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          paidAt: OCCURRED_AT,
+          confirmedAt: OCCURRED_AT,
+        }) as unknown,
+      }),
+    );
+  });
+
   it("flags creditLimitExceeded without blocking the sale", async () => {
     tx.customerLocation.findUnique.mockResolvedValue({
       id: LOCATION_ID,
@@ -446,7 +518,7 @@ describe("SalesService.registerStopDeliveryWithinTransaction", () => {
         locationId: LOCATION_ID,
       },
       RECORDED_BY_ID,
-      { routeId: ROUTE_ID, stopId: STOP_ID },
+      { routeId: ROUTE_ID, stopId: STOP_ID, occurredAt: OCCURRED_AT },
     );
     expect(tx.customerContainerBalance.findMany).not.toHaveBeenCalled();
     expect(result.containerBalances).toEqual([]);
@@ -469,7 +541,7 @@ describe("SalesService.registerStopDeliveryWithinTransaction", () => {
         locationId: LOCATION_ID,
       },
       RECORDED_BY_ID,
-      { routeId: ROUTE_ID, stopId: STOP_ID },
+      { routeId: ROUTE_ID, stopId: STOP_ID, occurredAt: OCCURRED_AT },
     );
     expect(tx.customerContainerBalance.findMany).toHaveBeenCalled();
   });
@@ -495,13 +567,13 @@ describe("SalesService.registerStopDeliveryWithinTransaction", () => {
       tx,
       expect.objectContaining({ type: ContainerMovementType.LOAN_DELIVERY, quantity: 3 }),
       RECORDED_BY_ID,
-      { routeId: ROUTE_ID, stopId: STOP_ID },
+      { routeId: ROUTE_ID, stopId: STOP_ID, occurredAt: OCCURRED_AT },
     );
     expect(containerMovements.createWithinTransaction).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({ type: ContainerMovementType.EMPTY_PICKUP, quantity: 3 }),
       RECORDED_BY_ID,
-      { routeId: ROUTE_ID, stopId: STOP_ID },
+      { routeId: ROUTE_ID, stopId: STOP_ID, occurredAt: OCCURRED_AT },
     );
     expect(result.containerBalances).toEqual([
       {
@@ -678,7 +750,9 @@ describe("SalesService.voidStopDeliveryWithinTransaction", () => {
     expect(args.data.voidedAt).toBeInstanceOf(Date);
     // El monto no está entre lo que se escribe: la fila del libro no se edita.
     expect(args.data).not.toHaveProperty("total");
-    expect(result.sale).toEqual({ id: SALE_ID, total: "25.00" });
+    // `soldAt` sale de vuelta porque es de donde la corrección saca el
+    // instante con el que vuelve a registrar la parada.
+    expect(result.sale).toEqual({ id: SALE_ID, total: "25.00", soldAt: SOLD_AT });
   });
 
   it("un cobro CONFIRMED devuelve su monto a la deuda, y se marca anulado sin cambiar de estado", async () => {

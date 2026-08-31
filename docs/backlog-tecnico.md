@@ -870,24 +870,38 @@ sido diseñar para un caso sin decidir con el dueño si una liquidación
 puede reabrirse (fuera de alcance de este PR: "reabrir o corregir una
 liquidación ya registrada").
 
-**Ampliada por la anulación de una parada.**
+**Ampliada por la corrección de una parada, y ya decidida para ese caso.**
 `SalesService.voidStopDeliveryWithinTransaction` escribe sus movimientos
-`*_VOID` colgados de la ruta sin mirar en qué estado está, así que anular
+`*_VOID` colgados de la ruta sin mirar en qué estado está, así que corregir
 una parada de una ruta ya liquidada deja la fila de `route_settlements`
 afirmando llenos entregados y vendidos que el libro ya no sostiene — el
 mismo desfase que el pago rechazado, por una puerta más ancha: acá se
-mueven envases, no solo dinero. El emisor es el lugar correcto para NO
-decidirlo, porque no sabe qué quiere la oficina; quien tiene que resolverlo
-es el endpoint de corrección (PR 2b), y las opciones son bloquear la
-corrección sobre una ruta `SETTLED`, permitirla marcando la liquidación
-como desactualizada, o permitir reabrirla. Es una decisión del dueño, no
-del código.
+mueven envases, no solo dinero.
 
-**Para cerrarla:** decidir con el dueño de la planta si una liquidación
-liquidada debe reabrirse cuando esto ocurre, o si basta con que el reporte
-de cobranza (`GET /reports/collections`, aún no construido) lea el estado
-de los pagos en vivo en vez de confiar en el número congelado de la
-liquidación.
+Esto **ya no es una pregunta abierta al dueño**: cuando se escribió lo de
+arriba la duda era si corregir sobre una ruta `SETTLED` había que
+bloquearlo, permitirlo marcando la liquidación, o permitir reabrirla, y la
+decisión está tomada. **No se bloquea** —`RoutesService.correctStop` acepta
+`IN_PROGRESS`, `FINISHED` y `SETTLED`, y solo rechaza `PLANNED`, donde no hay
+nada registrado que corregir— **y no se agrega columna**: la liquidación se
+muestra desactualizada de forma **derivada**, comparando su `settledAt`
+contra el `voidedAt` más reciente de las ventas de esa ruta. Una columna
+`outdated` sería un tercer estado que hay que mantener en sincronía con dos
+hechos que ya están escritos, y volvería a quedar mintiendo con la primera
+corrección que se olvide de tocarla.
+
+Mostrarlo es **lectura, no escritura**, así que no le toca al endpoint de
+corrección sino al PR de la auditoría visible (la venta de cada parada en el
+`GET` de la ruta, el estado de cuenta mostrando lo anulado y la liquidación
+desactualizada). Hasta ese PR el desfase existe y no se ve.
+
+**Para cerrarla:** queda la mitad del pago rechazado, que sigue sin decidir.
+Decidir con el dueño de la planta si una liquidación debe reabrirse cuando
+un pago suyo se rechaza, o si basta con que el reporte de cobranza
+(`GET /reports/collections`, aún no construido) lea el estado de los pagos
+en vivo en vez de confiar en el número congelado de la liquidación. La mitad
+de la corrección se cierra mostrando la liquidación desactualizada de forma
+derivada, en el PR de la auditoría visible.
 
 ## Falta índice en `sales (location_id, sold_at)`
 
