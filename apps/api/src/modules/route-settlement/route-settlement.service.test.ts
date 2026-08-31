@@ -180,6 +180,8 @@ function buildPrismaMock() {
     },
     routeStop: {
       count: jest.fn<() => Promise<unknown>>(),
+      // La última corrección de la ruta, de la que sale `settlementOutdated`.
+      findFirst: jest.fn<() => Promise<unknown>>(),
     },
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
@@ -198,6 +200,9 @@ describe("RouteSettlementService", () => {
     // Por defecto no hay desglose por tipo: los tests que van sobre los vacíos
     // lo dicen explícitamente.
     prisma.containerMovement.groupBy.mockImplementation(groupByMock({}));
+    // Por defecto ninguna parada se corrigió: los tests de
+    // `settlementOutdated` dicen su fecha explícitamente.
+    prisma.routeStop.findFirst.mockResolvedValue(null);
     prisma.containerType.findMany.mockImplementation(async (args: FindManyArgs) =>
       CONTAINER_TYPES.filter((containerType) => args.where.id.in.includes(containerType.id)),
     );
@@ -422,6 +427,79 @@ describe("RouteSettlementService", () => {
         { containerTypeId: WITH_SPIGOT_ID, containerTypeName: "Con caño", quantity: 14 },
       ]);
       expect(result.settlement?.settledById).toBe(ADMIN_ID);
+    });
+
+    /**
+     * `settlementOutdated` sale de `route_stops.corrected_at`, no del
+     * `voided_at` de las ventas: corregir una parada de FAILED a DELIVERED no
+     * anula ninguna venta —no había— pero crea una que mueve `totalSold`, y
+     * como `Sale` no tiene `createdAt` esa venta hereda un `soldAt` anterior a
+     * la liquidación. Por fechas de venta sería indetectable.
+     *
+     * Los dos lados hacen falta: con todas las paradas sin corregir se estaría
+     * midiendo el caso «no hay correcciones», que es el fallback.
+     */
+    function mockLedgerForView(settledAt: Date | null): void {
+      prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID });
+      prisma.routeLoad.aggregate.mockResolvedValue({ _sum: { quantity: 20 } });
+      prisma.containerMovement.aggregate.mockImplementation(containerMovementAggregateMock({}));
+      prisma.sale.aggregate.mockResolvedValue({ _sum: { total: decimal("0.00") } });
+      prisma.payment.aggregate.mockImplementation(paymentAggregateMock({}));
+      prisma.routeStop.count.mockResolvedValue(0);
+      prisma.routeSettlement.findUnique.mockResolvedValue(
+        settledAt === null ? null : settledRow({ settledAt }),
+      );
+    }
+
+    it("una corrección POSTERIOR al cierre deja la liquidación desactualizada", async () => {
+      mockLedgerForView(new Date("2026-08-26T20:00:00.000Z"));
+      prisma.routeStop.findFirst.mockResolvedValue({
+        correctedAt: new Date("2026-08-27T15:00:00.000Z"),
+      });
+
+      const result = await service.getSettlementView(ROUTE_ID);
+
+      expect(result.settlementOutdated).toBe(true);
+    });
+
+    it("una corrección ANTERIOR al cierre ya está contada en la liquidación", async () => {
+      mockLedgerForView(new Date("2026-08-26T20:00:00.000Z"));
+      prisma.routeStop.findFirst.mockResolvedValue({
+        correctedAt: new Date("2026-08-26T15:00:00.000Z"),
+      });
+
+      const result = await service.getSettlementView(ROUTE_ID);
+
+      expect(result.settlementOutdated).toBe(false);
+    });
+
+    // Sin liquidación no hay nada que pueda estar desactualizado, aunque la
+    // parada se haya corregido hoy mismo.
+    it("sin liquidación es false, no null", async () => {
+      mockLedgerForView(null);
+      prisma.routeStop.findFirst.mockResolvedValue({
+        correctedAt: new Date("2026-08-27T15:00:00.000Z"),
+      });
+
+      const result = await service.getSettlementView(ROUTE_ID);
+
+      expect(result.settlement).toBeNull();
+      expect(result.settlementOutdated).toBe(false);
+    });
+
+    // La consulta pide la MÁS RECIENTE: `corrected_at` guarda sólo la última
+    // corrección de cada parada, y de la ruta interesa la última de todas.
+    it("mira la corrección más reciente de la ruta", async () => {
+      mockLedgerForView(new Date("2026-08-26T20:00:00.000Z"));
+      prisma.routeStop.findFirst.mockResolvedValue(null);
+
+      await service.getSettlementView(ROUTE_ID);
+
+      expect(prisma.routeStop.findFirst).toHaveBeenCalledWith({
+        where: { routeId: ROUTE_ID, correctedAt: { not: null } },
+        orderBy: { correctedAt: "desc" },
+        select: { correctedAt: true },
+      });
     });
   });
 

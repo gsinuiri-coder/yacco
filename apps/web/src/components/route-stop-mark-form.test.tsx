@@ -63,6 +63,7 @@ function buildStop(overrides: Partial<RouteStop> = {}): RouteStop {
     orderId: null,
     status: "PENDING",
     failureReason: null,
+    correction: null,
     ...overrides,
   };
 }

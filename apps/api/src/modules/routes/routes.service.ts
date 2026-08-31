@@ -32,6 +32,7 @@ import type { RouteLoadResponseDto } from "./dto/route-load-response.dto.js";
 import type {
   PaginatedRoutesDto,
   RouteResponseDto,
+  RouteStopCorrectionDto,
   RouteStopResponseDto,
 } from "./dto/route-response.dto.js";
 
@@ -85,12 +86,71 @@ const STOP_INCLUDE = {
       customer: { select: { id: true, name: true } },
     },
   },
+  // Va en el include BASE a propósito, no en el de detalle: así «esta parada
+  // fue corregida» viaja en `findOne`, en `findAll` y en la respuesta de
+  // `correctStop` —que escribe las tres columnas de corrección y hasta ahora
+  // no devolvía ninguna—. `name` y no `username`, igual que el chofer y el
+  // cliente de la parada: esto lo lee una persona en una hoja de ruta.
+  correctedBy: { select: { id: true, name: true } },
+} satisfies Prisma.RouteStopInclude;
+
+/**
+ * Lo que la parada tiene VIGENTE, sólo para el detalle de UNA ruta.
+ *
+ * `voidedAt: null` es la parte que importa: corregir una parada deja su venta
+ * y su cobro anulados en la tabla —nunca se borran— y lo que la hoja de ruta
+ * tiene que mostrar es lo que vale hoy. `take: 1` porque una parada entregada
+ * tiene exactamente una venta vigente y a lo sumo un cobro vigente; el resto
+ * de sus filas son las anuladas, y ésas se leen en el estado de cuenta y en el
+ * libro de movimientos.
+ *
+ * El `orderBy` no sobra aunque `take: 1` suene a que da igual: sin él Postgres
+ * elige una fila cualquiera, así que el día que esa invariante falle —dos
+ * ventas vigentes para la misma parada— la hoja mostraría un monto al azar en
+ * vez de siempre el mismo. Con orden, el error se ve; sin orden, parpadea.
+ *
+ * Un cobro RECHAZADO no está anulado (el dinero nunca llegó, no hubo nada que
+ * revertir), así que puede venir por acá: `status` viaja en el DTO justamente
+ * para que la pantalla lo diga y no muestre un monto que nadie cobró.
+ *
+ * COSTO ACEPTADO A CONCIENCIA: ni `sales.stop_id` ni `payments.stop_id` tienen
+ * índice, así que estos dos joins son sequential scans. Con los datos de hoy
+ * no se nota, pero `sales` crece una fila por parada por día para siempre y
+ * ésta es la pantalla que más se abre. El índice va en su propio PR, con
+ * migración; acá no se agrega ninguna.
+ */
+const STOP_DETAIL_INCLUDE = {
+  ...STOP_INCLUDE,
+  sales: {
+    where: { voidedAt: null },
+    select: { id: true, total: true, creditLimitExceeded: true },
+    orderBy: { soldAt: "desc" },
+    take: 1,
+  },
+  payments: {
+    where: { voidedAt: null },
+    select: { id: true, status: true, amount: true },
+    orderBy: { paidAt: "desc" },
+    take: 1,
+  },
 } satisfies Prisma.RouteStopInclude;
 
 const ROUTE_INCLUDE = {
   driver: { select: { id: true, name: true } },
   zone: { select: { id: true, name: true } },
   stops: { include: STOP_INCLUDE, orderBy: { position: "asc" } },
+} satisfies Prisma.RouteInclude;
+
+/**
+ * El detalle de UNA ruta, con la venta y el cobro vigentes de cada parada.
+ * `findAll` sigue con `ROUTE_INCLUDE` tal cual: pagina 20 rutas, ninguna
+ * pantalla lee la venta desde el listado, y cargarla ahí multiplicaría el
+ * costo del listado por la cantidad de paradas sin que nadie mire el
+ * resultado.
+ */
+const ROUTE_DETAIL_INCLUDE = {
+  ...ROUTE_INCLUDE,
+  stops: { include: STOP_DETAIL_INCLUDE, orderBy: { position: "asc" } },
 } satisfies Prisma.RouteInclude;
 
 const LOAD_INCLUDE = {
@@ -107,13 +167,52 @@ const LOAD_INCLUDE = {
 
 type RouteWithRelations = Prisma.RouteGetPayload<{ include: typeof ROUTE_INCLUDE }>;
 type StopWithRelations = Prisma.RouteStopGetPayload<{ include: typeof STOP_INCLUDE }>;
+type StopWithDetailRelations = Prisma.RouteStopGetPayload<{ include: typeof STOP_DETAIL_INCLUDE }>;
 type LoadWithRelations = Prisma.RouteLoadGetPayload<{ include: typeof LOAD_INCLUDE }>;
 
+/**
+ * Una ruta leída con cualquiera de los dos includes. Las paradas del detalle
+ * traen todo lo de las del listado y algo más, así que un solo mapeo sirve
+ * para ambas y no hace falta un `toRouteResponse` por include.
+ */
+type AnyRouteWithRelations = Omit<RouteWithRelations, "stops"> & {
+  stops: (StopWithRelations | StopWithDetailRelations)[];
+};
+
+/**
+ * Las tres columnas guardan SÓLO LA ÚLTIMA corrección de la parada; van
+ * juntas o ninguna. `null` mientras nunca se corrigió.
+ */
+function toCorrectionResponse(stop: StopWithRelations): RouteStopCorrectionDto | null {
+  if (stop.correctedAt === null || stop.correctedBy === null) {
+    return null;
+  }
+  return {
+    correctedAt: stop.correctedAt,
+    correctedBy: stop.correctedBy,
+    correctionReason: stop.correctionReason,
+  };
+}
+
+/**
+ * La venta y el cobro de una parada tienen DOS fuentes posibles, y el orden de
+ * precedencia es deliberado:
+ *
+ * 1. `delivery`, la escritura que acaba de ocurrir, GANA siempre. Es lo recién
+ *    registrado, y es la única fuente que trae `creditLimitExceeded` calculado
+ *    contra el saldo de ese instante.
+ * 2. Si no vino `delivery`, salen del include de detalle cuando la parada se
+ *    leyó con él. Ahí es la venta VIGENTE: las anuladas no viajan.
+ *
+ * `containerBalances` y `stockShortfall` NUNCA se derivan del include: los
+ * balances son la parte cara de la escritura, y el faltante de stock es un
+ * hecho del momento en que se registró la entrega, no un estado de la parada.
+ */
 function toStopResponse(
-  stop: StopWithRelations,
+  stop: StopWithRelations | StopWithDetailRelations,
   delivery?: RegisterStopDeliveryResult,
 ): RouteStopResponseDto {
-  return {
+  const base = {
     id: stop.id,
     routeId: stop.routeId,
     position: stop.position,
@@ -123,14 +222,36 @@ function toStopResponse(
     orderId: stop.orderId,
     status: stop.status,
     failureReason: stop.failureReason,
-    ...(delivery !== undefined
-      ? {
-          sale: delivery.sale,
-          payment: delivery.payment,
-          containerBalances: delivery.containerBalances,
-          stockShortfall: delivery.stockShortfall,
-        }
-      : {}),
+    correction: toCorrectionResponse(stop),
+  };
+  if (delivery !== undefined) {
+    return {
+      ...base,
+      sale: delivery.sale,
+      payment: delivery.payment,
+      containerBalances: delivery.containerBalances,
+      stockShortfall: delivery.stockShortfall,
+    };
+  }
+  if (!("sales" in stop)) {
+    return base;
+  }
+  const [sale] = stop.sales;
+  const [payment] = stop.payments;
+  return {
+    ...base,
+    sale:
+      sale === undefined
+        ? null
+        : {
+            id: sale.id,
+            total: sale.total.toFixed(2),
+            creditLimitExceeded: sale.creditLimitExceeded,
+          },
+    payment:
+      payment === undefined
+        ? null
+        : { id: payment.id, status: payment.status, amount: payment.amount.toFixed(2) },
   };
 }
 
@@ -144,7 +265,7 @@ function toLoadResponse(load: LoadWithRelations): RouteLoadResponseDto {
   };
 }
 
-function toRouteResponse(route: RouteWithRelations): RouteResponseDto {
+function toRouteResponse(route: AnyRouteWithRelations): RouteResponseDto {
   return {
     id: route.id,
     date: formatBusinessDate(route.date),
@@ -269,13 +390,20 @@ export class RoutesService {
    * guard on markStop making PENDING stops the office's actual work list,
    * this is what lets `?stopStatus=PENDING` show only what's left to
    * resolve, without a second endpoint or a second include shape.
+   *
+   * Es la ÚNICA lectura que usa `ROUTE_DETAIL_INCLUDE`: acá se mira una ruta
+   * sola y se quiere ver qué se le vendió y cobró a cada parada — incluida una
+   * parada corregida, donde lo que viaja es lo vigente y no lo anulado.
    */
   async findOne(
     id: string,
     actor: RouteActor,
     query?: FindRouteQueryDto,
   ): Promise<RouteResponseDto> {
-    const route = await this.prisma.route.findUnique({ where: { id }, include: ROUTE_INCLUDE });
+    const route = await this.prisma.route.findUnique({
+      where: { id },
+      include: ROUTE_DETAIL_INCLUDE,
+    });
     if (route === null) {
       throw new NotFoundException(`La ruta "${id}" no existe`);
     }
@@ -746,94 +874,106 @@ export class RoutesService {
     }
     assertMarkPayloadMatchesStatus(dto);
 
-    return this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.routeStop.updateMany({
-        where: { id: stopId, routeId, status: { in: [StopStatus.DELIVERED, StopStatus.FAILED] } },
-        data: {
-          status: dto.status,
-          correctedAt: new Date(),
-          correctedById: actor.id,
-          correctionReason: dto.correctionReason,
-          // Yendo a FAILED se escribe el motivo nuevo. Yendo a DELIVERED el
-          // `failureReason` original SE CONSERVA, no se limpia: es lo que el
-          // chofer dijo que había pasado, y borrarlo destruiría la evidencia
-          // de que hubo un error de anotación. La parada queda DELIVERED con
-          // un motivo de falla viejo colgando, que se lee raro pero es cierto.
-          // El próximo lector va a querer limpiarlo: no lo hagas.
-          ...(dto.status === StopStatus.FAILED
-            ? { failureReason: dto.failureReason as string }
-            : {}),
-        },
-      });
-      if (count === 0) {
-        await this.throwNothingToCorrectConflict(tx, routeId, stopId);
-      }
-
-      const stop = await tx.routeStop.findUniqueOrThrow({
-        where: { id: stopId },
-        include: STOP_INCLUDE,
-      });
-
-      // EL ORDEN IMPORTA Y NO ES CASUAL: anular ANTES de volver a registrar.
-      //
-      // La razón que manda es que `emitStopVoidMovements` netea sobre TODOS
-      // los movimientos de este `stopId`: al revés, el LOAN_DELIVERY recién
-      // escrito entraría en ese neteo y la anulación revertiría justo la
-      // entrega que acababa de registrarse. No es una preferencia de estilo
-      // —`allowStockShortfall` no la vuelve opcional—, es la diferencia entre
-      // corregir y dejar la parada sin nada.
-      //
-      // La segunda razón es el stock: los LOAN_DELIVERY_VOID y FULL_SALE_VOID
-      // entran a FULL_ON_ROUTE y `getRouteFullStock` agrega por ESTADO, así
-      // que la anulación devuelve los llenos al camión justo antes de que la
-      // re-registración se los pida. Al revés, corregir la misma cantidad
-      // sobre un camión que quedó vacío contaría un faltante que no existe.
-      //
-      // No-op silencioso si la parada estaba FAILED y no había venta.
-      const voided = await this.salesService.voidStopDeliveryWithinTransaction(tx, {
-        stopId,
-        voidedById: actor.id,
-        voidReason: dto.correctionReason,
-      });
-
-      // El pedido sigue a su parada, igual que al marcarla, y nunca vuelve a
-      // PENDING: una corrección no deshace que el pedido salió en un camión.
-      if (stop.orderId !== null) {
-        await tx.order.update({
-          where: { id: stop.orderId },
+    // El único `timeout` explícito del repo, y por eso lleva su razón: esta
+    // transacción hace tres cosas grandes seguidas —la anulación, que netea
+    // los movimientos de TODO el `stopId`; la actualización del pedido; y la
+    // re-registración completa de la entrega, con su venta, sus ítems, sus
+    // movimientos en los dos sentidos y su cobro—. Los 5000 ms por defecto de
+    // Prisma alcanzan para una parada de un solo tipo de envase y quedan
+    // cortos en una de varios, donde cada tipo suma su propia vuelta de
+    // movimientos. Vencido el plazo no queda nada a medias —la transacción se
+    // deshace entera—, pero una corrección legítima se pierde.
+    return this.prisma.$transaction(
+      async (tx) => {
+        const { count } = await tx.routeStop.updateMany({
+          where: { id: stopId, routeId, status: { in: [StopStatus.DELIVERED, StopStatus.FAILED] } },
           data: {
-            status:
-              dto.status === StopStatus.DELIVERED ? OrderStatus.DELIVERED : OrderStatus.FAILED,
+            status: dto.status,
+            correctedAt: new Date(),
+            correctedById: actor.id,
+            correctionReason: dto.correctionReason,
+            // Yendo a FAILED se escribe el motivo nuevo. Yendo a DELIVERED el
+            // `failureReason` original SE CONSERVA, no se limpia: es lo que el
+            // chofer dijo que había pasado, y borrarlo destruiría la evidencia
+            // de que hubo un error de anotación. La parada queda DELIVERED con
+            // un motivo de falla viejo colgando, que se lee raro pero es cierto.
+            // El próximo lector va a querer limpiarlo: no lo hagas.
+            ...(dto.status === StopStatus.FAILED
+              ? { failureReason: dto.failureReason as string }
+              : {}),
           },
         });
-      }
+        if (count === 0) {
+          await this.throwNothingToCorrectConflict(tx, routeId, stopId);
+        }
 
-      if (dto.status !== StopStatus.DELIVERED) {
-        return toStopResponse(stop);
-      }
+        const stop = await tx.routeStop.findUniqueOrThrow({
+          where: { id: stopId },
+          include: STOP_INCLUDE,
+        });
 
-      // La entrega corregida es la MISMA entrega, del mismo día: hereda el
-      // `soldAt` de la venta que se acaba de anular. Si la parada estaba
-      // FAILED no hay ninguna, y el instante sale del día de la ruta, al
-      // mediodía de Lima — la hora de reparto, y la que menos se corre al
-      // cruzar el borde del día en cualquier lectura por fecha de negocio.
-      const occurredAt = voided.sale?.soldAt ?? limaNoonOfBusinessDate(route.date, new Date());
+        // EL ORDEN IMPORTA Y NO ES CASUAL: anular ANTES de volver a registrar.
+        //
+        // La razón que manda es que `emitStopVoidMovements` netea sobre TODOS
+        // los movimientos de este `stopId`: al revés, el LOAN_DELIVERY recién
+        // escrito entraría en ese neteo y la anulación revertiría justo la
+        // entrega que acababa de registrarse. No es una preferencia de estilo
+        // —`allowStockShortfall` no la vuelve opcional—, es la diferencia entre
+        // corregir y dejar la parada sin nada.
+        //
+        // La segunda razón es el stock: los LOAN_DELIVERY_VOID y FULL_SALE_VOID
+        // entran a FULL_ON_ROUTE y `getRouteFullStock` agrega por ESTADO, así
+        // que la anulación devuelve los llenos al camión justo antes de que la
+        // re-registración se los pida. Al revés, corregir la misma cantidad
+        // sobre un camión que quedó vacío contaría un faltante que no existe.
+        //
+        // No-op silencioso si la parada estaba FAILED y no había venta.
+        const voided = await this.salesService.voidStopDeliveryWithinTransaction(tx, {
+          stopId,
+          voidedById: actor.id,
+          voidReason: dto.correctionReason,
+        });
 
-      const delivery = await this.salesService.registerStopDeliveryWithinTransaction(tx, {
-        routeId,
-        stopId,
-        locationId: stop.locationId,
-        items: dto.items ?? [],
-        containersReturned: dto.containersReturned ?? [],
-        recordedById: actor.id,
-        occurredAt,
-        priceOverrideAuthorizedById: actor.id,
-        allowStockShortfall: true,
-        ...(dto.payment !== undefined ? { payment: dto.payment } : {}),
-      });
+        // El pedido sigue a su parada, igual que al marcarla, y nunca vuelve a
+        // PENDING: una corrección no deshace que el pedido salió en un camión.
+        if (stop.orderId !== null) {
+          await tx.order.update({
+            where: { id: stop.orderId },
+            data: {
+              status:
+                dto.status === StopStatus.DELIVERED ? OrderStatus.DELIVERED : OrderStatus.FAILED,
+            },
+          });
+        }
 
-      return toStopResponse(stop, delivery);
-    });
+        if (dto.status !== StopStatus.DELIVERED) {
+          return toStopResponse(stop);
+        }
+
+        // La entrega corregida es la MISMA entrega, del mismo día: hereda el
+        // `soldAt` de la venta que se acaba de anular. Si la parada estaba
+        // FAILED no hay ninguna, y el instante sale del día de la ruta, al
+        // mediodía de Lima — la hora de reparto, y la que menos se corre al
+        // cruzar el borde del día en cualquier lectura por fecha de negocio.
+        const occurredAt = voided.sale?.soldAt ?? limaNoonOfBusinessDate(route.date, new Date());
+
+        const delivery = await this.salesService.registerStopDeliveryWithinTransaction(tx, {
+          routeId,
+          stopId,
+          locationId: stop.locationId,
+          items: dto.items ?? [],
+          containersReturned: dto.containersReturned ?? [],
+          recordedById: actor.id,
+          occurredAt,
+          priceOverrideAuthorizedById: actor.id,
+          allowStockShortfall: true,
+          ...(dto.payment !== undefined ? { payment: dto.payment } : {}),
+        });
+
+        return toStopResponse(stop, delivery);
+      },
+      { timeout: 15_000 },
+    );
   }
 
   /**

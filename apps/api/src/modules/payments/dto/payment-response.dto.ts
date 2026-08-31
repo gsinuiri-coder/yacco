@@ -80,6 +80,24 @@ export class PaymentRowDto {
   @ApiPropertyOptional({ nullable: true })
   rejectionReason!: string | null;
 
+  /**
+   * Cuándo se anuló este cobro, y por qué; `null` mientras siga en pie. No es
+   * lo mismo que `status: REJECTED` — rechazar dice que el dinero nunca llegó,
+   * anular dice que el dinero llegó y se anotó mal, y por eso la anulación sí
+   * devolvió la deuda. Un cobro anulado SIGUE viniendo en la bandeja, con su
+   * monto original: ver `PaymentsService.findAll`.
+   *
+   * `voidedBy` no viaja: sería un join más contra `users` en cada página de la
+   * bandeja, y la pantalla que la lee muestra que el cobro está anulado y su
+   * motivo, no quién lo anuló. Cuando alguna pantalla necesite el nombre, se
+   * agrega al include entonces.
+   */
+  @ApiPropertyOptional({ format: "date-time", nullable: true })
+  voidedAt!: Date | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  voidReason!: string | null;
+
   @ApiProperty()
   isOpeningBalance!: boolean;
 }

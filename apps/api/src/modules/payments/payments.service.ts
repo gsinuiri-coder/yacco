@@ -45,6 +45,11 @@ function toPaymentRow(payment: PaymentWithRelations): PaymentRowDto {
     rejectedAt: payment.rejectedAt,
     rejectedBy: payment.rejectedBy,
     rejectionReason: payment.rejectionReason,
+    // Sin `voidedBy`: es la única de las tres columnas de anulación que
+    // costaría un join más en cada página de la bandeja, y ninguna pantalla
+    // pide hoy el nombre de quien anuló — ver el comentario del DTO.
+    voidedAt: payment.voidedAt,
+    voidReason: payment.voidReason,
     isOpeningBalance: payment.isOpeningBalance,
   };
 }
@@ -320,9 +325,20 @@ export class PaymentsService {
    * ese total describe LA LISTA, no un saldo. Tiene que sumar exactamente las
    * filas que se muestran —por eso comparte el `where` con la página— y ya
    * incluye los REJECTED por la misma razón. Filtrar lo anulado acá dejaría
-   * un total que no cuadra con lo que el ojo suma en pantalla. Si un cobro
-   * anulado debe desaparecer de la bandeja, eso se decide en el filtro de la
-   * pantalla, no en el total.
+   * un total que no cuadra con lo que el ojo suma en pantalla.
+   *
+   * Y el `where` de la página TAMPOCO lo filtra, que es la otra mitad de la
+   * misma decisión: un cobro anulado sigue apareciendo en la bandeja, con su
+   * monto original y sus `voidedAt`/`voidReason` a la vista, para que la
+   * pantalla lo muestre marcado y sin botones — el mismo idioma que el estado
+   * de cuenta, donde una fila anulada aparece con su monto y efecto cero.
+   * Esconder un cobro que el cliente sabe que hizo es peor que mostrarlo
+   * tachado: el que lo busca no lo encontraría y volvería a registrarlo. No lo
+   * "arregles" agregando `voidedAt: null` acá.
+   *
+   * Las guardas `voidedAt: null` de `confirm()` y `reject()` siguen donde
+   * están: con el cobro anulado a la vista pasan a ser red de seguridad, no
+   * algo con lo que la oficina se choca de frente.
    */
   async findAll(query: ListPaymentsQueryDto): Promise<PaginatedPaymentsDto> {
     const { page, limit } = query;

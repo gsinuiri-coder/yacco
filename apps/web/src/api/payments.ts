@@ -92,6 +92,18 @@ export interface PaymentRow {
   rejectedAt: string | null;
   rejectedBy: PaymentUserRef | null;
   rejectionReason: string | null;
+  /**
+   * Cuándo se anuló este cobro, y por qué; null si sigue en pie. No es lo
+   * mismo que `status: "REJECTED"`: rechazar dice que el dinero nunca llegó,
+   * anular dice que llegó y se anotó mal. Un cobro anulado SIGUE viniendo en
+   * la bandeja, con su monto original, y suma en `totals`.
+   *
+   * Declarados acá y todavía sin pintar: este archivo es el contrato y se
+   * actualiza contra el DTO real, pero mostrar la fila tachada y sin botones
+   * es el PR siguiente.
+   */
+  voidedAt: string | null;
+  voidReason: string | null;
   isOpeningBalance: boolean;
 }
 

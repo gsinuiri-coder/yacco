@@ -838,6 +838,72 @@ describe("GET .../settlement before and after settling", () => {
 });
 
 /**
+ * Corregir una parada de una ruta ya liquidada está permitido a propósito: lo
+ * que cambia es que la liquidación guardada deja de coincidir con el libro, y
+ * eso se avisa, no se bloquea.
+ *
+ * El aviso se deriva de `route_stops.corrected_at` y no del `voided_at` de las
+ * ventas: corregir de FAILED a DELIVERED no anula ninguna venta —no había—
+ * pero crea una que mueve `totalSold`, y como `Sale` no tiene `createdAt` esa
+ * venta hereda un `soldAt` anterior al cierre.
+ */
+describe("una corrección posterior deja la liquidación desactualizada", () => {
+  async function settledRouteWithStop(): Promise<{ routeId: string; stopId: string }> {
+    const { locationId } = await createFreshLocation();
+    const batchItemId = await createBatchItem(5);
+    const routeId = await createRoute();
+    await addLoad(routeId, batchItemId, 5);
+    const stopId = await addStop(routeId, locationId);
+    await startRoute(routeId);
+    await deliverStop(routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+    await finishRoute(routeId);
+    await postSettlement(routeId, { fullReturned: 3, emptiesCollected: [] }).then((r) =>
+      expect(r.status).toBe(201),
+    );
+    return { routeId, stopId };
+  }
+
+  test("recién liquidada es false; después de corregir una parada es true", async () => {
+    const { routeId, stopId } = await settledRouteWithStop();
+
+    const before = await getSettlement(routeId);
+    expect(before.status).toBe(200);
+    expect(before.body.settlementOutdated).toBe(false);
+
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        status: StopStatus.DELIVERED,
+        items: [{ productId: refillProductId, quantity: 1 }],
+        correctionReason: "Habían sido 1, no 2",
+      })
+      .expect(200);
+
+    const after = await getSettlement(routeId);
+    expect(after.status).toBe(200);
+    expect(after.body.settlementOutdated).toBe(true);
+    // La liquidación guardada NO se toca: sigue diciendo lo que se cerró ese
+    // día, y es `expected` —recalculado del libro— el que ya no coincide.
+    expect(after.body.settlement.totalSold).toBe(before.body.settlement.totalSold);
+  });
+
+  // Sin liquidación no hay nada que pueda estar desactualizado, por corregida
+  // que esté la ruta.
+  test("una ruta sin liquidar dice false, no null", async () => {
+    const { routeId } = await freshFinishedRoute();
+
+    const response = await getSettlement(routeId);
+
+    expect(response.status).toBe(200);
+    expect(response.body.settlement).toBeNull();
+    expect(response.body.settlementOutdated).toBe(false);
+  });
+});
+
+/**
  * Quien ESCRIBE una anulación es la operación de corrección, que todavía no
  * existe: acá los movimientos de anulación y las columnas de la venta se
  * escriben a mano. Es legítimo justamente porque lo que se prueba es la

@@ -53,7 +53,15 @@ export class RouteStopContainerTypeDto {
   name!: string;
 }
 
-/** The delivery's sale, only present on a response for a stop just marked DELIVERED. */
+/**
+ * La venta VIGENTE de la parada. Viene en la respuesta de marcar o corregir la
+ * parada, y en el detalle de una ruta (`GET /routes/:id`); nunca al listar
+ * rutas.
+ *
+ * Las ventas ANULADAS no viajan por acá — corregir una parada deja la anterior
+ * en la tabla, anulada, y esa historia se lee en el estado de cuenta del
+ * cliente y en el libro de movimientos.
+ */
 export class RouteStopSaleDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
@@ -69,7 +77,43 @@ export class RouteStopSaleDto {
   creditLimitExceeded!: boolean;
 }
 
-/** The delivery's collection, only present when the body carried a `payment`. */
+/** Quién corrigió la parada — `name`, igual que el chofer y el cliente. */
+export class RouteStopCorrectedByDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
+/**
+ * La corrección de la parada: cuándo, quién y por qué. `null` mientras la
+ * parada nunca se corrigió.
+ *
+ * Las tres columnas guardan SÓLO LA ÚLTIMA corrección de esta parada: una
+ * segunda corrección las pisa. Es deliberado — la historia completa vive en
+ * las ventas anuladas y en el libro de movimientos. Ver
+ * `RoutesService.correctStop`.
+ */
+export class RouteStopCorrectionDto {
+  @ApiProperty({ format: "date-time" })
+  correctedAt!: Date;
+
+  @ApiProperty({ type: RouteStopCorrectedByDto })
+  correctedBy!: RouteStopCorrectedByDto;
+
+  @ApiPropertyOptional({ nullable: true })
+  correctionReason!: string | null;
+}
+
+/**
+ * El cobro NO ANULADO de la parada; `null` cuando no hay ninguno.
+ *
+ * «No anulado» no es lo mismo que «cobrado»: un cobro RECHAZADO —el dinero
+ * nunca llegó, así que no hubo nada que revertir— sigue viniendo por acá. Por
+ * eso `status` viaja con el monto, y la pantalla lo muestra: un monto solo
+ * diría que se cobró algo que no entró.
+ */
 export class RouteStopPaymentDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
@@ -147,6 +191,9 @@ export class RouteStopResponseDto {
    */
   @ApiPropertyOptional({ nullable: true })
   failureReason!: string | null;
+
+  @ApiProperty({ type: RouteStopCorrectionDto, nullable: true })
+  correction!: RouteStopCorrectionDto | null;
 
   @ApiPropertyOptional({ type: RouteStopSaleDto, nullable: true })
   sale?: RouteStopSaleDto | null;
