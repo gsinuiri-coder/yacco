@@ -76,6 +76,23 @@ export interface RouteSettlementView {
   expected: RouteSettlementExpected;
   settlement: RouteSettlement | null;
   unresolvedStops: number;
+  /**
+   * La ruta se liquidó y DESPUÉS se corrigió alguna de sus paradas. No bloquea
+   * nada — corregir una ruta liquidada está permitido a propósito. `false`
+   * cuando no hay liquidación y cuando la última corrección es anterior al
+   * cierre.
+   *
+   * Dice exactamente eso y nada más: mide `route_stops.corrected_at` contra
+   * `settledAt`. NO es «la liquidación dejó de cuadrar con el libro» en
+   * general — confirmar o rechazar un cobro pendiente después de liquidar
+   * también mueve `expected` y no estampa ninguna corrección. Al pintar el
+   * aviso, decir lo que se midió: se corrigió una parada después del cierre.
+   *
+   * Declarado acá y todavía sin pintar: este archivo es el contrato y se
+   * actualiza contra el DTO real, pero avisarlo en la pantalla de liquidación
+   * es el PR siguiente.
+   */
+  settlementOutdated: boolean;
 }
 
 /** CreateRouteSettlementResponseDto. */

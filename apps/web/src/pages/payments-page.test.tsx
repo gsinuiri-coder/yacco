@@ -32,6 +32,8 @@ function buildPayment(overrides: Partial<PaymentRow> = {}): PaymentRow {
     rejectedAt: null,
     rejectedBy: null,
     rejectionReason: null,
+    voidedAt: null,
+    voidReason: null,
     isOpeningBalance: false,
     ...overrides,
   };

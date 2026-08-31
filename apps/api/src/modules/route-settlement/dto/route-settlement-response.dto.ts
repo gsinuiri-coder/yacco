@@ -180,6 +180,27 @@ export class GetRouteSettlementResponseDto {
 
   @ApiProperty({ description: "Paradas de la ruta que siguen PENDING" })
   unresolvedStops!: number;
+
+  /**
+   * La ruta se liquidó y DESPUÉS se corrigió alguna de sus paradas, así que
+   * los números de la liquidación guardada ya no son los del libro. No
+   * bloquea nada: corregir una ruta liquidada está permitido a propósito, y
+   * esto es lo que se lo cuenta a quien mira la pantalla.
+   *
+   * `false` cuando no hay liquidación —no hay nada que pueda estar
+   * desactualizado— y cuando la última corrección es anterior al cierre.
+   *
+   * Sale de `route_stops.corrected_at`, no del `voided_at` de las ventas: ver
+   * `RouteSettlementService.getSettlementView`.
+   *
+   * Dice eso y nada más. NO es «la liquidación dejó de cuadrar con el libro»
+   * en general: confirmar o rechazar un cobro pendiente después de liquidar
+   * también mueve `totalCashCollected` y `totalPendingConfirmation` de
+   * `expected`, y no estampa ninguna corrección. Ese otro desfase se ve
+   * comparando `expected` contra `settlement`, que ya viajan los dos.
+   */
+  @ApiProperty({ description: "La liquidación es anterior a la última corrección de una parada" })
+  settlementOutdated!: boolean;
 }
 
 /** Response of POST .../settlement. */

@@ -350,10 +350,15 @@ export class RouteSettlementService {
       throw new NotFoundException(`La ruta "${routeId}" no existe`);
     }
 
-    const [expected, settlement, unresolvedStops] = await Promise.all([
+    const [expected, settlement, unresolvedStops, lastCorrection] = await Promise.all([
       this.computeExpected(this.prisma, routeId),
       this.prisma.routeSettlement.findUnique({ where: { routeId } }),
       this.prisma.routeStop.count({ where: { routeId, status: StopStatus.PENDING } }),
+      this.prisma.routeStop.findFirst({
+        where: { routeId, correctedAt: { not: null } },
+        orderBy: { correctedAt: "desc" },
+        select: { correctedAt: true },
+      }),
     ]);
 
     // Solo tiene sentido preguntarlo si la ruta ya se liquidó: antes de eso no
@@ -363,10 +368,27 @@ export class RouteSettlementService {
         ? []
         : await this.sumByContainerType(this.prisma, routeId, ContainerMovementType.EMPTY_UNLOAD);
 
+    // Se deriva de `route_stops.corrected_at`, NO del `voided_at` de las
+    // ventas, y la diferencia no es de estilo: corregir una parada de FAILED a
+    // DELIVERED no anula ninguna venta —no había— pero sí crea una venta nueva
+    // que mueve `totalSold` y `totalOnCredit`. Y `Sale` no tiene `createdAt`:
+    // esa venta nueva hereda el `soldAt` del día de la ruta, anterior a la
+    // liquidación, así que por fechas de venta sería indetectable.
+    //
+    // Que `corrected_at` guarde sólo la ÚLTIMA corrección no molesta acá: si
+    // la última es anterior a `settledAt`, todas lo son.
+    //
+    // Sin liquidación es `false` y no `null`: no hay nada que pueda estar
+    // desactualizado.
+    const lastCorrectedAt = lastCorrection?.correctedAt ?? null;
+    const settlementOutdated =
+      settlement !== null && lastCorrectedAt !== null && lastCorrectedAt > settlement.settledAt;
+
     return {
       expected: toExpectedDto(expected),
       settlement: settlement === null ? null : toSettlementDto(settlement, emptiesCollectedByType),
       unresolvedStops,
+      settlementOutdated,
     };
   }
 

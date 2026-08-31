@@ -92,7 +92,12 @@ function stubView(
   server.use(
     http.get(`${API_BASE_URL}/routes/${ROUTE_ID}`, () => HttpResponse.json(buildRoute(status))),
     http.get(`${API_BASE_URL}/routes/${ROUTE_ID}/settlement`, () =>
-      HttpResponse.json({ expected: EXPECTED, settlement, unresolvedStops }),
+      HttpResponse.json({
+        expected: EXPECTED,
+        settlement,
+        unresolvedStops,
+        settlementOutdated: false,
+      }),
     ),
   );
 }
@@ -110,6 +115,7 @@ function stubViewSequence(settlement: RouteSettlement): void {
         expected: EXPECTED,
         settlement: call === 0 ? null : settlement,
         unresolvedStops: 0,
+        settlementOutdated: false,
       };
       call += 1;
       return HttpResponse.json(body);
@@ -348,6 +354,7 @@ describe("RouteSettlementPage", () => {
             totalPendingConfirmation: "130.00",
           }),
           unresolvedStops: 0,
+          settlementOutdated: false,
         }),
       ),
     );
@@ -503,7 +510,12 @@ describe("RouteSettlementPage", () => {
         if (attempt === 1) {
           return HttpResponse.json({ message: "Base de datos no disponible" }, { status: 500 });
         }
-        return HttpResponse.json({ expected: EXPECTED, settlement: null, unresolvedStops: 0 });
+        return HttpResponse.json({
+          expected: EXPECTED,
+          settlement: null,
+          unresolvedStops: 0,
+          settlementOutdated: false,
+        });
       }),
     );
     const user = userEvent.setup();

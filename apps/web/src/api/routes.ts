@@ -43,7 +43,12 @@ export interface RouteStopLocation {
   customer: RouteStopCustomer;
 }
 
-/** RouteStopSaleDto: solo llega en la respuesta de marcar una parada. */
+/**
+ * RouteStopSaleDto: la venta VIGENTE de la parada. Llega en la respuesta de
+ * marcarla o corregirla, y en el detalle de una ruta (`GET /routes/:id`);
+ * nunca al listar rutas. Las ventas anuladas no vienen acá: esa historia es
+ * del estado de cuenta del cliente y del libro de movimientos.
+ */
 export interface RouteStopSale {
   id: string;
   total: string;
@@ -54,11 +59,48 @@ export interface RouteStopSale {
   creditLimitExceeded: boolean;
 }
 
-/** RouteStopPaymentDto: solo llega cuando el cuerpo trajo un cobro. */
+/** RouteStopPaymentDto: el cobro VIGENTE de la parada; null si no hay ninguno. */
 export interface RouteStopPayment {
   id: string;
   status: PaymentStatus;
   amount: string;
+}
+
+/** RouteStopCorrectedByDto: quién corrigió la parada. */
+export interface RouteStopCorrectedBy {
+  id: string;
+  name: string;
+}
+
+/**
+ * RouteStopCorrectionDto: la corrección de la parada — cuándo, quién y por
+ * qué. `null` mientras nunca se corrigió, y guarda SÓLO LA ÚLTIMA: la historia
+ * completa vive en las ventas anuladas y en el libro de movimientos.
+ *
+ * Declarado acá y todavía sin pintar: este archivo es el contrato y se
+ * actualiza contra el DTO real, pero mostrar la corrección en la hoja de ruta
+ * es el PR siguiente.
+ */
+export interface RouteStopCorrection {
+  correctedAt: string;
+  correctedBy: RouteStopCorrectedBy;
+  correctionReason: string | null;
+}
+
+/**
+ * RouteStopStockShortfallDto: un tipo de envase del que se registró más de lo
+ * que el camión tenía. Solo puede venir de corregir una parada, que registra
+ * contra un hecho físico ya consumado y por eso avisa en vez de bloquear.
+ *
+ * Declarado acá y todavía sin pintar, por la misma razón que `correction`.
+ */
+export interface RouteStopStockShortfall {
+  containerTypeId: string;
+  containerType: RouteStopContainerType;
+  /** Lo que el libro decía que quedaba en el camión. */
+  available: number;
+  /** Lo que se registró como entregado. */
+  requested: number;
 }
 
 /** RouteStopContainerBalanceDto: el saldo que le queda al cliente por tipo. */
@@ -74,8 +116,13 @@ export interface RouteStopContainerType {
 }
 
 /**
- * RouteStopResponseDto. `sale`, `payment` y `containerBalances` solo vienen
- * en la respuesta de `PATCH .../stops/:stopId`, nunca al listar la ruta.
+ * RouteStopResponseDto. `sale` y `payment` vienen en la respuesta de
+ * `PATCH .../stops/:stopId` y en el detalle de una ruta, nunca al listar
+ * rutas. `containerBalances` y `stockShortfall` son exclusivos de la respuesta
+ * de una escritura: los saldos son la parte cara y el faltante de stock es un
+ * hecho del momento del registro, no un estado de la parada.
+ *
+ * `correction` viaja SIEMPRE, en las tres lecturas.
  */
 export interface RouteStop {
   id: string;
@@ -87,9 +134,11 @@ export interface RouteStop {
   orderId: string | null;
   status: StopStatus;
   failureReason: string | null;
+  correction: RouteStopCorrection | null;
   sale?: RouteStopSale | null;
   payment?: RouteStopPayment | null;
   containerBalances?: RouteStopContainerBalance[];
+  stockShortfall?: RouteStopStockShortfall[];
 }
 
 /** RouteResponseDto. Trae siempre sus paradas ordenadas por `position`. */

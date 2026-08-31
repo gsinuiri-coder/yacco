@@ -9,6 +9,8 @@ import {
   ContainerMovementType,
   ContainerState,
   OrderStatus,
+  PaymentStatus,
+  Prisma,
   RouteStatus,
   StopOrigin,
   StopStatus,
@@ -78,6 +80,12 @@ function buildStop(overrides: Record<string, unknown> = {}) {
     orderId: null,
     status: StopStatus.PENDING,
     failureReason: null,
+    // Las tres columnas de corrección, como las devuelve Prisma en una parada
+    // que nunca se corrigió: nulas, no ausentes.
+    correctedAt: null,
+    correctedById: null,
+    correctionReason: null,
+    correctedBy: null,
     location: {
       id: LOCATION_ID,
       name: "Principal",
@@ -85,6 +93,117 @@ function buildStop(overrides: Record<string, unknown> = {}) {
       customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa" },
     },
     ...overrides,
+  };
+}
+
+/**
+ * Una parada corregida, con las tres columnas y el `correctedBy` del include.
+ * Van juntas: `correctStop` las escribe en un solo UPDATE.
+ */
+function buildCorrectedStop(overrides: Record<string, unknown> = {}) {
+  return buildStop({
+    status: StopStatus.DELIVERED,
+    correctedAt: new Date("2026-08-26T14:00:00.000Z"),
+    correctedById: ADMIN_ID,
+    correctionReason: "Habían sido 4 bidones, no 6",
+    correctedBy: { id: ADMIN_ID, name: "Giancarlo Dueño" },
+    ...overrides,
+  });
+}
+
+/**
+ * Una parada ya entregada. NO trae `sales` ni `payments`: esas dos claves las
+ * pone quien lee, y sólo si el include las pidió — es justamente lo que estos
+ * tests miran.
+ */
+function buildDetailStop(overrides: Record<string, unknown> = {}) {
+  return buildStop({ status: StopStatus.DELIVERED, ...overrides });
+}
+
+/** Una fila de `sales` de la parada, anulada o no, como está en la tabla. */
+function storedSale(id: string, total: string, voidedAt: Date | null = null) {
+  return { id, total: new Prisma.Decimal(total), creditLimitExceeded: false, voidedAt };
+}
+
+/** Una fila de `payments` de la parada, anulada o no, como está en la tabla. */
+function storedPayment(
+  id: string,
+  amount: string,
+  status: PaymentStatus,
+  voidedAt: Date | null = null,
+) {
+  return { id, amount: new Prisma.Decimal(amount), status, voidedAt };
+}
+
+interface StopRelationInclude {
+  where?: { voidedAt?: null };
+  take?: number;
+}
+
+/**
+ * Lo que una lectura de rutas le pidió a Prisma para las paradas. Se afirma
+ * sobre el include y no sólo sobre la respuesta porque el mock devuelve lo que
+ * se le diga: sin mirar la consulta, un test pasaría aunque el join nunca se
+ * hubiera pedido.
+ */
+function expectStopIncludeToMatch(routeReadMock: unknown, matcher: unknown): void {
+  expect(routeReadMock).toHaveBeenCalledWith(
+    expect.objectContaining({
+      include: expect.objectContaining({
+        stops: expect.objectContaining({ include: matcher }) as unknown,
+      }) as unknown,
+    }),
+  );
+}
+
+interface RouteFindUniqueArgs {
+  include?: {
+    stops?: { include?: { sales?: StopRelationInclude; payments?: StopRelationInclude } };
+  };
+}
+
+/**
+ * Aplica al vuelo el `where` y el `take` que pide el include, igual que
+ * Postgres: la parada tiene TODAS sus filas —las anuladas también—, y lo que
+ * vuelve es lo que el include supo pedir.
+ *
+ * Sin esto un mock devolvería la venta vigente ya elegida a mano y el test
+ * pasaría aunque el filtro `voidedAt: null` no existiera en el include: se
+ * estaría midiendo el mock, no la consulta (criterio de #114).
+ */
+function routeWithStoredStopRows(
+  route: Record<string, unknown>,
+  rows: {
+    sales: ReturnType<typeof storedSale>[];
+    payments: ReturnType<typeof storedPayment>[];
+  },
+) {
+  const pick = <T extends { voidedAt: Date | null }>(
+    all: T[],
+    relation: StopRelationInclude | undefined,
+  ): T[] | undefined => {
+    if (relation === undefined) {
+      return undefined;
+    }
+    const matching =
+      relation.where?.voidedAt === null ? all.filter((row) => row.voidedAt === null) : all;
+    return relation.take === undefined ? matching : matching.slice(0, relation.take);
+  };
+
+  return async (args: RouteFindUniqueArgs) => {
+    const stopInclude = args.include?.stops?.include;
+    const stops = (route.stops as Record<string, unknown>[]).map((stop) => {
+      // La clave se OMITE cuando el include no la pide, que es lo que hace
+      // Prisma: una parada del listado no trae `sales` ni vacío.
+      const sales = pick(rows.sales, stopInclude?.sales);
+      const payments = pick(rows.payments, stopInclude?.payments);
+      return {
+        ...stop,
+        ...(sales === undefined ? {} : { sales }),
+        ...(payments === undefined ? {} : { payments }),
+      };
+    });
+    return { ...route, stops };
   };
 }
 
@@ -124,7 +243,7 @@ function buildPrismaMock() {
   return {
     route: {
       create: jest.fn<() => Promise<unknown>>(),
-      findUnique: jest.fn<() => Promise<unknown>>(),
+      findUnique: jest.fn<(args: RouteFindUniqueArgs) => Promise<unknown>>(),
       findMany: jest.fn<() => Promise<unknown>>(),
       count: jest.fn<() => Promise<unknown>>(),
       updateMany: jest.fn<() => Promise<unknown>>(),
@@ -179,7 +298,15 @@ function buildContainerMovementsMock() {
 }
 
 function buildSalesMock() {
-  return { registerStopDeliveryWithinTransaction: jest.fn<() => Promise<unknown>>() };
+  return {
+    registerStopDeliveryWithinTransaction: jest.fn<() => Promise<unknown>>(),
+    voidStopDeliveryWithinTransaction: jest.fn<() => Promise<unknown>>(),
+  };
+}
+
+/** El no-op de anular: la parada no tenía ninguna venta vigente. */
+function buildVoidResult(overrides: Record<string, unknown> = {}) {
+  return { sale: null, payments: [], debtDelta: "0.00", voidMovements: [], ...overrides };
 }
 
 function buildDeliveryResult(
@@ -378,6 +505,47 @@ describe("RoutesService", () => {
         },
       });
     });
+
+    // El listado pagina 20 rutas y ninguna pantalla lee la venta desde ahí:
+    // cargarla multiplicaría el costo por la cantidad de paradas de cada ruta
+    // sin que nadie mire el resultado. La venta es del detalle.
+    it("no carga la venta ni el cobro de cada parada: eso es del detalle", async () => {
+      prisma.route.count.mockResolvedValue(1);
+      prisma.route.findMany.mockResolvedValue([buildRoute({ stops: [buildStop()] })]);
+
+      const result = await service.findAll(
+        { page: DEFAULT_PAGE, limit: DEFAULT_LIMIT },
+        adminActor,
+      );
+
+      expectStopIncludeToMatch(
+        prisma.route.findMany,
+        expect.not.objectContaining({ sales: expect.anything() }),
+      );
+      expectStopIncludeToMatch(
+        prisma.route.findMany,
+        expect.not.objectContaining({ payments: expect.anything() }),
+      );
+      expect(result.data[0]?.stops[0]?.sale).toBeUndefined();
+      expect(result.data[0]?.stops[0]?.payment).toBeUndefined();
+    });
+
+    // El listado SÍ dice que una parada fue corregida: es un join chico contra
+    // `users` y es lo que deja ver de un vistazo qué rutas se retocaron.
+    it("sí dice que una parada fue corregida, también al listar", async () => {
+      prisma.route.count.mockResolvedValue(1);
+      prisma.route.findMany.mockResolvedValue([buildRoute({ stops: [buildCorrectedStop()] })]);
+
+      const result = await service.findAll(
+        { page: DEFAULT_PAGE, limit: DEFAULT_LIMIT },
+        adminActor,
+      );
+
+      expect(result.data[0]?.stops[0]?.correction?.correctedBy).toEqual({
+        id: ADMIN_ID,
+        name: "Giancarlo Dueño",
+      });
+    });
   });
 
   describe("findOne", () => {
@@ -405,7 +573,7 @@ describe("RoutesService", () => {
         expect.objectContaining({
           include: expect.objectContaining({
             stops: expect.objectContaining({
-              include: {
+              include: expect.objectContaining({
                 location: {
                   select: {
                     id: true,
@@ -414,7 +582,7 @@ describe("RoutesService", () => {
                     customer: { select: { id: true, name: true } },
                   },
                 },
-              },
+              }) as unknown,
             }) as unknown,
           }) as unknown,
         }),
@@ -457,6 +625,115 @@ describe("RoutesService", () => {
 
       expect(result.stops).toHaveLength(1);
       expect(result.stops[0]?.id).toBe(OTHER_STOP_ID);
+    });
+
+    // La parada tiene DOS ventas y DOS cobros —el anulado y el vigente, con
+    // montos distintos— porque con uno solo el test pasaría aunque el include
+    // no filtrara nada.
+    it("trae la venta y el cobro VIGENTES de la parada, nunca los anulados", async () => {
+      prisma.route.findUnique.mockImplementation(
+        routeWithStoredStopRows(
+          buildRoute({
+            status: RouteStatus.SETTLED,
+            stops: [buildDetailStop()],
+          }),
+          {
+            sales: [
+              storedSale("sale-anulada", "60.00", new Date("2026-08-26T14:00:00.000Z")),
+              storedSale("sale-vigente", "40.00"),
+            ],
+            payments: [
+              storedPayment(
+                "payment-anulado",
+                "60.00",
+                PaymentStatus.CONFIRMED,
+                new Date("2026-08-26T14:00:00.000Z"),
+              ),
+              storedPayment("payment-vigente", "40.00", PaymentStatus.CONFIRMED),
+            ],
+          },
+        ),
+      );
+
+      const result = await service.findOne(ROUTE_ID, adminActor);
+
+      expect(result.stops[0]?.sale).toEqual({
+        id: "sale-vigente",
+        total: "40.00",
+        creditLimitExceeded: false,
+      });
+      expect(result.stops[0]?.payment).toEqual({
+        id: "payment-vigente",
+        status: PaymentStatus.CONFIRMED,
+        amount: "40.00",
+      });
+    });
+
+    it("una parada sin nada vigente viaja con venta y cobro en null", async () => {
+      prisma.route.findUnique.mockImplementation(
+        routeWithStoredStopRows(buildRoute({ stops: [buildDetailStop()] }), {
+          sales: [storedSale("sale-anulada", "60.00", new Date("2026-08-26T14:00:00.000Z"))],
+          payments: [],
+        }),
+      );
+
+      const result = await service.findOne(ROUTE_ID, adminActor);
+
+      expect(result.stops[0]?.sale).toBeNull();
+      expect(result.stops[0]?.payment).toBeNull();
+    });
+
+    // `containerBalances` es la parte cara de una escritura y `stockShortfall`
+    // es un hecho del momento en que se registró: ninguno se deriva del
+    // include, ni siquiera cuando la parada tiene venta vigente.
+    it("no inventa saldos de envases ni faltantes de stock al leer la ruta", async () => {
+      prisma.route.findUnique.mockImplementation(
+        routeWithStoredStopRows(buildRoute({ stops: [buildDetailStop()] }), {
+          sales: [storedSale("sale-vigente", "40.00")],
+          payments: [],
+        }),
+      );
+
+      const result = await service.findOne(ROUTE_ID, adminActor);
+
+      expect(result.stops[0]?.containerBalances).toBeUndefined();
+      expect(result.stops[0]?.stockShortfall).toBeUndefined();
+    });
+
+    it("una parada corregida dice cuándo, quién y por qué", async () => {
+      prisma.route.findUnique.mockImplementation(
+        routeWithStoredStopRows(buildRoute({ stops: [buildCorrectedStop()] }), {
+          sales: [],
+          payments: [],
+        }),
+      );
+
+      const result = await service.findOne(ROUTE_ID, adminActor);
+
+      expect(result.stops[0]?.correction).toEqual({
+        correctedAt: new Date("2026-08-26T14:00:00.000Z"),
+        correctedBy: { id: ADMIN_ID, name: "Giancarlo Dueño" },
+        correctionReason: "Habían sido 4 bidones, no 6",
+      });
+      // El nombre sale de un join que tiene que estar pedido: sin esto el mock
+      // podría traerlo aunque el include no lo pidiera nunca.
+      expectStopIncludeToMatch(
+        prisma.route.findUnique,
+        expect.objectContaining({ correctedBy: { select: { id: true, name: true } } }),
+      );
+    });
+
+    it("una parada que nunca se corrigió viaja con correction en null", async () => {
+      prisma.route.findUnique.mockImplementation(
+        routeWithStoredStopRows(buildRoute({ stops: [buildDetailStop()] }), {
+          sales: [],
+          payments: [],
+        }),
+      );
+
+      const result = await service.findOne(ROUTE_ID, adminActor);
+
+      expect(result.stops[0]?.correction).toBeNull();
     });
   });
 
@@ -1031,6 +1308,85 @@ describe("RoutesService", () => {
         service.markStop(ROUTE_ID, STOP_ID, { status: StopStatus.DELIVERED }, otherDriverActor),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.routeStop.updateMany).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Las DOS fuentes a la vez, con ventas y cobros DISTINTOS: si trajeran lo
+     * mismo, el test no distinguiría cuál ganó. Gana la escritura, que es lo
+     * recién registrado y lo único que trae `creditLimitExceeded` calculado
+     * contra el saldo de ese instante.
+     *
+     * Hoy `markStopDelivered` relee la parada con el include base, así que las
+     * dos fuentes no se cruzan en producción; el orden de precedencia está
+     * escrito para el día en que alguien le pase el include de detalle, y este
+     * test es lo que hace que ese día no cambie la respuesta en silencio.
+     */
+    it("la venta de la escritura le gana a la que trae el include", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+      prisma.routeStop.updateMany.mockResolvedValue({ count: 1 });
+      prisma.routeStop.findUniqueOrThrow.mockResolvedValue(
+        buildDetailStop({
+          sales: [storedSale("sale-del-include", "99.00")],
+          payments: [storedPayment("payment-del-include", "99.00", PaymentStatus.PENDING)],
+        }),
+      );
+      const delivery = buildDeliveryResult({
+        sale: { id: "sale-de-la-escritura", total: "25.00", creditLimitExceeded: true },
+        payment: {
+          id: "payment-de-la-escritura",
+          status: PaymentStatus.CONFIRMED,
+          amount: "25.00",
+        },
+      });
+      sales.registerStopDeliveryWithinTransaction.mockResolvedValue(delivery);
+
+      const result = await service.markStop(
+        ROUTE_ID,
+        STOP_ID,
+        { status: StopStatus.DELIVERED, items: deliveryItems },
+        driverActor,
+      );
+
+      expect(result.sale).toEqual(delivery.sale);
+      expect(result.payment).toEqual(delivery.payment);
+    });
+  });
+
+  describe("correctStop", () => {
+    const correctionBody = {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: "product-1", quantity: 4 }],
+      correctionReason: "Habían sido 4 bidones, no 6",
+    };
+
+    beforeEach(() => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.FINISHED }));
+      prisma.routeStop.updateMany.mockResolvedValue({ count: 1 });
+      prisma.routeStop.findUniqueOrThrow.mockResolvedValue(buildCorrectedStop());
+      sales.voidStopDeliveryWithinTransaction.mockResolvedValue(buildVoidResult());
+      sales.registerStopDeliveryWithinTransaction.mockResolvedValue(buildDeliveryResult());
+    });
+
+    // Escribe las tres columnas de corrección y hasta acá no devolvía ninguna:
+    // quien corrige tiene que ver en la respuesta lo que acaba de quedar
+    // anotado, sin volver a pedir la ruta.
+    it("la respuesta dice cuándo, quién y por qué se corrigió", async () => {
+      const result = await service.correctStop(ROUTE_ID, STOP_ID, correctionBody, adminActor);
+
+      expect(result.correction).toEqual({
+        correctedAt: new Date("2026-08-26T14:00:00.000Z"),
+        correctedBy: { id: ADMIN_ID, name: "Giancarlo Dueño" },
+        correctionReason: "Habían sido 4 bidones, no 6",
+      });
+    });
+
+    // Los 5000 ms por defecto de Prisma quedan cortos: anular con el neteo de
+    // movimientos, mover el pedido y re-registrar la entrega entera es mucho
+    // para una parada de varios tipos de envase.
+    it("le da a la transacción más que los 5 s por defecto de Prisma", async () => {
+      await service.correctStop(ROUTE_ID, STOP_ID, correctionBody, adminActor);
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 15_000 });
     });
   });
 

@@ -2460,4 +2460,102 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId/correction", () => {
       OrderStatus.DELIVERED,
     );
   });
+
+  /**
+   * La parada queda con DOS ventas y DOS cobros en la tabla —el par anulado y
+   * el par vigente, con montos distintos— así que el detalle sólo puede
+   * mostrar el monto correcto si el include filtra de verdad por
+   * `voidedAt: null`. Con una sola venta el test pasaría sin filtro.
+   */
+  test("el detalle de la ruta muestra la venta y el cobro VIGENTES, y quién corrigió la parada", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "37.50" },
+    }).then((r) => expect(r.status).toBe(200));
+
+    await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "25.00" },
+    }).then((r) => expect(r.status).toBe(200));
+
+    expect(await prisma.sale.count({ where: { stopId } })).toBe(2);
+    expect(await prisma.payment.count({ where: { stopId } })).toBe(2);
+
+    const detail = await request(server())
+      .get(`/api/v1/routes/${routeId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const stop = (detail.body.stops as Record<string, unknown>[]).find(
+      (candidate) => candidate.id === stopId,
+    );
+    expect((stop?.sale as { total: string }).total).toBe("25.00");
+    expect((stop?.payment as { amount: string }).amount).toBe("25.00");
+    expect(stop?.correction).toMatchObject({
+      correctedBy: { id: adminUserId, name: expect.any(String) as unknown },
+      correctionReason: REASON,
+    });
+    // Los saldos de envases y el faltante de stock son de la escritura, no de
+    // una lectura: leer la ruta no los recalcula.
+    expect(stop?.containerBalances).toBeUndefined();
+    expect(stop?.stockShortfall).toBeUndefined();
+  });
+
+  // El listado paga 20 rutas por página: la venta se queda en el detalle. Lo
+  // que sí viaja es la corrección, que es un join chico.
+  test("el listado de rutas no trae la venta de cada parada, pero sí dice que se corrigió", async () => {
+    const { locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+    }).then((r) => expect(r.status).toBe(200));
+    await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    const list = await request(server())
+      .get(`/api/v1/routes?page=1&limit=20`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const route = (list.body.data as { id: string; stops: Record<string, unknown>[] }[]).find(
+      (candidate) => candidate.id === routeId,
+    );
+    const stop = route?.stops.find((candidate) => candidate.id === stopId);
+    expect(stop?.sale).toBeUndefined();
+    expect(stop?.payment).toBeUndefined();
+    expect(stop?.correction).toMatchObject({ correctionReason: REASON });
+  });
+
+  // Anular un cobro no lo esconde de la bandeja: aparece con su monto original
+  // y su `voidedAt`, para que la oficina lo vea tachado en vez de buscarlo sin
+  // encontrarlo y registrarlo otra vez.
+  test("el cobro anulado por una corrección sigue apareciendo en la bandeja de cobros", async () => {
+    const { customerId: custId, locationId: locId } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(10, locId);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 3 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "37.50" },
+    }).then((r) => expect(r.status).toBe(200));
+
+    await correctStop(adminToken, routeId, stopId, {
+      status: StopStatus.DELIVERED,
+      items: [{ productId: refillProductId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    const tray = await request(server())
+      .get(`/api/v1/payments?page=1&limit=20&customerId=${custId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const rows = tray.body.data as { id: string; amount: string; voidedAt: string | null }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.amount).toBe("37.50");
+    expect(rows[0]?.voidedAt).not.toBeNull();
+    expect(tray.body.totals).toMatchObject({ count: 1, amount: "37.50" });
+  });
 });

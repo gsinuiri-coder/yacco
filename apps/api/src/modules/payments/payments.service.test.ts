@@ -14,6 +14,7 @@ const ADMIN_ID = "66666666-6666-4666-8666-666666666666";
 const MISSING_ID = "00000000-0000-4000-8000-000000000000";
 const OTHER_CUSTOMER_ID = "77777777-7777-4777-8777-777777777777";
 const IDEMPOTENCY_KEY = "88888888-8888-4888-8888-888888888888";
+const VOIDED_PAYMENT_ID = "99999999-9999-4999-8999-999999999999";
 
 function decimal(value: string): Prisma.Decimal {
   return new Prisma.Decimal(value);
@@ -40,6 +41,9 @@ function paymentRow(overrides: Record<string, unknown> = {}) {
     rejectedById: null,
     rejectedBy: null,
     rejectionReason: null,
+    voidedAt: null,
+    voidedById: null,
+    voidReason: null,
     isOpeningBalance: false,
     recordedById: RECORDED_BY_ID,
     recordedBy: { id: RECORDED_BY_ID, username: "repartidor" },
@@ -633,6 +637,59 @@ describe("PaymentsService", () => {
       );
       expect(result.totals).toEqual({ count: 3, amount: "75.00" });
       expect(result.total).toBe(3);
+    });
+
+    /**
+     * Un cobro anulado SIGUE en la bandeja, con su monto original y su motivo
+     * a la vista, y sigue sumando en `totals`. Esconder un cobro que el
+     * cliente sabe que hizo es peor que mostrarlo tachado: quien lo busca no
+     * lo encontraría y lo registraría de nuevo. Mismo idioma que el estado de
+     * cuenta, donde una fila anulada aparece con su monto y efecto cero.
+     */
+    it("un cobro anulado sigue apareciendo, con su anulación a la vista", async () => {
+      const voidedAt = new Date("2026-08-26T14:00:00.000Z");
+      prisma.payment.count.mockResolvedValue(2);
+      prisma.payment.findMany.mockResolvedValue([
+        paymentRow(),
+        paymentRow({
+          id: VOIDED_PAYMENT_ID,
+          status: PaymentStatus.CONFIRMED,
+          voidedAt,
+          voidedById: RECORDED_BY_ID,
+          voidReason: "La parada se corrigió: no había pagado",
+        }),
+      ]);
+      prisma.payment.aggregate.mockResolvedValue({
+        _count: { _all: 2 },
+        _sum: { amount: decimal("50.00") },
+      });
+
+      const result = await service.findAll({ page: 1, limit: 20 });
+
+      const voided = result.data.find((row) => row.id === VOIDED_PAYMENT_ID);
+      expect(voided?.voidedAt).toEqual(voidedAt);
+      expect(voided?.voidReason).toBe("La parada se corrigió: no había pagado");
+      expect(voided?.amount).toBe("25.00");
+      // El `where` de la página no filtra lo anulado, y el total tampoco: el
+      // total describe la lista, y tiene que cuadrar con lo que el ojo suma.
+      expect(prisma.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isOpeningBalance: false } }),
+      );
+      expect(result.totals).toEqual({ count: 2, amount: "50.00" });
+    });
+
+    it("un cobro en pie viaja con voidedAt y voidReason en null", async () => {
+      prisma.payment.count.mockResolvedValue(1);
+      prisma.payment.findMany.mockResolvedValue([paymentRow()]);
+      prisma.payment.aggregate.mockResolvedValue({
+        _count: { _all: 1 },
+        _sum: { amount: decimal("25.00") },
+      });
+
+      const result = await service.findAll({ page: 1, limit: 20 });
+
+      expect(result.data[0]?.voidedAt).toBeNull();
+      expect(result.data[0]?.voidReason).toBeNull();
     });
 
     it("an empty filtered set returns totals of count 0 and amount 0.00, not an error", async () => {
