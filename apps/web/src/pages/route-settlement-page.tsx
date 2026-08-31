@@ -574,11 +574,13 @@ function SettledSection({
       <div className="card__body">
         {/* Dice lo que el flag mide y nada más: se corrigió una parada después
             del cierre. NO dice que la liquidación esté mal ni que no cuadre —
-            corregir una ruta ya liquidada está permitido a propósito. */}
+            corregir una ruta ya liquidada está permitido a propósito. Y NO
+            dice "los números de abajo son los del cierre": "Diferencia de
+            vacíos" no lo es (ver la nota en esa celda) — sólo el dinero y la
+            diferencia de llenos vienen de la fila persistida. */}
         {settlementOutdated && (
           <p className="notice notice--warning" role="status">
-            Se corrigió una parada después de cerrar esta liquidación. Los números de abajo son los
-            del momento del cierre.
+            Se corrigió una parada después de cerrar esta liquidación.
           </p>
         )}
         <h2>Liquidada</h2>
@@ -603,6 +605,19 @@ function SettledSection({
             <span className={`stat__value ${empties === 0 ? "money--clear" : "money--owed"}`}>
               {empties === 0 ? "Cuadró" : formatDifference(empties)}
             </span>
+            {/* A diferencia de "Diferencia de llenos" (que sólo lee la fila
+                persistida, containerDifference()), esta celda compara contra
+                `expected.emptiesPickedUp`, que la API recalcula en vivo del
+                libro — y `emptiesPickedUp` NO se persiste en
+                route_settlements, así que no existe un valor "del cierre"
+                para mostrar en su lugar. Corregir una parada es justo lo que
+                mueve ese número, así que cuando eso pasó hay que decirlo acá
+                y no dejar que el aviso general de arriba lo dé por congelado. */}
+            {settlementOutdated && (
+              <span className="stat__note">
+                Comparado contra el libro de hoy, que ya incluye la corrección.
+              </span>
+            )}
           </div>
         </div>
         {/* Lo contado, tipo por tipo: es lo que volvió al galpón, reconstruido
