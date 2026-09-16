@@ -11,16 +11,16 @@ app funciona al cerrar cada fase.
 
 ## Estado por fase
 
-| Fase                    | Estado                            |
-| ----------------------- | --------------------------------- |
-| 0 — Descubrimiento      | ✅ hecha                          |
-| 1 — Base del repo       | ✅ hecha                          |
-| 2 — Google Cloud        | ✅ hecha                          |
-| 3 — La API en Cloud Run | ✅ hecha                          |
-| 4 — El web en Vercel    | 🟨 construida, sin deploy todavía |
-| 5 — CI/CD               | 🟨 construida, sin primer deploy  |
-| 6 — Ensayo              | ⬜ pendiente                      |
-| 7 — Corte               | ⬜ pendiente                      |
+| Fase                    | Estado       |
+| ----------------------- | ------------ |
+| 0 — Descubrimiento      | ✅ hecha     |
+| 1 — Base del repo       | ✅ hecha     |
+| 2 — Google Cloud        | ✅ hecha     |
+| 3 — La API en Cloud Run | ✅ hecha     |
+| 4 — El web en Vercel    | ✅ hecha     |
+| 5 — CI/CD               | ✅ hecha     |
+| 6 — Ensayo              | ⬜ pendiente |
+| 7 — Corte               | ⬜ pendiente |
 
 ## Punto de partida verificado
 
@@ -240,21 +240,109 @@ Encontrado al construir el web por primera vez: las reglas de #132 con
 producción, y la API la habría rechazado con 400. Corregido antes de ningún
 deploy (D-012).
 
+## Primer deploy desde CI — 2026-09-16
+
+Tres corridas, todas sin cambiar el esquema de ninguna base («No pending
+migrations to apply» en `main` y `demo` las tres veces).
+
+| Corrida                         | Commit        | Resultado                                                                                | Causa y arreglo                                                                                                                           |
+| ------------------------------- | ------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 35119690429 (manual)            | `3275c7e`     | falló en «4a · Cloud Run demo», antes de tocar el servicio                               | Mover la etiqueta `:demo` exige `artifactregistry.tags.delete`, que el deployer no tiene. Se eliminó la etiqueta de entorno (#135, D-014) |
+| 35122780661 (merge de #135)     | `fd38b28`     | demo desplegada y sana; falló en «4b · Cloud Run producción», antes de crear el servicio | La coma de `WEB_ORIGIN` partía `--set-env-vars`. Separador alternativo `^@@^` y test que parsea como gcloud (#136, D-013)                 |
+| **35134745175** (merge de #136) | **`645463c`** | **verde de punta a punta**                                                               | —                                                                                                                                         |
+
+Verificado después de la corrida verde:
+
+```
+curl https://yacco-web.vercel.app/health
+{"status":"ok","commit":"645463cb7c70b7b1de756c7cf4b267c9abe8c435","environment":"production"}
+```
+
+La mitad de producción de P-05 quedó verificada: el dominio de producción de
+Vercel llega a `yacco-api`. `yacco-api` (producción) quedó creado en Cloud Run
+por primera vez. **Render sigue sirviendo a los usuarios**: el corte es la fase 7.
+
+**Pendiente de esta etapa:**
+
+- La mitad del preview de P-05, a mano (ver `DEPLOY.md`).
+- Evaluar si `http://localhost:5173` debe seguir en el `WEB_ORIGIN` de
+  producción (PR propio, con recomendación antes de cambiar nada).
+- Validar el token de Vercel en el preflight, antes de la fase 7 (backlog).
+
 ## Lo que falta antes de seguir
 
-Depende del dueño, y bloquea el primer deploy desde CI:
+Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
 
-1. **Crear el `VERCEL_TOKEN`** (vercel.com > Account Settings > Tokens, scope
-   del team), ponerlo en `.env.setup` y correr `pnpm secrets:gcp`. Lo sube a
-   Secret Manager y le da lectura al deployer. Sin él, el deploy se detiene en
-   el preflight, antes de tocar ninguna base.
-2. **Relanzar el deploy**: `gh workflow run deploy.yml --ref main`.
-3. **La mitad del preview de P-05**, a mano, después de ese primer deploy (ver
+1. ✅ **Prender los Data Access logs de Secret Manager** con el procedimiento de
+   D-015, guardando antes la política IAM original en un archivo. Hecho el
+   2026-09-16: `DATA_READ` + `ADMIN_READ`, los 11 bindings verificados idénticos
+   uno por uno contra el volcado.
+2. ✅ **Crear el `VERCEL_TOKEN`** (vercel.com > Account Settings > Tokens, scope
+   del team, **30 días**), ponerlo en `.env.setup` y correr
+   `pnpm secrets:gcp --upload=VERCEL_TOKEN`.
+   Subido el 2026-09-16 (versión 1, 16:03:31 UTC): todos los demás secretos
+   «sin cambios», los JWT leídos de Secret Manager, ninguno rotado.
+   Lo sube a Secret Manager y le da lectura al deployer. Sin él, el deploy se
+   detiene en el preflight, antes de tocar ninguna base.
+3. ✅ **Crear la rama de respaldo de `main`** (ver «Punto de retorno», abajo).
+   Creada el 2026-09-16 a las 16:04:01 UTC.
+4. ✅ **Relanzar el deploy**: `gh workflow run deploy.yml --ref main`. Ver
+   «Primer deploy desde CI», abajo: hicieron falta dos arreglos.
+5. **La mitad del preview de P-05**, a mano, después de ese primer deploy (ver
    `DEPLOY.md`). La mitad de producción ya la corre el smoke.
 
-Para el auditor de seguridad de la fase 6: los Data Access logs de Secret
-Manager están apagados (el default de Google Cloud), así que las LECTURAS del
-token de Vercel no quedan registradas; sí los cambios de quién puede leerlo.
+Comprobado antes de relanzar, el 2026-09-16, con `prisma migrate status` contra
+las URLs directas: las ramas `main` y `demo` tienen las 25 migraciones del repo
+aplicadas y ninguna pendiente. El primer deploy desde CI no cambia el esquema de
+ninguna base.
+
+## Credenciales y recursos con fecha
+
+| Qué                                          | Fecha                                                    | Qué hacer                                                                                                           |
+| -------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Token de Vercel (`yacco-ci-vercel-token`)    | creado 2026-09-16, **vence 2026-10-16**                  | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015 |
+| Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                |
+| Etiqueta `api:demo` en Artifact Registry     | de la fase 3, apunta a `f66c8c775dac`                    | La borra el dueño; sin apuro, nada despliega por ella (D-014)                                                       |
+
+**Un token de Vercel vencido NO frena el deploy en el preflight**, que sólo
+comprueba que el secreto tenga valor. El deploy migra las bases, despliega las
+dos APIs y recién falla en «5 · Web a Vercel», con un error de autenticación en
+`vercel pull`. Si ese paso falla así, lo primero es mirar la fecha de arriba
+(detalle en D-015).
+
+**El vencimiento cae dentro de la fase 7.** El 2026-10-16 está dentro de la
+ventana probable del corte, que tiene 7 días de convivencia con Render. **Si la
+migración sigue en curso cerca de esa fecha, el token se rota ANTES**, como
+tarea planificada, y no cuando un deploy falle. Un deploy que falla en el paso
+5 durante el corte deja la API nueva con el web viejo, sirviendo a usuarios
+reales.
+
+**Pendiente antes de la fase 7:** que el preflight valide el token con `vercel
+whoami`, en un PR aparte y después del primer deploy verde. Motivo y detalle en
+`backlog-tecnico.md`, «El preflight no valida el token de Vercel».
+
+## Punto de retorno
+
+`backup-pre-ci-deploy-20260916` (`br-damp-leaf-aujnr4gs`), rama de Neon hija de
+`main` (`br-sweet-poetry-au36xqnj`), sin compute, creada el **2026-09-16 a las
+16:04:01 UTC** con `--no-compute --no-secrets`, justo antes del primer deploy
+desde CI. Es el estado de la base real antes de estrenar el workflow.
+
+Esa hora es también la del plan B por historia (`^self@2026-09-16T16:04:01Z`),
+vigente sólo durante las 6 horas de retención del proyecto.
+
+- **Se conserva hasta DESPUÉS de la fase 7.** Mientras Render siga vivo, la base
+  tiene dos escritores y la vuelta atrás puede necesitarla. Recién con el corte
+  cerrado y sin incidentes se borra, y la borra una persona: los agentes tienen
+  denegado borrar ramas de Neon.
+- **Cómo se usa:** «Procedimiento: restaurar `main` desde una rama de
+  respaldo», junto a D-006 en `ARQUITECTURA.md`. Incluye el paso que se olvida:
+  después de restaurar, `demo` queda colgando de la rama preservada y hay que
+  recrearla.
+
+Para el auditor de seguridad de la fase 6: mientras no se prendan los Data
+Access logs de Secret Manager (paso 1), las LECTURAS del token de Vercel no
+quedan registradas; sí los cambios de quién puede leerlo.
 
 `.env.setup` ya **no bloquea nada**: los scripts leen la configuración del
 entorno del proceso cuando el archivo no está (D-004), y los secretos de
@@ -265,5 +353,23 @@ cómoda de no repetir valores a mano en cada comando.
 
 Rotar los tokens que hayan vivido en un archivo plano durante la operación:
 `VERCEL_TOKEN` —que además vive en Secret Manager como `yacco-ci-vercel-token`
-y hay que volver a subir con `pnpm secrets:gcp` después de rotarlo (D-015)—, y
+y hay que volver a subir con `pnpm secrets:gcp --upload=VERCEL_TOKEN` después
+de rotarlo (D-015)—, y
 `GH_TOKEN` / `NEON_API_KEY` / `RENDER_API_KEY` si se llegaron a usar.
+
+Borrar la rama de respaldo `backup-pre-ci-deploy-20260916` (ver «Punto de
+retorno»), sólo cuando la fase 7 haya cerrado sin incidentes. Si hubo que
+restaurar en algún momento, borrar también `main_before_restore_*` y
+`demo_orphan_*`, una vez que no haga falta recuperar nada de ahí.
+
+Borrar la etiqueta `:demo` de la imagen en Artifact Registry
+(`us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api:demo`). Apunta a
+`f66c8c775dac`, una imagen de la fase 3, y desde el PR #135 ningún deploy la
+mueve (D-014): es un puntero desactualizado que alguien podría leer como «lo que
+está en demo». La borra el dueño; el deployer no tiene `tags.delete`, a
+propósito. No hay apuro: nada despliega por ella.
+
+```bash
+gcloud artifacts docker tags delete \
+  us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api:demo --quiet
+```

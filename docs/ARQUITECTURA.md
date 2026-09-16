@@ -221,6 +221,106 @@ un ensayo necesita. **El flujo es en un solo sentido:** `main` puede refrescar
 - _Compartir `main` entre demo y producción._ Es exactamente el error que esta
   migración tiene que evitar.
 
+#### Procedimiento: restaurar `main` desde una rama de respaldo
+
+Escrito para el día en que haga falta, que no es el día para descubrirlo.
+Fuentes: la ayuda de `neonctl` 4.15.0 y la guía de Neon «Instant restore»
+(neon.com/docs/guides/branch-restore), leídas el 2026-09-16. Lo corre una
+persona: borrar o restaurar ramas no lo hace ningún agente.
+
+**Antes de restaurar, lo que se pierde.** Mientras Render siga vivo (hasta la
+fase 7), Render ESCRIBE en `main` con usuarios reales, y desde el primer deploy
+de CI también `yacco-api`. Restaurar `main` a la cabeza del respaldo **descarta
+de `main` todo lo escrito entre la creación del respaldo y la restauración**. No
+desaparece del todo: queda en la rama preservada (paso 2), de donde habría que
+recuperarlo a mano, fila por fila. Si eso importa, primero se corta la escritura
+(fase 7: Render suspendido; hoy: avisar al dueño de la planta) y después se
+restaura.
+
+**1. El respaldo, antes del cambio riesgoso.**
+
+```bash
+neonctl branches create --project-id late-union-50177487 \
+  --parent main --name backup-<motivo>-<AAAAMMDD> \
+  --no-compute --no-secrets
+```
+
+- `--no-secrets`: sin él, `branches create` imprime la contraseña de la
+  conexión.
+- `--no-compute`: un respaldo no necesita compute, así que no genera costo de
+  cómputo.
+- Anotar en `PROGRESO.md` el nombre y la HORA de creación (UTC). La hora sirve
+  para el plan B del paso 2.
+
+**2. Restaurar `main`.**
+
+```bash
+neonctl branches restore main backup-<motivo>-<AAAAMMDD> \
+  --project-id late-union-50177487 \
+  --preserve-under-name main_before_restore_<AAAAMMDD>
+```
+
+- **`--preserve-under-name` es OBLIGATORIO**, porque `main` tiene una rama hija
+  (`demo`). Neon lo exige cuando el destino tiene hijas, y lo que preserva es el
+  estado de `main` justo antes de restaurar: ahí queda lo escrito después del
+  respaldo.
+- **La conexión de `main` no cambia.** Neon mueve el compute a la rama nueva y
+  le pone el nombre `main`: ni Render, ni Cloud Run, ni los secretos necesitan
+  tocarse. Las conexiones abiertas se cortan durante la operación y se
+  reconectan solas.
+- **Plan B, sin rama de respaldo o si Neon rechaza la anterior:** restaurar
+  `main` a su propia historia, a la hora anotada en el paso 1. El proyecto
+  guarda **6 horas** de historia (`history_retention_seconds: 21600`).
+
+  ```bash
+  neonctl branches restore main ^self@<AAAA-MM-DDTHH:MM:SSZ> \
+    --project-id late-union-50177487 \
+    --preserve-under-name main_before_restore_<AAAAMMDD>
+  ```
+
+**3. El paso que se olvida: `demo` quedó colgando de la rama preservada.**
+
+Al restaurar, Neon mueve TODAS las hijas de `main` a la rama preservada. Desde
+ese momento `demo` es hija de `main_before_restore_<AAAAMMDD>`, no de la `main`
+restaurada. No da ningún error, y ahí está el peligro: el refresco de siempre,
+`neonctl branches reset demo --parent`, copia desde la rama preservada, que
+tiene justo el estado que se quiso descartar.
+
+**Neon no permite re-parentar una rama:** `neonctl branches` no tiene ningún
+comando para cambiar el padre, y una rama hija no puede ser destino de un
+restore. La única forma de volver a tener `demo` como hija de `main` es
+recrearla, y recrearla le cambia el endpoint y la cadena de conexión:
+
+```bash
+# 3a. Liberar el nombre sin borrar nada: la vieja sigue viva con su endpoint,
+#     así el servicio yacco-api-demo sigue andando mientras tanto.
+neonctl branches rename demo demo_orphan_<AAAAMMDD> --project-id late-union-50177487
+
+# 3b. La demo nueva, hija de la main restaurada, CON compute (la usa Cloud Run).
+neonctl branches create --project-id late-union-50177487 \
+  --parent main --name demo --no-secrets
+
+# 3c. Nuevas URLs de demo a Secret Manager. secrets:gcp pide a neonctl la
+#     conexión de la rama llamada `demo`, que ahora es la nueva; ve que el
+#     valor cambió y crea una versión nueva sin imprimirla. Sin --upload: los
+#     JWT de producción se leen de Secret Manager y no se tocan.
+pnpm secrets:gcp
+
+# 3d. Que yacco-api-demo tome las URLs nuevas. Los secretos van montados como
+#     :latest y se leen al arrancar cada instancia; relanzar el deploy crea
+#     una revisión nueva.
+gh workflow run deploy.yml --ref main
+```
+
+Después de 3d, en el smoke de demo (`node scripts/smoke.mjs api --env=demo`),
+el login rechazado con 401 prueba que la API llega a la rama nueva.
+
+- **Actualizar el id de la rama** en D-006, en `ENTORNOS.md` y en `PROGRESO.md`:
+  hoy dicen `br-dawn-field-autu1p5w`, y la demo recreada tiene otro.
+- **`demo_orphan_<AAAAMMDD>` y `main_before_restore_<AAAAMMDD>` los borra una
+  persona**, cuando ya no haga falta recuperar nada de ahí. Borrar ramas de Neon
+  está denegado para los agentes en `.claude/settings.json`.
+
 ---
 
 ### D-007 — Secret Manager es la fuente de verdad de los secretos de producción
@@ -233,9 +333,34 @@ vive en un archivo plano en una laptop es más fácil de filtrar que uno que
 nunca tocó ese disco.
 
 **Decisión.** `pnpm secrets:gcp` resuelve cada secreto de aplicación en
-cascada: **lo que diga la configuración; si no, lo que YA esté en Secret
-Manager; si tampoco, uno nuevo al azar de 48 bytes**, que se sube sin
-imprimirse y sin escribirse en ningún lado.
+cascada: **lo que YA esté en Secret Manager; si no hay nada, uno nuevo al azar
+de 48 bytes**, que se sube sin imprimirse y sin escribirse en ningún lado.
+
+> **Corrección, 2026-09-16.** La cascada original empezaba por «lo que diga la
+> configuración». Eso volvía peligroso correr `secrets:gcp` desde una máquina
+> con un `.env.setup` completo: los `JWT_*` de ese archivo son los del entorno
+> LOCAL (los escribe `pnpm secrets:generate`), y subirlos ROTA los secretos de
+> producción —se invalidan todas las sesiones— y los deja iguales a los de
+> local, que es lo que esta decisión separa.
+>
+> **El mecanismo: los JWT de producción ya no tienen ningún camino desde la
+> configuración.** `resolveApplicationSecret` no recibe la configuración: lee
+> lo que haya en Secret Manager y, si no hay nada, genera uno al azar. No hay
+> flag, clave ni archivo que haga que un JWT de `.env.setup` llegue a
+> producción. Eso no EVITA el error: lo hace IMPOSIBLE, que es distinto.
+> Un filtro se puede saltear o configurar mal; un camino que no existe, no.
+>
+> **El segundo cinturón: la lista explícita.** Lo único que el script sube
+> desde la configuración es `UPLOADABLE_FROM_CONFIG` (hoy sólo `VERCEL_TOKEN`),
+> y sólo lo pedido con `--upload`. Pedir un `JWT_*` falla diciendo por qué, y
+> pedir cualquier otra clave fuera de la lista también falla. No es lo que
+> protege a los JWT —eso ya lo hace el párrafo anterior—: es lo que impide que
+> la próxima clave que alguien agregue a `.env.setup` termine subida sin que
+> nadie lo haya decidido. Un valor vacío tampoco se sube nunca: un secreto
+> vacío pasaría el preflight del deploy, que sólo mira presencia (D-015).
+>
+> Todo vive en el script y tiene test (`scripts/secrets-gcp.test.mjs`): no
+> depende de que quien lo corre conozca esta historia.
 
 Ese orden es lo que hace que correr el script dos veces no rote nada, y eso
 importa: un secreto rotado sin querer invalida todas las sesiones abiertas. Los
@@ -676,10 +801,39 @@ ninguna llave de larga vida, y el diagrama original lo contradecía
 (`GitHub Actions ──VERCEL_TOKEN──▶ Vercel`).
 
 **Decisión.** El dueño crea el token en Vercel y lo pone en `.env.setup`;
-`pnpm secrets:gcp` lo sube a Secret Manager como `yacco-ci-vercel-token` sin
-imprimirlo y le da lectura al deployer. CI entra a Google Cloud por WIF y lo lee
+`pnpm secrets:gcp --upload=VERCEL_TOKEN` lo sube a Secret Manager como
+`yacco-ci-vercel-token` sin imprimirlo y le da lectura al deployer. Sin
+`--upload`, el script no sube nada que venga de `.env.setup` (D-007). CI entra a Google Cloud por WIF y lo lee
 en el momento, sólo en el job que publica el web. La CLI de Vercel lo recibe
 por la variable `VERCEL_TOKEN`, nunca por `--token`.
+
+**Vencimiento: el token se crea con 30 días. Creado el 2026-09-16, vence el
+2026-10-16.** Si se creó otro día, corregir las dos fechas acá y en
+`PROGRESO.md`. Al rotarlo: token nuevo en `.env.setup`,
+`pnpm secrets:gcp --upload=VERCEL_TOKEN` y fecha nueva en los dos lugares.
+
+**Cuando vence, el deploy NO falla en el preflight: falla en el paso 5.** El
+preflight sólo comprueba que el secreto exista y tenga valor, y un token vencido
+existe y tiene valor. Así que un deploy con el token vencido **migra las dos
+bases y despliega las dos APIs** y recién ahí falla, en el job «5 · Web a
+Vercel», en el primer comando de la CLI (`vercel pull`), con un error de
+autenticación de Vercel. Queda el estado de esa fila en la tabla de
+`DEPLOY.md`: las APIs en el código nuevo y el web en el anterior. Nada roto,
+pero el web desactualizado. Si el paso 5 falla con un error de token o de
+autenticación, **lo primero es mirar esta fecha**, antes de depurar nada más.
+
+**El preflight comprueba PRESENCIA, no validez, y eso vale para TODOS los
+secretos que lee**, no sólo para el token. Una credencial de Neon rotada
+(contraseña cambiada, rol borrado) también pasa el preflight, y falla recién en
+«2 · Migraciones», al conectar. Falla antes que el token, así que no deja APIs
+desplegadas, pero tampoco la frenó el preflight. Que nadie lea un preflight en
+verde como garantía de que los secretos sirven: garantiza que existen y tienen
+valor, nada más.
+
+Que el preflight detecte un token vencido exige validarlo contra Vercel con
+`vercel whoami`, que no escribe nada, y no sólo mirar que no esté vacío. Es un
+cambio del workflow: anotado en `backlog-tecnico.md`, «El preflight no valida
+el token de Vercel», con fecha límite antes de la fase 7.
 
 **Lo que esto NO cambia: el token SIGUE siendo de larga vida.** Lo que cambia
 es que vive en un solo lugar, con acceso auditado, y que un compromiso de los
@@ -694,6 +848,93 @@ que están siempre prendidos. Cada LECTURA del valor queda registrada sólo si s
 prenden los Data Access logs de Secret Manager, que en Google Cloud vienen
 **apagados** por defecto. Hoy no están prendidos: queda anotado para el auditor
 de seguridad de la fase 6.
+
+#### Cómo se prenden los Data Access logs de Secret Manager _(escrito, NO aplicado)_
+
+**Qué registra cada tipo**, según la documentación de Secret Manager:
+
+| Tipo de log                    | Métodos                                                              | Estado por defecto |
+| ------------------------------ | -------------------------------------------------------------------- | ------------------ |
+| `DATA_READ` (Data Access)      | `AccessSecretVersion`: leer el VALOR                                 | apagado            |
+| `ADMIN_READ` (Data Access)     | `GetSecret`, `GetSecretVersion`, `ListSecrets`, `ListSecretVersions` | apagado            |
+| Admin Activity (`ADMIN_WRITE`) | `AddSecretVersion`, `SetIamPolicy`                                   | siempre prendido   |
+
+Se prenden `DATA_READ` y `ADMIN_READ`. `DATA_WRITE` no aplica: Secret Manager no
+tiene métodos de ese tipo.
+
+**Estado medido el 2026-09-16:** la política IAM del proyecto no tiene ningún
+`auditConfigs` (`version: 1`), y el bucket `_Default`, donde caen estos logs,
+retiene **30 días**.
+
+**El procedimiento.** No hay un `gcloud` de un solo paso: se edita la política
+IAM del PROYECTO entero, así que se hace a mano, con cuidado, y se verifica.
+
+```bash
+# 1. Leer la política actual a un archivo.
+gcloud projects get-iam-policy yacco-v2-prod --format=yaml > policy.yaml
+```
+
+```yaml
+# 2. Agregarle ESTE bloque al principio de policy.yaml. No tocar `bindings:` ni
+#    `etag:`: se quedan exactamente como vinieron.
+auditConfigs:
+  - service: secretmanager.googleapis.com
+    auditLogConfigs:
+      - logType: DATA_READ
+      - logType: ADMIN_READ
+```
+
+```bash
+# 3. Escribir la política.
+gcloud projects set-iam-policy yacco-v2-prod policy.yaml
+
+# 4. Verificar que quedó el auditConfigs Y que los bindings siguen ahí.
+gcloud projects get-iam-policy yacco-v2-prod --format="yaml(auditConfigs)"
+gcloud projects get-iam-policy yacco-v2-prod \
+  --flatten="bindings[].members" --format="table(bindings.role,bindings.members)"
+```
+
+Lo peligroso de este procedimiento no es el bloque que se agrega, sino lo que se
+puede perder al escribir la política:
+
+- **`set-iam-policy` REEMPLAZA la política entera.** Si `policy.yaml` pierde la
+  sección `bindings:`, todos los principals pierden el acceso al proyecto: el
+  dueño, el deployer de CI y la identidad de runtime de Cloud Run. Por eso el
+  paso 4 lista los bindings.
+- **El `etag` es la protección contra cambios concurrentes.** Si otra cosa
+  cambió la política entre el paso 1 y el 3 —por ejemplo `pnpm gcp:bootstrap`
+  corriendo en otra terminal, que concede roles de proyecto; `secrets:gcp` no,
+  porque cambia la política de cada secreto y no la del proyecto—, el paso 3
+  falla por conflicto y NO pisa nada. Se repite desde el paso 1; nunca se borra el
+  `etag` para forzarlo.
+- **`policy.yaml` no se commitea**: lista todos los miembros del proyecto.
+
+**Costo.** Google avisa que estos logs pueden cobrarse. Acá el volumen es
+mínimo. Leen secretos Cloud Run, cuatro por cada instancia que arranca;
+`pnpm secrets:gcp`, cada secreto al compararlo; y CI, hasta cinco por deploy.
+Son decenas de entradas por día, contra una cuota gratuita de Cloud Logging
+que se mide en GiB por mes.
+
+**Recomendación: prenderlos ANTES del primer uso real del token.** El orden
+queda así:
+
+1. Prender los logs (este procedimiento).
+2. `pnpm secrets:gcp --upload=VERCEL_TOKEN`, que sube el token. Ya lee
+   secretos para comparar, y esas lecturas quedan registradas.
+3. Relanzar el deploy.
+
+Por qué:
+
+- **Sin hueco de arranque.** Prenderlos después dejaría sin registro justo las
+  primeras lecturas, que son las que no tienen con qué compararse.
+- **Costo y riesgo operativo prácticamente nulos.** El único riesgo real es
+  escribir mal la política, y lo cubren el `etag` y la verificación del paso 4.
+- **Queda la línea de base.** Cloud Run y CI leen secretos de forma regular;
+  una lectura con otra identidad o en otro horario se ve contra ese patrón.
+
+**Límite que queda después de prenderlos:** 30 días de retención en `_Default`.
+Guardarlos más tiempo es otra decisión: un bucket de logs con retención propia
+y un sink que filtre `protoPayload.serviceName="secretmanager.googleapis.com"`.
 
 **Alternativa descartada.** _Secreto de GitHub._ Más simple, y exactamente una
 llave de larga vida en los secretos de GitHub.
@@ -722,9 +963,11 @@ es un testigo válido de qué servicio contestó (ver PR #131,
 «Verificar P-05». Desde la fase 5 ya no dependen de Docker en ninguna máquina:
 el deploy corre en CI (D-014).
 
-- **La mitad de producción quedó automatizada.** `pnpm smoke:prod`, el último
-  paso del deploy desde CI, pide `/health` a `yacco-web.vercel.app` y FALLA si
-  no contesta `environment: "production"` — o si contesta `null`.
+- **La mitad de producción quedó automatizada Y verificada.** `pnpm smoke:prod`,
+  el último paso del deploy desde CI, pide `/health` a `yacco-web.vercel.app` y
+  FALLA si no contesta `environment: "production"` — o si contesta `null`. El
+  2026-09-16, en el primer deploy verde (`645463c`), contestó
+  `{"status":"ok","commit":"645463c…","environment":"production"}`.
 - **La mitad del preview sigue siendo manual**, porque los previews están
   detrás del login de Vercel (D-011) y CI no publica previews. Se corre una vez,
   después del primer deploy desde CI, con `pnpm deploy:web --preview` y

@@ -156,7 +156,7 @@ jobs:
       # un token de Vercel ausente descubierto en el paso 5 deja las bases
       # migradas y las APIs desplegadas con un web que no se pudo publicar.
       # Si este paso falla con NOT_FOUND, el secreto no existe: se sube con
-      # `pnpm secrets:gcp` (el token de Vercel, desde .env.setup).
+      # `pnpm secrets:gcp --upload=VERCEL_TOKEN` (el token, desde .env.setup).
       - id: secrets
         uses: google-github-actions/get-secretmanager-secrets@v3
         with:

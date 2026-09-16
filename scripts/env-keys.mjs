@@ -30,7 +30,7 @@ export const ENV_KEYS = [
   {
     key: "VERCEL_TOKEN",
     required: true,
-    description: "Token de Vercel; `pnpm secrets:gcp` lo sube a Secret Manager para CI",
+    description: "Token de Vercel; `pnpm secrets:gcp --upload=VERCEL_TOKEN` lo sube para CI",
   },
   {
     key: "VERCEL_TEAM_ID",

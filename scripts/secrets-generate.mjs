@@ -77,7 +77,10 @@ function main() {
 
   if (written.length > 0) {
     console.log("");
-    console.log("Los valores no se imprimen. Para llevarlos a Cloud Run:  pnpm secrets:gcp");
+    console.log("Los valores no se imprimen. Son del entorno LOCAL: no van a Cloud Run.");
+    // Nunca sugerir subirlos: los JWT de producción viven sólo en Secret
+    // Manager, y `secrets:gcp` se niega a tomarlos de .env.setup (D-007).
+    console.log("Los de producción viven sólo en Secret Manager (ver D-007).");
   }
 }
 

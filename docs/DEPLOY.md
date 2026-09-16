@@ -65,8 +65,8 @@ JWT_REFRESH_EXPIRES_IN=30d
 Falta conseguir `VERCEL_TOKEN` en vercel.com > Account Settings > Tokens. Ese
 token es el único obligatorio: el deploy del web corre en GitHub Actions, donde
 no hay sesión de `vercel login`. **No va a los secretos de GitHub**: después de
-ponerlo en `.env.setup`, `pnpm secrets:gcp` lo sube a Secret Manager y CI lo lee
-de ahí (D-015). Para el resto alcanza con la sesión interactiva del paso 2.
+ponerlo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` lo sube a
+Secret Manager y CI lo lee de ahí (D-015). Para el resto alcanza con la sesión interactiva del paso 2.
 
 Nada de esto bloquea: cuando el archivo no está, los scripts leen la
 configuración del entorno del proceso (D-004), que es también como corren en
@@ -119,9 +119,12 @@ Los dos son **idempotentes**: correrlos dos veces no rompe nada, no duplica
 nada, y `secrets:gcp` no crea una versión nueva si el valor no cambió. Están
 corridos: el estado resultante está en `PROGRESO.md`.
 
-`secrets:gcp` también sube el token de Vercel desde `.env.setup` y le da al
-deployer de CI lectura sobre los tres secretos que usa. Hay que volver a
-correrlo cada vez que cambie `VERCEL_TOKEN`.
+`secrets:gcp` le da al deployer de CI lectura sobre los secretos que usa. **De
+`.env.setup` sólo sube lo que se le pide con `--upload`**, y hoy la única clave
+permitida es `VERCEL_TOKEN`: hay que correr
+`pnpm secrets:gcp --upload=VERCEL_TOKEN` cada vez que cambie el token. Los
+`JWT_*` de `.env.setup` son los de local y el script se niega a subirlos
+(D-007): los de producción viven sólo en Secret Manager.
 
 Si `gcp:bootstrap` falla con `PERMISSION_DENIED` en Artifact Registry justo
 después de crear el proyecto, es propagación de IAM tras habilitar la API:
