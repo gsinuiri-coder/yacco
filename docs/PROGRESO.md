@@ -272,6 +272,7 @@ ninguna base.
 | -------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Token de Vercel (`yacco-ci-vercel-token`)    | creado 2026-09-16, **vence 2026-10-16**                  | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015 |
 | Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                |
+| Etiqueta `api:demo` en Artifact Registry     | de la fase 3, apunta a `f66c8c775dac`                    | La borra el dueño; sin apuro, nada despliega por ella (D-014)                                                       |
 
 **Un token de Vercel vencido NO frena el deploy en el preflight**, que sólo
 comprueba que el secreto tenga valor. El deploy migra las bases, despliega las
@@ -330,3 +331,15 @@ Borrar la rama de respaldo `backup-pre-ci-deploy-20260916` (ver «Punto de
 retorno»), sólo cuando la fase 7 haya cerrado sin incidentes. Si hubo que
 restaurar en algún momento, borrar también `main_before_restore_*` y
 `demo_orphan_*`, una vez que no haga falta recuperar nada de ahí.
+
+Borrar la etiqueta `:demo` de la imagen en Artifact Registry
+(`us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api:demo`). Apunta a
+`f66c8c775dac`, una imagen de la fase 3, y desde el PR #135 ningún deploy la
+mueve (D-014): es un puntero desactualizado que alguien podría leer como «lo que
+está en demo». La borra el dueño; el deployer no tiene `tags.delete`, a
+propósito. No hay apuro: nada despliega por ella.
+
+```bash
+gcloud artifacts docker tags delete \
+  us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api:demo --quiet
+```
