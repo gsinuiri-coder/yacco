@@ -136,17 +136,17 @@ Mergear a `main` despliega. `.github/workflows/deploy.yml` arranca cuando CI
 termina bien sobre `main`, espera a que CodeQL también pase para ese commit, y
 corre en este orden (D-014):
 
-| Paso          | Qué hace                                                              | Si falla, qué queda en pie                           |
-| ------------- | --------------------------------------------------------------------- | ---------------------------------------------------- |
-| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main`     | Nada cambió                                          |
-| preflight     | Comprueba que existen los secretos que el deploy va a leer            | Nada cambió                                          |
-| 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit              | Nada cambió                                          |
-| 2 migraciones | `prisma migrate deploy` contra la URL **directa**: demo, después main | Una o las dos bases migradas; código viejo sirviendo |
-| 3 imagen      | `deploy-api.mjs build`: una imagen, etiquetada con el sha             | **Bases migradas, código viejo sirviendo**           |
-| 4a demo       | `deploy-api.mjs deploy --env=demo` + smoke de esa API                 | Producción en el código viejo                        |
-| 4b producción | La MISMA imagen + smoke de esa API                                    | Demo en el nuevo; web sin publicar                   |
-| 5 web         | `deploy-web.mjs`: `vercel build` + `deploy --prebuilt --prod`         | APIs en el nuevo; web en su versión anterior         |
-| 6 smoke       | `pnpm smoke:prod`, solo lectura                                       | Todo desplegado; el smoke dice qué no está sano      |
+| Paso          | Qué hace                                                                             | Si falla, qué queda en pie                           |
+| ------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main`                    | Nada cambió                                          |
+| preflight     | Comprueba que existen los secretos, y que el token de Vercel sirve (`vercel whoami`) | Nada cambió                                          |
+| 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit                             | Nada cambió                                          |
+| 2 migraciones | `prisma migrate deploy` contra la URL **directa**: demo, después main                | Una o las dos bases migradas; código viejo sirviendo |
+| 3 imagen      | `deploy-api.mjs build`: una imagen, etiquetada con el sha                            | **Bases migradas, código viejo sirviendo**           |
+| 4a demo       | `deploy-api.mjs deploy --env=demo` + smoke de esa API                                | Producción en el código viejo                        |
+| 4b producción | La MISMA imagen + smoke de esa API                                                   | Demo en el nuevo; web sin publicar                   |
+| 5 web         | `deploy-web.mjs`: `vercel build` + `deploy --prebuilt --prod`                        | APIs en el nuevo; web en su versión anterior         |
+| 6 smoke       | `pnpm smoke:prod`, solo lectura                                                      | Todo desplegado; el smoke dice qué no está sano      |
 
 La fila del paso 3 es la que justifica una regla: **si las migraciones pasan y
 la imagen falla, la base quedó migrada y el código viejo sigue sirviendo.** Por

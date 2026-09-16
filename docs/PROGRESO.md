@@ -267,7 +267,7 @@ por primera vez. **Render sigue sirviendo a los usuarios**: el corte es la fase 
 - La mitad del preview de P-05, a mano (ver `DEPLOY.md`).
 - Evaluar si `http://localhost:5173` debe seguir en el `WEB_ORIGIN` de
   producción (PR propio, con recomendación antes de cambiar nada).
-- Validar el token de Vercel en el preflight, antes de la fase 7 (backlog).
+- ✅ Validar el token de Vercel en el preflight, antes de la fase 7.
 
 ## Lo que falta antes de seguir
 
@@ -304,11 +304,10 @@ ninguna base.
 | Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                |
 | Etiqueta `api:demo` en Artifact Registry     | de la fase 3, apunta a `f66c8c775dac`                    | La borra el dueño; sin apuro, nada despliega por ella (D-014)                                                       |
 
-**Un token de Vercel vencido NO frena el deploy en el preflight**, que sólo
-comprueba que el secreto tenga valor. El deploy migra las bases, despliega las
-dos APIs y recién falla en «5 · Web a Vercel», con un error de autenticación en
-`vercel pull`. Si ese paso falla así, lo primero es mirar la fecha de arriba
-(detalle en D-015).
+**Un token de Vercel vencido frena el deploy en el preflight**, antes de tocar
+ninguna base: `scripts/check-vercel-token.mjs` lo valida con `vercel whoami`.
+El error nombra el secreto y la fecha de vencimiento, **que lee de la fila de
+arriba**: al rotar el token, actualizar esa fecha (detalle en D-015).
 
 **El vencimiento cae dentro de la fase 7.** El 2026-10-16 está dentro de la
 ventana probable del corte, que tiene 7 días de convivencia con Render. **Si la
@@ -317,9 +316,8 @@ tarea planificada, y no cuando un deploy falle. Un deploy que falla en el paso
 5 durante el corte deja la API nueva con el web viejo, sirviendo a usuarios
 reales.
 
-**Pendiente antes de la fase 7:** que el preflight valide el token con `vercel
-whoami`, en un PR aparte y después del primer deploy verde. Motivo y detalle en
-`backlog-tecnico.md`, «El preflight no valida el token de Vercel».
+**Hecho antes de la fase 7:** el preflight valida el token con `vercel whoami`
+(2026-09-16). El ítem del backlog quedó resuelto.
 
 ## Punto de retorno
 

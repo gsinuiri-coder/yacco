@@ -138,7 +138,7 @@ jobs:
           echo "deploy=true" >> "$GITHUB_OUTPUT"
 
   preflight:
-    name: Preflight — lo que el deploy necesita existe
+    name: Preflight — lo que el deploy necesita existe y sirve
     needs: gate
     if: needs.gate.outputs.deploy == 'true'
     runs-on: ubuntu-latest
@@ -147,6 +147,12 @@ jobs:
       contents: read
       id-token: write
     steps:
+      # Para scripts/check-vercel-token.mjs y la fecha de vencimiento del token,
+      # que ese script lee de docs/PROGRESO.md.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -181,6 +187,18 @@ jobs:
             fi
           done
           echo "Los tres secretos existen y tienen valor."
+
+      # Presencia no es validez (D-015): un token vencido o revocado tiene
+      # valor y pasa el paso anterior. Sin esta comprobación el deploy migraba
+      # las dos bases, desplegaba las dos APIs y fallaba recién en «5 · Web a
+      # Vercel». `vercel whoami` no escribe nada. Las URLs de Neon siguen
+      # validándose sólo por presencia: si no sirven, fallan en «2 ·
+      # Migraciones», antes de desplegar nada.
+      - run: npm install --global vercel@59.11.2
+      - name: El token de Vercel sirve
+        run: node scripts/check-vercel-token.mjs
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.vercel_token }}
 
   integration:
     name: 1 · Tests de integración
