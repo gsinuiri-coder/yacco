@@ -762,9 +762,18 @@ autenticación de Vercel. Queda el estado de esa fila en la tabla de
 pero el web desactualizado. Si el paso 5 falla con un error de token o de
 autenticación, **lo primero es mirar esta fecha**, antes de depurar nada más.
 
-Que el preflight lo detecte de verdad exige validar el token contra Vercel (por
-ejemplo `vercel whoami` con ese token) y no sólo mirar que no esté vacío. Es un
-cambio del workflow, anotado como pendiente en `PROGRESO.md`.
+**El preflight comprueba PRESENCIA, no validez, y eso vale para TODOS los
+secretos que lee**, no sólo para el token. Una credencial de Neon rotada
+(contraseña cambiada, rol borrado) también pasa el preflight, y falla recién en
+«2 · Migraciones», al conectar. Falla antes que el token, así que no deja APIs
+desplegadas, pero tampoco la frenó el preflight. Que nadie lea un preflight en
+verde como garantía de que los secretos sirven: garantiza que existen y tienen
+valor, nada más.
+
+Que el preflight detecte un token vencido exige validarlo contra Vercel con
+`vercel whoami`, que no escribe nada, y no sólo mirar que no esté vacío. Es un
+cambio del workflow: anotado en `backlog-tecnico.md`, «El preflight no valida
+el token de Vercel», con fecha límite antes de la fase 7.
 
 **Lo que esto NO cambia: el token SIGUE siendo de larga vida.** Lo que cambia
 es que vive en un solo lugar, con acceso auditado, y que un compromiso de los

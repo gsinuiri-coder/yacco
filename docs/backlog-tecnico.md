@@ -1555,3 +1555,59 @@ y ninguno de escritura. Toca el enum `UserRole` (migración) y cada controller
 con `@Roles`. Recién con ese rol tiene sentido un usuario de verificación para
 el smoke, con sus credenciales en Secret Manager y leídas por WIF, nunca en
 GitHub.
+
+## El preflight no valida el token de Vercel
+
+**Estado:** abierto. **Disparador:** después del primer deploy verde desde CI y
+**ANTES de la fase 7** (el corte). No es una mejora que pueda esperar: tiene
+fecha.
+
+El job de preflight de `.github/workflows/deploy.yml` comprueba que los
+secretos EXISTAN y tengan valor, no que SIRVAN (D-015). Con el token de Vercel
+vencido o revocado, el deploy pasa el preflight, migra las dos bases, despliega
+las dos APIs y recién falla en «5 · Web a Vercel».
+
+**Por qué antes del corte y no después.** Hoy fallar tarde cuesta poco: los
+usuarios siguen en Render, y una API nueva con un web viejo en Vercel no la ve
+nadie. **Desde el corte, ese mismo fallo deja la API nueva con el web viejo
+sirviendo a usuarios reales**, hasta que alguien rote el token y relance. Si en
+ese deploy la API cambió un contrato que el web viejo usa, la planta lo sufre
+en el momento.
+
+**Para cerrarla:** en el preflight, después de leer el secreto, correr
+`vercel whoami` con el token en el entorno (`VERCEL_TOKEN`, nunca `--token`). No
+escribe nada: sólo identifica la cuenta. Si falla, el deploy para antes de
+migrar, con un mensaje que apunte a la fecha de vencimiento de D-015. Va en un
+PR aparte.
+
+Las credenciales de Neon tienen el mismo hueco (un preflight en verde no
+garantiza que sirvan), pero ahí el fallo llega en «2 · Migraciones», antes de
+desplegar nada, así que no deja un estado mezclado. Validarlas en el preflight
+es opcional, no urgente.
+
+## Cada merge de documentación redespliega producción
+
+**Estado:** abierto. **Disparador:** el piloto de campo, cuando haya tráfico
+real en Cloud Run y Vercel.
+
+El workflow de deploy corre en cada push a `main` que pasa CI, sin mirar qué
+cambió. Un PR que sólo toca `docs/` repite el camino entero: integración,
+`migrate deploy` (sin nada que aplicar), una imagen nueva, revisión nueva en
+Cloud Run demo y producción, deploy de Vercel y smoke.
+
+Hoy es gratis, y además útil: un deploy verde de un commit que no toca código
+prueba que el camino completo es repetible. Con tráfico real deja de serlo:
+
+- Cada revisión nueva de producción recicla instancias, con conexiones cortadas
+  y un arranque en frío (~6 s, D-008) que paga un usuario.
+- Cada deploy es una oportunidad de fallo, y uno en el paso 5 deja la API nueva
+  con el web viejo (ver el ítem anterior).
+- Cuesta minutos de runner y una imagen más en Artifact Registry por cada
+  cambio de una coma en un markdown.
+
+**Para cerrarla** (no decidido): que el gate del deploy compare el commit con
+el último desplegado y salte el deploy si sólo cambiaron rutas que no afectan
+lo que corre (`docs/**`, `*.md`, `.agents/**`). No con `paths-ignore` en el
+trigger: `workflow_run` no lo soporta, y además se saltaría el smoke. Mantener
+`workflow_dispatch` para forzar un deploy completo cuando haga falta probar el
+camino.

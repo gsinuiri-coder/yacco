@@ -273,8 +273,16 @@ dos APIs y recién falla en «5 · Web a Vercel», con un error de autenticació
 `vercel pull`. Si ese paso falla así, lo primero es mirar la fecha de arriba
 (detalle en D-015).
 
-**Pendiente:** que el preflight valide el token contra Vercel, y no sólo que no
-esté vacío, para que un token vencido frene el deploy antes de migrar.
+**El vencimiento cae dentro de la fase 7.** El 2026-10-16 está dentro de la
+ventana probable del corte, que tiene 7 días de convivencia con Render. **Si la
+migración sigue en curso cerca de esa fecha, el token se rota ANTES**, como
+tarea planificada, y no cuando un deploy falle. Un deploy que falla en el paso
+5 durante el corte deja la API nueva con el web viejo, sirviendo a usuarios
+reales.
+
+**Pendiente antes de la fase 7:** que el preflight valide el token con `vercel
+whoami`, en un PR aparte y después del primer deploy verde. Motivo y detalle en
+`backlog-tecnico.md`, «El preflight no valida el token de Vercel».
 
 ## Punto de retorno
 
