@@ -680,7 +680,8 @@ qué valor lleva cada servicio.
 > está demo, que conserva el origen local.
 >
 > **Si `WEB_ORIGIN` llegara a faltar en producción**, `env.validation.ts` cae
-> al default `http://localhost:5173` (ver «Qué pasa si falta», abajo).
+> al default `http://localhost:5173`; desde el 2026-09-16 la API se niega a
+> arrancar en ese caso (ver «Qué pasa si falta», abajo).
 
 **Por qué demo no suma nada de Vercel.** Sus llamadores reales son los
 previews, y cada uno nace con una URL única (D-011): no hay nada fijo que
@@ -707,10 +708,10 @@ diccionario con el separador alternativo de `gcloud topic escaping` (`^@@^`) y
 frena si algún valor contiene ese separador. `scripts/deploy-api.test.mjs`
 parsea el flag como gcloud y exige que `WEB_ORIGIN` llegue entero.
 
-**Qué pasa si falta.** Si el servicio de producción arrancara sin `WEB_ORIGIN`,
-`env.validation.ts` y `main.ts` caen al default `http://localhost:5173`, que
-cubre el test «defaults WEB_ORIGIN to the local Vite dev server when unset».
-Hay que decir con precisión hacia qué lado cae ese fallo:
+**Qué pasa si falta.** Hasta el 2026-09-16, si el servicio de producción
+arrancaba sin `WEB_ORIGIN`, `env.validation.ts` y `main.ts` caían al default
+`http://localhost:5173`. Hay que decir con precisión hacia qué lado caía ese
+fallo:
 
 - **El sitio real NO se rompe.** El web llega a Cloud Run por el rewrite de
   Vercel, de servidor a servidor, y el navegador nunca hace una petición
@@ -722,11 +723,13 @@ Hay que decir con precisión hacia qué lado cae ese fallo:
   endpoints públicos. Pero no es "nada inseguro": es el estado que se decidió
   no tener.
 
-Hoy no pasa porque el deploy pasa siempre `WEB_ORIGIN` explícito, y
-`scripts/deploy-api.test.mjs` lo exige. Para que el default no dependa de eso,
-anotado en `backlog-tecnico.md`: que con `APP_ENV=production` y sin `WEB_ORIGIN`
-la API no arranque, con el mismo criterio que `APP_ENV` usa para no asumir
-producción.
+**Ahora la API no arranca.** Con `APP_ENV=production` y sin `WEB_ORIGIN`,
+`validateEnv` frena el arranque con un mensaje que dice qué falta y por qué no
+hay default (`assertProductionHasWebOrigin`). Con `APP_ENV` demo, local o sin
+definir, el default de desarrollo sigue igual. El fallo cae del lado cerrado:
+Cloud Run no manda tráfico a una revisión que no arranca, así que la anterior
+sigue sirviendo. La protección ya no depende de que el deploy pase la variable
+(que la pasa, y `scripts/deploy-api.test.mjs` lo exige): vive en la API.
 
 ---
 

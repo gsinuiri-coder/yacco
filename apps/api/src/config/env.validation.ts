@@ -172,5 +172,37 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     throw new Error(`Invalid environment configuration:\n${details}`);
   }
 
+  assertProductionHasWebOrigin(config, validated);
+
   return validated;
+}
+
+/**
+ * In production, WEB_ORIGIN must be set explicitly: there is NO default.
+ *
+ * The http://localhost:5173 default exists for local development, where
+ * nobody sets the variable. In production a silent default would not leave
+ * CORS broken — it would leave the real API ACCEPTING localhost:5173, with
+ * credentials: true, which is exactly the origin D-013 (PR #137) removed on
+ * purpose. And nothing would look wrong: the real site reaches the API through
+ * Vercel's rewrite, server to server, without CORS. So a forgotten variable
+ * must fail the boot loudly instead of quietly reopening that origin — the
+ * same reasoning as the Swagger gate in main.ts and APP_ENV's null default.
+ *
+ * Only APP_ENV === "production" is strict. demo and local (and an unset
+ * APP_ENV, as in tests) keep the development default. An empty or
+ * comma-only WEB_ORIGIN already fails for every environment (@ArrayNotEmpty).
+ */
+function assertProductionHasWebOrigin(
+  config: Record<string, unknown>,
+  validated: EnvironmentVariables,
+): void {
+  if (validated.APP_ENV !== "production") return;
+  if (config.WEB_ORIGIN !== undefined) return;
+  throw new Error(
+    "Invalid environment configuration:\n" +
+      "WEB_ORIGIN is required when APP_ENV=production. There is no default in production: " +
+      "the development default (http://localhost:5173) would silently allow that origin, " +
+      "with credentials, on the real API.",
+  );
 }
