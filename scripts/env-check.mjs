@@ -5,8 +5,7 @@
  * contenido. Eso es lo que lo hace seguro de pegar en un chat, en un issue o
  * en la salida de un agente.
  */
-import { existsSync } from "node:fs";
-import { ENV_SETUP_PATH, loadConfig } from "./lib.mjs";
+import { ENV_SETUP_PATH, loadConfig, readFileOrNull } from "./lib.mjs";
 import { ENV_KEYS } from "./env-keys.mjs";
 
 const GREEN = "[32m";
@@ -19,7 +18,7 @@ function main() {
   // La ausencia del archivo no es un error: en CI no existe y cada valor
   // llega por el entorno. Se avisa y se sigue evaluando, porque lo que
   // importa es si la configuración EFECTIVA está completa, no de dónde sale.
-  if (!existsSync(ENV_SETUP_PATH)) {
+  if (readFileOrNull(ENV_SETUP_PATH) === null) {
     console.log(`${YELLOW}aviso${RESET} no hay .env.setup; evalúo sólo el entorno del proceso.`);
     console.log(`${DIM}      para crearlo:  cp .env.setup.example .env.setup${RESET}`);
     console.log("");

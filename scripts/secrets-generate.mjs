@@ -10,9 +10,9 @@
  * Por defecto NO pisa un valor que ya existe: correrlo dos veces es inocuo.
  * `--force` rota los dos, que es lo que hay que hacer si alguna vez se filtran.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { ENV_SETUP_PATH, readEnvFile } from "./lib.mjs";
+import { ENV_SETUP_PATH, parseEnv, readFileOrNull } from "./lib.mjs";
 import { GENERATED_SECRETS } from "./env-keys.mjs";
 
 // 48 bytes -> 64 caracteres en base64url. Holgadamente por encima de los 256
@@ -41,13 +41,16 @@ function upsert(contents, key, value) {
 function main() {
   const force = process.argv.includes("--force");
 
-  if (!existsSync(ENV_SETUP_PATH)) {
+  // Una sola lectura, y lo que se parsea es exactamente lo que se va a
+  // reescribir: sin `existsSync` previo no hay ventana entre comprobar y
+  // escribir, y sin una segunda lectura no hay forma de que las dos difieran.
+  let contents = readFileOrNull(ENV_SETUP_PATH);
+  if (contents === null) {
     console.error("No existe .env.setup. Crealo primero:  cp .env.setup.example .env.setup");
     process.exit(1);
   }
 
-  const existing = readEnvFile();
-  let contents = readFileSync(ENV_SETUP_PATH, "utf8");
+  const existing = parseEnv(contents);
   const written = [];
   const kept = [];
 

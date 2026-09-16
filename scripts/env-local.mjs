@@ -13,9 +13,9 @@
  * 5433, y el 5432 lo contesta otro servidor que devuelve un error de
  * autenticación engañoso.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { REPO_ROOT, readEnvFile, run } from "./lib.mjs";
+import { REPO_ROOT, loadConfig, readFileOrNull, run } from "./lib.mjs";
 
 const COMPOSE_SERVICE = "postgres";
 const COMPOSE_INTERNAL_PORT = "5432";
@@ -39,9 +39,9 @@ function resolveLocalPostgresPort() {
     }
   }
 
-  const overridePath = join(REPO_ROOT, "docker-compose.override.yml");
-  if (existsSync(overridePath)) {
-    const match = /["']?(\d+):5432["']?/.exec(readFileSync(overridePath, "utf8"));
+  const override = readFileOrNull(join(REPO_ROOT, "docker-compose.override.yml"));
+  if (override !== null) {
+    const match = /["']?(\d+):5432["']?/.exec(override);
     if (match !== null) {
       return { port: match[1], source: "docker-compose.override.yml" };
     }
@@ -60,7 +60,7 @@ function requireKeys(env, keys) {
 }
 
 function main() {
-  const env = readEnvFile();
+  const env = loadConfig();
   requireKeys(env, [
     "JWT_ACCESS_SECRET",
     "JWT_REFRESH_SECRET",

@@ -57,19 +57,20 @@ export function redact(text) {
 }
 
 /**
- * Parses a dotenv-style file into a plain object. Supports `KEY=value`,
+ * Parses dotenv-style TEXT into a plain object. Supports `KEY=value`,
  * `export KEY=value`, `#` comments, blank lines, and single/double quoted
  * values. Every secret-looking value found is registered for redaction, so
- * merely reading `.env.setup` protects its contents from later output.
+ * merely parsing `.env.setup` protects its contents from later output.
  *
- * A missing file is not an error: it yields `{}`, which lets `env:check`
- * report "nothing is filled in yet" instead of crashing.
+ * Takes the contents rather than a path so a caller that must also WRITE the
+ * file can read it exactly once and parse what it read. Reading it a second
+ * time to parse would leave a window in which the two disagree — and
+ * `existsSync` followed by a write is a check-then-use race (CodeQL
+ * `js/file-system-race`).
  */
-export function readEnvFile(path = ENV_SETUP_PATH) {
-  if (!existsSync(path)) return {};
-
+export function parseEnv(contents) {
   const parsed = {};
-  for (const rawLine of readFileSync(path, "utf8").split(/\r?\n/)) {
+  for (const rawLine of contents.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line.length === 0 || line.startsWith("#")) continue;
 
@@ -93,6 +94,34 @@ export function readEnvFile(path = ENV_SETUP_PATH) {
     if (isSecretKey(key)) registerSecret(value);
   }
   return parsed;
+}
+
+/**
+ * Lee el archivo y devuelve su contenido, o `null` si no existe.
+ *
+ * Intenta abrirlo y trata el ENOENT, en vez de preguntar primero si existe:
+ * un `existsSync` seguido de una lectura o una escritura es una carrera
+ * check-then-use, y la respuesta del `existsSync` puede ser mentira para
+ * cuando llega la segunda llamada. Una sola syscall no puede desincronizarse
+ * consigo misma.
+ */
+export function readFileOrNull(path = ENV_SETUP_PATH) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/**
+ * Parsea un archivo dotenv. Un archivo inexistente no es un error: da `{}`,
+ * que es lo que deja a `env:check` decir "todavía no hay nada" en vez de
+ * morirse, y lo que deja correr los scripts en CI, donde no hay archivo.
+ */
+export function readEnvFile(path = ENV_SETUP_PATH) {
+  const contents = readFileOrNull(path);
+  return contents === null ? {} : parseEnv(contents);
 }
 
 /**

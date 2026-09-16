@@ -18,7 +18,9 @@ import {
   CommandError,
   isSecretKey,
   loadConfig,
+  parseEnv,
   readEnvFile,
+  readFileOrNull,
   redact,
   registerSecret,
   run,
@@ -70,6 +72,34 @@ describe("readEnvFile", () => {
     // primer `=` está bien, partir por todos la rompe.
     const path = envFileWith("DATABASE_URL=postgresql://u:p@host/db?sslmode=require");
     assert.equal(readEnvFile(path).DATABASE_URL, "postgresql://u:p@host/db?sslmode=require");
+  });
+});
+
+describe("readFileOrNull", () => {
+  test("devuelve null si el archivo no existe, en vez de preguntar antes si existe", () => {
+    // Preguntar con existsSync y después abrir es una carrera check-then-use
+    // (CodeQL js/file-system-race): la respuesta puede ser mentira para cuando
+    // llega la segunda llamada. Una sola syscall no puede desincronizarse.
+    assert.equal(readFileOrNull(join(workdir, "no-existe")), null);
+  });
+
+  test("devuelve el contenido tal cual si el archivo existe", () => {
+    const path = envFileWith("GCP_REGION=us-east4\n");
+    assert.equal(readFileOrNull(path), "GCP_REGION=us-east4\n");
+  });
+
+  test("propaga un error que NO sea 'no existe'", () => {
+    // Un directorio no es ENOENT: es EISDIR. Tragarse eso devolviendo null
+    // convertiría un problema real en un "no hay archivo" silencioso.
+    assert.throws(() => readFileOrNull(workdir));
+  });
+});
+
+describe("parseEnv", () => {
+  test("parsea el mismo texto que ya se leyó, sin volver a abrir el archivo", () => {
+    // Es lo que deja a secrets-generate leer una vez y reescribir exactamente
+    // lo que parseó: sin segunda lectura no hay forma de que las dos difieran.
+    assert.deepEqual(parseEnv("A=1\n# c\nB=2"), { A: "1", B: "2" });
   });
 });
 
