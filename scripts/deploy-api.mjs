@@ -166,6 +166,37 @@ export function buildAndPush({ projectId, region, commit }) {
   return imageRef;
 }
 
+// Separador de los flags de diccionario de gcloud. No puede aparecer en ningún
+// valor: gcloudDictFlag lo comprueba y para si aparece.
+const GCLOUD_DICT_DELIMITER = "@@";
+
+/**
+ * Arma el valor de un flag de diccionario de `gcloud` (`--set-env-vars`,
+ * `--set-secrets`) con un separador ALTERNATIVO, nunca con la coma.
+ *
+ * `gcloud` separa los pares con comas, así que un VALOR con coma se parte en
+ * dos. `WEB_ORIGIN` de producción es una lista separada por comas (D-013):
+ * con `KEY=a,KEY2=b` gcloud leía `http://localhost:5173` como un par sin `=` y
+ * rechazaba el deploy. Pasó en el segundo deploy desde CI (2026-09-16), en
+ * «4b · Cloud Run producción», y no en demo, cuyo WEB_ORIGIN no tiene coma.
+ * La sintaxis `^DELIM^` es la de `gcloud topic escaping`. Como `run` lanza
+ * gcloud SIN shell, el `^` llega tal cual, también en Windows.
+ */
+export function gcloudDictFlag(pairs) {
+  for (const pair of pairs) {
+    if (!pair.includes("=")) {
+      throw new Error(`Par sin "=" en un flag de diccionario de gcloud: ${pair.split("=")[0]}`);
+    }
+    if (pair.includes(GCLOUD_DICT_DELIMITER)) {
+      throw new Error(
+        `Un valor contiene el separador "${GCLOUD_DICT_DELIMITER}": ${pair.split("=")[0]}. ` +
+          "Elegir otro separador en scripts/deploy-api.mjs.",
+      );
+    }
+  }
+  return `^${GCLOUD_DICT_DELIMITER}^${pairs.join(GCLOUD_DICT_DELIMITER)}`;
+}
+
 /**
  * Los comandos de `gcloud` que CAMBIAN algo al desplegar, en orden. Separados
  * de su ejecución para poder probar qué hace y qué no hace un deploy.
@@ -182,15 +213,15 @@ export function buildAndPush({ projectId, region, commit }) {
 export function deployCommands({ projectId, region, config, envName, imageRef, commit }) {
   const environment = ENVIRONMENTS[envName];
 
-  const secrets = SECRET_KEYS.map(
-    ([variable, suffix]) => `${variable}=yacco-${envName}-${suffix}:latest`,
-  ).join(",");
+  const secrets = gcloudDictFlag(
+    SECRET_KEYS.map(([variable, suffix]) => `${variable}=yacco-${envName}-${suffix}:latest`),
+  );
 
   // Configuración en claro: nada de esto es secreto. WEB_ORIGIN default es
   // por entorno (D-013 en docs/ARQUITECTURA.md) — config.WEB_ORIGIN, si
   // alguien lo puso en .env.setup o en el entorno del proceso, sigue
   // pisándolo para los dos, igual que ya hace con los JWT_*_EXPIRES_IN.
-  const environmentVariables = [
+  const environmentVariables = gcloudDictFlag([
     `JWT_ACCESS_EXPIRES_IN=${(config.JWT_ACCESS_EXPIRES_IN ?? "15m").trim()}`,
     `JWT_REFRESH_EXPIRES_IN=${(config.JWT_REFRESH_EXPIRES_IN ?? "30d").trim()}`,
     `WEB_ORIGIN=${(config.WEB_ORIGIN ?? environment.webOriginDefault).trim()}`,
@@ -203,7 +234,7 @@ export function deployCommands({ projectId, region, config, envName, imageRef, c
     // Swagger apagado en los dos entornos. No se pasa "false": el gate de
     // main.ts sólo enciende con exactamente "true", así que ausente ya es
     // apagado, y dejarlo ausente evita que alguien lo "corrija" a mano.
-  ].join(",");
+  ]);
 
   return [
     [
