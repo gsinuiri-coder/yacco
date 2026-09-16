@@ -221,6 +221,105 @@ un ensayo necesita. **El flujo es en un solo sentido:** `main` puede refrescar
 - _Compartir `main` entre demo y producción._ Es exactamente el error que esta
   migración tiene que evitar.
 
+#### Procedimiento: restaurar `main` desde una rama de respaldo
+
+Escrito para el día en que haga falta, que no es el día para descubrirlo.
+Fuentes: la ayuda de `neonctl` 4.15.0 y la guía de Neon «Instant restore»
+(neon.com/docs/guides/branch-restore), leídas el 2026-09-16. Lo corre una
+persona: borrar o restaurar ramas no lo hace ningún agente.
+
+**Antes de restaurar, lo que se pierde.** Mientras Render siga vivo (hasta la
+fase 7), Render ESCRIBE en `main` con usuarios reales, y desde el primer deploy
+de CI también `yacco-api`. Restaurar `main` a la cabeza del respaldo **descarta
+de `main` todo lo escrito entre la creación del respaldo y la restauración**. No
+desaparece del todo: queda en la rama preservada (paso 2), de donde habría que
+recuperarlo a mano, fila por fila. Si eso importa, primero se corta la escritura
+(fase 7: Render suspendido; hoy: avisar al dueño de la planta) y después se
+restaura.
+
+**1. El respaldo, antes del cambio riesgoso.**
+
+```bash
+neonctl branches create --project-id late-union-50177487 \
+  --parent main --name backup-<motivo>-<AAAAMMDD> \
+  --no-compute --no-secrets
+```
+
+- `--no-secrets`: sin él, `branches create` imprime la contraseña de la
+  conexión.
+- `--no-compute`: un respaldo no necesita compute, así que no genera costo de
+  cómputo.
+- Anotar en `PROGRESO.md` el nombre y la HORA de creación (UTC). La hora sirve
+  para el plan B del paso 2.
+
+**2. Restaurar `main`.**
+
+```bash
+neonctl branches restore main backup-<motivo>-<AAAAMMDD> \
+  --project-id late-union-50177487 \
+  --preserve-under-name main_before_restore_<AAAAMMDD>
+```
+
+- **`--preserve-under-name` es OBLIGATORIO**, porque `main` tiene una rama hija
+  (`demo`). Neon lo exige cuando el destino tiene hijas, y lo que preserva es el
+  estado de `main` justo antes de restaurar: ahí queda lo escrito después del
+  respaldo.
+- **La conexión de `main` no cambia.** Neon mueve el compute a la rama nueva y
+  le pone el nombre `main`: ni Render, ni Cloud Run, ni los secretos necesitan
+  tocarse. Las conexiones abiertas se cortan durante la operación y se
+  reconectan solas.
+- **Plan B, sin rama de respaldo o si Neon rechaza la anterior:** restaurar
+  `main` a su propia historia, a la hora anotada en el paso 1. El proyecto
+  guarda **6 horas** de historia (`history_retention_seconds: 21600`).
+
+  ```bash
+  neonctl branches restore main ^self@<AAAA-MM-DDTHH:MM:SSZ> \
+    --project-id late-union-50177487 \
+    --preserve-under-name main_before_restore_<AAAAMMDD>
+  ```
+
+**3. El paso que se olvida: `demo` quedó colgando de la rama preservada.**
+
+Al restaurar, Neon mueve TODAS las hijas de `main` a la rama preservada. Desde
+ese momento `demo` es hija de `main_before_restore_<AAAAMMDD>`, no de la `main`
+restaurada. No da ningún error, y ahí está el peligro: el refresco de siempre,
+`neonctl branches reset demo --parent`, copia desde la rama preservada, que
+tiene justo el estado que se quiso descartar.
+
+**Neon no permite re-parentar una rama:** `neonctl branches` no tiene ningún
+comando para cambiar el padre, y una rama hija no puede ser destino de un
+restore. La única forma de volver a tener `demo` como hija de `main` es
+recrearla, y recrearla le cambia el endpoint y la cadena de conexión:
+
+```bash
+# 3a. Liberar el nombre sin borrar nada: la vieja sigue viva con su endpoint,
+#     así el servicio yacco-api-demo sigue andando mientras tanto.
+neonctl branches rename demo demo_orphan_<AAAAMMDD> --project-id late-union-50177487
+
+# 3b. La demo nueva, hija de la main restaurada, CON compute (la usa Cloud Run).
+neonctl branches create --project-id late-union-50177487 \
+  --parent main --name demo --no-secrets
+
+# 3c. Nuevas URLs de demo a Secret Manager. secrets:gcp pide a neonctl la
+#     conexión de la rama llamada `demo`, que ahora es la nueva; ve que el
+#     valor cambió y crea una versión nueva sin imprimirla.
+pnpm secrets:gcp
+
+# 3d. Que yacco-api-demo tome las URLs nuevas. Los secretos van montados como
+#     :latest y se leen al arrancar cada instancia; relanzar el deploy crea
+#     una revisión nueva.
+gh workflow run deploy.yml --ref main
+```
+
+Después de 3d, en el smoke de demo (`node scripts/smoke.mjs api --env=demo`),
+el login rechazado con 401 prueba que la API llega a la rama nueva.
+
+- **Actualizar el id de la rama** en D-006, en `ENTORNOS.md` y en `PROGRESO.md`:
+  hoy dicen `br-dawn-field-autu1p5w`, y la demo recreada tiene otro.
+- **`demo_orphan_<AAAAMMDD>` y `main_before_restore_<AAAAMMDD>` los borra una
+  persona**, cuando ya no haga falta recuperar nada de ahí. Borrar ramas de Neon
+  está denegado para los agentes en `.claude/settings.json`.
+
 ---
 
 ### D-007 — Secret Manager es la fuente de verdad de los secretos de producción
@@ -647,6 +746,25 @@ ninguna llave de larga vida, y el diagrama original lo contradecía
 imprimirlo y le da lectura al deployer. CI entra a Google Cloud por WIF y lo lee
 en el momento, sólo en el job que publica el web. La CLI de Vercel lo recibe
 por la variable `VERCEL_TOKEN`, nunca por `--token`.
+
+**Vencimiento: el token se crea con 30 días. Creado el 2026-09-16, vence el
+2026-10-16.** Si se creó otro día, corregir las dos fechas acá y en
+`PROGRESO.md`. Al rotarlo: token nuevo en `.env.setup`, `pnpm secrets:gcp` y
+fecha nueva en los dos lugares.
+
+**Cuando vence, el deploy NO falla en el preflight: falla en el paso 5.** El
+preflight sólo comprueba que el secreto exista y tenga valor, y un token vencido
+existe y tiene valor. Así que un deploy con el token vencido **migra las dos
+bases y despliega las dos APIs** y recién ahí falla, en el job «5 · Web a
+Vercel», en el primer comando de la CLI (`vercel pull`), con un error de
+autenticación de Vercel. Queda el estado de esa fila en la tabla de
+`DEPLOY.md`: las APIs en el código nuevo y el web en el anterior. Nada roto,
+pero el web desactualizado. Si el paso 5 falla con un error de token o de
+autenticación, **lo primero es mirar esta fecha**, antes de depurar nada más.
+
+Que el preflight lo detecte de verdad exige validar el token contra Vercel (por
+ejemplo `vercel whoami` con ese token) y no sólo mirar que no esté vacío. Es un
+cambio del workflow, anotado como pendiente en `PROGRESO.md`.
 
 **Lo que esto NO cambia: el token SIGUE siendo de larga vida.** Lo que cambia
 es que vive en un solo lugar, con acceso auditado, y que un compromiso de los

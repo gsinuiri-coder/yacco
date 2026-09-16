@@ -242,19 +242,58 @@ deploy (D-012).
 
 ## Lo que falta antes de seguir
 
-Depende del dueño, y bloquea el primer deploy desde CI:
+Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
 
-1. **Crear el `VERCEL_TOKEN`** (vercel.com > Account Settings > Tokens, scope
-   del team), ponerlo en `.env.setup` y correr `pnpm secrets:gcp`. Lo sube a
-   Secret Manager y le da lectura al deployer. Sin él, el deploy se detiene en
-   el preflight, antes de tocar ninguna base.
-2. **Relanzar el deploy**: `gh workflow run deploy.yml --ref main`.
-3. **La mitad del preview de P-05**, a mano, después de ese primer deploy (ver
+1. **Prender los Data Access logs de Secret Manager** con el procedimiento de
+   D-015, guardando antes la política IAM original en un archivo.
+2. **Crear el `VERCEL_TOKEN`** (vercel.com > Account Settings > Tokens, scope
+   del team, **30 días**), ponerlo en `.env.setup` y correr `pnpm secrets:gcp`.
+   Lo sube a Secret Manager y le da lectura al deployer. Sin él, el deploy se
+   detiene en el preflight, antes de tocar ninguna base.
+3. **Crear la rama de respaldo de `main`** (ver «Punto de retorno», abajo).
+4. **Relanzar el deploy**: `gh workflow run deploy.yml --ref main`.
+5. **La mitad del preview de P-05**, a mano, después de ese primer deploy (ver
    `DEPLOY.md`). La mitad de producción ya la corre el smoke.
 
-Para el auditor de seguridad de la fase 6: los Data Access logs de Secret
-Manager están apagados (el default de Google Cloud), así que las LECTURAS del
-token de Vercel no quedan registradas; sí los cambios de quién puede leerlo.
+Comprobado antes de relanzar, el 2026-09-16, con `prisma migrate status` contra
+las URLs directas: las ramas `main` y `demo` tienen las 25 migraciones del repo
+aplicadas y ninguna pendiente. El primer deploy desde CI no cambia el esquema de
+ninguna base.
+
+## Credenciales y recursos con fecha
+
+| Qué                                          | Fecha                                                 | Qué hacer                                                                                     |
+| -------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Token de Vercel (`yacco-ci-vercel-token`)    | creado 2026-09-16, **vence 2026-10-16**               | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp` y actualizar esta fila y D-015 |
+| Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16, hora UTC: _(completar al crearla)_ | **La borra el dueño DESPUÉS de la fase 7, no antes**                                          |
+
+**Un token de Vercel vencido NO frena el deploy en el preflight**, que sólo
+comprueba que el secreto tenga valor. El deploy migra las bases, despliega las
+dos APIs y recién falla en «5 · Web a Vercel», con un error de autenticación en
+`vercel pull`. Si ese paso falla así, lo primero es mirar la fecha de arriba
+(detalle en D-015).
+
+**Pendiente:** que el preflight valide el token contra Vercel, y no sólo que no
+esté vacío, para que un token vencido frene el deploy antes de migrar.
+
+## Punto de retorno
+
+`backup-pre-ci-deploy-20260916`, rama de Neon hija de `main`, sin compute,
+creada por el dueño justo antes del primer deploy desde CI. Es el estado de la
+base real antes de estrenar el workflow.
+
+- **Se conserva hasta DESPUÉS de la fase 7.** Mientras Render siga vivo, la base
+  tiene dos escritores y la vuelta atrás puede necesitarla. Recién con el corte
+  cerrado y sin incidentes se borra, y la borra una persona: los agentes tienen
+  denegado borrar ramas de Neon.
+- **Cómo se usa:** «Procedimiento: restaurar `main` desde una rama de
+  respaldo», junto a D-006 en `ARQUITECTURA.md`. Incluye el paso que se olvida:
+  después de restaurar, `demo` queda colgando de la rama preservada y hay que
+  recrearla.
+
+Para el auditor de seguridad de la fase 6: mientras no se prendan los Data
+Access logs de Secret Manager (paso 1), las LECTURAS del token de Vercel no
+quedan registradas; sí los cambios de quién puede leerlo.
 
 `.env.setup` ya **no bloquea nada**: los scripts leen la configuración del
 entorno del proceso cuando el archivo no está (D-004), y los secretos de
@@ -267,3 +306,8 @@ Rotar los tokens que hayan vivido en un archivo plano durante la operación:
 `VERCEL_TOKEN` —que además vive en Secret Manager como `yacco-ci-vercel-token`
 y hay que volver a subir con `pnpm secrets:gcp` después de rotarlo (D-015)—, y
 `GH_TOKEN` / `NEON_API_KEY` / `RENDER_API_KEY` si se llegaron a usar.
+
+Borrar la rama de respaldo `backup-pre-ci-deploy-20260916` (ver «Punto de
+retorno»), sólo cuando la fase 7 haya cerrado sin incidentes. Si hubo que
+restaurar en algún momento, borrar también `main_before_restore_*` y
+`demo_orphan_*`, una vez que no haga falta recuperar nada de ahí.
