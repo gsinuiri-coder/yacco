@@ -555,6 +555,16 @@ barrera.
 
 **Cierra P-02.**
 
+**Cómo viaja la coma hasta Cloud Run (2026-09-16).** El `WEB_ORIGIN` de
+producción es una lista con coma, y `gcloud run deploy --set-env-vars` usa la
+coma para separar variables. Así escrito, gcloud leía `http://localhost:5173`
+como una variable sin `=` y rechazaba el comando: pasó en el segundo deploy
+desde CI, en «4b · Cloud Run producción», antes de crear el servicio, y no en
+demo, cuyo valor no tiene coma. `scripts/deploy-api.mjs` arma los flags de
+diccionario con el separador alternativo de `gcloud topic escaping` (`^@@^`) y
+frena si algún valor contiene ese separador. `scripts/deploy-api.test.mjs`
+parsea el flag como gcloud y exige que `WEB_ORIGIN` llegue entero.
+
 ---
 
 ### D-014 — El deploy corre en CI, en un orden fijo, construyendo una sola imagen

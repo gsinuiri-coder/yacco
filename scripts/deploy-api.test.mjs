@@ -10,6 +10,7 @@ import {
   ENVIRONMENTS,
   assertImageMatchesCommit,
   deployCommands,
+  gcloudDictFlag,
   imageRepository,
   imageTagFor,
   parseArgs,
@@ -108,6 +109,72 @@ describe("deployCommands", () => {
     const envVars = deploy.find((arg) => arg.startsWith("--set-env-vars="));
     assert.match(envVars, new RegExp(`DEPLOYED_COMMIT=${SHA}`));
     assert.match(envVars, /APP_ENV=demo/);
+  });
+});
+
+/**
+ * Cómo parsea gcloud un flag de diccionario, según `gcloud topic escaping`:
+ * si el valor empieza con ^DELIM^, los pares se separan por DELIM; si no, por
+ * coma. Cada par se parte en el PRIMER "=". Un par sin "=" es un error de
+ * sintaxis, que es exactamente lo que devolvió gcloud en el deploy que falló.
+ */
+function parseGcloudDict(value) {
+  let body = value;
+  let delimiter = ",";
+  const escaped = /^\^([^^]+)\^/.exec(value);
+  if (escaped !== null) {
+    delimiter = escaped[1];
+    body = value.slice(escaped[0].length);
+  }
+  const dict = {};
+  for (const item of body.split(delimiter)) {
+    const at = item.indexOf("=");
+    if (at < 0) throw new Error(`Bad syntax for dict arg: [${item}]`);
+    dict[item.slice(0, at)] = item.slice(at + 1);
+  }
+  return dict;
+}
+
+describe("flags de diccionario de gcloud", () => {
+  const flagValue = (envName, flag) => {
+    const [deploy] = deployCommands({
+      projectId: "yacco-v2-prod",
+      region: "us-east4",
+      config: {},
+      envName,
+      imageRef: `${REPO}:${imageTagFor(SHA)}`,
+      commit: SHA,
+    });
+    return deploy.find((arg) => arg.startsWith(`${flag}=`)).slice(flag.length + 1);
+  };
+
+  test("producción: WEB_ORIGIN llega ENTERO a gcloud, con su coma", () => {
+    // El caso que rompió el segundo deploy desde CI: el valor tiene una coma y
+    // gcloud la tomaba como separador de variables.
+    const env = parseGcloudDict(flagValue("production", "--set-env-vars"));
+    assert.equal(env.WEB_ORIGIN, "https://yacco-web.vercel.app,http://localhost:5173");
+    assert.equal(env.APP_ENV, "production");
+    assert.equal(env.DEPLOYED_COMMIT, SHA);
+  });
+
+  test("demo: las mismas variables, parseadas por gcloud", () => {
+    const env = parseGcloudDict(flagValue("demo", "--set-env-vars"));
+    assert.equal(env.WEB_ORIGIN, "http://localhost:5173");
+    assert.equal(env.APP_ENV, "demo");
+  });
+
+  test("los cuatro secretos llegan por referencia, cada uno a su nombre", () => {
+    const secrets = parseGcloudDict(flagValue("production", "--set-secrets"));
+    assert.deepEqual(secrets, {
+      DATABASE_URL: "yacco-production-database-url:latest",
+      DIRECT_URL: "yacco-production-direct-url:latest",
+      JWT_ACCESS_SECRET: "yacco-production-jwt-access-secret:latest",
+      JWT_REFRESH_SECRET: "yacco-production-jwt-refresh-secret:latest",
+    });
+  });
+
+  test("un valor que contiene el separador frena, en vez de partirse en silencio", () => {
+    assert.throws(() => gcloudDictFlag(["WEB_ORIGIN=a@@b"]), /separador/);
   });
 });
 
