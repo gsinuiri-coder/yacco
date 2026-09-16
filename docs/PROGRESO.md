@@ -30,8 +30,12 @@ Medido al empezar, para poder comparar después:
   `{"status":"ok","commit":"bfcb6d51ac74f61d62788efca6abbbe3e5a72ef8"}`, que es
   el tip de `main`. La primera respuesta tras un rato ocioso tardó **5,4 s**
   (plan free: el servicio se suspende). Esa cifra es el listón que Cloud Run
-  tiene que mejorar, y es parte del contexto de la pregunta P-01 sobre
-  `--min-instances`.
+  tiene que mejorar.
+- **Arranque en frío de la API**, medido contra un Postgres local, desde que se
+  lanza el proceso hasta que `/health` contesta 200, cinco corridas: mediana
+  **4.025 ms** (min 3.800, max 4.099). Son cuatro segundos con la base al lado
+  y sin arranque de contenedor. Es el dato que sostiene la recomendación de
+  `--min-instances=1` en P-01, que se cierra midiendo lo mismo en Cloud Run.
 - **Neon**: proyecto `yacco-production` (`late-union-50177487`) en
   `aws-us-east-1`. **Una sola rama, `main`.** No existe todavía la rama `demo`
   que la migración necesita (P-04).

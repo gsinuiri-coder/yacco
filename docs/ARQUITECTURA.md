@@ -216,10 +216,29 @@ Con `0`, la primera request de la mañana paga el arranque en frío de NestJS m�
 la conexión de Prisma, y es justo cuando el dueño abre la app en la planta. Con
 `1`, se paga una instancia encendida las 24 horas.
 
-**Recomendación: medir primero.** La decisión se registra con el número de
-arranque real de esta aplicación, no con una estimación. Si el arranque queda
-por debajo de ~2 s, `0` es defendible; por encima de ~4 s, no lo es para la
-primera pantalla del día.
+**Medido, no estimado.** Arranque en frío del build de `dist/` contra un
+Postgres local, desde que se lanza el proceso hasta que `/health` contesta 200,
+cinco corridas:
+
+```
+4099 ms · 3923 ms · 4081 ms · 3800 ms · 4025 ms
+mediana 4025 ms
+```
+
+Son **4 segundos con la base al lado**, en una máquina de desarrollo sin
+arranque de contenedor. En Cloud Run se le suma el arranque del contenedor, y
+la base pasa a estar en otro datacenter (cerca, por D-002, pero no en
+localhost). El número real va a ser ese o peor.
+
+**Recomendación: `--min-instances=1`.** Cuatro segundos es demasiado para la
+primera pantalla de la mañana, que es exactamente cuando el dueño abre la app
+en la planta: esa primera impresión es la que decide si la herramienta "anda
+lenta". Una instancia encendida cuesta poco a este tamaño, y hoy no hay tráfico
+que justifique optimizar el costo antes que la experiencia.
+
+Queda como pregunta y no como decisión porque falta medirlo **en Cloud Run**,
+que es donde se cierra, en la fase 3. Si allá el arranque resultara muy por
+debajo de esto, `0` vuelve a estar sobre la mesa.
 
 ### P-02 — ¿Qué significa `WEB_ORIGIN` después del rewrite? _(se cierra en la fase 4)_
 
