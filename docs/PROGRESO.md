@@ -16,7 +16,7 @@ app funciona al cerrar cada fase.
 | 0 — Descubrimiento      | ✅ hecha     |
 | 1 — Base del repo       | ✅ hecha     |
 | 2 — Google Cloud        | ✅ hecha     |
-| 3 — La API en Cloud Run | ⬜ pendiente |
+| 3 — La API en Cloud Run | ✅ hecha     |
 | 4 — El web en Vercel    | ⬜ pendiente |
 | 5 — CI/CD               | ⬜ pendiente |
 | 6 — Ensayo              | ⬜ pendiente |
@@ -162,6 +162,58 @@ El proyecto nuevo trae de fábrica la service account por defecto de Compute
 Engine (`297699663114-compute@developer.gserviceaccount.com`) con
 **`roles/editor` sobre todo el proyecto**. No la usamos —Cloud Run corre con
 `yacco-api-run`— pero existe, y es lo primero que un auditor debería mirar.
+
+## Fase 3 — La API en Cloud Run ✅
+
+**Desplegada y verificada contra la rama `demo` de Neon.** El tráfico real
+sigue íntegro en Render: nada de esto lo toca.
+
+```
+https://yacco-api-demo-rngajdr5pa-uk.a.run.app/health      200
+https://yacco-api-demo-rngajdr5pa-uk.a.run.app/health/db   200
+```
+
+Ese `/health/db` en 200 es lo que valida la cadena entera de una vez: imagen en
+Artifact Registry, service account propia, secretos montados por referencia
+desde Secret Manager, y la URL pooled contra la rama correcta.
+
+### El Dockerfile
+
+Multi-stage, construido desde la raíz del monorepo. Tres cosas que costaron
+encontrarlas y por eso están comentadas en el archivo:
+
+1. **`pnpm deploy --prod` reinstala `node_modules` desde el store**, así que el
+   cliente de Prisma generado en el build NO viaja. Hay que regenerarlo dentro
+   de `/app`.
+2. **El binario de `prisma` vive en `apps/api/node_modules/.bin`**, no en la
+   raíz: pnpm enlaza los ejecutables en el paquete que declara la dependencia.
+3. **`--legacy` no existe** en `pnpm deploy` en pnpm 9.15.
+
+Usuario no root (`node`, uid 1000) y `node` como PID 1 sin shell, para que el
+SIGTERM de Cloud Run llegue al proceso y dispare el `enableShutdownHooks` que
+cierra el pool de Prisma.
+
+### Tamaño de imagen: 603 → 541 MB
+
+Desmontada, la imagen tenía 95 MB de `@prisma/client` + 36 MB de
+`@prisma/engines` con los motores de **cockroachdb, mysql, sqlite y
+sqlserver** —este proyecto sólo habla postgresql— y 23 MB de **TypeScript**,
+que `pnpm deploy --prod` arrastra por ser peer opcional de `@prisma/client`:
+un compilador dentro de una imagen que sólo ejecuta JavaScript ya compilado.
+
+Los motores se borran **por nombre de motor**, nunca con un comodín sobre
+`query_engine`: eso se llevaría también el de postgresql y el cliente dejaría
+de funcionar en runtime, no en el build. Verificado corriendo la imagen
+delgada: `/health/db` sigue en 200.
+
+### Tres cambios de código, todos de configuración
+
+- `/health` publica el commit desplegado (D-009).
+- Swagger con gate, apagado por defecto (D-010).
+- `env.validation.ts` declara las dos variables nuevas.
+
+**Decisiones registradas:** D-008 (`--min-instances`), D-009 (commit
+desplegado), D-010 (Swagger). Cierran P-01 y P-03.
 
 ## Lo que falta antes de seguir
 

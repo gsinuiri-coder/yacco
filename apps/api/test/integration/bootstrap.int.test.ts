@@ -27,6 +27,9 @@ beforeAll(async () => {
   process.env.JWT_ACCESS_EXPIRES_IN ??= "15m";
   process.env.JWT_REFRESH_SECRET ??= "bootstrap-test-refresh-secret";
   process.env.JWT_REFRESH_EXPIRES_IN ??= "30d";
+  // Esta app se levanta CON Swagger para poder comprobar que el gate lo deja
+  // pasar; el test del caso apagado levanta la suya sin la variable.
+  process.env.ENABLE_SWAGGER = "true";
 
   // Dynamic import, deferred until after the env vars above are set — see
   // the same note in test-app.ts's startTestApp().
@@ -57,6 +60,32 @@ test("bootstrap: the global ValidationPipe rejects unknown fields", async () => 
     .expect(400);
 });
 
-test("bootstrap: Swagger docs are served at /api/docs", async () => {
+test("bootstrap: Swagger docs are served at /api/docs when ENABLE_SWAGGER is true", async () => {
   await request(baseUrl).get("/api/docs").expect(200);
 });
+
+test("bootstrap: Swagger is NOT served when ENABLE_SWAGGER is absent", async () => {
+  // Producción es este caso. El default apagado es lo que hace que un host
+  // donde nadie puso la variable quede seguro en vez de expuesto: /api/docs
+  // publica cada ruta, cada forma de cuerpo y cada rol de toda la API.
+  //
+  // Hace falta levantar una segunda app porque el gate se evalúa una sola vez,
+  // al arrancar. Comprobarlo sobre la primera no probaría nada: ya nació con
+  // Swagger encendido.
+  const previous = process.env.ENABLE_SWAGGER;
+  delete process.env.ENABLE_SWAGGER;
+
+  const { bootstrap } = await import("../../src/main.js");
+  const gatedApp = await bootstrap();
+  try {
+    const { port } = gatedApp.getHttpServer().address() as AddressInfo;
+    await request(`http://127.0.0.1:${port}`).get("/api/docs").expect(404);
+
+    // Y la app sigue siendo una app: el gate apaga la documentación, no la API.
+    await request(`http://127.0.0.1:${port}`).get("/health").expect(200);
+  } finally {
+    await gatedApp.close();
+    if (previous === undefined) delete process.env.ENABLE_SWAGGER;
+    else process.env.ENABLE_SWAGGER = previous;
+  }
+}, 60000);

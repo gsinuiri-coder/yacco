@@ -1,0 +1,45 @@
+# Lo que NO viaja al contexto de build de Docker.
+#
+# node_modules es el importante: son cientos de miles de archivos que el
+# daemon copiaría antes de empezar, y que la imagen reinstala igual desde el
+# lockfile. Sin esta línea el build tarda minutos en no hacer nada.
+node_modules
+**/node_modules
+
+# Salidas de build: la imagen compila lo suyo.
+dist
+**/dist
+build
+**/build
+coverage
+**/coverage
+
+# Credenciales. No deberían entrar nunca en una imagen, y menos en una capa,
+# donde quedan aunque un paso posterior las borre.
+.env
+.env.*
+!.env.example
+!.env.setup.example
+
+# Historia y metadatos que la imagen no usa.
+.git
+.github
+.husky
+.claude
+.agents
+.impeccable
+docs
+
+# El resto del monorepo que la API no necesita.
+apps/mobile
+apps/web/src
+apps/web/public
+apps/web/index.html
+design-kit
+tools
+
+# Ruido local.
+*.log
+.DS_Store
+.vscode
+docker-compose.override.yml
