@@ -53,6 +53,7 @@ cp .env.setup.example .env.setup
 Valores ya decididos, listos para pegar:
 
 ```
+GCP_PROJECT_ID=yacco-v2-prod
 GCP_BILLING_ACCOUNT_ID=0148EC-33BCAA-9A4CED
 GCP_REGION=us-east4
 NEON_PROJECT_ID=late-union-50177487
@@ -61,10 +62,14 @@ JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=30d
 ```
 
-Falta decidir `GCP_PROJECT_ID` (lo crea la fase 2) y conseguir `VERCEL_TOKEN`
-en vercel.com > Account Settings > Tokens. Ese token es el único obligatorio:
-el deploy del web corre en GitHub Actions, donde no hay sesión de `vercel
-login`. Para el resto alcanza con la sesión interactiva del paso 2.
+Falta conseguir `VERCEL_TOKEN` en vercel.com > Account Settings > Tokens. Ese
+token es el único obligatorio: el deploy del web corre en GitHub Actions, donde
+no hay sesión de `vercel login`. Para el resto alcanza con la sesión
+interactiva del paso 2.
+
+Nada de esto bloquea: cuando el archivo no está, los scripts leen la
+configuración del entorno del proceso (D-004), que es también como corren en
+CI.
 
 Después, generar los secretos de la aplicación y verificar:
 
@@ -76,6 +81,9 @@ pnpm env:check          # lista qué falta, sin mostrar ningún valor
 `secrets:generate` no pisa un valor que ya exista; para rotarlos, `--force`.
 Los secretos son **nuevos**, no copiados de Render: rotarlos sólo invalida
 sesiones abiertas, y hoy el único usuario es el dueño del repo.
+
+Estos secretos son los del entorno **local**. Los de producción viven en Secret
+Manager y no tienen por qué coincidir: ver D-007.
 
 ## Desarrollo local
 
@@ -99,15 +107,20 @@ el engine queda tomado y la generación falla a mitad.
 
 ## Desplegar _(fases 2 a 5)_
 
-### Preparar Google Cloud, una vez _(fase 2)_
+### Preparar Google Cloud, una vez _(fase 2, ya hecho)_
 
 ```bash
-pnpm gcp:bootstrap     # proyecto, facturación, APIs, Artifact Registry, service account, WIF
+pnpm gcp:bootstrap     # proyecto, facturación, APIs, Artifact Registry, service accounts, WIF
 pnpm secrets:gcp       # sube los secretos a Secret Manager, por stdin, sin imprimirlos
 ```
 
-Los dos son **idempotentes**: correrlos dos veces no rompe nada y no duplica
-nada.
+Los dos son **idempotentes**: correrlos dos veces no rompe nada, no duplica
+nada, y `secrets:gcp` no crea una versión nueva si el valor no cambió. Están
+corridos: el estado resultante está en `PROGRESO.md`.
+
+Si `gcp:bootstrap` falla con `PERMISSION_DENIED` en Artifact Registry justo
+después de crear el proyecto, es propagación de IAM tras habilitar la API:
+esperá un minuto y volvé a correrlo.
 
 ### La API _(fase 3)_
 

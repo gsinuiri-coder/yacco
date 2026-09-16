@@ -15,7 +15,7 @@ app funciona al cerrar cada fase.
 | ----------------------- | ------------ |
 | 0 — Descubrimiento      | ✅ hecha     |
 | 1 — Base del repo       | ✅ hecha     |
-| 2 — Google Cloud        | ⬜ pendiente |
+| 2 — Google Cloud        | ✅ hecha     |
 | 3 — La API en Cloud Run | ⬜ pendiente |
 | 4 — El web en Vercel    | ⬜ pendiente |
 | 5 — CI/CD               | ⬜ pendiente |
@@ -112,19 +112,73 @@ acá anotadas porque cambian el trabajo:
 - `.gitignore`: excepción para `.env.setup.example` y regla para
   `.claude/worktrees/`.
 
+## Fase 2 — Google Cloud ✅
+
+Todo por `pnpm gcp:bootstrap` y `pnpm secrets:gcp`, los dos idempotentes y
+corridos dos veces para comprobarlo.
+
+| Recurso           | Valor                                                     |
+| ----------------- | --------------------------------------------------------- |
+| Proyecto          | `yacco-v2-prod` (número 297699663114)                     |
+| Facturación       | `0148EC-33BCAA-9A4CED` ("pago firebase 02")               |
+| Región            | `us-east4`                                                |
+| Artifact Registry | `yacco`, formato docker                                   |
+| SA de runtime     | `yacco-api-run`, sólo `secretmanager.secretAccessor`      |
+| SA de despliegue  | `yacco-deployer`, `run.admin` + `artifactregistry.writer` |
+| WIF               | pool `github`, proveedor `github-oidc`                    |
+| Rama Neon demo    | `demo` (`br-dawn-field-autu1p5w`), hija de `main`         |
+
+Ocho secretos en Secret Manager, cuatro por entorno (`database-url` pooled,
+`direct-url` directa, `jwt-access-secret`, `jwt-refresh-secret`). Ninguno se
+imprimió: los valores viajan a `gcloud` por **stdin**, y las connection strings
+se piden a `neonctl` con `quiet: true` porque ese comando imprime la credencial
+al salir bien.
+
+**Sin ninguna llave de service account.** GitHub Actions entra por Workload
+Identity Federation, y la condición del proveedor lo ancla a este repositorio:
+`assertion.repository == 'gsinuiri-coder/yacco'`. Un proveedor sin esa
+condición dejaría que el workflow de cualquier repo de GitHub pidiera tokens
+contra el proyecto, porque el emisor es el mismo para todo GitHub.
+
+Para los secretos del repositorio, cuando llegue la fase 5 (ninguno de los dos
+es secreto: identifican recursos, no autorizan nada por sí solos):
+
+```
+GCP_WORKLOAD_IDENTITY_PROVIDER = projects/297699663114/locations/global/workloadIdentityPools/github/providers/github-oidc
+GCP_DEPLOYER_SERVICE_ACCOUNT   = yacco-deployer@yacco-v2-prod.iam.gserviceaccount.com
+```
+
+### Dos tropiezos, por si vuelven a aparecer
+
+1. **`yacco-v2` ya estaba tomado.** Los IDs de proyecto de GCP son únicos en el
+   mundo, no por cuenta. De ahí `yacco-v2-prod`.
+2. **Artifact Registry falló con `PERMISSION_DENIED` la primera vez**, siendo
+   Owner del proyecto: propagación de IAM después de habilitar la API. El
+   reintento funcionó, que es exactamente para lo que el script es idempotente.
+
+### Para el auditor de seguridad de la fase 6
+
+El proyecto nuevo trae de fábrica la service account por defecto de Compute
+Engine (`297699663114-compute@developer.gserviceaccount.com`) con
+**`roles/editor` sobre todo el proyecto**. No la usamos —Cloud Run corre con
+`yacco-api-run`— pero existe, y es lo primero que un auditor debería mirar.
+
 ## Lo que falta antes de seguir
 
-Una sola cosa depende del dueño y bloquea la fase 2:
+Una sola cosa depende del dueño, y bloquea recién la fase 4:
 
-- **Completar `.env.setup`.** `AGENTS.md` prohíbe al agente leer o escribir
-  archivos `.env*`, así que el archivo lo crea y lo completa el dueño. Los
-  valores ya decididos están en `DEPLOY.md`, listos para copiar.
-- **Crear un `VERCEL_TOKEN`.** Es el único token que hace falta sí o sí: el
-  deploy del web corre en GitHub Actions, donde no hay sesión de `vercel
-login`. Para el resto (`gcloud`, `gh`, `neonctl`) la sesión interactiva de la
-  máquina alcanza.
+- **Crear un `VERCEL_TOKEN`** en vercel.com > Account Settings > Tokens. Es el
+  único token que hace falta sí o sí: el deploy del web corre en GitHub
+  Actions, donde no hay sesión de `vercel login`. Para el resto (`gcloud`,
+  `gh`, `neonctl`) alcanza con la sesión interactiva de la máquina.
+
+`.env.setup` ya **no bloquea nada**: los scripts leen la configuración del
+entorno del proceso cuando el archivo no está (D-004), y los secretos de
+producción nacen en Secret Manager (D-007). El archivo sigue siendo la forma
+cómoda de no repetir valores a mano en cada comando.
 
 ## Al terminar la migración
 
-Rotar los cuatro tokens (`GH_TOKEN`, `VERCEL_TOKEN`, `NEON_API_KEY`,
-`RENDER_API_KEY`): vivieron en un archivo plano durante toda la operación.
+Rotar los tokens que hayan vivido en un archivo plano durante la operación
+(`VERCEL_TOKEN`, y `GH_TOKEN` / `NEON_API_KEY` / `RENDER_API_KEY` si se
+llegaron a usar).

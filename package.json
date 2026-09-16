@@ -25,6 +25,8 @@
     "env:check": "node scripts/env-check.mjs",
     "env:local": "node scripts/env-local.mjs",
     "secrets:generate": "node scripts/secrets-generate.mjs",
+    "gcp:bootstrap": "node scripts/gcp-bootstrap.mjs",
+    "secrets:gcp": "node scripts/secrets-gcp.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

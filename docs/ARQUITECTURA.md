@@ -196,6 +196,56 @@ de sync.
 - _Comprimir reglas existentes._ Cada una de esas reglas tiene detrás un
   incidente concreto, y el detalle es lo que las hace aplicables.
 
+---
+
+### D-006 — La rama `demo` de Neon es hija de `main`, y el flujo va en un solo sentido
+
+**Contexto.** El proyecto Neon tenía **una sola rama, `main`**. El servicio de
+ensayo y los previews de Vercel necesitan una base propia: un preview que pegue
+a la base de producción escribe en producción.
+
+**Decisión.** `demo` (`br-dawn-field-autu1p5w`) creada como rama hija de `main`.
+Nace con una copia del esquema y de los datos del momento, que es justo lo que
+un ensayo necesita. **El flujo es en un solo sentido:** `main` puede refrescar
+`demo` con `neonctl branches reset`; nada de lo escrito en `demo` vuelve a
+`main`. Borrar ramas de Neon está denegado en `.claude/settings.json`.
+
+**Alternativas descartadas.**
+
+- _Un proyecto Neon aparte para demo._ Aislamiento mayor, pero pierde lo único
+  que hace útil a la demo: partir de datos que se parecen a los reales.
+- _Compartir `main` entre demo y producción._ Es exactamente el error que esta
+  migración tiene que evitar.
+
+---
+
+### D-007 — Secret Manager es la fuente de verdad de los secretos de producción
+
+**Contexto.** El plan original hacía nacer `JWT_ACCESS_SECRET` y
+`JWT_REFRESH_SECRET` en `.env.setup` y de ahí subirlos. Pero `AGENTS.md`
+prohíbe al agente leer o escribir archivos `.env*` —y esa regla manda—, así que
+el agente no puede poblar ese archivo. Además, un secreto de producción que
+vive en un archivo plano en una laptop es más fácil de filtrar que uno que
+nunca tocó ese disco.
+
+**Decisión.** `pnpm secrets:gcp` resuelve cada secreto de aplicación en
+cascada: **lo que diga la configuración; si no, lo que YA esté en Secret
+Manager; si tampoco, uno nuevo al azar de 48 bytes**, que se sube sin
+imprimirse y sin escribirse en ningún lado.
+
+Ese orden es lo que hace que correr el script dos veces no rote nada, y eso
+importa: un secreto rotado sin querer invalida todas las sesiones abiertas. Los
+secretos de `.env.setup` siguen existiendo para el entorno **local**, y no
+tienen por qué coincidir con los de producción — son entornos distintos.
+
+**Alternativas descartadas.**
+
+- _Pedirle al dueño que complete `.env.setup` antes de poder avanzar._ Bloquea
+  toda la fase 2 por un archivo, y termina con secretos de producción en una
+  laptop igual.
+- _Generar en cada corrida._ Rotaría los secretos cada vez que alguien corre el
+  script, que es una trampa esperando a que haya usuarios reales.
+
 > **Nota al pasar, no arreglada acá.** `AGENTS.md` referencia
 > `.agents/rules/sync-protocol.md`, y ese archivo no existe: el contenido vive
 > en `.agents/skills/sync-protocol/SKILL.md`. Está fuera del alcance de esta
@@ -265,17 +315,6 @@ porque un auto-deploy que nunca disparó ya pasó desapercibido una vez
 que la variable pase a llamarse algo neutral respecto de la plataforma,
 conservando `RENDER_GIT_COMMIT` como fallback mientras Render siga vivo. Es un
 cambio de configuración, no de dominio.
-
-### P-04 — ¿De dónde sale la rama `demo` de Neon? _(se cierra en la fase 2)_
-
-El proyecto Neon tiene **una sola rama, `main`**. La `demo` que esta migración
-necesita para el servicio de ensayo y para los previews de Vercel todavía no
-existe.
-
-**Recomendación:** crearla como rama hija de `main` con `neonctl branches
-create`. Queda con una copia del esquema y de los datos del momento, que es
-justo lo que un ensayo necesita. Nunca al revés: nada escrito en `demo` vuelve
-a `main`.
 
 ### P-05 — ¿Cómo se apunta un preview de Vercel a la API de demo? _(se cierra en la fase 4)_
 
