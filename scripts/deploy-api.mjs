@@ -112,9 +112,9 @@ export function imageTagFor(commit) {
  * `/health` publica DEPLOYED_COMMIT para poder creerle cuando difiere de
  * `main` (D-009). Si se desplegara la imagen de un commit reportando otro, ese
  * campo mentiría justo en el caso en que alguien lo mira. Y deja afuera, por
- * construcción, desplegar "lo que esté en la etiqueta `:production`": se
- * despliega siempre la imagen del sha, nunca la que haya quedado cacheada con
- * el nombre del entorno.
+ * construcción, desplegar por cualquier etiqueta que no sea el sha —como la
+ * vieja `:demo` de la fase 3, que ningún deploy vuelve a mover (ver
+ * deployCommands)—: se despliega siempre la imagen del commit.
  */
 export function assertImageMatchesCommit(imageRef, commit) {
   const expectedSuffix = `:${imageTagFor(commit)}`;
@@ -166,33 +166,62 @@ export function buildAndPush({ projectId, region, commit }) {
   return imageRef;
 }
 
-/** Despliega una imagen ya subida en el servicio del entorno. Devuelve la URL. */
-export function deployImage({ projectId, region, config, envName, imageRef, commit }) {
-  assertImageMatchesCommit(imageRef, commit);
+// Separador de los flags de diccionario de gcloud. No puede aparecer en ningún
+// valor: gcloudDictFlag lo comprueba y para si aparece.
+const GCLOUD_DICT_DELIMITER = "@@";
+
+/**
+ * Arma el valor de un flag de diccionario de `gcloud` (`--set-env-vars`,
+ * `--set-secrets`) con un separador ALTERNATIVO, nunca con la coma.
+ *
+ * `gcloud` separa los pares con comas, así que un VALOR con coma se parte en
+ * dos. `WEB_ORIGIN` de producción es una lista separada por comas (D-013):
+ * con `KEY=a,KEY2=b` gcloud leía `http://localhost:5173` como un par sin `=` y
+ * rechazaba el deploy. Pasó en el segundo deploy desde CI (2026-09-16), en
+ * «4b · Cloud Run producción», y no en demo, cuyo WEB_ORIGIN no tiene coma.
+ * La sintaxis `^DELIM^` es la de `gcloud topic escaping`. Como `run` lanza
+ * gcloud SIN shell, el `^` llega tal cual, también en Windows.
+ */
+export function gcloudDictFlag(pairs) {
+  for (const pair of pairs) {
+    if (!pair.includes("=")) {
+      throw new Error(`Par sin "=" en un flag de diccionario de gcloud: ${pair.split("=")[0]}`);
+    }
+    if (pair.includes(GCLOUD_DICT_DELIMITER)) {
+      throw new Error(
+        `Un valor contiene el separador "${GCLOUD_DICT_DELIMITER}": ${pair.split("=")[0]}. ` +
+          "Elegir otro separador en scripts/deploy-api.mjs.",
+      );
+    }
+  }
+  return `^${GCLOUD_DICT_DELIMITER}^${pairs.join(GCLOUD_DICT_DELIMITER)}`;
+}
+
+/**
+ * Los comandos de `gcloud` que CAMBIAN algo al desplegar, en orden. Separados
+ * de su ejecución para poder probar qué hace y qué no hace un deploy.
+ *
+ * Deliberadamente NO etiqueta la imagen con el nombre del entorno (`:demo`,
+ * `:production`). Lo hacía hasta el primer deploy desde CI (2026-09-16), y ahí
+ * falló: mover una etiqueta existente exige `artifactregistry.tags.delete`, que
+ * el deployer no tiene por diseño. Se sacó en vez de ampliar permisos, porque
+ * la etiqueta no servía para nada y además mentía: nada desplegaba por ella
+ * (ver assertImageMatchesCommit), y la `:demo` de ese día apuntaba a una imagen
+ * vieja. Qué está desplegado lo dicen el `commit` de /health y la revisión de
+ * Cloud Run. Ver D-014 antes de reponerla "para tener visibilidad".
+ */
+export function deployCommands({ projectId, region, config, envName, imageRef, commit }) {
   const environment = ENVIRONMENTS[envName];
 
-  // Además del sha, la etiqueta del entorno: deja ver de un vistazo, en
-  // Artifact Registry, qué imagen está detrás de cada servicio. Es sólo para
-  // leer — nada despliega nunca por esta etiqueta, ver assertImageMatchesCommit.
-  run("gcloud", [
-    "artifacts",
-    "docker",
-    "tags",
-    "add",
-    imageRef,
-    `${imageRepository(region, projectId)}:${envName}`,
-    "--quiet",
-  ]);
-
-  const secrets = SECRET_KEYS.map(
-    ([variable, suffix]) => `${variable}=yacco-${envName}-${suffix}:latest`,
-  ).join(",");
+  const secrets = gcloudDictFlag(
+    SECRET_KEYS.map(([variable, suffix]) => `${variable}=yacco-${envName}-${suffix}:latest`),
+  );
 
   // Configuración en claro: nada de esto es secreto. WEB_ORIGIN default es
   // por entorno (D-013 en docs/ARQUITECTURA.md) — config.WEB_ORIGIN, si
   // alguien lo puso en .env.setup o en el entorno del proceso, sigue
   // pisándolo para los dos, igual que ya hace con los JWT_*_EXPIRES_IN.
-  const environmentVariables = [
+  const environmentVariables = gcloudDictFlag([
     `JWT_ACCESS_EXPIRES_IN=${(config.JWT_ACCESS_EXPIRES_IN ?? "15m").trim()}`,
     `JWT_REFRESH_EXPIRES_IN=${(config.JWT_REFRESH_EXPIRES_IN ?? "30d").trim()}`,
     `WEB_ORIGIN=${(config.WEB_ORIGIN ?? environment.webOriginDefault).trim()}`,
@@ -205,29 +234,41 @@ export function deployImage({ projectId, region, config, envName, imageRef, comm
     // Swagger apagado en los dos entornos. No se pasa "false": el gate de
     // main.ts sólo enciende con exactamente "true", así que ausente ya es
     // apagado, y dejarlo ausente evita que alguien lo "corrija" a mano.
-  ].join(",");
+  ]);
+
+  return [
+    [
+      "run",
+      "deploy",
+      environment.service,
+      `--image=${imageRef}`,
+      `--region=${region}`,
+      `--project=${projectId}`,
+      `--service-account=${RUNTIME_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`,
+      `--set-secrets=${secrets}`,
+      `--set-env-vars=${environmentVariables}`,
+      `--min-instances=${environment.minInstances}`,
+      "--max-instances=10",
+      "--memory=512Mi",
+      "--cpu=1",
+      // La API es pública: el navegador le pega a través del rewrite de Vercel,
+      // sin credenciales de Google. La autorización la hace la propia app.
+      "--allow-unauthenticated",
+      "--port=8080",
+      "--quiet",
+    ],
+  ];
+}
+
+/** Despliega una imagen ya subida en el servicio del entorno. Devuelve la URL. */
+export function deployImage({ projectId, region, config, envName, imageRef, commit }) {
+  assertImageMatchesCommit(imageRef, commit);
+  const environment = ENVIRONMENTS[envName];
 
   console.error(`Desplegando ${environment.service} en Cloud Run...`);
-  run("gcloud", [
-    "run",
-    "deploy",
-    environment.service,
-    `--image=${imageRef}`,
-    `--region=${region}`,
-    `--project=${projectId}`,
-    `--service-account=${RUNTIME_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`,
-    `--set-secrets=${secrets}`,
-    `--set-env-vars=${environmentVariables}`,
-    `--min-instances=${environment.minInstances}`,
-    "--max-instances=10",
-    "--memory=512Mi",
-    "--cpu=1",
-    // La API es pública: el navegador le pega a través del rewrite de Vercel,
-    // sin credenciales de Google. La autorización la hace la propia app.
-    "--allow-unauthenticated",
-    "--port=8080",
-    "--quiet",
-  ]);
+  for (const args of deployCommands({ projectId, region, config, envName, imageRef, commit })) {
+    run("gcloud", args);
+  }
 
   return run("gcloud", [
     "run",
