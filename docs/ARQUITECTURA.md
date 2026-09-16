@@ -853,28 +853,26 @@ por la variable `VERCEL_TOKEN`, nunca por `--token`.
 `PROGRESO.md`. Al rotarlo: token nuevo en `.env.setup`,
 `pnpm secrets:gcp --upload=VERCEL_TOKEN` y fecha nueva en los dos lugares.
 
-**Cuando vence, el deploy NO falla en el preflight: falla en el paso 5.** El
-preflight sólo comprueba que el secreto exista y tenga valor, y un token vencido
-existe y tiene valor. Así que un deploy con el token vencido **migra las dos
-bases y despliega las dos APIs** y recién ahí falla, en el job «5 · Web a
-Vercel», en el primer comando de la CLI (`vercel pull`), con un error de
-autenticación de Vercel. Queda el estado de esa fila en la tabla de
-`DEPLOY.md`: las APIs en el código nuevo y el web en el anterior. Nada roto,
-pero el web desactualizado. Si el paso 5 falla con un error de token o de
-autenticación, **lo primero es mirar esta fecha**, antes de depurar nada más.
+**Cuando vence, el deploy falla en el PREFLIGHT, antes de tocar ninguna base.**
+Desde el 2026-09-16 el preflight corre `scripts/check-vercel-token.mjs`, que
+valida el token con `vercel whoami` (no escribe nada). Si el token no sirve, el
+error nombra el secreto y **la fecha de vencimiento registrada en
+`PROGRESO.md`**, que el script lee de la fila del token en la tabla de
+«Credenciales y recursos con fecha». Esa fila es la fuente: al rotar, se
+actualiza ahí.
 
-**El preflight comprueba PRESENCIA, no validez, y eso vale para TODOS los
-secretos que lee**, no sólo para el token. Una credencial de Neon rotada
-(contraseña cambiada, rol borrado) también pasa el preflight, y falla recién en
-«2 · Migraciones», al conectar. Falla antes que el token, así que no deja APIs
-desplegadas, pero tampoco la frenó el preflight. Que nadie lea un preflight en
-verde como garantía de que los secretos sirven: garantiza que existen y tienen
-valor, nada más.
+Antes de ese cambio, el preflight sólo miraba que el secreto tuviera valor, y
+un token vencido lo tiene: el deploy migraba las dos bases, desplegaba las dos
+APIs y fallaba recién en «5 · Web a Vercel». Hoy eso cuesta poco; desde el
+corte dejaría la API nueva con el web viejo sirviendo a usuarios reales. Por
+eso se cerró antes de la fase 7.
 
-Que el preflight detecte un token vencido exige validarlo contra Vercel con
-`vercel whoami`, que no escribe nada, y no sólo mirar que no esté vacío. Es un
-cambio del workflow: anotado en `backlog-tecnico.md`, «El preflight no valida
-el token de Vercel», con fecha límite antes de la fase 7.
+**Para las URLs de Neon, el preflight sigue comprobando PRESENCIA, no
+validez.** Una credencial de Neon rotada (contraseña cambiada, rol borrado)
+pasa el preflight y falla recién en «2 · Migraciones», al conectar. Falla antes
+de desplegar nada, así que no deja un estado mezclado, y por eso no se validan
+también. Que nadie lea un preflight en verde como garantía de que TODOS los
+secretos sirven: garantiza que existen, y que el token de Vercel es válido.
 
 **Lo que esto NO cambia: el token SIGUE siendo de larga vida.** Lo que cambia
 es que vive en un solo lugar, con acceso auditado, y que un compromiso de los

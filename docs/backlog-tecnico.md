@@ -1558,32 +1558,25 @@ GitHub.
 
 ## El preflight no valida el token de Vercel
 
-**Estado:** abierto. **Disparador:** después del primer deploy verde desde CI y
-**ANTES de la fase 7** (el corte). No es una mejora que pueda esperar: tiene
-fecha.
+**Estado:** RESUELTA el 2026-09-16, antes de la fase 7, que era su fecha límite.
 
-El job de preflight de `.github/workflows/deploy.yml` comprueba que los
-secretos EXISTAN y tengan valor, no que SIRVAN (D-015). Con el token de Vercel
-vencido o revocado, el deploy pasa el preflight, migra las dos bases, despliega
-las dos APIs y recién falla en «5 · Web a Vercel».
+El preflight comprobaba que el token EXISTIERA, no que SIRVIERA. Con el token
+vencido o revocado, el deploy pasaba el preflight, migraba las dos bases,
+desplegaba las dos APIs y fallaba recién en «5 · Web a Vercel». Antes del corte
+eso costaba poco; después del corte dejaría la API nueva con el web viejo
+sirviendo a usuarios reales.
 
-**Por qué antes del corte y no después.** Hoy fallar tarde cuesta poco: los
-usuarios siguen en Render, y una API nueva con un web viejo en Vercel no la ve
-nadie. **Desde el corte, ese mismo fallo deja la API nueva con el web viejo
-sirviendo a usuarios reales**, hasta que alguien rote el token y relance. Si en
-ese deploy la API cambió un contrato que el web viejo usa, la planta lo sufre
-en el momento.
+**Cómo se cerró:** el preflight corre `scripts/check-vercel-token.mjs`, que llama
+a `vercel whoami` (no escribe nada) con el token por la variable `VERCEL_TOKEN`,
+nunca por `--token`. Si falla, el deploy para antes de migrar, con un mensaje
+que nombra el secreto (`yacco-ci-vercel-token`) y la fecha de vencimiento que
+el script lee de la tabla de `PROGRESO.md`. Verificado a mano contra la CLI
+59.11.2: con el token de CI sale con 0; con uno inválido sale con 1 y el
+mensaje correcto. Tests de la lectura de la fecha y del mensaje en
+`scripts/check-vercel-token.test.mjs`.
 
-**Para cerrarla:** en el preflight, después de leer el secreto, correr
-`vercel whoami` con el token en el entorno (`VERCEL_TOKEN`, nunca `--token`). No
-escribe nada: sólo identifica la cuenta. Si falla, el deploy para antes de
-migrar, con un mensaje que apunte a la fecha de vencimiento de D-015. Va en un
-PR aparte.
-
-Las credenciales de Neon tienen el mismo hueco (un preflight en verde no
-garantiza que sirvan), pero ahí el fallo llega en «2 · Migraciones», antes de
-desplegar nada, así que no deja un estado mezclado. Validarlas en el preflight
-es opcional, no urgente.
+Las URLs de Neon siguen validándose sólo por presencia: si no sirven, fallan en
+«2 · Migraciones», antes de desplegar nada, sin dejar un estado mezclado.
 
 ## Cada merge de documentación redespliega producción
 
