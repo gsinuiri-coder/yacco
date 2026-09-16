@@ -19,7 +19,7 @@ app funciona al cerrar cada fase.
 | 3 — La API en Cloud Run | ✅ hecha     |
 | 4 — El web en Vercel    | ✅ hecha     |
 | 5 — CI/CD               | ✅ hecha     |
-| 6 — Ensayo              | ⬜ pendiente |
+| 6 — Ensayo              | 🟨 en curso  |
 | 7 — Corte               | ⬜ pendiente |
 
 ## Punto de partida verificado
@@ -268,6 +268,97 @@ por primera vez. **Render sigue sirviendo a los usuarios**: el corte es la fase 
 - Evaluar si `http://localhost:5173` debe seguir en el `WEB_ORIGIN` de
   producción (PR propio, con recomendación antes de cambiar nada).
 - ✅ Validar el token de Vercel en el preflight, antes de la fase 7.
+
+## Fase 6 — Ensayo y auditoría 🟨
+
+Nada de esta fase tocó producción: el recorrido escribe sólo en demo, y la
+auditoría fue de solo lectura.
+
+### CI en verde de punta a punta: cinco corridas seguidas
+
+| Corrida     | Commit    | Qué traía                                                  |
+| ----------- | --------- | ---------------------------------------------------------- |
+| 35134745175 | `645463c` | #136 — separador de flags de gcloud (primer verde)         |
+| 35137518395 | `768404b` | #134 — docs, audit logs, `secrets:gcp` con lista explícita |
+| 35142539369 | `0811f6d` | #137 — producción sin `localhost:5173` en `WEB_ORIGIN`     |
+| 35150427631 | `80aef3e` | #138 — la API no arranca en producción sin `WEB_ORIGIN`    |
+| 35153242446 | `f17c53b` | #139 — el preflight valida el token de Vercel              |
+
+Las cinco pasaron los nueve jobs. Ninguna cambió el esquema de las bases.
+
+### Ensayo
+
+- **`pnpm smoke:prod`** — 2026-09-16 21:50 UTC, con `EXPECTED_COMMIT=f17c53b`:
+  `Smoke OK.`
+- **P-05, la mitad del preview — CERRADA con evidencia.** Preview publicado
+  con `pnpm deploy:web --preview` (`yacco-c33znr9e8-gsinuiricoders-projects.vercel.app`):
+
+  | Host                                                   | Sin sesión                 | Con `vercel curl`                                          |
+  | ------------------------------------------------------ | -------------------------- | ---------------------------------------------------------- |
+  | preview `yacco-c33znr9e8-…`                            | 302 a `vercel.com/sso-api` | `{"status":"ok","commit":"f17c53b…","environment":"demo"}` |
+  | URL única del deploy de PRODUCCIÓN `yacco-jff4s9u6e-…` | 302 a `vercel.com/sso-api` | `"environment":"demo"` (D-011)                             |
+  | `yacco-web.vercel.app`                                 | público                    | `"environment":"production"`                               |
+
+- **Recorrido de la app contra demo — PENDIENTE.** Se hace en el navegador
+  sobre el preview, que va a demo. Iniciar sesión (escribir la contraseña en el
+  formulario) lo hace una persona. El recorrido previsto: login, pedidos, rutas,
+  registro de paradas, cobranzas y liquidación, anotando qué se probó y qué se
+  vio.
+
+**Encontrado durante el ensayo:**
+
+1. **`admin` / `admin123` inicia sesión en demo** (`POST /api/v1/auth/login` →
+   200). Es la contraseña pública del seed, y `demo` nació como copia de `main`.
+   No se probó contra producción. Ver A0 abajo.
+2. **`deploy-web.mjs` imprime `}` en vez de la URL.** Con salida no
+   interactiva, `vercel deploy` devuelve JSON y el script toma la última línea.
+   En CI no rompe nada; a mano, la URL hay que sacarla de `vercel ls yacco-web`.
+3. **`vercel curl /health --deployment <url>` falla en Windows** («Malformed
+   input to a URL function», CLI 59.11.2, beta). Funciona
+   `vercel curl "<url>/health"`. `DEPLOY.md` quedó corregido.
+
+### Auditoría de seguridad
+
+Corrida con la definición de `.claude/agents/auditor-seguridad.md`, en solo
+lectura: no se leyó ningún valor de secreto ni se cambió ningún recurso. Los tres
+hallazgos principales se contrastaron con lo verificado en esta misma sesión.
+
+**Criterio de clasificación.** «Bloquea el corte» = tiene que estar resuelto
+antes de la fase 7, porque el corte lo vuelve explotable, lo agranda, o cierra
+la ventana barata para arreglarlo. «No bloquea» = existe igual con o sin corte;
+queda escrito con prioridad y **decisión del dueño pendiente**.
+
+| #      | Hallazgo                                                                                                                                                                                                                                                                                    | Qué habilita                                                                                                                                                 | ¿Bloquea el corte?                                                                                                                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A0** | `admin`/`admin123` vale en demo; muy probablemente también en `main` (ya estaba en el backlog, «Password del admin de producción»)                                                                                                                                                          | Entrar como ADMIN a la API pública de producción con una contraseña que está en el repo                                                                      | **SÍ.** Hay que confirmarlo contra producción y rotarlo. Render ya tiene la misma exposición, pero el corte es el momento en que la API queda como puerta de entrada definitiva, y rotarla cuesta minutos. |
+| A1     | El token de Vercel alcanza a TODO el team `gsinuiricoders-projects` (13 proyectos, entre ellos `v2.mareliac.pe` y `ayr.mareliac.pe`, de otros clientes)                                                                                                                                     | Quien lo obtenga publica builds en sitios de otros clientes y lee sus variables de entorno: un compromiso de Yacco pasa a ser de terceros                    | No. Existe con o sin corte. Prioridad 1 después. Operativo: si el corte cae cerca del 2026-10-16, rotar el token antes de empezar.                                                                         |
+| A2     | La rama `demo` de Neon tiene la misma contraseña que `main` (rol `neondb_owner`, heredado al crear la rama y nunca rotado)                                                                                                                                                                  | Una URL "de demo" pegada en un chat o log da acceso de owner, con DDL, a la base real. La separación de secretos por entorno no existe a nivel de credencial | No. Barato: resetear la contraseña del rol en `demo`, `pnpm secrets:gcp` y redeploy.                                                                                                                       |
+| A3     | El deployer lee de hecho TODOS los secretos (`run.admin` + `serviceAccountUser` sobre `yacco-api-run`, que tiene `secretAccessor` de proyecto). En los jobs con `id-token` corren `pnpm install` (postinstall de ~960 deps), `npm install -g vercel` sin lockfile y actions fijadas por tag | Una dependencia o action comprometida obtiene los JWT (fabrica tokens de ADMIN), Cloud Run y el token de Vercel (con el alcance de A1)                       | No. Arreglos baratos: `--ignore-scripts` en la CLI, actions fijadas por SHA, y anclar WIF también a `workflow_ref`.                                                                                        |
+| A4     | Demo y producción comparten la identidad de runtime `yacco-api-run`, con `secretAccessor` de proyecto                                                                                                                                                                                       | Un fallo explotable en demo lee los JWT y la base de producción                                                                                              | No. Misma imagen: un RCE en demo casi siempre existe también en producción.                                                                                                                                |
+| A5     | Data Access logs: 30 días en `_Default`, sin métricas ni alertas                                                                                                                                                                                                                            | Una filtración descubierta semanas después ya no tiene rastro de la lectura original, y nada avisa en el momento                                             | No. Decisión en D-016: 30 días NO alcanza.                                                                                                                                                                 |
+| A6     | El web no tiene CSP, `X-Frame-Options`, `X-Content-Type-Options` ni `Referrer-Policy`; la API manda `x-powered-by: Express`; el refresh token vive en `localStorage`                                                                                                                        | Sin CSP, un XSS se lleva el refresh de 30 días; clickjacking posible                                                                                         | No. Headers en `vercel.json` y `app.disable("x-powered-by")`.                                                                                                                                              |
+| A7     | `qs@6.15.3` (via express) con advisories moderados de DoS en la API pública; `FROM node:22-alpine` sin digest; escaneo de Artifact Registry apagado                                                                                                                                         | DoS de la API; imagen base que cambia entre builds sin aviso                                                                                                 | No. Override de `qs`, fijar digest, habilitar el escaneo.                                                                                                                                                  |
+| A8     | Menores: WIF anclado por nombre de repo y no por id; SA por defecto de Compute Engine con `roles/editor` (no usable por el deployer)                                                                                                                                                        | Sólo con un repo renombrado y reclamado, o con acceso de owner                                                                                               | No.                                                                                                                                                                                                        |
+
+**Verificado y limpio:** cada servicio con su propia service account (no la de
+Compute Engine); sólo llaves `SYSTEM_MANAGED`; GitHub sin llaves (sólo
+`SONAR_TOKEN`); secretos montados por referencia, ninguno en `vercel.json`, el
+Dockerfile ni `VITE_*`; `.env.setup` ignorado y nunca en la historia; CORS de
+producción sólo `yacco-web.vercel.app` (ni `evil.example`, ni `null`, ni
+`onrender.com`); Swagger 404 en los dos servicios; `/health/db` sólo devuelve
+`{"status":"ok"}`; la imagen corre como `node`, no root; `pnpm audit
+--audit-level=high` sin nada sin justificar (el único high está ignorado con
+motivo desde d4f4204).
+
+**Los dos conocidos, evaluados:**
+
+- **Logs a 30 días:** no alcanzan. Decisión registrada en D-016.
+- **Token de Vercel de larga vida:** los 30 días acotan bien, y el preflight ya
+  frena uno vencido antes de migrar. El problema real no es la duración sino el
+  alcance (A1). El 2026-10-16 puede caer dentro del corte: rotarlo antes.
+
+**Qué se arregla antes del corte: lo decide el dueño.** A0 es la única
+recomendación de bloqueo.
 
 ## Lo que falta antes de seguir
 

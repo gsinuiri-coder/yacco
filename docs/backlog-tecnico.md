@@ -1621,3 +1621,22 @@ qué falta y por qué no hay default. Con demo, local o sin `APP_ENV`, el defaul
 de desarrollo queda igual. Tests en `env.validation.test.ts` para los tres
 casos (producción sin la variable, producción con ella, local sin ella), vistos
 en rojo antes de aplicar.
+
+## El preflight imprime `::error::` en corridas verdes
+
+**Estado:** abierto. **Disparador:** antes de la fase 7, cuando los logs del
+deploy se van a leer con atención.
+
+El paso «Los tres secretos tienen valor» del job de preflight
+(`.github/workflows/deploy.yml`) muestra en el log de TODAS las corridas, también
+las verdes, la línea `echo "::error::$name está vacío en Secret Manager."`.
+GitHub imprime el cuerpo del script al empezar el paso. No es un error y no
+genera ninguna anotación. Pero un log verde con ese marcador entrena a leer mal
+los logs: el día que aparezca un `::error::` de verdad, el ojo ya aprendió que
+«ese está siempre». En la fase 7 esos logs se van a mirar para decidir, y se lo
+encontró justamente así, buscando `::error::` en una corrida verde (#139).
+
+**Para cerrarla:** que el marcador no aparezca literal en el script. Por ejemplo,
+mover la comprobación a un script (`scripts/`) que emita la anotación, como ya
+hace `check-vercel-token.mjs`, o armar el prefijo en tiempo de ejecución. Después,
+verificar en una corrida verde que buscar `::error::` en el log no devuelve nada.
