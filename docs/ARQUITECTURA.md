@@ -341,13 +341,26 @@ de 48 bytes**, que se sube sin imprimirse y sin escribirse en ningún lado.
 > con un `.env.setup` completo: los `JWT_*` de ese archivo son los del entorno
 > LOCAL (los escribe `pnpm secrets:generate`), y subirlos ROTA los secretos de
 > producción —se invalidan todas las sesiones— y los deja iguales a los de
-> local, que es lo que esta decisión separa. Ahora el script nunca toma un JWT
-> de la configuración. Lo único que sube desde ahí es una lista explícita y
-> cerrada (`UPLOADABLE_FROM_CONFIG`, hoy sólo `VERCEL_TOKEN`), y sólo lo que se
-> pide con `--upload`. Pedir un `JWT_*` con `--upload` hace fallar el script
-> diciendo por qué. El filtro vive en el script y tiene test
-> (`scripts/secrets-gcp.test.mjs`): no depende de que quien lo corre conozca
-> esta historia.
+> local, que es lo que esta decisión separa.
+>
+> **El mecanismo: los JWT de producción ya no tienen ningún camino desde la
+> configuración.** `resolveApplicationSecret` no recibe la configuración: lee
+> lo que haya en Secret Manager y, si no hay nada, genera uno al azar. No hay
+> flag, clave ni archivo que haga que un JWT de `.env.setup` llegue a
+> producción. Eso no EVITA el error: lo hace IMPOSIBLE, que es distinto.
+> Un filtro se puede saltear o configurar mal; un camino que no existe, no.
+>
+> **El segundo cinturón: la lista explícita.** Lo único que el script sube
+> desde la configuración es `UPLOADABLE_FROM_CONFIG` (hoy sólo `VERCEL_TOKEN`),
+> y sólo lo pedido con `--upload`. Pedir un `JWT_*` falla diciendo por qué, y
+> pedir cualquier otra clave fuera de la lista también falla. No es lo que
+> protege a los JWT —eso ya lo hace el párrafo anterior—: es lo que impide que
+> la próxima clave que alguien agregue a `.env.setup` termine subida sin que
+> nadie lo haya decidido. Un valor vacío tampoco se sube nunca: un secreto
+> vacío pasaría el preflight del deploy, que sólo mira presencia (D-015).
+>
+> Todo vive en el script y tiene test (`scripts/secrets-gcp.test.mjs`): no
+> depende de que quien lo corre conozca esta historia.
 
 Ese orden es lo que hace que correr el script dos veces no rote nada, y eso
 importa: un secreto rotado sin querer invalida todas las sesiones abiertas. Los

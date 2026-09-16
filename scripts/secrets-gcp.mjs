@@ -126,6 +126,25 @@ export function parseArgs(argv) {
   return { upload, envFile };
 }
 
+/**
+ * Lo pedido con --upload tiene que tener valor, y se comprueba ANTES de tocar
+ * ningún secreto. Devuelve el error, o null.
+ *
+ * Un valor vacío (o sólo espacios) no se sube nunca. Si se subiera, el secreto
+ * EXISTIRÍA en Secret Manager: pasaría el preflight del deploy, que sólo mira
+ * que el secreto esté (D-015), y el deploy reventaría recién en el job de
+ * Vercel, después de migrar las bases y desplegar las APIs. Acá falla en el
+ * momento, diciendo qué clave está vacía.
+ */
+export function checkUploadsHaveValue(config, upload) {
+  const empty = upload.filter((key) => (config[key] ?? "").trim().length === 0);
+  if (empty.length === 0) return null;
+  return (
+    `--upload pide ${empty.join(", ")}, pero está vacío en la configuración ` +
+    "(o no está). No se subió nada."
+  );
+}
+
 function secretName(environment, key) {
   return `yacco-${environment}-${key}`;
 }
@@ -251,12 +270,10 @@ function main() {
   const config = loadConfig(args.envFile);
   requireConfig(config, ["GCP_PROJECT_ID", "NEON_PROJECT_ID", "NEON_ORG_ID"]);
 
-  // Lo pedido con --upload tiene que tener valor ANTES de tocar nada.
-  for (const key of args.upload) {
-    if ((config[key] ?? "").trim().length === 0) {
-      console.error(`--upload=${key} pedido, pero ${key} está vacío en la configuración.`);
-      process.exit(1);
-    }
+  const uploadError = checkUploadsHaveValue(config, args.upload);
+  if (uploadError !== null) {
+    console.error(uploadError);
+    process.exit(1);
   }
 
   const projectId = config.GCP_PROJECT_ID.trim();

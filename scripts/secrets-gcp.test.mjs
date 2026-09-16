@@ -9,7 +9,12 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { ENV_SETUP_PATH } from "./lib.mjs";
-import { NEVER_UPLOADED_FROM_CONFIG, UPLOADABLE_FROM_CONFIG, parseArgs } from "./secrets-gcp.mjs";
+import {
+  NEVER_UPLOADED_FROM_CONFIG,
+  UPLOADABLE_FROM_CONFIG,
+  checkUploadsHaveValue,
+  parseArgs,
+} from "./secrets-gcp.mjs";
 
 describe("parseArgs de secrets:gcp", () => {
   test("sin flags no sube NADA desde la configuración", () => {
@@ -56,5 +61,35 @@ describe("las listas", () => {
 
   test("el token de Vercel va al secreto que lee CI", () => {
     assert.deepEqual(UPLOADABLE_FROM_CONFIG, { VERCEL_TOKEN: "yacco-ci-vercel-token" });
+  });
+});
+
+describe("checkUploadsHaveValue", () => {
+  // Un secreto vacío subido a Secret Manager EXISTE: pasa el preflight del
+  // deploy, que sólo mira presencia, y revienta recién en el job de Vercel.
+  test("VERCEL_TOKEN presente pero VACÍO falla, nombrando la clave", () => {
+    const error = checkUploadsHaveValue({ VERCEL_TOKEN: "" }, ["VERCEL_TOKEN"]);
+    assert.match(error, /VERCEL_TOKEN/);
+    assert.match(error, /vacío/);
+    assert.match(error, /No se subió nada/);
+  });
+
+  test("sólo espacios cuenta como vacío", () => {
+    assert.match(checkUploadsHaveValue({ VERCEL_TOKEN: "   " }, ["VERCEL_TOKEN"]), /VERCEL_TOKEN/);
+  });
+
+  test("la clave ausente también falla", () => {
+    assert.match(checkUploadsHaveValue({}, ["VERCEL_TOKEN"]), /VERCEL_TOKEN/);
+  });
+
+  test("con valor, no hay error", () => {
+    assert.equal(
+      checkUploadsHaveValue({ VERCEL_TOKEN: "un-token-de-prueba" }, ["VERCEL_TOKEN"]),
+      null,
+    );
+  });
+
+  test("sin nada pedido, un VERCEL_TOKEN vacío no importa: no se va a subir", () => {
+    assert.equal(checkUploadsHaveValue({ VERCEL_TOKEN: "" }, []), null);
   });
 });
