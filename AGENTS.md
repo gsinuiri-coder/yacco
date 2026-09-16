@@ -175,6 +175,12 @@ extraé lo compartido. Si dispara cobertura, escribí el test que falta.
 - Confirmación humana antes de: `prisma migrate reset` (confirmar que apunta al Postgres local de Docker y nunca a otra base), `git push --force` en cualquiera de sus formas, `rm -rf`, y cualquier escritura a un archivo `.env*`. El guard de Claude Code pregunta, no bloquea; acá pregunta el agente.
 - Dejar la política de permisos del CLI en `request-review`.
 
+## Infraestructura y secretos
+
+Cloud Run (API) + Vercel (web) + Neon. Reglas en `.agents/rules/infra.md`; no
+entran acá por el tope de 12.000 caracteres (D-005). Contexto en
+`docs/ARQUITECTURA.md`, `docs/ENTORNOS.md` y `docs/DEPLOY.md`.
+
 ## Mapa de configuración
 
 - AGENTS.md lee las reglas para las dos herramientas, CLAUDE.md sólo tiene el import.

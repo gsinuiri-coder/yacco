@@ -10,9 +10,10 @@
   "scripts": {
     "dev:api": "pnpm --filter @yacco/api dev",
     "dev:web": "pnpm --filter @yacco/web dev",
-    "lint": "pnpm -r lint",
+    "lint": "pnpm -r lint && pnpm exec eslint scripts",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && pnpm test:scripts",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
     "test:integration": "pnpm -r test:integration",
     "build": "pnpm -r build",
     "prisma:validate": "pnpm --filter @yacco/api prisma:validate",
@@ -21,6 +22,9 @@
     "db:deploy": "pnpm --filter @yacco/api db:deploy",
     "demo:up": "docker compose up -d --wait postgres && pnpm db:deploy && pnpm db:seed",
     "demo:data": "pnpm --filter @yacco/api demo:data",
+    "env:check": "node scripts/env-check.mjs",
+    "env:local": "node scripts/env-local.mjs",
+    "secrets:generate": "node scripts/secrets-generate.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

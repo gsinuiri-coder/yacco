@@ -1,4 +1,8 @@
 {
+  "permissions": {
+    "allow": ["Bash(gcloud:*)", "Bash(vercel:*)", "Bash(neonctl:*)", "Bash(gh:*)"],
+    "deny": ["Bash(neonctl branches delete:*)", "Bash(gcloud projects delete:*)"]
+  },
   "hooks": {
     "PostToolUse": [
       {
