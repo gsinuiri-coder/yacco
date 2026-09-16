@@ -10,7 +10,12 @@ build/
 # Env
 .env
 .env.*
+# Las plantillas SÍ se commitean: son la única documentación de qué significa
+# cada clave. Cada una necesita su propia excepción porque `!.env.example` no
+# cubre a `.env.setup.example` — la negación es un nombre exacto, no un
+# prefijo, y sin esta línea la plantilla queda ignorada en silencio.
 !.env.example
+!.env.setup.example
 
 # Logs
 *.log
@@ -35,3 +40,8 @@ docker-compose.override.yml
 
 # Impeccable skill scratch state
 .impeccable/
+
+# Worktrees de Claude Code: checkouts completos del propio repo dentro del
+# repo. Sin esta línea, `git status` en el checkout principal los ofrece como
+# archivos nuevos y es cuestión de tiempo que uno entre en un commit.
+.claude/worktrees/
