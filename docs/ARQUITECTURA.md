@@ -963,9 +963,11 @@ es un testigo válido de qué servicio contestó (ver PR #131,
 «Verificar P-05». Desde la fase 5 ya no dependen de Docker en ninguna máquina:
 el deploy corre en CI (D-014).
 
-- **La mitad de producción quedó automatizada.** `pnpm smoke:prod`, el último
-  paso del deploy desde CI, pide `/health` a `yacco-web.vercel.app` y FALLA si
-  no contesta `environment: "production"` — o si contesta `null`.
+- **La mitad de producción quedó automatizada Y verificada.** `pnpm smoke:prod`,
+  el último paso del deploy desde CI, pide `/health` a `yacco-web.vercel.app` y
+  FALLA si no contesta `environment: "production"` — o si contesta `null`. El
+  2026-09-16, en el primer deploy verde (`645463c`), contestó
+  `{"status":"ok","commit":"645463c…","environment":"production"}`.
 - **La mitad del preview sigue siendo manual**, porque los previews están
   detrás del login de Vercel (D-011) y CI no publica previews. Se corre una vez,
   después del primer deploy desde CI, con `pnpm deploy:web --preview` y

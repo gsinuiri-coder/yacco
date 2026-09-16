@@ -11,16 +11,16 @@ app funciona al cerrar cada fase.
 
 ## Estado por fase
 
-| Fase                    | Estado                            |
-| ----------------------- | --------------------------------- |
-| 0 — Descubrimiento      | ✅ hecha                          |
-| 1 — Base del repo       | ✅ hecha                          |
-| 2 — Google Cloud        | ✅ hecha                          |
-| 3 — La API en Cloud Run | ✅ hecha                          |
-| 4 — El web en Vercel    | 🟨 construida, sin deploy todavía |
-| 5 — CI/CD               | 🟨 construida, sin primer deploy  |
-| 6 — Ensayo              | ⬜ pendiente                      |
-| 7 — Corte               | ⬜ pendiente                      |
+| Fase                    | Estado       |
+| ----------------------- | ------------ |
+| 0 — Descubrimiento      | ✅ hecha     |
+| 1 — Base del repo       | ✅ hecha     |
+| 2 — Google Cloud        | ✅ hecha     |
+| 3 — La API en Cloud Run | ✅ hecha     |
+| 4 — El web en Vercel    | ✅ hecha     |
+| 5 — CI/CD               | ✅ hecha     |
+| 6 — Ensayo              | ⬜ pendiente |
+| 7 — Corte               | ⬜ pendiente |
 
 ## Punto de partida verificado
 
@@ -240,6 +240,35 @@ Encontrado al construir el web por primera vez: las reglas de #132 con
 producción, y la API la habría rechazado con 400. Corregido antes de ningún
 deploy (D-012).
 
+## Primer deploy desde CI — 2026-09-16
+
+Tres corridas, todas sin cambiar el esquema de ninguna base («No pending
+migrations to apply» en `main` y `demo` las tres veces).
+
+| Corrida                         | Commit        | Resultado                                                                                | Causa y arreglo                                                                                                                           |
+| ------------------------------- | ------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 35119690429 (manual)            | `3275c7e`     | falló en «4a · Cloud Run demo», antes de tocar el servicio                               | Mover la etiqueta `:demo` exige `artifactregistry.tags.delete`, que el deployer no tiene. Se eliminó la etiqueta de entorno (#135, D-014) |
+| 35122780661 (merge de #135)     | `fd38b28`     | demo desplegada y sana; falló en «4b · Cloud Run producción», antes de crear el servicio | La coma de `WEB_ORIGIN` partía `--set-env-vars`. Separador alternativo `^@@^` y test que parsea como gcloud (#136, D-013)                 |
+| **35134745175** (merge de #136) | **`645463c`** | **verde de punta a punta**                                                               | —                                                                                                                                         |
+
+Verificado después de la corrida verde:
+
+```
+curl https://yacco-web.vercel.app/health
+{"status":"ok","commit":"645463cb7c70b7b1de756c7cf4b267c9abe8c435","environment":"production"}
+```
+
+La mitad de producción de P-05 quedó verificada: el dominio de producción de
+Vercel llega a `yacco-api`. `yacco-api` (producción) quedó creado en Cloud Run
+por primera vez. **Render sigue sirviendo a los usuarios**: el corte es la fase 7.
+
+**Pendiente de esta etapa:**
+
+- La mitad del preview de P-05, a mano (ver `DEPLOY.md`).
+- Evaluar si `http://localhost:5173` debe seguir en el `WEB_ORIGIN` de
+  producción (PR propio, con recomendación antes de cambiar nada).
+- Validar el token de Vercel en el preflight, antes de la fase 7 (backlog).
+
 ## Lo que falta antes de seguir
 
 Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
@@ -257,7 +286,8 @@ Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
    detiene en el preflight, antes de tocar ninguna base.
 3. ✅ **Crear la rama de respaldo de `main`** (ver «Punto de retorno», abajo).
    Creada el 2026-09-16 a las 16:04:01 UTC.
-4. **Relanzar el deploy**: `gh workflow run deploy.yml --ref main`.
+4. ✅ **Relanzar el deploy**: `gh workflow run deploy.yml --ref main`. Ver
+   «Primer deploy desde CI», abajo: hicieron falta dos arreglos.
 5. **La mitad del preview de P-05**, a mano, después de ese primer deploy (ver
    `DEPLOY.md`). La mitad de producción ya la corre el smoke.
 
