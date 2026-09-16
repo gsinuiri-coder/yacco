@@ -244,14 +244,19 @@ deploy (D-012).
 
 Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
 
-1. **Prender los Data Access logs de Secret Manager** con el procedimiento de
-   D-015, guardando antes la política IAM original en un archivo.
-2. **Crear el `VERCEL_TOKEN`** (vercel.com > Account Settings > Tokens, scope
+1. ✅ **Prender los Data Access logs de Secret Manager** con el procedimiento de
+   D-015, guardando antes la política IAM original en un archivo. Hecho el
+   2026-09-16: `DATA_READ` + `ADMIN_READ`, los 11 bindings verificados idénticos
+   uno por uno contra el volcado.
+2. ✅ **Crear el `VERCEL_TOKEN`** (vercel.com > Account Settings > Tokens, scope
    del team, **30 días**), ponerlo en `.env.setup` y correr
    `pnpm secrets:gcp --upload=VERCEL_TOKEN`.
+   Subido el 2026-09-16 (versión 1, 16:03:31 UTC): todos los demás secretos
+   «sin cambios», los JWT leídos de Secret Manager, ninguno rotado.
    Lo sube a Secret Manager y le da lectura al deployer. Sin él, el deploy se
    detiene en el preflight, antes de tocar ninguna base.
-3. **Crear la rama de respaldo de `main`** (ver «Punto de retorno», abajo).
+3. ✅ **Crear la rama de respaldo de `main`** (ver «Punto de retorno», abajo).
+   Creada el 2026-09-16 a las 16:04:01 UTC.
 4. **Relanzar el deploy**: `gh workflow run deploy.yml --ref main`.
 5. **La mitad del preview de P-05**, a mano, después de ese primer deploy (ver
    `DEPLOY.md`). La mitad de producción ya la corre el smoke.
@@ -263,10 +268,10 @@ ninguna base.
 
 ## Credenciales y recursos con fecha
 
-| Qué                                          | Fecha                                                 | Qué hacer                                                                                                           |
-| -------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Token de Vercel (`yacco-ci-vercel-token`)    | creado 2026-09-16, **vence 2026-10-16**               | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015 |
-| Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16, hora UTC: _(completar al crearla)_ | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                |
+| Qué                                          | Fecha                                                    | Qué hacer                                                                                                           |
+| -------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Token de Vercel (`yacco-ci-vercel-token`)    | creado 2026-09-16, **vence 2026-10-16**                  | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015 |
+| Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                |
 
 **Un token de Vercel vencido NO frena el deploy en el preflight**, que sólo
 comprueba que el secreto tenga valor. El deploy migra las bases, despliega las
@@ -287,9 +292,13 @@ whoami`, en un PR aparte y después del primer deploy verde. Motivo y detalle en
 
 ## Punto de retorno
 
-`backup-pre-ci-deploy-20260916`, rama de Neon hija de `main`, sin compute,
-creada por el dueño justo antes del primer deploy desde CI. Es el estado de la
-base real antes de estrenar el workflow.
+`backup-pre-ci-deploy-20260916` (`br-damp-leaf-aujnr4gs`), rama de Neon hija de
+`main` (`br-sweet-poetry-au36xqnj`), sin compute, creada el **2026-09-16 a las
+16:04:01 UTC** con `--no-compute --no-secrets`, justo antes del primer deploy
+desde CI. Es el estado de la base real antes de estrenar el workflow.
+
+Esa hora es también la del plan B por historia (`^self@2026-09-16T16:04:01Z`),
+vigente sólo durante las 6 horas de retención del proyecto.
 
 - **Se conserva hasta DESPUÉS de la fase 7.** Mientras Render siga vivo, la base
   tiene dos escritores y la vuelta atrás puede necesitarla. Recién con el corte
