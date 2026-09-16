@@ -136,11 +136,11 @@ function parseGcloudDict(value) {
 }
 
 describe("flags de diccionario de gcloud", () => {
-  const flagValue = (envName, flag) => {
+  const flagValue = (envName, flag, config = {}) => {
     const [deploy] = deployCommands({
       projectId: "yacco-v2-prod",
       region: "us-east4",
-      config: {},
+      config,
       envName,
       imageRef: `${REPO}:${imageTagFor(SHA)}`,
       commit: SHA,
@@ -148,13 +148,25 @@ describe("flags de diccionario de gcloud", () => {
     return deploy.find((arg) => arg.startsWith(`${flag}=`)).slice(flag.length + 1);
   };
 
-  test("producción: WEB_ORIGIN llega ENTERO a gcloud, con su coma", () => {
-    // El caso que rompió el segundo deploy desde CI: el valor tiene una coma y
-    // gcloud la tomaba como separador de variables.
-    const env = parseGcloudDict(flagValue("production", "--set-env-vars"));
-    assert.equal(env.WEB_ORIGIN, "https://yacco-web.vercel.app,http://localhost:5173");
+  test("un WEB_ORIGIN con coma llega ENTERO a gcloud", () => {
+    // El caso que rompió el segundo deploy desde CI (#136): el valor tiene una
+    // coma y gcloud la tomaba como separador de variables.
+    //
+    // VALOR SINTÉTICO, a propósito y por ahora. Hasta el PR que sacó
+    // localhost:5173 de producción, esto usaba el WEB_ORIGIN real de
+    // producción, que tenía coma. Hoy ningún valor desplegado la tiene, así
+    // que se pasa por config. Cuando se agregue el dominio propio, el valor
+    // real vuelve a tener coma: volver a usar ESE valor acá, sin config.
+    const origins = "https://yacco-web.vercel.app,https://dominio-propio.example";
+    const env = parseGcloudDict(flagValue("production", "--set-env-vars", { WEB_ORIGIN: origins }));
+    assert.equal(env.WEB_ORIGIN, origins);
     assert.equal(env.APP_ENV, "production");
     assert.equal(env.DEPLOYED_COMMIT, SHA);
+  });
+
+  test("producción: WEB_ORIGIN es sólo el alias de Vercel, sin localhost", () => {
+    const env = parseGcloudDict(flagValue("production", "--set-env-vars"));
+    assert.equal(env.WEB_ORIGIN, "https://yacco-web.vercel.app");
   });
 
   test("demo: las mismas variables, parseadas por gcloud", () => {
@@ -181,10 +193,14 @@ describe("flags de diccionario de gcloud", () => {
 describe("ENVIRONMENTS", () => {
   test("demo no lista ningún origen de Vercel; producción sólo el alias estable (D-013)", () => {
     assert.doesNotMatch(ENVIRONMENTS.demo.webOriginDefault, /vercel/);
-    assert.equal(
-      ENVIRONMENTS.production.webOriginDefault,
-      "https://yacco-web.vercel.app,http://localhost:5173",
-    );
+    assert.equal(ENVIRONMENTS.production.webOriginDefault, "https://yacco-web.vercel.app");
+  });
+
+  test("producción no acepta ningún origen local", () => {
+    // 5173 es el puerto por defecto de CUALQUIER proyecto Vite: aceptarlo en
+    // la API real, con credenciales, abre la puerta a cualquier proyecto
+    // levantado en ese puerto.
+    assert.doesNotMatch(ENVIRONMENTS.production.webOriginDefault, /localhost|127\.0\.0\.1/);
   });
 });
 

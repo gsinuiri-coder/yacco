@@ -649,7 +649,7 @@ resolvió mirando el host en cambio.
 
 ---
 
-### D-013 — `WEB_ORIGIN` cierra P-02: el alias estable de Vercel en producción, sólo el dev local en demo
+### D-013 — `WEB_ORIGIN` cierra P-02: sólo el alias estable de Vercel en producción, sólo el dev local en demo
 
 **Contexto.** Esta rama deja `VITE_API_BASE_URL` relativo
 (`apps/web/src/config.ts`): bajo el rewrite, la SPA nunca vuelve a hacer una
@@ -660,10 +660,27 @@ qué valor lleva cada servicio.
 
 **Decisión.**
 
-- `yacco-api` (producción): `WEB_ORIGIN=https://yacco-web.vercel.app,http://localhost:5173`
-  — el alias estable (D-011) más el dev local de siempre.
+- `yacco-api` (producción): `WEB_ORIGIN=https://yacco-web.vercel.app` — sólo el
+  alias estable (D-011).
 - `yacco-api-demo`: `WEB_ORIGIN=http://localhost:5173`, sin cambios respecto
   de hoy.
+
+> **Corrección, 2026-09-16: producción ya no lista `http://localhost:5173`.**
+> La primera versión de esta decisión lo dejaba en producción "por el dev
+> local de siempre", sin revisar por qué estaba. Estaba desde el PR #30
+> (2026-08-22), a propósito, para correr el web local contra la API de
+> producción, cuando el web llamaba a la API cross-origin. La arquitectura con
+> rewrite eliminó ese flujo: el web local usa la API local (`env:local` escribe
+> `VITE_API_BASE_URL` apuntando a `:3100`), el web desplegado llega a Cloud Run
+> de servidor a servidor, y el smoke no manda `Origin`. Nadie lo necesitaba, y
+> aceptaba como origen, con `credentials: true`, a cualquier proyecto Vite
+> levantado en ese puerto, que es el puerto por defecto de todos. Un web local
+> contra la API real escribiría además en la base de producción desde código
+> sin mergear. Para probar el web local contra datos parecidos a los reales
+> está demo, que conserva el origen local.
+>
+> **Si `WEB_ORIGIN` llegara a faltar en producción**, `env.validation.ts` cae
+> al default `http://localhost:5173` (ver «Qué pasa si falta», abajo).
 
 **Por qué demo no suma nada de Vercel.** Sus llamadores reales son los
 previews, y cada uno nace con una URL única (D-011): no hay nada fijo que
@@ -680,15 +697,36 @@ barrera.
 
 **Cierra P-02.**
 
-**Cómo viaja la coma hasta Cloud Run (2026-09-16).** El `WEB_ORIGIN` de
-producción es una lista con coma, y `gcloud run deploy --set-env-vars` usa la
-coma para separar variables. Así escrito, gcloud leía `http://localhost:5173`
+**Cómo viaja la coma hasta Cloud Run (2026-09-16).** `WEB_ORIGIN` es una lista
+con coma por diseño, y `gcloud run deploy --set-env-vars` usa la coma para
+separar variables. Cuando producción todavía listaba `localhost`, gcloud leía `http://localhost:5173`
 como una variable sin `=` y rechazaba el comando: pasó en el segundo deploy
 desde CI, en «4b · Cloud Run producción», antes de crear el servicio, y no en
 demo, cuyo valor no tiene coma. `scripts/deploy-api.mjs` arma los flags de
 diccionario con el separador alternativo de `gcloud topic escaping` (`^@@^`) y
 frena si algún valor contiene ese separador. `scripts/deploy-api.test.mjs`
 parsea el flag como gcloud y exige que `WEB_ORIGIN` llegue entero.
+
+**Qué pasa si falta.** Si el servicio de producción arrancara sin `WEB_ORIGIN`,
+`env.validation.ts` y `main.ts` caen al default `http://localhost:5173`, que
+cubre el test «defaults WEB_ORIGIN to the local Vite dev server when unset».
+Hay que decir con precisión hacia qué lado cae ese fallo:
+
+- **El sitio real NO se rompe.** El web llega a Cloud Run por el rewrite de
+  Vercel, de servidor a servidor, y el navegador nunca hace una petición
+  cross-origin a la API: el CORS no interviene en ese camino.
+- **Y cae del lado permisivo, en silencio.** Vuelve a aceptar
+  `http://localhost:5173`, justo el origen que esta corrección sacó, sin que nada
+  falle ni se vea. El impacto es acotado: la sesión vive en el almacenamiento
+  del dominio de Vercel, así que una página en ese puerto sólo alcanza
+  endpoints públicos. Pero no es "nada inseguro": es el estado que se decidió
+  no tener.
+
+Hoy no pasa porque el deploy pasa siempre `WEB_ORIGIN` explícito, y
+`scripts/deploy-api.test.mjs` lo exige. Para que el default no dependa de eso,
+anotado en `backlog-tecnico.md`: que con `APP_ENV=production` y sin `WEB_ORIGIN`
+la API no arranque, con el mismo criterio que `APP_ENV` usa para no asumir
+producción.
 
 ---
 

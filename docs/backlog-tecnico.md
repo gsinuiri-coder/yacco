@@ -1611,3 +1611,25 @@ lo que corre (`docs/**`, `*.md`, `.agents/**`). No con `paths-ignore` en el
 trigger: `workflow_run` no lo soporta, y además se saltaría el smoke. Mantener
 `workflow_dispatch` para forzar un deploy completo cuando haga falta probar el
 camino.
+
+## Sin WEB_ORIGIN, producción vuelve a aceptar localhost en silencio
+
+**Estado:** abierto. **Disparador:** antes de la fase 7 (el corte).
+
+`parseWebOrigins` (`apps/api/src/config/env.validation.ts`) cae a
+`http://localhost:5173` cuando `WEB_ORIGIN` no está definida. En local es lo
+correcto. En producción, si el servicio arrancara sin la variable —una edición a
+mano en la consola de Cloud Run, o un cambio en `scripts/deploy-api.mjs` que la
+pierda—, la API volvería a aceptar como origen, con credenciales, el mismo
+`localhost:5173` que D-013 sacó de producción. Y no lo vería nadie: el sitio real
+sigue andando, porque llega a la API por el rewrite de Vercel y no usa CORS.
+
+Hoy no pasa: el deploy pasa `WEB_ORIGIN` explícito, y
+`scripts/deploy-api.test.mjs` lo exige. El hueco es que la protección vive en
+el script de deploy y no en la API.
+
+**Para cerrarla:** que `validateEnv` rechace el arranque cuando
+`APP_ENV=production` y `WEB_ORIGIN` no está definida, con un mensaje que lo
+diga. Es el mismo criterio de `APP_ENV` (PR #131): ante la falta de
+configuración de producción, fallar ruidosamente en vez de asumir. Con test del
+caso sin variable, visto en rojo antes de aplicar.
