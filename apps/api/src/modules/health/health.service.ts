@@ -1,6 +1,8 @@
 import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import type { AppEnvironment } from "../../config/env.validation.js";
+import { APP_ENVIRONMENTS } from "../../config/env.validation.js";
 
 @Injectable()
 export class HealthService {
@@ -34,6 +36,30 @@ export class HealthService {
     ];
     const commit = candidates.find((value) => value !== undefined && value !== "");
     return commit ?? null;
+  }
+
+  /**
+   * Which of production | demo | local answered this request — the witness
+   * GET /health exposes so a browser hitting the app through Vercel's
+   * rewrite can tell which Cloud Run service it actually reached (see P-05
+   * in docs/ARQUITECTURA.md). Both services run the same image and would
+   * otherwise return an identical body.
+   *
+   * Defaults to null, NEVER to "production", when APP_ENV is absent. The
+   * unversioned route and the same-image services mean nothing else can
+   * distinguish them, so a forgotten variable on the production service must
+   * fail the verification loudly (the caller sees null and knows something
+   * is wrong) instead of lying — the same reasoning as the Swagger gate in
+   * main.ts. env.validation.ts rejects any value outside the three, so by
+   * the time it reaches here the raw value is either unset or trustworthy;
+   * the equality checks below are what let a unit test hand this service a
+   * hand-built ConfigService that skips that validation.
+   */
+  appEnvironment(): AppEnvironment | null {
+    const raw = this.configService.get<string>("APP_ENV");
+    return (APP_ENVIRONMENTS as readonly string[]).includes(raw ?? "")
+      ? (raw as AppEnvironment)
+      : null;
   }
 
   async checkDatabase(): Promise<void> {

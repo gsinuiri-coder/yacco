@@ -1,11 +1,18 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiResponse, ApiServiceUnavailableResponse, ApiTags } from "@nestjs/swagger";
 import { HealthService } from "./health.service.js";
+import type { AppEnvironment } from "../../config/env.validation.js";
 
 export interface HealthResponse {
   status: "ok";
   /** Commit sha of the running build, or null where the host injects none. */
   commit: string | null;
+  /**
+   * production | demo | local, or null where APP_ENV is absent — see
+   * HealthService.appEnvironment for why the default is null and not
+   * "production".
+   */
+  environment: AppEnvironment | null;
 }
 
 @ApiTags("health")
@@ -25,7 +32,11 @@ export class HealthController {
   @ApiResponse({ status: 200, description: "The process is up." })
   @Get()
   check(): HealthResponse {
-    return { status: "ok", commit: this.healthService.deployedCommit() };
+    return {
+      status: "ok",
+      commit: this.healthService.deployedCommit(),
+      environment: this.healthService.appEnvironment(),
+    };
   }
 
   // Manual diagnostic only — not wired to any platform health check.

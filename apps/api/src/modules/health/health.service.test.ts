@@ -93,3 +93,46 @@ describe("HealthService.deployedCommit", () => {
     expect(service.deployedCommit()).toBe(render);
   });
 });
+
+describe("HealthService.appEnvironment", () => {
+  it("returns null when APP_ENV is absent — the safe default, never a guess of production", async () => {
+    // Es el caso que importa: si sólo se prueba con APP_ENV seteada, no se
+    // distingue "usa el default seguro" de "no tiene default".
+    const { service } = await buildService({});
+
+    expect(service.appEnvironment()).toBeNull();
+  });
+
+  it("returns null when APP_ENV is present but empty, as a local .env leaves it", async () => {
+    const { service } = await buildService({ APP_ENV: "" });
+
+    expect(service.appEnvironment()).toBeNull();
+  });
+
+  it("returns 'production' when APP_ENV is production", async () => {
+    const { service } = await buildService({ APP_ENV: "production" });
+
+    expect(service.appEnvironment()).toBe("production");
+  });
+
+  it("returns 'demo' when APP_ENV is demo", async () => {
+    const { service } = await buildService({ APP_ENV: "demo" });
+
+    expect(service.appEnvironment()).toBe("demo");
+  });
+
+  it("returns 'local' when APP_ENV is local", async () => {
+    const { service } = await buildService({ APP_ENV: "local" });
+
+    expect(service.appEnvironment()).toBe("local");
+  });
+
+  it("returns null for a value outside the three, rather than passing it through", async () => {
+    // env.validation.ts rejects this at boot in the real process (IsIn); this
+    // covers the service in isolation, the way this file's ConfigService mock
+    // skips that validation for every other case above.
+    const { service } = await buildService({ APP_ENV: "staging" });
+
+    expect(service.appEnvironment()).toBeNull();
+  });
+});

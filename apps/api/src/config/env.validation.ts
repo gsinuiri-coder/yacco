@@ -6,6 +6,7 @@ import { Transform, Type, plainToInstance } from "class-transformer";
 import {
   ArrayNotEmpty,
   IsArray,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -21,6 +22,13 @@ import {
 const POSTGRES_URL_PATTERN = /^postgres(ql)?:\/\/.+/;
 
 const WEB_ORIGIN_DEFAULT = "http://localhost:5173";
+
+/**
+ * The three places this API runs. Exported so HealthService and its tests
+ * share the same literal set instead of retyping it.
+ */
+export const APP_ENVIRONMENTS = ["production", "demo", "local"] as const;
+export type AppEnvironment = (typeof APP_ENVIRONMENTS)[number];
 
 /**
  * WEB_ORIGIN is a comma-separated list, so a local Vite dev server and the
@@ -124,6 +132,22 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   ENABLE_SWAGGER?: string;
+
+  /**
+   * Which of the three places this process is running: production | demo |
+   * local. Explicit and never derived — NODE_ENV is "production" in both
+   * Cloud Run services, and the Cloud Run service name (yacco-api vs.
+   * yacco-api-demo) never reaches the process. `pnpm deploy:api` sets one
+   * value per service (see scripts/deploy-api.mjs).
+   *
+   * Optional so local development and every test keep booting without it —
+   * see HealthService.appEnvironment for the safe default when it is absent.
+   * @IsIn (not just @IsString) so a typo in the deploy fails the boot loudly
+   * instead of quietly becoming "unset" further down.
+   */
+  @IsOptional()
+  @IsIn(APP_ENVIRONMENTS, { message: `APP_ENV must be one of: ${APP_ENVIRONMENTS.join(", ")}` })
+  APP_ENV?: AppEnvironment;
 }
 
 /**
