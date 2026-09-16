@@ -45,8 +45,13 @@ export const ENVIRONMENTS = {
     // y la primera request del día es justo cuando el dueño abre la app en la
     // planta.
     minInstances: "1",
-    // D-013: el alias estable de Vercel (D-011) más el dev local.
-    webOriginDefault: "https://yacco-web.vercel.app,http://localhost:5173",
+    // D-013: SÓLO el alias estable de Vercel (D-011). Sin http://localhost:5173:
+    // estaba desde el PR #30 para correr el web local contra la API de
+    // producción, un flujo que la arquitectura con rewrite eliminó (el web
+    // local usa la API local). Dejarlo aceptaba como origen, con credenciales,
+    // a cualquier proyecto Vite levantado en ese puerto. El origen local vive
+    // sólo en demo.
+    webOriginDefault: "https://yacco-web.vercel.app",
   },
 };
 
@@ -175,12 +180,19 @@ const GCLOUD_DICT_DELIMITER = "@@";
  * `--set-secrets`) con un separador ALTERNATIVO, nunca con la coma.
  *
  * `gcloud` separa los pares con comas, así que un VALOR con coma se parte en
- * dos. `WEB_ORIGIN` de producción es una lista separada por comas (D-013):
- * con `KEY=a,KEY2=b` gcloud leía `http://localhost:5173` como un par sin `=` y
+ * dos. `WEB_ORIGIN` es una lista separada por comas (D-013): con
+ * `KEY=a,KEY2=b` gcloud leía `http://localhost:5173` como un par sin `=` y
  * rechazaba el deploy. Pasó en el segundo deploy desde CI (2026-09-16), en
- * «4b · Cloud Run producción», y no en demo, cuyo WEB_ORIGIN no tiene coma.
- * La sintaxis `^DELIM^` es la de `gcloud topic escaping`. Como `run` lanza
- * gcloud SIN shell, el `^` llega tal cual, también en Windows.
+ * «4b · Cloud Run producción» (PR #136). La sintaxis `^DELIM^` es la de
+ * `gcloud topic escaping`. Como `run` lanza gcloud SIN shell, el `^` llega
+ * tal cual, también en Windows.
+ *
+ * NO SIMPLIFICAR A UNA COMA aunque hoy ningún valor desplegado tenga coma.
+ * Desde que producción dejó de listar `http://localhost:5173`, su WEB_ORIGIN es
+ * un solo origen, y un `.join(",")` pasaría todos los tests de "hoy". Pero
+ * WEB_ORIGIN es una lista POR DISEÑO, y el día que se agregue el dominio
+ * propio vuelve a tener coma: con una coma de separador, ese deploy falla
+ * exactamente como falló el de #136.
  */
 export function gcloudDictFlag(pairs) {
   for (const pair of pairs) {

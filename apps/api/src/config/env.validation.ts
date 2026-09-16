@@ -31,10 +31,14 @@ export const APP_ENVIRONMENTS = ["production", "demo", "local"] as const;
 export type AppEnvironment = (typeof APP_ENVIRONMENTS)[number];
 
 /**
- * WEB_ORIGIN is a comma-separated list, so a local Vite dev server and the
- * deployed frontend can both be allowed at once — pointing it only at the
- * deployed origin would break local development against production. The
- * single-origin form still works: it is just a list of one. Each value is
+ * WEB_ORIGIN is a comma-separated list, so more than one frontend origin can
+ * be allowed at once (today: the stable Vercel alias; tomorrow, also a custom
+ * domain). It is NOT there to let a local dev server call the production API:
+ * that flow existed when the web called the API cross-origin, and the Vercel
+ * rewrite removed it — the local web talks to the local API. The production
+ * service lists only its real frontend origin (D-013); http://localhost:5173
+ * stays in demo and in local. The single-origin form still works: it is just
+ * a list of one. Each value is
  * trimmed, and empty entries (a stray or trailing comma) are dropped rather
  * than becoming a "" origin. `undefined` (the variable unset) falls back to
  * the local dev default before parsing.
