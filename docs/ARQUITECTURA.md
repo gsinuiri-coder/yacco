@@ -662,6 +662,93 @@ prenden los Data Access logs de Secret Manager, que en Google Cloud vienen
 **apagados** por defecto. Hoy no están prendidos: queda anotado para el auditor
 de seguridad de la fase 6.
 
+#### Cómo se prenden los Data Access logs de Secret Manager _(escrito, NO aplicado)_
+
+**Qué registra cada tipo**, según la documentación de Secret Manager:
+
+| Tipo de log                    | Métodos                                                              | Estado por defecto |
+| ------------------------------ | -------------------------------------------------------------------- | ------------------ |
+| `DATA_READ` (Data Access)      | `AccessSecretVersion`: leer el VALOR                                 | apagado            |
+| `ADMIN_READ` (Data Access)     | `GetSecret`, `GetSecretVersion`, `ListSecrets`, `ListSecretVersions` | apagado            |
+| Admin Activity (`ADMIN_WRITE`) | `AddSecretVersion`, `SetIamPolicy`                                   | siempre prendido   |
+
+Se prenden `DATA_READ` y `ADMIN_READ`. `DATA_WRITE` no aplica: Secret Manager no
+tiene métodos de ese tipo.
+
+**Estado medido el 2026-09-16:** la política IAM del proyecto no tiene ningún
+`auditConfigs` (`version: 1`), y el bucket `_Default`, donde caen estos logs,
+retiene **30 días**.
+
+**El procedimiento.** No hay un `gcloud` de un solo paso: se edita la política
+IAM del PROYECTO entero, así que se hace a mano, con cuidado, y se verifica.
+
+```bash
+# 1. Leer la política actual a un archivo.
+gcloud projects get-iam-policy yacco-v2-prod --format=yaml > policy.yaml
+```
+
+```yaml
+# 2. Agregarle ESTE bloque al principio de policy.yaml. No tocar `bindings:` ni
+#    `etag:`: se quedan exactamente como vinieron.
+auditConfigs:
+  - service: secretmanager.googleapis.com
+    auditLogConfigs:
+      - logType: DATA_READ
+      - logType: ADMIN_READ
+```
+
+```bash
+# 3. Escribir la política.
+gcloud projects set-iam-policy yacco-v2-prod policy.yaml
+
+# 4. Verificar que quedó el auditConfigs Y que los bindings siguen ahí.
+gcloud projects get-iam-policy yacco-v2-prod --format="yaml(auditConfigs)"
+gcloud projects get-iam-policy yacco-v2-prod \
+  --flatten="bindings[].members" --format="table(bindings.role,bindings.members)"
+```
+
+Lo peligroso de este procedimiento no es el bloque que se agrega, sino lo que se
+puede perder al escribir la política:
+
+- **`set-iam-policy` REEMPLAZA la política entera.** Si `policy.yaml` pierde la
+  sección `bindings:`, todos los principals pierden el acceso al proyecto: el
+  dueño, el deployer de CI y la identidad de runtime de Cloud Run. Por eso el
+  paso 4 lista los bindings.
+- **El `etag` es la protección contra cambios concurrentes.** Si otra cosa
+  cambió la política entre el paso 1 y el 3 —por ejemplo `pnpm gcp:bootstrap`
+  corriendo en otra terminal, que concede roles de proyecto; `secrets:gcp` no,
+  porque cambia la política de cada secreto y no la del proyecto—, el paso 3
+  falla por conflicto y NO pisa nada. Se repite desde el paso 1; nunca se borra el
+  `etag` para forzarlo.
+- **`policy.yaml` no se commitea**: lista todos los miembros del proyecto.
+
+**Costo.** Google avisa que estos logs pueden cobrarse. Acá el volumen es
+mínimo. Leen secretos Cloud Run, cuatro por cada instancia que arranca;
+`pnpm secrets:gcp`, cada secreto al compararlo; y CI, hasta cinco por deploy.
+Son decenas de entradas por día, contra una cuota gratuita de Cloud Logging
+que se mide en GiB por mes.
+
+**Recomendación: prenderlos ANTES del primer uso real del token.** El orden
+queda así:
+
+1. Prender los logs (este procedimiento).
+2. `pnpm secrets:gcp`, que sube el token. Ya lee secretos para comparar, y
+   esas lecturas quedan registradas.
+3. Relanzar el deploy.
+
+Por qué:
+
+- **Sin hueco de arranque.** Prenderlos después dejaría sin registro justo las
+  primeras lecturas, que son las que no tienen con qué compararse.
+- **Costo y riesgo operativo prácticamente nulos.** El único riesgo real es
+  escribir mal la política, y lo cubren el `etag` y la verificación del paso 4.
+- **Queda la línea de base.** Cloud Run y CI leen secretos de forma regular;
+  una lectura con otra identidad o en otro horario se ve contra ese patrón.
+
+**Límite que queda después de prenderlos:** 30 días de retención en `_Default`.
+Guardarlos más tiempo es otra decisión: un bucket de logs con retención propia
+y un sink que filtre `protoPayload.serviceName="secretmanager.googleapis.com"`.
+
 **Alternativa descartada.** _Secreto de GitHub._ Más simple, y exactamente una
 llave de larga vida en los secretos de GitHub.
 
