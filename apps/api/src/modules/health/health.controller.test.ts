@@ -38,7 +38,7 @@ describe("GET /health", () => {
     app = await bootApp({});
 
     const response = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(response.body).toEqual({ status: "ok", commit: null });
+    expect(response.body).toEqual({ status: "ok", commit: null, environment: null });
   });
 
   it("answers 200 with the injected commit when RENDER_GIT_COMMIT is set", async () => {
@@ -48,6 +48,14 @@ describe("GET /health", () => {
     expect(response.body).toEqual({
       status: "ok",
       commit: "89deab1aaeda3eb6de53ecdce57e820ff054abf6",
+      environment: null,
     });
+  });
+
+  it("answers 200 with the injected environment when APP_ENV is set", async () => {
+    app = await bootApp({ APP_ENV: "demo" });
+
+    const response = await request(app.getHttpServer()).get("/health").expect(200);
+    expect(response.body).toEqual({ status: "ok", commit: null, environment: "demo" });
   });
 });

@@ -26,7 +26,10 @@ function server() {
 
 test("GET /health is public, unversioned, returns 200 without a token and echoes the deployed commit", async () => {
   const response = await request(server()).get("/health").expect(200);
-  expect(response.body).toEqual({ status: "ok", commit: DEPLOYED_COMMIT });
+  // environment: null here — APP_ENV is never set for this suite, and that
+  // absence is itself the case health.controller.test.ts covers in isolation
+  // (the safe default, never a guess of "production").
+  expect(response.body).toEqual({ status: "ok", commit: DEPLOYED_COMMIT, environment: null });
 });
 
 test("GET /health/db is public, unversioned, and confirms the database is reachable", async () => {

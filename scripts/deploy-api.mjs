@@ -114,6 +114,11 @@ function main() {
     `JWT_REFRESH_EXPIRES_IN=${(config.JWT_REFRESH_EXPIRES_IN ?? "30d").trim()}`,
     `WEB_ORIGIN=${(config.WEB_ORIGIN ?? "http://localhost:5173").trim()}`,
     `DEPLOYED_COMMIT=${commit}`,
+    // `environment.name` ya es "demo" o "production": los mismos dos valores
+    // que env.validation.ts acepta para APP_ENV. Lo que /health expone con
+    // esto es el testigo de qué servicio contestó, para verificar P-05 desde
+    // el navegador en vez de darlo por hecho.
+    `APP_ENV=${environment.name}`,
     // Swagger apagado en los dos entornos. No se pasa "false": el gate de
     // main.ts sólo enciende con exactamente "true", así que ausente ya es
     // apagado, y dejarlo ausente evita que alguien lo "corrija" a mano.
