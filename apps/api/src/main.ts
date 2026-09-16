@@ -24,13 +24,25 @@ export async function bootstrap(): Promise<INestApplication> {
 
   configureApp(app);
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle("Yacco API")
-    .setVersion("0.1.0")
-    .addBearerAuth()
-    .build();
-  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup("api/docs", app, swaggerDocument);
+  // Swagger sólo donde se lo pide explícitamente. El default es APAGADO: un
+  // host donde nadie se acordó de poner la variable queda en el caso seguro,
+  // no en el expuesto. Al revés, una variable olvidada publicaría el mapa
+  // completo de la API —cada ruta, cada forma de cuerpo, cada rol— a quien
+  // pase por /api/docs.
+  //
+  // Se salta también la CONSTRUCCIÓN del documento, no sólo el `setup`:
+  // createDocument recorre todos los controllers en el arranque, y eso es
+  // tiempo de arranque en frío que Cloud Run paga en la primera request de la
+  // mañana.
+  if (process.env.ENABLE_SWAGGER === "true") {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle("Yacco API")
+      .setVersion("0.1.0")
+      .addBearerAuth()
+      .build();
+    const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup("api/docs", app, swaggerDocument);
+  }
 
   const port = process.env.PORT ?? 3000;
   // Render injects PORT and drops the service if it doesn't bind 0.0.0.0.

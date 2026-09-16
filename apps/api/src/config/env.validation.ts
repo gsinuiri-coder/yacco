@@ -102,6 +102,28 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   RENDER_GIT_COMMIT?: string;
+
+  /**
+   * The same thing, for hosts that inject nothing. Cloud Run has no equivalent
+   * of RENDER_GIT_COMMIT — verified in a real deploy, where /health answered
+   * `commit: null` — so `pnpm deploy:api` passes the sha explicitly. The name
+   * does not mention a platform because it outlives this migration;
+   * RENDER_GIT_COMMIT stays as the fallback while Render is alive as the way
+   * back. See HealthService.deployedCommit for the precedence.
+   */
+  @IsOptional()
+  @IsString()
+  DEPLOYED_COMMIT?: string;
+
+  /**
+   * Gates the Swagger UI at /api/docs. Absent or anything other than "true"
+   * leaves the docs OFF, so a host where nobody remembered to set it is the
+   * SAFE case and not the exposed one — the opposite default would mean a
+   * forgotten variable publishes the whole API surface.
+   */
+  @IsOptional()
+  @IsString()
+  ENABLE_SWAGGER?: string;
 }
 
 /**

@@ -27,6 +27,7 @@
     "secrets:generate": "node scripts/secrets-generate.mjs",
     "gcp:bootstrap": "node scripts/gcp-bootstrap.mjs",
     "secrets:gcp": "node scripts/secrets-gcp.mjs",
+    "deploy:api": "node scripts/deploy-api.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

@@ -246,6 +246,88 @@ tienen por qué coincidir con los de producción — son entornos distintos.
 - _Generar en cada corrida._ Rotaría los secretos cada vez que alguien corre el
   script, que es una trampa esperando a que haya usuarios reales.
 
+---
+
+### D-008 — `--min-instances=1` en producción, `0` en demo
+
+**Contexto.** Con `0`, la primera request de la mañana paga el arranque en
+frío, y es justo cuando el dueño abre la app en la planta. Con `1`, se paga una
+instancia encendida las 24 horas.
+
+**El dato, medido en Cloud Run y no estimado.** De los logs del servicio, desde
+que Cloud Run arranca la instancia hasta que la sonda TCP la da por viva:
+
+```
++17,2 s   Starting new instance — DEPLOYMENT_ROLLOUT
++22,1 s   Nest application starting        <- 4,9 s antes de la primera línea de Nest
++23,3 s   listo, STARTUP TCP probe OK      <- Nest en sí tardó 951 ms
+```
+
+**Arranque en frío ≈ 6,1 s.** Peor que los 4,0 s medidos en local y peor que
+los 5,4 s de Render despertando de su suspensión. Lo revelador es el reparto:
+**4,9 de esos 6,1 segundos pasan antes de que Nest imprima nada.** No es la
+aplicación: es descarga de imagen, arranque de contenedor y carga del cliente
+de Prisma.
+
+**Decisión.** `--min-instances=1` en producción y `0` en demo, donde nadie
+espera. Seis segundos es demasiado para la primera pantalla del día: esa
+primera impresión es la que decide si la herramienta "anda lenta". Una
+instancia de 512 MiB encendida cuesta poco, y hoy no hay tráfico que justifique
+optimizar el costo antes que la experiencia.
+
+**Alternativas descartadas.**
+
+- _`0` en los dos._ Más barato, y le regala al dueño seis segundos de espera
+  cada mañana.
+- _Sólo adelgazar la imagen y dejar `0`._ Se hizo lo que se pudo —603 a 541 MB
+  borrando los motores de Prisma que este proyecto no usa y TypeScript, que
+  `pnpm deploy --prod` arrastra como peer opcional— y no alcanza: el resto del
+  arranque no es la imagen. Vale la pena igual, porque también acorta cada
+  arranque de cada instancia nueva cuando la app escale.
+
+---
+
+### D-009 — El commit desplegado viaja en `DEPLOYED_COMMIT`, con `RENDER_GIT_COMMIT` de reserva
+
+**Contexto.** `/health` publica el commit del build corriendo para poder
+comparar en segundos lo desplegado contra el tip de `main`. Existe porque un
+auto-deploy que nunca disparó ya pasó desapercibido una vez (2026-08-24).
+Render inyecta `RENDER_GIT_COMMIT` por su cuenta; **Cloud Run no inyecta nada
+equivalente**, y eso se verificó en un deploy real: `/health` contestó
+`commit: null`.
+
+**Decisión.** `HealthService.deployedCommit()` lee `DEPLOYED_COMMIT` primero y
+cae a `RENDER_GIT_COMMIT`. El nombre no menciona plataforma porque sobrevive a
+esta migración, y el fallback es lo que deja al mismo código servir a los dos
+hosts durante los 7 días en que Render sigue vivo como vuelta atrás — Render
+inyecta el suyo solo y no se puede apagar. `pnpm deploy:api` pasa el sha al
+desplegar.
+
+Sigue sin haber ningún fallback que lea git desde el proceso: un contenedor no
+tiene repositorio, y un valor plausible pero falso es peor que `null`, porque
+el sentido del campo es que se le pueda creer cuando difiere de `main`.
+
+---
+
+### D-010 — Swagger apagado salvo que se lo encienda a propósito
+
+**Contexto.** `main.ts` montaba la UI de Swagger en `/api/docs`
+incondicionalmente. En producción eso publica el mapa completo de la API —cada
+ruta, cada forma de cuerpo, cada rol— a quien pase por ahí.
+
+**Decisión.** Se monta sólo con `ENABLE_SWAGGER === "true"`. **El default es
+apagado**: un host donde nadie se acordó de poner la variable queda en el caso
+seguro, no en el expuesto. El deploy no pasa `"false"` siquiera — ausente ya es
+apagado, y así nadie lo "corrige" a mano.
+
+Se saltea también la CONSTRUCCIÓN del documento, no sólo el `setup`:
+`createDocument` recorre todos los controllers al arrancar, y eso es tiempo de
+arranque en frío que Cloud Run paga en la primera request de la mañana (D-008).
+
+**Alternativa descartada.** _Protegerlo con autenticación en vez de apagarlo._
+Más trabajo, más superficie, y nadie lo necesita en producción: para leer la
+API está la tabla de endpoints en `yacco-documentacion.md`.
+
 > **Nota al pasar, no arreglada acá.** `AGENTS.md` referencia
 > `.agents/rules/sync-protocol.md`, y ese archivo no existe: el contenido vive
 > en `.agents/skills/sync-protocol/SKILL.md`. Está fuera del alcance de esta
@@ -260,36 +342,6 @@ Se cierran en la fase que indica cada una, y al cerrarse se convierten en una
 decisión `D-nnn` acá arriba. Cada una lleva la recomendación de hoy, para que
 cerrarla sea confirmar o contradecir, no empezar de cero.
 
-### P-01 — ¿`--min-instances=0` o `1`? _(se cierra en la fase 3)_
-
-Con `0`, la primera request de la mañana paga el arranque en frío de NestJS más
-la conexión de Prisma, y es justo cuando el dueño abre la app en la planta. Con
-`1`, se paga una instancia encendida las 24 horas.
-
-**Medido, no estimado.** Arranque en frío del build de `dist/` contra un
-Postgres local, desde que se lanza el proceso hasta que `/health` contesta 200,
-cinco corridas:
-
-```
-4099 ms · 3923 ms · 4081 ms · 3800 ms · 4025 ms
-mediana 4025 ms
-```
-
-Son **4 segundos con la base al lado**, en una máquina de desarrollo sin
-arranque de contenedor. En Cloud Run se le suma el arranque del contenedor, y
-la base pasa a estar en otro datacenter (cerca, por D-002, pero no en
-localhost). El número real va a ser ese o peor.
-
-**Recomendación: `--min-instances=1`.** Cuatro segundos es demasiado para la
-primera pantalla de la mañana, que es exactamente cuando el dueño abre la app
-en la planta: esa primera impresión es la que decide si la herramienta "anda
-lenta". Una instancia encendida cuesta poco a este tamaño, y hoy no hay tráfico
-que justifique optimizar el costo antes que la experiencia.
-
-Queda como pregunta y no como decisión porque falta medirlo **en Cloud Run**,
-que es donde se cierra, en la fase 3. Si allá el arranque resultara muy por
-debajo de esto, `0` vuelve a estar sobre la mesa.
-
 ### P-02 — ¿Qué significa `WEB_ORIGIN` después del rewrite? _(se cierra en la fase 4)_
 
 Con el rewrite de Vercel, **Cloud Run deja de ver al navegador: ve a Vercel.**
@@ -303,18 +355,6 @@ nada. Sigue cubriendo el caso de alguien que apunte un navegador directo a la
 URL de Cloud Run, y `env.validation.ts` ya acepta lista separada por comas, así
 que el dev local no se rompe. Lo que NO hay que hacer es tomar el "ya no hace
 falta" como permiso para abrirlo a `*`.
-
-### P-03 — ¿Cómo sabe `/health` qué commit está corriendo? _(se cierra en la fase 3)_
-
-`env.validation.ts` declara `RENDER_GIT_COMMIT` y `/health` lo publica, para
-poder comparar en segundos lo desplegado contra el tip de `main` — existe
-porque un auto-deploy que nunca disparó ya pasó desapercibido una vez
-(2026-08-24). Cloud Run no inyecta esa variable.
-
-**Recomendación:** que CI pase el sha como variable de entorno al desplegar, y
-que la variable pase a llamarse algo neutral respecto de la plataforma,
-conservando `RENDER_GIT_COMMIT` como fallback mientras Render siga vivo. Es un
-cambio de configuración, no de dominio.
 
 ### P-05 — ¿Cómo se apunta un preview de Vercel a la API de demo? _(se cierra en la fase 4)_
 
