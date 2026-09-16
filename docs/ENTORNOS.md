@@ -49,9 +49,10 @@ producción, y es adonde apuntan los previews de Vercel.
 
 - **API**: servicio `yacco-api-demo` en Cloud Run, misma imagen y misma
   configuración que producción, con otros secretos.
-- **Base**: rama `demo` de Neon, hija de `main`. Se crea con una copia del
-  esquema y los datos del momento. **El flujo es en un solo sentido**: `main`
-  puede refrescar `demo`, nada de lo escrito en `demo` vuelve a `main`.
+- **Base**: rama `demo` de Neon (`br-dawn-field-autu1p5w`), hija de `main`.
+  Nació con una copia del esquema y los datos del momento. **El flujo es en un
+  solo sentido**: `main` puede refrescar `demo`, nada de lo escrito en `demo`
+  vuelve a `main`.
 - **Web**: los deploys de preview de Vercel.
 
 Refrescar la demo con el estado actual de producción, cuando haga falta:
