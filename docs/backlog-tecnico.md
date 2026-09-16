@@ -1614,22 +1614,17 @@ camino.
 
 ## Sin WEB_ORIGIN, producción vuelve a aceptar localhost en silencio
 
-**Estado:** abierto. **Disparador:** antes de la fase 7 (el corte).
+**Estado:** RESUELTA el 2026-09-16.
 
-`parseWebOrigins` (`apps/api/src/config/env.validation.ts`) cae a
-`http://localhost:5173` cuando `WEB_ORIGIN` no está definida. En local es lo
-correcto. En producción, si el servicio arrancara sin la variable —una edición a
-mano en la consola de Cloud Run, o un cambio en `scripts/deploy-api.mjs` que la
-pierda—, la API volvería a aceptar como origen, con credenciales, el mismo
-`localhost:5173` que D-013 sacó de producción. Y no lo vería nadie: el sitio real
-sigue andando, porque llega a la API por el rewrite de Vercel y no usa CORS.
+`parseWebOrigins` cae a `http://localhost:5173` cuando `WEB_ORIGIN` no está.
+En producción eso no dejaba el CORS roto: dejaba la API real ACEPTANDO ese
+origen con credenciales, el mismo que D-013 sacó (#137), y sin que nada se
+viera, porque el sitio llega a la API por el rewrite de Vercel. La protección
+vivía sólo en el script de deploy.
 
-Hoy no pasa: el deploy pasa `WEB_ORIGIN` explícito, y
-`scripts/deploy-api.test.mjs` lo exige. El hueco es que la protección vive en
-el script de deploy y no en la API.
-
-**Para cerrarla:** que `validateEnv` rechace el arranque cuando
-`APP_ENV=production` y `WEB_ORIGIN` no está definida, con un mensaje que lo
-diga. Es el mismo criterio de `APP_ENV` (PR #131): ante la falta de
-configuración de producción, fallar ruidosamente en vez de asumir. Con test del
-caso sin variable, visto en rojo antes de aplicar.
+**Cómo se cerró:** `validateEnv` rechaza el arranque cuando
+`APP_ENV=production` y `WEB_ORIGIN` no está definida, con un mensaje que dice
+qué falta y por qué no hay default. Con demo, local o sin `APP_ENV`, el default
+de desarrollo queda igual. Tests en `env.validation.test.ts` para los tres
+casos (producción sin la variable, producción con ella, local sin ella), vistos
+en rojo antes de aplicar.

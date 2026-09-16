@@ -52,6 +52,35 @@ test("defaults WEB_ORIGIN to the local Vite dev server when unset", () => {
   expect(result.WEB_ORIGIN).toEqual(["http://localhost:5173"]);
 });
 
+describe("WEB_ORIGIN in production has no default", () => {
+  // In production a silent default would not break CORS — it would make the
+  // real API ACCEPT http://localhost:5173 with credentials, the origin D-013
+  // removed on purpose. So the boot fails instead.
+  test("APP_ENV=production without WEB_ORIGIN fails the boot, saying what is missing", () => {
+    expect(() => validateEnv(validConfig({ APP_ENV: "production" }))).toThrow(
+      /WEB_ORIGIN is required when APP_ENV=production/,
+    );
+  });
+
+  test("APP_ENV=production with WEB_ORIGIN boots, with exactly that origin", () => {
+    const result = validateEnv(
+      validConfig({ APP_ENV: "production", WEB_ORIGIN: "https://yacco-web.vercel.app" }),
+    );
+    expect(result.WEB_ORIGIN).toEqual(["https://yacco-web.vercel.app"]);
+  });
+
+  // The one that keeps local development from breaking without anyone noticing.
+  test("APP_ENV=local without WEB_ORIGIN boots with the development default", () => {
+    const result = validateEnv(validConfig({ APP_ENV: "local" }));
+    expect(result.WEB_ORIGIN).toEqual(["http://localhost:5173"]);
+  });
+
+  test("APP_ENV=demo without WEB_ORIGIN also keeps the development default", () => {
+    const result = validateEnv(validConfig({ APP_ENV: "demo" }));
+    expect(result.WEB_ORIGIN).toEqual(["http://localhost:5173"]);
+  });
+});
+
 test("a single WEB_ORIGIN still works (today's deployed form)", () => {
   const result = validateEnv(validConfig({ WEB_ORIGIN: "https://app.yacco.pe" }));
   expect(result.WEB_ORIGIN).toEqual(["https://app.yacco.pe"]);
