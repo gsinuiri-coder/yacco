@@ -247,7 +247,8 @@ Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
 1. **Prender los Data Access logs de Secret Manager** con el procedimiento de
    D-015, guardando antes la política IAM original en un archivo.
 2. **Crear el `VERCEL_TOKEN`** (vercel.com > Account Settings > Tokens, scope
-   del team, **30 días**), ponerlo en `.env.setup` y correr `pnpm secrets:gcp`.
+   del team, **30 días**), ponerlo en `.env.setup` y correr
+   `pnpm secrets:gcp --upload=VERCEL_TOKEN`.
    Lo sube a Secret Manager y le da lectura al deployer. Sin él, el deploy se
    detiene en el preflight, antes de tocar ninguna base.
 3. **Crear la rama de respaldo de `main`** (ver «Punto de retorno», abajo).
@@ -262,10 +263,10 @@ ninguna base.
 
 ## Credenciales y recursos con fecha
 
-| Qué                                          | Fecha                                                 | Qué hacer                                                                                     |
-| -------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Token de Vercel (`yacco-ci-vercel-token`)    | creado 2026-09-16, **vence 2026-10-16**               | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp` y actualizar esta fila y D-015 |
-| Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16, hora UTC: _(completar al crearla)_ | **La borra el dueño DESPUÉS de la fase 7, no antes**                                          |
+| Qué                                          | Fecha                                                 | Qué hacer                                                                                                           |
+| -------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Token de Vercel (`yacco-ci-vercel-token`)    | creado 2026-09-16, **vence 2026-10-16**               | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015 |
+| Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16, hora UTC: _(completar al crearla)_ | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                |
 
 **Un token de Vercel vencido NO frena el deploy en el preflight**, que sólo
 comprueba que el secreto tenga valor. El deploy migra las bases, despliega las
@@ -312,7 +313,8 @@ cómoda de no repetir valores a mano en cada comando.
 
 Rotar los tokens que hayan vivido en un archivo plano durante la operación:
 `VERCEL_TOKEN` —que además vive en Secret Manager como `yacco-ci-vercel-token`
-y hay que volver a subir con `pnpm secrets:gcp` después de rotarlo (D-015)—, y
+y hay que volver a subir con `pnpm secrets:gcp --upload=VERCEL_TOKEN` después
+de rotarlo (D-015)—, y
 `GH_TOKEN` / `NEON_API_KEY` / `RENDER_API_KEY` si se llegaron a usar.
 
 Borrar la rama de respaldo `backup-pre-ci-deploy-20260916` (ver «Punto de

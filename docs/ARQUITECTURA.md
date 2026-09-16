@@ -302,7 +302,8 @@ neonctl branches create --project-id late-union-50177487 \
 
 # 3c. Nuevas URLs de demo a Secret Manager. secrets:gcp pide a neonctl la
 #     conexión de la rama llamada `demo`, que ahora es la nueva; ve que el
-#     valor cambió y crea una versión nueva sin imprimirla.
+#     valor cambió y crea una versión nueva sin imprimirla. Sin --upload: los
+#     JWT de producción se leen de Secret Manager y no se tocan.
 pnpm secrets:gcp
 
 # 3d. Que yacco-api-demo tome las URLs nuevas. Los secretos van montados como
@@ -332,9 +333,21 @@ vive en un archivo plano en una laptop es más fácil de filtrar que uno que
 nunca tocó ese disco.
 
 **Decisión.** `pnpm secrets:gcp` resuelve cada secreto de aplicación en
-cascada: **lo que diga la configuración; si no, lo que YA esté en Secret
-Manager; si tampoco, uno nuevo al azar de 48 bytes**, que se sube sin
-imprimirse y sin escribirse en ningún lado.
+cascada: **lo que YA esté en Secret Manager; si no hay nada, uno nuevo al azar
+de 48 bytes**, que se sube sin imprimirse y sin escribirse en ningún lado.
+
+> **Corrección, 2026-09-16.** La cascada original empezaba por «lo que diga la
+> configuración». Eso volvía peligroso correr `secrets:gcp` desde una máquina
+> con un `.env.setup` completo: los `JWT_*` de ese archivo son los del entorno
+> LOCAL (los escribe `pnpm secrets:generate`), y subirlos ROTA los secretos de
+> producción —se invalidan todas las sesiones— y los deja iguales a los de
+> local, que es lo que esta decisión separa. Ahora el script nunca toma un JWT
+> de la configuración. Lo único que sube desde ahí es una lista explícita y
+> cerrada (`UPLOADABLE_FROM_CONFIG`, hoy sólo `VERCEL_TOKEN`), y sólo lo que se
+> pide con `--upload`. Pedir un `JWT_*` con `--upload` hace fallar el script
+> diciendo por qué. El filtro vive en el script y tiene test
+> (`scripts/secrets-gcp.test.mjs`): no depende de que quien lo corre conozca
+> esta historia.
 
 Ese orden es lo que hace que correr el script dos veces no rote nada, y eso
 importa: un secreto rotado sin querer invalida todas las sesiones abiertas. Los
@@ -742,15 +755,16 @@ ninguna llave de larga vida, y el diagrama original lo contradecía
 (`GitHub Actions ──VERCEL_TOKEN──▶ Vercel`).
 
 **Decisión.** El dueño crea el token en Vercel y lo pone en `.env.setup`;
-`pnpm secrets:gcp` lo sube a Secret Manager como `yacco-ci-vercel-token` sin
-imprimirlo y le da lectura al deployer. CI entra a Google Cloud por WIF y lo lee
+`pnpm secrets:gcp --upload=VERCEL_TOKEN` lo sube a Secret Manager como
+`yacco-ci-vercel-token` sin imprimirlo y le da lectura al deployer. Sin
+`--upload`, el script no sube nada que venga de `.env.setup` (D-007). CI entra a Google Cloud por WIF y lo lee
 en el momento, sólo en el job que publica el web. La CLI de Vercel lo recibe
 por la variable `VERCEL_TOKEN`, nunca por `--token`.
 
 **Vencimiento: el token se crea con 30 días. Creado el 2026-09-16, vence el
 2026-10-16.** Si se creó otro día, corregir las dos fechas acá y en
-`PROGRESO.md`. Al rotarlo: token nuevo en `.env.setup`, `pnpm secrets:gcp` y
-fecha nueva en los dos lugares.
+`PROGRESO.md`. Al rotarlo: token nuevo en `.env.setup`,
+`pnpm secrets:gcp --upload=VERCEL_TOKEN` y fecha nueva en los dos lugares.
 
 **Cuando vence, el deploy NO falla en el preflight: falla en el paso 5.** El
 preflight sólo comprueba que el secreto exista y tenga valor, y un token vencido
@@ -859,8 +873,8 @@ que se mide en GiB por mes.
 queda así:
 
 1. Prender los logs (este procedimiento).
-2. `pnpm secrets:gcp`, que sube el token. Ya lee secretos para comparar, y
-   esas lecturas quedan registradas.
+2. `pnpm secrets:gcp --upload=VERCEL_TOKEN`, que sube el token. Ya lee
+   secretos para comparar, y esas lecturas quedan registradas.
 3. Relanzar el deploy.
 
 Por qué:

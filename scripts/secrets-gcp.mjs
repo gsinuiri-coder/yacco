@@ -1,8 +1,16 @@
 /**
  * `pnpm secrets:gcp` — sube a Secret Manager lo que Cloud Run necesita, para
- * producción y para demo, y el token con el que CI publica el web. Concede al
- * deployer de CI lectura sobre los tres secretos que usa, uno por uno.
- * Idempotente.
+ * producción y para demo, y concede al deployer de CI lectura sobre los
+ * secretos que usa, uno por uno. Idempotente.
+ *
+ *   pnpm secrets:gcp                             URLs de Neon; JWT desde Secret Manager
+ *   pnpm secrets:gcp --upload=VERCEL_TOKEN       además, sube el token de Vercel
+ *   pnpm secrets:gcp --env-file=<ruta> ...       lee la configuración de otro archivo
+ *
+ * Qué valores salen de la CONFIGURACIÓN (.env.setup o el entorno) y van a
+ * Secret Manager es una lista EXPLÍCITA y cerrada: UPLOADABLE_FROM_CONFIG, y
+ * de esa lista sólo lo que se pide con --upload. Pedir cualquier otra clave
+ * hace fallar el script antes de tocar nada. Ver NEVER_UPLOADED_FROM_CONFIG.
  *
  * Ningún valor se imprime, ni al subirlo ni al compararlo. Los valores viajan
  * a `gcloud` por STDIN, nunca por argv: un argumento es visible en `ps` y
@@ -14,7 +22,8 @@
  * historial dejaría de servir para ver cuándo cambió algo de verdad.
  */
 import { randomBytes } from "node:crypto";
-import { loadConfig, registerSecret, run } from "./lib.mjs";
+import { pathToFileURL } from "node:url";
+import { ENV_SETUP_PATH, loadConfig, registerSecret, run } from "./lib.mjs";
 
 // Mismo tamaño que `pnpm secrets:generate`: 48 bytes, holgadamente por encima
 // de los 256 bits que pide HS256, que es lo que firma @nestjs/jwt acá.
@@ -40,6 +49,82 @@ const DEPLOYER_SERVICE_ACCOUNT = "yacco-deployer";
 // pooled ni los JWT, que son del runtime y el que despliega no necesita.
 const DEPLOYER_READABLE_KEYS = ["direct-url"];
 const CI_VERCEL_TOKEN_SECRET = "yacco-ci-vercel-token";
+
+/**
+ * Las ÚNICAS claves cuyo VALOR se toma de la configuración y se sube a Secret
+ * Manager, y a qué secreto va cada una. Se suben sólo si se piden con
+ * `--upload`: correr el script sin ese flag no sube nada que venga de
+ * .env.setup.
+ *
+ * El token de Vercel está acá porque nace fuera de todo sistema —lo crea una
+ * persona en el dashboard— y .env.setup es por donde entra (D-015).
+ */
+export const UPLOADABLE_FROM_CONFIG = {
+  VERCEL_TOKEN: CI_VERCEL_TOKEN_SECRET,
+};
+
+/**
+ * Claves que NUNCA se suben desde la configuración, con el motivo que se le
+ * muestra a quien lo intente.
+ *
+ * Los JWT_* de .env.setup son los del entorno LOCAL (los escribe
+ * `pnpm secrets:generate`). Subirlos desde ahí ROTA los secretos de producción
+ * —versión nueva, todas las sesiones abiertas invalidadas— y además los deja
+ * IGUALES a los de local, que es justo lo que D-007 separa. Los de producción
+ * viven sólo en Secret Manager: se leen de ahí, o nacen ahí al azar si no
+ * existen. Hasta el 2026-09-16 este script tomaba los JWT de la configuración
+ * cuando estaban; bastaba correrlo desde una máquina con un .env.setup
+ * completo para rotarlos sin querer.
+ */
+export const NEVER_UPLOADED_FROM_CONFIG = {
+  JWT_ACCESS_SECRET:
+    "rota el secreto de producción (invalida todas las sesiones) y lo deja igual al de local",
+  JWT_REFRESH_SECRET:
+    "rota el secreto de producción (invalida todas las sesiones) y lo deja igual al de local",
+};
+
+/**
+ * Lee `--upload` y `--env-file`. Devuelve `{ error }` en vez de salir del
+ * proceso, para poder probarlo.
+ */
+export function parseArgs(argv) {
+  const unknown = argv.filter(
+    (argument) => !argument.startsWith("--upload=") && !argument.startsWith("--env-file="),
+  );
+  if (unknown.length > 0) {
+    return { error: `Argumento desconocido: ${unknown.join(" ")}` };
+  }
+
+  const flag = (name) => {
+    const found = argv.find((argument) => argument.startsWith(`--${name}=`));
+    return found === undefined ? undefined : found.slice(`--${name}=`.length);
+  };
+
+  const upload = (flag("upload") ?? "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter((key) => key.length > 0);
+
+  for (const key of upload) {
+    if (Object.hasOwn(NEVER_UPLOADED_FROM_CONFIG, key)) {
+      return {
+        error: `${key} no se sube desde la configuración: ${NEVER_UPLOADED_FROM_CONFIG[key]}. Ver D-007.`,
+      };
+    }
+    if (!Object.hasOwn(UPLOADABLE_FROM_CONFIG, key)) {
+      return {
+        error:
+          `${key} no está en la lista de claves que se suben desde la configuración ` +
+          `(${Object.keys(UPLOADABLE_FROM_CONFIG).join(", ")}).`,
+      };
+    }
+  }
+
+  const envFile = flag("env-file") ?? ENV_SETUP_PATH;
+  if (envFile.length === 0) return { error: "--env-file vacío." };
+
+  return { upload, envFile };
+}
 
 function secretName(environment, key) {
   return `yacco-${environment}-${key}`;
@@ -107,20 +192,17 @@ function ensureSecret(projectId, name, value, report) {
 /**
  * Resuelve un secreto de aplicación cuya fuente de verdad es Secret Manager.
  *
- * Orden: lo que diga la configuración; si no, lo que YA esté en Secret
- * Manager; si tampoco, uno nuevo al azar. Ese orden es lo que hace que correr
- * el script dos veces no rote nada: un secreto rotado sin querer invalida
- * todas las sesiones abiertas.
+ * Orden: lo que YA esté en Secret Manager; si no hay nada, uno nuevo al azar.
+ * La configuración NO participa: ver NEVER_UPLOADED_FROM_CONFIG. Ese orden es
+ * lo que hace que correr el script dos veces no rote nada: un secreto rotado
+ * sin querer invalida todas las sesiones abiertas.
  *
- * Que el valor pueda nacer acá y no en `.env.setup` es deliberado: un secreto
- * de producción que nunca toca el disco de una laptop es más difícil de
- * filtrar que uno que vive en un archivo plano. El de `.env.setup` sigue
- * existiendo, para el entorno local, y no tienen por qué coincidir.
+ * Que el valor nazca acá y no en `.env.setup` es deliberado: un secreto de
+ * producción que nunca toca el disco de una laptop es más difícil de filtrar
+ * que uno que vive en un archivo plano. El de `.env.setup` es del entorno
+ * local, y no tiene por qué coincidir.
  */
-function resolveApplicationSecret(projectId, name, configured) {
-  const fromConfig = (configured ?? "").trim();
-  if (fromConfig.length > 0) return { value: fromConfig, origin: "configuración" };
-
+function resolveApplicationSecret(projectId, name) {
   const stored = currentValue(projectId, name);
   if (stored !== null && stored.length > 0)
     return { value: stored, origin: "ya en Secret Manager" };
@@ -139,8 +221,9 @@ function neonConnectionString(config, branch, { pooled }) {
   ];
   if (pooled) args.push("--pooled");
 
-  // NEON_API_KEY viaja por el entorno del hijo. Si está vacía, `neonctl` cae a
-  // la sesión de `neonctl auth` de la máquina, que es lo que pasa en local.
+  // NEON_API_KEY viaja por el entorno del hijo, sólo para autenticar a
+  // neonctl: nunca se sube a ningún lado. Si está vacía, `neonctl` cae a la
+  // sesión de `neonctl auth` de la máquina, que es lo que pasa en local.
   const env = {};
   if ((config.NEON_API_KEY ?? "").trim().length > 0) {
     env.NEON_API_KEY = config.NEON_API_KEY.trim();
@@ -159,10 +242,22 @@ function requireConfig(config, keys) {
 }
 
 function main() {
-  const config = loadConfig();
-  // Los JWT no están en la lista a propósito: si faltan, Secret Manager los
-  // aporta o se generan. Ver resolveApplicationSecret.
+  const args = parseArgs(process.argv.slice(2));
+  if (args.error !== undefined) {
+    console.error(args.error);
+    process.exit(1);
+  }
+
+  const config = loadConfig(args.envFile);
   requireConfig(config, ["GCP_PROJECT_ID", "NEON_PROJECT_ID", "NEON_ORG_ID"]);
+
+  // Lo pedido con --upload tiene que tener valor ANTES de tocar nada.
+  for (const key of args.upload) {
+    if ((config[key] ?? "").trim().length === 0) {
+      console.error(`--upload=${key} pedido, pero ${key} está vacío en la configuración.`);
+      process.exit(1);
+    }
+  }
 
   const projectId = config.GCP_PROJECT_ID.trim();
   const report = [];
@@ -177,15 +272,14 @@ function main() {
 
     report.push(`${environment.name} (rama ${environment.neonBranch} de Neon)`);
 
+    // Sin la configuración, a propósito: ver NEVER_UPLOADED_FROM_CONFIG.
     const access = resolveApplicationSecret(
       projectId,
       secretName(environment.name, "jwt-access-secret"),
-      config.JWT_ACCESS_SECRET,
     );
     const refresh = resolveApplicationSecret(
       projectId,
       secretName(environment.name, "jwt-refresh-secret"),
-      config.JWT_REFRESH_SECRET,
     );
 
     const values = {
@@ -205,18 +299,17 @@ function main() {
     report.push("");
   }
 
-  // El token con el que CI publica el web. Vercel no acepta Workload Identity,
-  // así que es una credencial de larga vida: vive ACÁ y no en los secretos de
-  // GitHub, y CI la lee por WIF en el momento (D-015). Nace en .env.setup,
-  // donde lo pone una persona; si no está, no se inventa nada.
-  const vercelToken = (config.VERCEL_TOKEN ?? "").trim();
-  if (vercelToken.length > 0) {
-    ensureSecret(projectId, CI_VERCEL_TOKEN_SECRET, vercelToken, report);
-    grantDeployerAccess(projectId, CI_VERCEL_TOKEN_SECRET, report);
-  } else {
+  // Lo que viene de la configuración: SÓLO lo pedido con --upload, ya validado
+  // contra UPLOADABLE_FROM_CONFIG. El token de Vercel es una credencial de larga
+  // vida que vive ACÁ y no en los secretos de GitHub; CI la lee por WIF (D-015).
+  for (const key of args.upload) {
+    const secret = UPLOADABLE_FROM_CONFIG[key];
+    ensureSecret(projectId, secret, config[key].trim(), report);
+    grantDeployerAccess(projectId, secret, report);
+  }
+  if (!args.upload.includes("VERCEL_TOKEN")) {
     report.push(
-      `  ${CI_VERCEL_TOKEN_SECRET.padEnd(38)} FALTA: VERCEL_TOKEN vacío en .env.setup; ` +
-        "el deploy desde CI se detiene en el preflight hasta subirlo",
+      `  ${CI_VERCEL_TOKEN_SECRET.padEnd(38)} no pedido (--upload=VERCEL_TOKEN para subirlo)`,
     );
   }
   report.push("");
@@ -226,4 +319,7 @@ function main() {
   console.log("nunca horneados en la imagen.");
 }
 
-main();
+// Sólo corre como programa, no al importarlo desde el test.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main();
+}
