@@ -112,9 +112,9 @@ export function imageTagFor(commit) {
  * `/health` publica DEPLOYED_COMMIT para poder creerle cuando difiere de
  * `main` (D-009). Si se desplegara la imagen de un commit reportando otro, ese
  * campo mentiría justo en el caso en que alguien lo mira. Y deja afuera, por
- * construcción, desplegar por cualquier etiqueta que no sea el sha —como las
- * vieja `:demo` de la fase 3, que ningún deploy vuelve a
- * mover (ver deployCommands)—: se despliega siempre la imagen del commit.
+ * construcción, desplegar por cualquier etiqueta que no sea el sha —como la
+ * vieja `:demo` de la fase 3, que ningún deploy vuelve a mover (ver
+ * deployCommands)—: se despliega siempre la imagen del commit.
  */
 export function assertImageMatchesCommit(imageRef, commit) {
   const expectedSuffix = `:${imageTagFor(commit)}`;
