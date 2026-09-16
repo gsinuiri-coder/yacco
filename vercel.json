@@ -1,0 +1,26 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "has": [{ "type": "host", "value": "yacco-web.vercel.app" }],
+      "destination": "https://yacco-api-297699663114.us-east4.run.app/api/$1"
+    },
+    {
+      "source": "/health",
+      "has": [{ "type": "host", "value": "yacco-web.vercel.app" }],
+      "destination": "https://yacco-api-297699663114.us-east4.run.app/health"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "https://yacco-api-demo-297699663114.us-east4.run.app/api/$1"
+    },
+    {
+      "source": "/health",
+      "destination": "https://yacco-api-demo-297699663114.us-east4.run.app/health"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

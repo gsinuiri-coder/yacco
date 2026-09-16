@@ -20,6 +20,10 @@ const ENVIRONMENTS = {
     // La demo puede arrancar en frío sin que le importe a nadie: no hay una
     // persona esperando la primera pantalla de la mañana.
     minInstances: "0",
+    // D-013 en docs/ARQUITECTURA.md: sus llamadores reales son los previews
+    // de Vercel, y cada uno nace con una URL única — no hay nada fijo que
+    // enumerar acá, así que queda solo el dev local de siempre.
+    webOriginDefault: "http://localhost:5173",
   },
   production: {
     service: "yacco-api",
@@ -27,6 +31,8 @@ const ENVIRONMENTS = {
     // y la primera request del día es justo cuando el dueño abre la app en la
     // planta.
     minInstances: "1",
+    // D-013: el alias estable de Vercel (D-011) más el dev local.
+    webOriginDefault: "https://yacco-web.vercel.app,http://localhost:5173",
   },
 };
 
@@ -106,13 +112,14 @@ function main() {
     ([variable, suffix]) => `${variable}=yacco-${environment.name}-${suffix}:latest`,
   ).join(",");
 
-  // Configuración en claro: nada de esto es secreto. WEB_ORIGIN se completa en
-  // la fase 4, cuando exista la URL de Vercel; hasta entonces queda el dev
-  // local, que es lo que env.validation.ts toma por defecto.
+  // Configuración en claro: nada de esto es secreto. WEB_ORIGIN default es
+  // por entorno (D-013 en docs/ARQUITECTURA.md) — config.WEB_ORIGIN, si
+  // alguien lo puso en .env.setup o en el entorno del proceso, sigue
+  // pisándolo para los dos, igual que ya hace con los JWT_*_EXPIRES_IN.
   const environmentVariables = [
     `JWT_ACCESS_EXPIRES_IN=${(config.JWT_ACCESS_EXPIRES_IN ?? "15m").trim()}`,
     `JWT_REFRESH_EXPIRES_IN=${(config.JWT_REFRESH_EXPIRES_IN ?? "30d").trim()}`,
-    `WEB_ORIGIN=${(config.WEB_ORIGIN ?? "http://localhost:5173").trim()}`,
+    `WEB_ORIGIN=${(config.WEB_ORIGIN ?? environment.webOriginDefault).trim()}`,
     `DEPLOYED_COMMIT=${commit}`,
     // `environment.name` ya es "demo" o "production": los mismos dos valores
     // que env.validation.ts acepta para APP_ENV. Lo que /health expone con

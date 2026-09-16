@@ -1439,3 +1439,88 @@ absoluto: pide la palabra al lado del signo.
 2», con la concordancia de singular que pide la entrada de arriba, y que salga
 del mismo ayudante que las tres frases de `route-settlement-page.tsx`. Hoy
 `formatDifference` da el signo y cada llamador arma la frase por su cuenta.
+
+## 27 suites de integración levantan un Postgres cada una
+
+**Estado:** abierto. Fuera del alcance de la migración a Cloud Run + Vercel.
+**Disparador:** el próximo cuelgue de `pnpm test:integration` en la máquina de
+Giancarlo, o antes si vuelve a hacer falta barrer contenedores huérfanos a
+mano.
+
+Es la **causa** de los cuelgues locales de integración, no un síntoma. De los
+27 archivos `*.int.test.ts`, 24 llaman a `startTestApp()`
+(`apps/api/test/integration/support/test-app.ts`) y los otros tres
+(`bootstrap`, `seed.smoke`, `customer-locations-migration`) arrancan su propio
+`PostgreSqlContainer`. Cada suite paga un contenedor `postgres:18-alpine`
+nuevo, `prisma migrate deploy`, `prisma db seed` y el arranque de Nest, y
+recién en su `afterAll` para el contenedor. Si una corrida se interrumpe o se
+cuelga, ese `afterAll` no corre y el contenedor queda huérfano.
+
+En CI no se nota porque cada job arranca con un Docker limpio. En una máquina
+de desarrollo se acumula de corrida en corrida, junto con los contenedores de
+otros proyectos que conviven en el mismo Docker. Por eso **ningún barrido
+automático puede filtrar solo por "es de Testcontainers"** sin mirar de qué
+proyecto es.
+
+**Las dos palancas, sin elegir todavía:**
+
+1. **Reutilizar la instancia entre suites.** Un solo Postgres para toda la
+   corrida, levantado en un `globalSetup` de Jest (o con el modo reuse de
+   Testcontainers), y una base limpia por suite: `CREATE DATABASE ... TEMPLATE`
+   sobre una base ya migrada y sembrada, o un esquema por suite. Deja de pagar
+   27 arranques, 27 migraciones y 27 seeds. Lo que hay que cuidar es el
+   aislamiento: hoy cada suite parte de una base nueva y hay tests que cuentan
+   filas, así que "compartir" nunca puede significar compartir datos.
+   `customer-locations-migration` aplica migraciones a mano sobre una base sin
+   migrar y necesita la suya igual.
+2. **Bajar la concurrencia de la corrida de integración.** Medido al escribir
+   esta entrada: **ya está en el piso.** `jest.integration.config.js` declara
+   `maxWorkers: 1`, y el script `test:integration` corre con `--runInBand`. Las
+   suites ya van de a una y como máximo hay un contenedor vivo por corrida
+   sana. Esta palanca no tiene de dónde bajar dentro de Jest. Si la
+   acumulación sigue, viene de las corridas interrumpidas y no de las
+   simultáneas, y eso empuja hacia la palanca 1 o hacia asegurar la limpieza
+   (Ryuk activo, o un `globalTeardown`). Se deja anotada porque fue la
+   hipótesis, y el dato que la descarta es lo que evita volver a probarla.
+
+**Para cerrarla:** elegir entre las dos con el dato anterior sobre la mesa,
+medir el tiempo de `pnpm test:integration` antes y después, y confirmar en CI
+que el aislamiento entre suites no cambió ningún resultado.
+
+## El fail-safe a demo es silencioso
+
+**Estado:** abierto. Fuera de la fase 4 por decisión de Giancarlo.
+**Disparador:** antes de agregar un dominio propio al proyecto `yacco-web` de
+Vercel, y en cualquier caso antes del corte (fase 7).
+
+El rewrite de `vercel.json` manda `/api/*` a `yacco-api` solo desde el dominio
+de producción, y **cualquier otro host va a `yacco-api-demo`** (D-011 en
+`ARQUITECTURA.md`). Es el default correcto, porque un error muestra datos de
+prueba en vez de escribir en producción. Pero el error no se ve. El día que se
+agregue un dominio propio y nadie lo sume a `vercel.json`, el sitio funciona
+perfecto en ese dominio, con login, pantallas y cargas incluidos, contra la
+base de demo. Lo que la planta cargue ahí no llega a producción, y nada en
+pantalla lo avisa.
+
+**Para cerrarla, las dos piezas juntas:**
+
+1. **`/health` informa el entorno.** Un campo al lado de `commit`, leído de
+   una variable que pone el deploy (por ejemplo `DEPLOY_ENVIRONMENT`:
+   `production` / `demo`). Cuando falta, el campo tiene que decir que no se
+   sabe, **nunca asumir producción**: mismo criterio que `commit: null` en
+   D-009. Es público por la misma razón que el commit, porque no es un
+   secreto.
+2. **El front muestra una marca visible cuando no es producción.** La web le
+   pregunta el entorno a la API **por el mismo rewrite que usa para todo lo
+   demás**, no a una constante horneada en el bundle. Así la marca refleja la
+   API a la que de verdad llegó, que es justo lo que está mal cuando falta un
+   dominio en la regla. Hoy `/health` está excluido del prefijo `api/v1`
+   (`configure-app.ts`) y el rewrite de `/api/*` no llega a él: hay que
+   exponerlo bajo `/api/v1` o sumar su ruta al rewrite. La marca va con
+   palabras de la planta, por ejemplo «Datos de prueba», y **nunca muestra la
+   de producción por defecto** si la consulta falla.
+
+**Relación con P-05.** Esto no es solo comodidad. Hoy no existe ninguna forma
+de verificar desde afuera qué servicio contestó una petición: las dos APIs
+corren la misma imagen y devuelven lo mismo. La pieza 1 es también la que
+permite cerrar P-05 con evidencia (ver `ARQUITECTURA.md`).
