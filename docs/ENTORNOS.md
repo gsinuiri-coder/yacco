@@ -73,8 +73,12 @@ agente lo hace, ni siquiera para recrearlas.
 Reglas que no se negocian:
 
 - Ningún test que escriba corre contra producción. `pnpm smoke:prod` es de
-  **solo lectura**: `/health`, un login de verificación sin permisos de
-  escritura, y la carga de las pantallas principales.
+  **solo lectura** y sin ninguna credencial: `/health` de las dos APIs
+  (FALLA si `environment` vuelve `null`), `/health` por el dominio de producción
+  de Vercel, un login con un usuario inexistente que tiene que dar 401, y la
+  carga de las pantallas principales. No hay
+  usuario de verificación: no existe un rol sin permisos de escritura (ver el
+  backlog técnico).
 - Las migraciones corren en un paso propio de CI, contra `DIRECT_URL` (la
   conexión directa, no la del pooler), antes del deploy — nunca al arrancar el
   contenedor, donde varias instancias las correrían a la vez.
@@ -87,17 +91,17 @@ Reglas que no se negocian:
 Ningún valor de estos se imprime nunca. `pnpm env:check` dice cuáles faltan sin
 mostrar ninguno.
 
-| Variable                | local        | Cloud Run            | Vercel | GitHub Actions   |
-| ----------------------- | ------------ | -------------------- | ------ | ---------------- |
-| `DATABASE_URL` (pooled) | Docker       | Secret Manager       | —      | —                |
-| `DIRECT_URL`            | Docker       | Secret Manager       | —      | secreto del repo |
-| `JWT_ACCESS_SECRET`     | `.env` local | Secret Manager       | —      | —                |
-| `JWT_REFRESH_SECRET`    | `.env` local | Secret Manager       | —      | —                |
-| `JWT_*_EXPIRES_IN`      | `.env` local | variable en claro    | —      | —                |
-| `WEB_ORIGIN`            | `.env` local | variable en claro    | —      | —                |
-| `PORT`                  | 3100         | lo inyecta Cloud Run | —      | —                |
-| `VITE_API_BASE_URL`     | `.env` local | —                    | build  | —                |
-| `VERCEL_TOKEN`          | `.env.setup` | —                    | —      | secreto del repo |
+| Variable                | local        | Cloud Run            | Vercel | GitHub Actions          |
+| ----------------------- | ------------ | -------------------- | ------ | ----------------------- |
+| `DATABASE_URL` (pooled) | Docker       | Secret Manager       | —      | —                       |
+| `DIRECT_URL`            | Docker       | Secret Manager       | —      | Secret Manager, por WIF |
+| `JWT_ACCESS_SECRET`     | `.env` local | Secret Manager       | —      | —                       |
+| `JWT_REFRESH_SECRET`    | `.env` local | Secret Manager       | —      | —                       |
+| `JWT_*_EXPIRES_IN`      | `.env` local | variable en claro    | —      | —                       |
+| `WEB_ORIGIN`            | `.env` local | variable en claro    | —      | —                       |
+| `PORT`                  | 3100         | lo inyecta Cloud Run | —      | —                       |
+| `VITE_API_BASE_URL`     | `.env` local | —                    | build  | —                       |
+| `VERCEL_TOKEN`          | `.env.setup` | —                    | —      | Secret Manager, por WIF |
 
 `VITE_API_BASE_URL` merece una nota: Vite **hornea** las `VITE_*` en el bundle
 que descarga el navegador. No es configuración de runtime y no puede contener
