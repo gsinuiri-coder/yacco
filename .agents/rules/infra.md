@@ -64,7 +64,11 @@ access`, `vercel env pull`).
   servicio de demo. Escribir en la base equivocada es el error más caro de esta
   arquitectura.
 - Ningún test que escriba corre contra producción. `pnpm smoke:prod` es de solo
-  lectura.
+  lectura y no lleva credenciales. Si se agrega rate limiting al login, revisar
+  su paso de login rechazado (comentario en `scripts/smoke.mjs`).
+- Los secretos de GitHub no guardan ninguna llave de larga vida. Lo que CI
+  necesita lo lee de Secret Manager por WIF (D-014, D-015). Si algo no se puede
+  hacer con WIF, se para y se pregunta.
 - Los scripts de infraestructura son **idempotentes**: corribles dos veces sin
   romper ni duplicar nada.
 - Swagger va deshabilitado o protegido en producción.

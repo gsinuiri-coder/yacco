@@ -4,11 +4,9 @@ Qué comando corre qué, y en qué orden. Los entornos y qué base mira cada uno
 están en [`ENTORNOS.md`](./ENTORNOS.md); el porqué de cada decisión, en
 [`ARQUITECTURA.md`](./ARQUITECTURA.md).
 
-> **Estado:** las fases 2 y 3 ya están construidas; la 4 (el web en Vercel)
-> está en curso — `vercel.json` existe, pero todavía no hay ningún deploy real
-> del proyecto `yacco-web`. Las fases 5 en adelante todavía no. Los comandos
-> marcados _(fase N)_ no existen hasta esa fase; el resto ya funciona. Lo que
-> hay hecho está en [`PROGRESO.md`](./PROGRESO.md).
+> **Estado:** fases 2 a 5 construidas. El deploy corre desde CI; el tráfico de
+> los usuarios sigue en Render hasta el corte (fase 7). Lo que hay hecho está
+> en [`PROGRESO.md`](./PROGRESO.md).
 
 ## Preparar la máquina, una vez
 
@@ -66,8 +64,9 @@ JWT_REFRESH_EXPIRES_IN=30d
 
 Falta conseguir `VERCEL_TOKEN` en vercel.com > Account Settings > Tokens. Ese
 token es el único obligatorio: el deploy del web corre en GitHub Actions, donde
-no hay sesión de `vercel login`. Para el resto alcanza con la sesión
-interactiva del paso 2.
+no hay sesión de `vercel login`. **No va a los secretos de GitHub**: después de
+ponerlo en `.env.setup`, `pnpm secrets:gcp` lo sube a Secret Manager y CI lo lee
+de ahí (D-015). Para el resto alcanza con la sesión interactiva del paso 2.
 
 Nada de esto bloquea: cuando el archivo no está, los scripts leen la
 configuración del entorno del proceso (D-004), que es también como corren en
@@ -107,7 +106,7 @@ dependencias de Nest necesita.
 **Bajá la API antes de cualquier `prisma generate`:** con `dev:api` corriendo,
 el engine queda tomado y la generación falla a mitad.
 
-## Desplegar _(fases 2 a 5)_
+## Desplegar
 
 ### Preparar Google Cloud, una vez _(fase 2, ya hecho)_
 
@@ -120,38 +119,73 @@ Los dos son **idempotentes**: correrlos dos veces no rompe nada, no duplica
 nada, y `secrets:gcp` no crea una versión nueva si el valor no cambió. Están
 corridos: el estado resultante está en `PROGRESO.md`.
 
+`secrets:gcp` también sube el token de Vercel desde `.env.setup` y le da al
+deployer de CI lectura sobre los tres secretos que usa. Hay que volver a
+correrlo cada vez que cambie `VERCEL_TOKEN`.
+
 Si `gcp:bootstrap` falla con `PERMISSION_DENIED` en Artifact Registry justo
 después de crear el proyecto, es propagación de IAM tras habilitar la API:
 esperá un minuto y volvé a correrlo.
 
-### La API _(fase 3)_
+### Desde CI, que es el camino normal _(fase 5)_
+
+Mergear a `main` despliega. `.github/workflows/deploy.yml` arranca cuando CI
+termina bien sobre `main`, espera a que CodeQL también pase para ese commit, y
+corre en este orden (D-014):
+
+| Paso          | Qué hace                                                              | Si falla, qué queda en pie                           |
+| ------------- | --------------------------------------------------------------------- | ---------------------------------------------------- |
+| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main`     | Nada cambió                                          |
+| preflight     | Comprueba que existen los secretos que el deploy va a leer            | Nada cambió                                          |
+| 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit              | Nada cambió                                          |
+| 2 migraciones | `prisma migrate deploy` contra la URL **directa**: demo, después main | Una o las dos bases migradas; código viejo sirviendo |
+| 3 imagen      | `deploy-api.mjs build`: una imagen, etiquetada con el sha             | **Bases migradas, código viejo sirviendo**           |
+| 4a demo       | `deploy-api.mjs deploy --env=demo` + smoke de esa API                 | Producción en el código viejo                        |
+| 4b producción | La MISMA imagen + smoke de esa API                                    | Demo en el nuevo; web sin publicar                   |
+| 5 web         | `deploy-web.mjs`: `vercel build` + `deploy --prebuilt --prod`         | APIs en el nuevo; web en su versión anterior         |
+| 6 smoke       | `pnpm smoke:prod`, solo lectura                                       | Todo desplegado; el smoke dice qué no está sano      |
+
+La fila del paso 3 es la que justifica una regla: **si las migraciones pasan y
+la imagen falla, la base quedó migrada y el código viejo sigue sirviendo.** Por
+eso las migraciones son expand/contract. Una que no se banque ese estado no se
+mergea.
+
+Nada de esto usa llaves guardadas en GitHub: entra a Google Cloud por Workload
+Identity (sólo desde `main`) y lee de Secret Manager, en el job que lo usa, la
+URL directa de cada rama y el token de Vercel (D-014, D-015).
+
+**Relanzar** — por ejemplo, después de subir un secreto que faltaba:
 
 ```bash
-pnpm deploy:api --env=demo          # ensayo: servicio yacco-api-demo, rama demo de Neon
-pnpm deploy:api --env=production    # producción: servicio yacco-api, rama main de Neon
+gh workflow run deploy.yml --ref main
 ```
 
-Construye la imagen, la sube a Artifact Registry y hace `gcloud run deploy` con
-los secretos montados por referencia. Imprime **sólo la URL**.
+Pasa por el mismo gate: CI y CodeQL tienen que haber pasado para la punta de
+`main`.
+
+### A mano, cuando haga falta
+
+Son los mismos scripts que corre CI, no una copia:
+
+```bash
+pnpm deploy:api --env=demo          # build + push + deploy: servicio yacco-api-demo
+pnpm deploy:api --env=production    # ídem: servicio yacco-api, rama main de Neon
+pnpm deploy:web                     # web a producción (yacco-web.vercel.app)
+pnpm deploy:web --preview           # un preview: URL única, detrás del login de Vercel
+```
+
+`deploy:api` necesita Docker en la máquina; `deploy:web` no. Imprimen **sólo
+la URL**. No corren migraciones: eso es sólo de CI.
 
 **Siempre demo primero, verificar, y recién entonces producción.** `--env=`
 tiene que escribirse: sin flag, el script cae en `demo` — a propósito, así el
 despliegue a producción es algo que alguien escribió, no algo que se le
-escapó (ver el comentario al principio de `scripts/deploy-api.mjs`).
+escapó.
 
-### El web _(fase 4)_
-
-`vercel.json` ya tiene las reglas de rewrite (D-011, D-012 en
-`ARQUITECTURA.md`): el dominio de producción de `yacco-web` va a `yacco-api`,
-cualquier otro host —incluido cada preview— va a `yacco-api-demo`, y todo lo
-demás cae en `/index.html` para el router.
-
-El deploy en sí lo hace CI al mergear a `main`, cuando ese paso de CI/CD exista
-(fase 5). A mano, cuando haga falta y esa pieza exista:
-
-```bash
-pnpm deploy:web
-```
+`vercel.json` tiene las reglas de rewrite (D-011, D-012 en `ARQUITECTURA.md`):
+el dominio de producción de `yacco-web` va a `yacco-api`, cualquier otro host
+—incluido cada preview— va a `yacco-api-demo`, y todo lo demás cae en
+`/index.html` para el router.
 
 ### Verificar P-05: que cada host cae en la API correcta
 
@@ -159,40 +193,32 @@ pnpm deploy:web
 para poder comprobar esto desde afuera, sin mirar logs de ningún lado. Dos
 pasos, cada uno contra un host distinto de `yacco-web`:
 
-1. **El dominio de producción tiene que contestar `"production"`.**
+1. **El dominio de producción tiene que contestar `"production"`.** Este paso
+   ya lo corre CI en cada deploy (`pnpm smoke:prod`). A mano:
 
    ```bash
    curl -s https://yacco-web.vercel.app/health
    # { "status": "ok", "commit": "...", "environment": "production" }
    ```
 
-2. **Cualquier preview tiene que contestar `"demo"`.** Un preview de Vercel
-   queda detrás de Vercel Authentication (D-011): sin sesión, `curl` sin más
-   recibe un 302 a `vercel.com/sso-api` en vez de la respuesta. Dos formas de
-   comprobarlo igual, sin publicar el preview:
-   - **Desde el navegador ya logueado** (el del dueño): abrir
-     `https://<preview>.vercel.app/health` directamente. Vercel deja pasar a
-     un miembro del team autenticado.
-   - **Con la CLI**, que arma la petición autenticada por vos:
-     `vercel curl https://<preview>.vercel.app/health` (o
-     `vercel inspect <deployment-url> --logs` si `curl` no está disponible en
-     esta versión de la CLI).
+2. **Cualquier preview tiene que contestar `"demo"`.** CI no publica previews,
+   así que este paso es manual y se corre una vez después del primer deploy
+   desde CI. Un preview queda detrás de Vercel Authentication (D-011): sin
+   sesión, `curl` recibe un 302 a `vercel.com/sso-api`. `vercel curl` arma la
+   petición autenticada con la sesión de `vercel login`:
 
-   La URL del preview sale de `vercel ls yacco-web` (o del comentario que deja
-   un deploy de preview), no hay que armarla a mano.
+   ```bash
+   PREVIEW="$(pnpm -s deploy:web --preview)"
+   vercel curl /health --deployment "$PREVIEW"
+   # { "status": "ok", "commit": "...", "environment": "demo" }
+   ```
+
+   O abrir `$PREVIEW/health` en el navegador ya logueado en Vercel.
 
 **Si cualquiera de los dos contesta `"environment": null`, PARAR.** Significa
-que ese servicio de Cloud Run quedó desplegado sin `APP_ENV` — revisar
-`scripts/deploy-api.mjs` y volver a desplegarlo — porque hasta que conteste
-un valor, el testigo no sirve para nada: no se puede distinguir "está bien
-configurado" de "no se pudo verificar".
-
-**Estado al escribir esto (2026-09-16):** ninguno de los dos pasos pudo
-correrse. `yacco-api` (producción) todavía no está desplegado, y
-`yacco-api-demo` corre una imagen de antes de que `/health` tuviera el campo
-`environment` (PR #131) — las dos cosas se resuelven con
-`pnpm deploy:api`, y ese comando necesita Docker, que estaba caído. Detalle
-completo en P-05, `docs/ARQUITECTURA.md`.
+que ese servicio de Cloud Run quedó desplegado sin `APP_ENV`. Hasta que
+conteste un valor, el testigo no sirve: no se puede distinguir "está bien
+configurado" de "no se pudo verificar". CI ya falla en ese caso.
 
 ### Las migraciones
 
@@ -208,15 +234,25 @@ Durante los 7 días en que Render y Cloud Run comparten la rama `main` de Neon,
 son expand/contract, y por eso en esos 7 días no se mergea ninguna que no lo
 sea.
 
-### Verificar _(fase 5)_
+### Verificar
 
 ```bash
 pnpm smoke:prod
 ```
 
-Solo lectura: `/health`, un login de verificación sin permisos de escritura, y
-la carga de las pantallas principales. **Nunca corre un test que escriba contra
-producción.**
+**solo lectura** y sin ninguna credencial: `/health` de las dos APIs
+(FALLA si `environment` vuelve `null`), `/health` por el dominio de producción
+de Vercel, un login con un usuario inexistente que tiene que dar 401, y la
+carga de las pantallas principales.
+**Nunca corre nada que escriba contra producción**, y no lleva ninguna
+credencial. Con `EXPECTED_COMMIT=<sha>` además exige que las dos APIs estén en
+ese commit; CI la pone.
+
+Para una sola API (es el gate de CI después de cada deploy de Cloud Run):
+
+```bash
+node scripts/smoke.mjs api --env=demo
+```
 
 ## Vuelta atrás
 

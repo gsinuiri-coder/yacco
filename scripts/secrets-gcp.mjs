@@ -1,6 +1,8 @@
 /**
  * `pnpm secrets:gcp` — sube a Secret Manager lo que Cloud Run necesita, para
- * producción y para demo. Idempotente.
+ * producción y para demo, y el token con el que CI publica el web. Concede al
+ * deployer de CI lectura sobre los tres secretos que usa, uno por uno.
+ * Idempotente.
  *
  * Ningún valor se imprime, ni al subirlo ni al compararlo. Los valores viajan
  * a `gcloud` por STDIN, nunca por argv: un argumento es visible en `ps` y
@@ -29,8 +31,32 @@ const ENVIRONMENTS = [
   { name: "demo", neonBranch: "demo" },
 ];
 
+// La service account con la que despliega GitHub Actions (gcp-bootstrap.mjs).
+const DEPLOYER_SERVICE_ACCOUNT = "yacco-deployer";
+
+// Los ÚNICOS secretos que CI lee (D-014, D-015). Se conceden uno por uno, sobre
+// el secreto y no sobre el proyecto: el deployer puede leer la URL directa de
+// cada rama —para migrar— y el token de Vercel, y ningún otro. Nunca las URLs
+// pooled ni los JWT, que son del runtime y el que despliega no necesita.
+const DEPLOYER_READABLE_KEYS = ["direct-url"];
+const CI_VERCEL_TOKEN_SECRET = "yacco-ci-vercel-token";
+
 function secretName(environment, key) {
   return `yacco-${environment}-${key}`;
+}
+
+/** Deja que el deployer lea ESTE secreto, y nada más. Idempotente. */
+function grantDeployerAccess(projectId, name, report) {
+  run("gcloud", [
+    "secrets",
+    "add-iam-policy-binding",
+    name,
+    `--project=${projectId}`,
+    `--member=serviceAccount:${DEPLOYER_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`,
+    "--role=roles/secretmanager.secretAccessor",
+    "--condition=None",
+  ]);
+  report.push(`  ${name.padEnd(38)} legible por el deployer de CI`);
 }
 
 /** Devuelve el valor actual del secreto, o null si no existe todavía. */
@@ -171,10 +197,29 @@ function main() {
 
     for (const [key, value] of Object.entries(values)) {
       ensureSecret(projectId, secretName(environment.name, key), value, report);
+      if (DEPLOYER_READABLE_KEYS.includes(key)) {
+        grantDeployerAccess(projectId, secretName(environment.name, key), report);
+      }
     }
     report.push(`    jwt access: ${access.origin} | jwt refresh: ${refresh.origin}`);
     report.push("");
   }
+
+  // El token con el que CI publica el web. Vercel no acepta Workload Identity,
+  // así que es una credencial de larga vida: vive ACÁ y no en los secretos de
+  // GitHub, y CI la lee por WIF en el momento (D-015). Nace en .env.setup,
+  // donde lo pone una persona; si no está, no se inventa nada.
+  const vercelToken = (config.VERCEL_TOKEN ?? "").trim();
+  if (vercelToken.length > 0) {
+    ensureSecret(projectId, CI_VERCEL_TOKEN_SECRET, vercelToken, report);
+    grantDeployerAccess(projectId, CI_VERCEL_TOKEN_SECRET, report);
+  } else {
+    report.push(
+      `  ${CI_VERCEL_TOKEN_SECRET.padEnd(38)} FALTA: VERCEL_TOKEN vacío en .env.setup; ` +
+        "el deploy desde CI se detiene en el preflight hasta subirlo",
+    );
+  }
+  report.push("");
 
   console.log(report.join("\n"));
   console.log("Ningún valor se imprimió. Los secretos se montan por referencia en el deploy,");

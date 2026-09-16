@@ -28,6 +28,8 @@
     "gcp:bootstrap": "node scripts/gcp-bootstrap.mjs",
     "secrets:gcp": "node scripts/secrets-gcp.mjs",
     "deploy:api": "node scripts/deploy-api.mjs",
+    "deploy:web": "node scripts/deploy-web.mjs",
+    "smoke:prod": "node scripts/smoke.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

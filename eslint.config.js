@@ -22,7 +22,15 @@ export default tseslint.config(
     // declaradas.
     files: ["scripts/**/*.mjs"],
     languageOptions: {
-      globals: { process: "readonly", console: "readonly" },
+      // fetch, AbortSignal y URL son globales de Node desde la 18: el smoke y el
+      // deploy los usan sin importar nada.
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        AbortSignal: "readonly",
+        URL: "readonly",
+      },
     },
   },
 );

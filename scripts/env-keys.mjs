@@ -2,7 +2,7 @@
  * El contrato de `.env.setup`, en un solo lugar.
  *
  * `env:check` lo usa para decir qué falta, `env:local` para saber qué copiar a
- * los `.env` de cada app, y `secrets:gcp` / `secrets:github` para saber qué
+ * los `.env` de cada app, y `secrets:gcp` para saber qué
  * subir. Tener la lista acá y no repartida por los scripts es lo que evita
  * que una clave nueva quede validada en un lado y olvidada en otro.
  *
@@ -30,7 +30,7 @@ export const ENV_KEYS = [
   {
     key: "VERCEL_TOKEN",
     required: true,
-    description: "Token de Vercel; el único que CI necesita sí o sí",
+    description: "Token de Vercel; `pnpm secrets:gcp` lo sube a Secret Manager para CI",
   },
   {
     key: "VERCEL_TEAM_ID",

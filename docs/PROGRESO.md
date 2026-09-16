@@ -11,16 +11,16 @@ app funciona al cerrar cada fase.
 
 ## Estado por fase
 
-| Fase                    | Estado       |
-| ----------------------- | ------------ |
-| 0 — Descubrimiento      | ✅ hecha     |
-| 1 — Base del repo       | ✅ hecha     |
-| 2 — Google Cloud        | ✅ hecha     |
-| 3 — La API en Cloud Run | ✅ hecha     |
-| 4 — El web en Vercel    | ⬜ pendiente |
-| 5 — CI/CD               | ⬜ pendiente |
-| 6 — Ensayo              | ⬜ pendiente |
-| 7 — Corte               | ⬜ pendiente |
+| Fase                    | Estado                            |
+| ----------------------- | --------------------------------- |
+| 0 — Descubrimiento      | ✅ hecha                          |
+| 1 — Base del repo       | ✅ hecha                          |
+| 2 — Google Cloud        | ✅ hecha                          |
+| 3 — La API en Cloud Run | ✅ hecha                          |
+| 4 — El web en Vercel    | 🟨 construida, sin deploy todavía |
+| 5 — CI/CD               | 🟨 construida, sin primer deploy  |
+| 6 — Ensayo              | ⬜ pendiente                      |
+| 7 — Corte               | ⬜ pendiente                      |
 
 ## Punto de partida verificado
 
@@ -215,14 +215,46 @@ delgada: `/health/db` sigue en 200.
 **Decisiones registradas:** D-008 (`--min-instances`), D-009 (commit
 desplegado), D-010 (Swagger). Cierran P-01 y P-03.
 
+## Fase 4 — El web en Vercel 🟨
+
+Proyecto `yacco-web` creado en el team `gsinuiricoders-projects`, dominio de
+producción `yacco-web.vercel.app`. `vercel.json` con las reglas de host (D-011,
+D-012), `VITE_API_BASE_URL` relativo y `WEB_ORIGIN` por entorno (D-013). PRs
+#131 y #132. Todavía no hay ningún deploy: el primero lo hace CI.
+
+## Fase 5 — CI/CD 🟨
+
+`.github/workflows/deploy.yml` (D-014): después de CI y CodeQL sobre `main`,
+integración → migraciones → una imagen → Cloud Run demo → producción → web →
+smoke de solo lectura. El token de Vercel en Secret Manager (D-015).
+
+Aplicado en Google Cloud el 2026-09-16, con `pnpm gcp:bootstrap` y
+`pnpm secrets:gcp`, sin rotar nada:
+
+- El proveedor de WIF exige ahora repo **y** rama `main`.
+- El deployer lee `yacco-demo-direct-url` y `yacco-production-direct-url`, uno
+  por uno. Nada más.
+
+Encontrado al construir el web por primera vez: las reglas de #132 con
+`(.*)` y `$1` hacían que Vercel le agregara `?host=` a cada petición a
+producción, y la API la habría rechazado con 400. Corregido antes de ningún
+deploy (D-012).
+
 ## Lo que falta antes de seguir
 
-Una sola cosa depende del dueño, y bloquea recién la fase 4:
+Depende del dueño, y bloquea el primer deploy desde CI:
 
-- **Crear un `VERCEL_TOKEN`** en vercel.com > Account Settings > Tokens. Es el
-  único token que hace falta sí o sí: el deploy del web corre en GitHub
-  Actions, donde no hay sesión de `vercel login`. Para el resto (`gcloud`,
-  `gh`, `neonctl`) alcanza con la sesión interactiva de la máquina.
+1. **Crear el `VERCEL_TOKEN`** (vercel.com > Account Settings > Tokens, scope
+   del team), ponerlo en `.env.setup` y correr `pnpm secrets:gcp`. Lo sube a
+   Secret Manager y le da lectura al deployer. Sin él, el deploy se detiene en
+   el preflight, antes de tocar ninguna base.
+2. **Relanzar el deploy**: `gh workflow run deploy.yml --ref main`.
+3. **La mitad del preview de P-05**, a mano, después de ese primer deploy (ver
+   `DEPLOY.md`). La mitad de producción ya la corre el smoke.
+
+Para el auditor de seguridad de la fase 6: los Data Access logs de Secret
+Manager están apagados (el default de Google Cloud), así que las LECTURAS del
+token de Vercel no quedan registradas; sí los cambios de quién puede leerlo.
 
 `.env.setup` ya **no bloquea nada**: los scripts leen la configuración del
 entorno del proceso cuando el archivo no está (D-004), y los secretos de
@@ -231,6 +263,7 @@ cómoda de no repetir valores a mano en cada comando.
 
 ## Al terminar la migración
 
-Rotar los tokens que hayan vivido en un archivo plano durante la operación
-(`VERCEL_TOKEN`, y `GH_TOKEN` / `NEON_API_KEY` / `RENDER_API_KEY` si se
-llegaron a usar).
+Rotar los tokens que hayan vivido en un archivo plano durante la operación:
+`VERCEL_TOKEN` —que además vive en Secret Manager como `yacco-ci-vercel-token`
+y hay que volver a subir con `pnpm secrets:gcp` después de rotarlo (D-015)—, y
+`GH_TOKEN` / `NEON_API_KEY` / `RENDER_API_KEY` si se llegaron a usar.

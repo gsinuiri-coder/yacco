@@ -21,6 +21,13 @@ coverage
 !.env.example
 !.env.setup.example
 
+# El archivo de credenciales que escribe google-github-actions/auth en el
+# workspace del runner (gha-creds-*.json). El build de la imagen corre en ese
+# mismo checkout, así que sin esta línea la credencial de corta vida del
+# deployer entraría al contexto y podría quedar en una capa publicada en
+# Artifact Registry.
+gha-creds-*.json
+
 # Historia y metadatos que la imagen no usa.
 .git
 .github

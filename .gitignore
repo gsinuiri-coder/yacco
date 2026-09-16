@@ -17,6 +17,11 @@ build/
 !.env.example
 !.env.setup.example
 
+# Credencial temporal que escribe google-github-actions/auth en CI, y el
+# enlace local que crea `vercel pull` / `vercel link`.
+gha-creds-*.json
+.vercel/
+
 # Logs
 *.log
 pnpm-debug.log*

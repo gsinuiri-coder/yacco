@@ -1504,6 +1504,11 @@ pantalla lo avisa.
 
 **Para cerrarla, las dos piezas juntas:**
 
+> **Avance.** La pieza 1 está hecha (PR #131, campo `environment` desde
+> `APP_ENV`), y `/health` ya viaja por el mismo rewrite que `/api/*` (D-012). El
+> smoke del deploy FALLA si alguna API contesta `environment: null`. Falta la
+> pieza 2: la marca en pantalla, para después del corte.
+
 1. **`/health` informa el entorno.** Un campo al lado de `commit`, leído de
    una variable que pone el deploy (por ejemplo `DEPLOY_ENVIRONMENT`:
    `production` / `demo`). Cuando falta, el campo tiene que decir que no se
@@ -1524,3 +1529,29 @@ pantalla lo avisa.
 de verificar desde afuera qué servicio contestó una petición: las dos APIs
 corren la misma imagen y devuelven lo mismo. La pieza 1 es también la que
 permite cerrar P-05 con evidencia (ver `ARQUITECTURA.md`).
+
+## Falta un rol de solo lectura
+
+**Estado:** abierto. **Disparador:** el piloto de campo.
+
+Los roles son `ADMIN`, `SELLER` y `DRIVER`, y los tres escriben algo: hasta
+`DRIVER` registra paradas. No existe un usuario que pueda entrar al sistema sin
+poder cambiar nada.
+
+Se notó al diseñar el smoke del deploy (fase 5), que pedía «un login de
+verificación sin permisos de escritura». Sin ese rol, cualquier credencial
+guardada para el smoke podría escribir en producción si alguien la usara mal.
+Se resolvió sin credenciales: `pnpm smoke:prod` manda un login con un usuario
+que no existe (`smoke-check@invalid`) y exige 401. Eso prueba la API viva, la
+ruta montada, la validación, la consulta a Neon y el filtro de excepciones, y
+no escribe nada.
+
+**Lo que el smoke NO prueba hoy:** que un login VÁLIDO funcione. Se acepta
+porque `env.validation.ts` frena el arranque si faltan los secretos de JWT, así
+que un servicio que responde los tiene.
+
+**Para cerrarla:** un rol (por ejemplo `VIEWER`) que pase los guards de lectura
+y ninguno de escritura. Toca el enum `UserRole` (migración) y cada controller
+con `@Roles`. Recién con ese rol tiene sentido un usuario de verificación para
+el smoke, con sus credenciales en Secret Manager y leídas por WIF, nunca en
+GitHub.

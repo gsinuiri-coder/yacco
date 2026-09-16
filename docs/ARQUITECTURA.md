@@ -21,7 +21,7 @@ avance por fase está en [`PROGRESO.md`](./PROGRESO.md); cómo desplegar, en
    (Lima)           │ SPA estática: apps/web/dist          │
                     │                                      │
                     │ vercel.json:                         │
-                    │  /api/(.*)  ──rewrite──┐             │
+                    │  /api/*, /health ──────┐             │
                     │  /(.*)      ──▶ index.html (Router)  │
                     └────────────────────────┼─────────────┘
                                              │  HTTPS, servidor a servidor.
@@ -48,9 +48,13 @@ avance por fase está en [`PROGRESO.md`](./PROGRESO.md); cómo desplegar, en
                     │ rama demo   → ensayo y previews      │
                     └──────────────────────────────────────┘
 
-   GitHub Actions ──WIF (sin llaves)──▶ Cloud Run
-                  ──VERCEL_TOKEN─────▶ Vercel
-                  ──DIRECT_URL───────▶ Neon (prisma migrate deploy)
+   GitHub Actions ──WIF (sin llaves, sólo main)──▶ Google Cloud
+                                                    │
+                     Secret Manager, leído en el job que lo usa:
+                     ├─ yacco-{demo,production}-direct-url ──▶ Neon (prisma migrate deploy)
+                     └─ yacco-ci-vercel-token ───────────────▶ Vercel (deploy --prebuilt)
+
+   Los secretos de GitHub no guardan NINGUNA llave (D-014, D-015).
 ```
 
 Lo que cambia respecto de hoy, en una línea: **el navegador deja de hablar con
@@ -440,14 +444,37 @@ queda escrito: la mecánica de `vercel.json` y las URLs concretas que
 
 ```
 1. host == "yacco-web.vercel.app" (has, literal, sin regex)
-   /api/(.*)  -> https://yacco-api-297699663114.us-east4.run.app/api/$1
-   /health    -> https://yacco-api-297699663114.us-east4.run.app/health
+   /api/:path*          -> https://yacco-api-297699663114.us-east4.run.app/api/:path*
+   /:witness(health)    -> https://yacco-api-297699663114.us-east4.run.app/:witness
 2. cualquier otro host (sin condición `has`)
-   /api/(.*)  -> https://yacco-api-demo-297699663114.us-east4.run.app/api/$1
-   /health    -> https://yacco-api-demo-297699663114.us-east4.run.app/health
+   /api/:path*          -> https://yacco-api-demo-297699663114.us-east4.run.app/api/:path*
+   /:witness(health)    -> https://yacco-api-demo-297699663114.us-east4.run.app/:witness
 3. todo lo demás
-   /(.*)      -> /index.html   (fallback de React Router)
+   /(.*)                -> /index.html   (fallback de React Router)
 ```
+
+**Corrección de la fase 5: parámetros con nombre, no `(.*)` y `$1`.** La
+primera versión de este archivo (PR #132) escribía `/api/(.*)` →
+`.../api/$1`. Al construirlo con `vercel build` apareció que Vercel le AGREGA
+al destino, como query string, cada parámetro de una condición `has` que el
+destino no use — y `has: host` cuenta como parámetro `host` —, salvo que el
+path del destino ya use algún parámetro CON NOMBRE. Con `$1` (sin nombre) cada
+petición a producción llegaba a Cloud Run como
+`/api/v1/customers?host=yacco-web.vercel.app`. La API corre el
+`ValidationPipe` con `forbidNonWhitelisted`, así que todo endpoint con DTO de
+query habría contestado 400 — **sólo en producción**, porque las reglas de demo
+no tienen `has` —, y el smoke no lo habría visto: sin credenciales los guards
+contestan 401 antes de validar la query. Se detectó antes del primer deploy
+(nada llegó a servirse con esa forma). `/api/:path*` y `/:witness(health)`
+usan un parámetro con nombre en el destino y el `?host=` desaparece:
+verificado en el `.vercel/output/config.json` que genera `vercel build`.
+`scripts/vercel-config.test.mjs` falla si alguna regla con `has` vuelve a la
+forma anterior.
+
+`vercel.json` también dice cómo se construye (`installCommand`,
+`buildCommand`, `outputDirectory`): el build corre en CI y se sube ya hecho
+(D-014), así que el proyecto de Vercel no depende de su propia configuración
+de build ni de acceso al repositorio.
 
 Vercel evalúa las reglas de `rewrites` en orden y aplica la primera cuyo
 `source` y condición `has` coincidan, así que este orden — literal antes que
@@ -530,6 +557,116 @@ barrera.
 
 ---
 
+### D-014 — El deploy corre en CI, en un orden fijo, construyendo una sola imagen
+
+**Contexto.** Hasta la fase 4, `pnpm deploy:api` corría `docker build` y
+`docker push` en la máquina de quien desplegaba. Con el Docker del dueño caído,
+eso dejó sin forma de desplegar nada, y convirtió una laptop en dependencia del
+camino a producción.
+
+**Decisión.** `.github/workflows/deploy.yml`, disparado cuando CI termina bien
+sobre `main` y después de esperar a que CodeQL también pase para ese commit.
+Los checks existentes no cambian: el gate de SonarCloud sigue en 80% de código
+nuevo y 3% de duplicación. El orden de los jobs es el diseño:
+
+```
+gate → preflight → 1 integración → 2 migraciones (demo, después main)
+     → 3 imagen → 4a Cloud Run demo → (si queda sana) 4b producción
+     → 5 web a Vercel → 6 smoke de solo lectura
+```
+
+Qué queda en pie cuando cada paso falla está escrito job por job en el propio
+workflow. El caso que más importa: **si las migraciones pasan y la imagen
+falla, la base quedó migrada y el código viejo sigue sirviendo.** Ese estado no
+se evita, se banca: es exactamente por qué las migraciones son
+expand/contract, y la frase está escrita en el job, no sólo acá.
+
+Lo que sostiene ese orden:
+
+- **Una sola imagen.** `scripts/deploy-api.mjs` se partió en `build` y
+  `deploy`, y CI usa esas dos mitades: construye UNA vez y despliega a demo y a
+  producción la MISMA imagen, identificada por el sha. No hay un segundo camino
+  de build (ni `gcloud run deploy --source` ni buildpacks): el Dockerfile y el
+  script son los mismos que se corren a mano. `deploy` se niega a desplegar
+  una imagen con el commit de otra, y nunca despliega por la etiqueta del
+  entorno (`:production`), que queda sólo para leer.
+- **"Sana" es verificable.** Después de cada deploy de Cloud Run,
+  `scripts/smoke.mjs api --env=…` exige `/health` con el commit recién
+  construido y el `environment` correcto, más un login inexistente rechazado
+  con 401. Producción no se toca si demo no pasa.
+- **Preflight antes de migrar.** Un secreto ausente (el token de Vercel, por
+  ejemplo) se descubre antes de tocar ninguna base, no en el paso 5 con todo
+  lo anterior ya hecho.
+- **Sólo la punta de `main`.** Si `main` avanzó mientras CI corría, ese commit
+  no se despliega: lo hace la corrida del commit nuevo. Sin esto, dos merges
+  cuyos CI terminan en otro orden podrían desplegar el viejo después del
+  nuevo. Un solo deploy a la vez, y nunca se cancela uno en curso.
+
+**Credenciales.** Todo por Workload Identity Federation: los secretos de GitHub
+no guardan ninguna llave. Lo que CI necesita leer —la URL directa de Neon de
+cada rama, para migrar, y el token de Vercel (D-015)— sale de Secret Manager en
+el job que lo usa, y el deployer tiene `secretAccessor` sobre esos tres
+secretos uno por uno, no sobre el proyecto. Nunca sobre las URLs pooled ni los
+JWT, que son del runtime.
+
+Con ese acceso nuevo, el proveedor de WIF quedó anclado también a la rama:
+`assertion.ref == 'refs/heads/main'`, además del repositorio. Anclado sólo al
+repositorio, un workflow agregado en una rama sin mergear podía pedir las
+credenciales de Neon. Aplicado con `pnpm gcp:bootstrap` el 2026-09-16.
+
+**Las migraciones de `main` le cambian el esquema a Render.** Mientras Render
+siga vivo (fase 7), comparte la rama `main`. Si su build corre `db:deploy` a la
+vez que CI, Prisma serializa las dos con un advisory lock.
+
+**Alternativas descartadas.**
+
+- _Pasos dentro de `ci.yml`._ Un solo archivo, pero mezcla lo que corre en cada
+  PR con lo que sólo corre en `main` y con credenciales de producción, y
+  agranda la superficie que tiene `id-token: write`.
+- _`gcloud run deploy --source` (Cloud Build)._ Evita el Docker del runner,
+  pero es un segundo camino de build que produce una imagen distinta de la que
+  se construye a mano, con otra caché y otros defaults.
+- _Guardar `DIRECT_URL` como secreto de GitHub, como decía ENTORNOS.md._ Es una
+  credencial de larga vida con la contraseña de la base adentro, justo lo que
+  la fase 2 sacó de GitHub.
+- _No correr integración en el deploy porque CI ya la corrió._ Es la compuerta
+  inmediata antes de tocar una base real, sobre exactamente el commit que se
+  va a desplegar. Cuesta minutos de runner; no correrla cuesta suponer.
+
+---
+
+### D-015 — El token de Vercel vive en Secret Manager, no en los secretos de GitHub
+
+**Contexto.** Vercel no acepta Workload Identity de GitHub para desplegar: hace
+falta un token. La regla de la fase 2 es que los secretos de GitHub no guardan
+ninguna llave de larga vida, y el diagrama original lo contradecía
+(`GitHub Actions ──VERCEL_TOKEN──▶ Vercel`).
+
+**Decisión.** El dueño crea el token en Vercel y lo pone en `.env.setup`;
+`pnpm secrets:gcp` lo sube a Secret Manager como `yacco-ci-vercel-token` sin
+imprimirlo y le da lectura al deployer. CI entra a Google Cloud por WIF y lo lee
+en el momento, sólo en el job que publica el web. La CLI de Vercel lo recibe
+por la variable `VERCEL_TOKEN`, nunca por `--token`.
+
+**Lo que esto NO cambia: el token SIGUE siendo de larga vida.** Lo que cambia
+es que vive en un solo lugar, con acceso auditado, y que un compromiso de los
+secretos de GitHub ya no alcanza a Vercel: para leerlo hay que pasar por WIF,
+que exige este repositorio y la rama `main`. **Se rota al cerrar la
+migración**, junto con los otros tres (`GH_TOKEN`, `NEON_API_KEY`,
+`RENDER_API_KEY`) — ver PROGRESO.md.
+
+"Auditado", con precisión: QUIÉN puede leerlo está en la política IAM del
+propio secreto, y cada cambio de esa política queda en los Admin Activity logs,
+que están siempre prendidos. Cada LECTURA del valor queda registrada sólo si se
+prenden los Data Access logs de Secret Manager, que en Google Cloud vienen
+**apagados** por defecto. Hoy no están prendidos: queda anotado para el auditor
+de seguridad de la fase 6.
+
+**Alternativa descartada.** _Secreto de GitHub._ Más simple, y exactamente una
+llave de larga vida en los secretos de GitHub.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una
@@ -548,22 +685,17 @@ de `vercel.json` — y `/health` viaja por la misma regla que `/api/*`, así que
 es un testigo válido de qué servicio contestó (ver PR #131,
 `HealthService.appEnvironment`).
 
-**Falta para cerrarla — bloqueado por Docker, no por diseño.** Los pasos
-reproducibles están en `DEPLOY.md`, sección «Verificar P-05». Ninguno de los
-dos pudo correrse en esta rama:
+**Falta para cerrarla.** Los pasos reproducibles están en `DEPLOY.md`, sección
+«Verificar P-05». Desde la fase 5 ya no dependen de Docker en ninguna máquina:
+el deploy corre en CI (D-014).
 
-- **Producción.** `yacco-api` todavía no está desplegado — sólo
-  `yacco-api-demo` (fase 3) — y desplegarlo corre `docker build`
-  (`pnpm deploy:api`, ver `Dockerfile`). Docker está caído en esta máquina y
-  quedó explícitamente fuera de esta sesión.
-- **Demo.** `yacco-api-demo` SÍ existe, pero corre la imagen de antes del PR
-  #131: no tiene el campo `environment`, y su deploy tampoco le pasó
-  `APP_ENV` — se lo agregó el mismo PR, a `scripts/deploy-api.mjs`.
-  Redesplegarlo para que el testigo diga algo también pasa por `docker
-build`.
+- **La mitad de producción quedó automatizada.** `pnpm smoke:prod`, el último
+  paso del deploy desde CI, pide `/health` a `yacco-web.vercel.app` y FALLA si
+  no contesta `environment: "production"` — o si contesta `null`.
+- **La mitad del preview sigue siendo manual**, porque los previews están
+  detrás del login de Vercel (D-011) y CI no publica previews. Se corre una vez,
+  después del primer deploy desde CI, con `pnpm deploy:web --preview` y
+  `vercel curl`.
 
-Cuando Docker vuelva: `pnpm deploy:api --env=demo`, después `pnpm deploy:api
---env=production` (siempre demo antes que producción), y recién ahí los dos
-pasos de `DEPLOY.md`. Si cualquiera de los dos contesta `environment: null`,
-PARAR — significa que ese servicio quedó sin `APP_ENV` y el testigo no sirve
-hasta que se arregle.
+Si cualquiera de los dos contesta `environment: null`, PARAR — significa que
+ese servicio quedó sin `APP_ENV` y el testigo no sirve hasta que se arregle.

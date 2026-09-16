@@ -1,22 +1,36 @@
 {
+  "framework": null,
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @yacco/web build",
+  "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "has": [{ "type": "host", "value": "yacco-web.vercel.app" }],
-      "destination": "https://yacco-api-297699663114.us-east4.run.app/api/$1"
+      "source": "/api/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "yacco-web.vercel.app"
+        }
+      ],
+      "destination": "https://yacco-api-297699663114.us-east4.run.app/api/:path*"
     },
     {
-      "source": "/health",
-      "has": [{ "type": "host", "value": "yacco-web.vercel.app" }],
-      "destination": "https://yacco-api-297699663114.us-east4.run.app/health"
+      "source": "/:witness(health)",
+      "has": [
+        {
+          "type": "host",
+          "value": "yacco-web.vercel.app"
+        }
+      ],
+      "destination": "https://yacco-api-297699663114.us-east4.run.app/:witness"
     },
     {
-      "source": "/api/(.*)",
-      "destination": "https://yacco-api-demo-297699663114.us-east4.run.app/api/$1"
+      "source": "/api/:path*",
+      "destination": "https://yacco-api-demo-297699663114.us-east4.run.app/api/:path*"
     },
     {
-      "source": "/health",
-      "destination": "https://yacco-api-demo-297699663114.us-east4.run.app/health"
+      "source": "/:witness(health)",
+      "destination": "https://yacco-api-demo-297699663114.us-east4.run.app/:witness"
     },
     {
       "source": "/(.*)",
