@@ -336,6 +336,94 @@ API está la tabla de endpoints en `yacco-documentacion.md`.
 
 ---
 
+### D-011 — Solo el dominio de producción del proyecto cuenta como producción; las URLs generadas van a demo
+
+**Contexto.** El rewrite de `/api/*` elige destino por host: el host de
+producción va a `yacco-api`, **cualquier otro host va a `yacco-api-demo`**
+(P-05). Pero Vercel sirve un mismo deploy de producción en varios hosts, y la
+regla tiene que decir cuáles cuentan. Si no, el mismo build muestra datos
+distintos según por dónde se entre, sin que nada lo avise.
+
+**Los hosts, medidos y no supuestos.** El proyecto `yacco-web` **todavía no
+existe** en Vercel: hoy no hay ningún host de producción. Vive en el team
+`gsinuiricoders-projects`, y este es el patrón que siguen los proyectos que ya
+están en ese team, probado el 2026-09-16 con `curl` sobre `gsm-inventory`:
+
+| Host                                    | Qué es                                   | Sin sesión de Vercel       |
+| --------------------------------------- | ---------------------------------------- | -------------------------- |
+| `<proyecto>.vercel.app`                 | dominio de producción                    | **público**                |
+| `<proyecto>-<team>.vercel.app`          | alias del team                           | 302 a `vercel.com/sso-api` |
+| `<proyecto>-git-main-<team>.vercel.app` | alias de la rama                         | 302 a `vercel.com/sso-api` |
+| `<proyecto>-<hash>-<team>.vercel.app`   | URL única de **un** deploy de producción | 302 a `vercel.com/sso-api` |
+| `<proyecto>-<hash>-<team>.vercel.app`   | URL única de un deploy de preview        | 302 a `vercel.com/sso-api` |
+
+Hay dos datos en esa tabla que deciden la regla:
+
+1. **Las dos últimas filas tienen la misma forma.** Por el host no hay manera
+   de distinguir la URL única de un deploy de producción de la de un preview.
+2. **Lo único público es el dominio de producción.** El resto queda detrás de
+   Vercel Authentication (la Standard Protection que viene por defecto): solo
+   entra un miembro del team, y hoy ese miembro es el dueño.
+
+Que `<proyecto>.vercel.app` sea el nombre depende de que esté libre:
+`inventory`, en el mismo team, terminó con `inventory-gsinuiricoders-projects.vercel.app`
+como dominio de producción porque `inventory.vercel.app` ya era de otro.
+`yacco-web.vercel.app` hoy contesta `DEPLOYMENT_NOT_FOUND`, que sugiere que está
+libre, pero eso recién se confirma al crear el proyecto.
+
+**Decisión.** Cuenta como producción **solo el dominio de producción del
+proyecto** (el que Vercel lista en Settings > Domains), escrito en
+`vercel.json` como **string literal**, sin regex. Todo lo demás —alias del
+team, alias de rama y URLs únicas, sean de producción o de preview— va a
+demo. El valor exacto se copia de lo que Vercel asigne al crear `yacco-web`,
+no de esta tabla.
+
+Por qué:
+
+- **Admitir las URLs únicas de producción obliga a admitir los previews.**
+  Cualquier patrón que case con `yacco-web-<hash>-gsinuiricoders-projects.vercel.app`
+  casa también con los previews, y eso manda un preview a la base de
+  producción: la regla de `.agents/rules/infra.md` que esta decisión no puede
+  romper. El error en un sentido muestra demo; en el otro escribe en
+  producción.
+- **Los hosts que quedan afuera no los usa nadie de la planta.** Están detrás
+  del login de Vercel. Que el dueño vea datos de demo al abrir el link único de
+  un deploy es la conducta útil: es la forma de mirar un build sin tocar
+  producción.
+- **Sigue a los promote y a los rollback.** `vercel promote` y
+  `vercel rollback` mueven el dominio de producción hacia otro deploy, no
+  cambian el host. La regla vale para el deploy que esté detrás en cada
+  momento, sin reescribir `vercel.json`.
+- **Literal y no regex:** un host de más en una regex es una forma nueva y
+  silenciosa de llegar a producción. Un literal de menos, en cambio, sirve
+  demo: el sentido del error que ya elegimos.
+
+**Condición de la que depende.** La Standard Protection tiene que seguir
+activa en `yacco-web`. Si alguien la apaga, las URLs generadas quedan públicas
+y muestran demo a quien las abra. No escribe en la base equivocada, pero
+alguien de la planta podría cargar datos que se pierden. Lo medido arriba es
+de un proyecto hermano. En `yacco-web` se vuelve a comprobar con `curl` sobre
+su primer preview y su primera URL única de producción, antes de dar por
+cerrada P-05.
+
+**El hueco que esta decisión no tapa.** El día que se agregue un dominio
+propio y nadie lo sume a `vercel.json`, ese dominio es público, cae en
+"cualquier otro host" y sirve demo **sin que nada se vea raro**. Queda anotado
+aparte en `backlog-tecnico.md`, «El fail-safe a demo es silencioso».
+
+**Alternativas descartadas.**
+
+- _Enumerar todos los hosts que sirven producción._ Las URLs únicas no se
+  pueden enumerar (nace una por deploy) y su forma coincide con la de los
+  previews. El alias del team y el de rama sí son enumerables, pero están
+  detrás del login: sumarlos agrega dos formas de llegar a producción que no
+  necesita nadie.
+- _Sumar también el alias del team por ser estable._ Mismo motivo: nadie de la
+  planta lo recibe, y cada literal de más en la lista de producción es una
+  puerta más que hay que cuidar.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una
@@ -360,8 +448,21 @@ falta" como permiso para abrirlo a `*`.
 
 Un preview que pegue a la API de producción escribe en la base de producción.
 
-**Recomendación:** `vercel.json` no puede tener un destino por entorno, así que
-el rewrite tiene que resolverse por variable de entorno de Vercel, con valores
-distintos en Production y Preview. Hay que verificarlo con un preview real, no
-darlo por hecho: es el punto de esta migración donde un error se paga escribiendo
-en la base equivocada.
+**Estado:** la forma ya está decidida. El rewrite elige destino por host:
+el dominio de producción va a `yacco-api` y cualquier otro host va a
+`yacco-api-demo`. **El default es demo**, y es lo correcto: un host que la
+regla no conoce muestra datos de prueba en vez de escribir en producción. Qué
+hosts cuentan como producción está en D-011.
+
+**Falta para cerrarla:** verificarlo con un preview real y con la URL única de
+un deploy de producción, no darlo por hecho. Es el punto de esta migración
+donde un error se paga escribiendo en la base equivocada.
+
+**Obstáculo encontrado al preparar esa verificación.** Hoy no hay ninguna
+respuesta que diga qué servicio contestó. `/health` está excluido del prefijo
+`api/v1` (`configure-app.ts`), así que el rewrite de `/api/*` no llega a él. Y
+aunque llegara, `yacco-api` y `yacco-api-demo` corren la misma imagen y
+contestan el mismo `{status, commit}`. La base tampoco sirve de testigo: `demo`
+es copia de `main`, con los mismos usuarios. Para verificar P-05 hace falta
+que el entorno se vea desde el navegador, que es justamente la entrada del
+backlog «El fail-safe a demo es silencioso».
