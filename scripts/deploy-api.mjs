@@ -112,9 +112,9 @@ export function imageTagFor(commit) {
  * `/health` publica DEPLOYED_COMMIT para poder creerle cuando difiere de
  * `main` (D-009). Si se desplegara la imagen de un commit reportando otro, ese
  * campo mentiría justo en el caso en que alguien lo mira. Y deja afuera, por
- * construcción, desplegar "lo que esté en la etiqueta `:production`": se
- * despliega siempre la imagen del sha, nunca la que haya quedado cacheada con
- * el nombre del entorno.
+ * construcción, desplegar por cualquier etiqueta que no sea el sha —como las
+ * vieja `:demo` de la fase 3, que ningún deploy vuelve a
+ * mover (ver deployCommands)—: se despliega siempre la imagen del commit.
  */
 export function assertImageMatchesCommit(imageRef, commit) {
   const expectedSuffix = `:${imageTagFor(commit)}`;
@@ -166,23 +166,21 @@ export function buildAndPush({ projectId, region, commit }) {
   return imageRef;
 }
 
-/** Despliega una imagen ya subida en el servicio del entorno. Devuelve la URL. */
-export function deployImage({ projectId, region, config, envName, imageRef, commit }) {
-  assertImageMatchesCommit(imageRef, commit);
+/**
+ * Los comandos de `gcloud` que CAMBIAN algo al desplegar, en orden. Separados
+ * de su ejecución para poder probar qué hace y qué no hace un deploy.
+ *
+ * Deliberadamente NO etiqueta la imagen con el nombre del entorno (`:demo`,
+ * `:production`). Lo hacía hasta el primer deploy desde CI (2026-09-16), y ahí
+ * falló: mover una etiqueta existente exige `artifactregistry.tags.delete`, que
+ * el deployer no tiene por diseño. Se sacó en vez de ampliar permisos, porque
+ * la etiqueta no servía para nada y además mentía: nada desplegaba por ella
+ * (ver assertImageMatchesCommit), y la `:demo` de ese día apuntaba a una imagen
+ * vieja. Qué está desplegado lo dicen el `commit` de /health y la revisión de
+ * Cloud Run. Ver D-014 antes de reponerla "para tener visibilidad".
+ */
+export function deployCommands({ projectId, region, config, envName, imageRef, commit }) {
   const environment = ENVIRONMENTS[envName];
-
-  // Además del sha, la etiqueta del entorno: deja ver de un vistazo, en
-  // Artifact Registry, qué imagen está detrás de cada servicio. Es sólo para
-  // leer — nada despliega nunca por esta etiqueta, ver assertImageMatchesCommit.
-  run("gcloud", [
-    "artifacts",
-    "docker",
-    "tags",
-    "add",
-    imageRef,
-    `${imageRepository(region, projectId)}:${envName}`,
-    "--quiet",
-  ]);
 
   const secrets = SECRET_KEYS.map(
     ([variable, suffix]) => `${variable}=yacco-${envName}-${suffix}:latest`,
@@ -207,27 +205,39 @@ export function deployImage({ projectId, region, config, envName, imageRef, comm
     // apagado, y dejarlo ausente evita que alguien lo "corrija" a mano.
   ].join(",");
 
+  return [
+    [
+      "run",
+      "deploy",
+      environment.service,
+      `--image=${imageRef}`,
+      `--region=${region}`,
+      `--project=${projectId}`,
+      `--service-account=${RUNTIME_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`,
+      `--set-secrets=${secrets}`,
+      `--set-env-vars=${environmentVariables}`,
+      `--min-instances=${environment.minInstances}`,
+      "--max-instances=10",
+      "--memory=512Mi",
+      "--cpu=1",
+      // La API es pública: el navegador le pega a través del rewrite de Vercel,
+      // sin credenciales de Google. La autorización la hace la propia app.
+      "--allow-unauthenticated",
+      "--port=8080",
+      "--quiet",
+    ],
+  ];
+}
+
+/** Despliega una imagen ya subida en el servicio del entorno. Devuelve la URL. */
+export function deployImage({ projectId, region, config, envName, imageRef, commit }) {
+  assertImageMatchesCommit(imageRef, commit);
+  const environment = ENVIRONMENTS[envName];
+
   console.error(`Desplegando ${environment.service} en Cloud Run...`);
-  run("gcloud", [
-    "run",
-    "deploy",
-    environment.service,
-    `--image=${imageRef}`,
-    `--region=${region}`,
-    `--project=${projectId}`,
-    `--service-account=${RUNTIME_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`,
-    `--set-secrets=${secrets}`,
-    `--set-env-vars=${environmentVariables}`,
-    `--min-instances=${environment.minInstances}`,
-    "--max-instances=10",
-    "--memory=512Mi",
-    "--cpu=1",
-    // La API es pública: el navegador le pega a través del rewrite de Vercel,
-    // sin credenciales de Google. La autorización la hace la propia app.
-    "--allow-unauthenticated",
-    "--port=8080",
-    "--quiet",
-  ]);
+  for (const args of deployCommands({ projectId, region, config, envName, imageRef, commit })) {
+    run("gcloud", args);
+  }
 
   return run("gcloud", [
     "run",

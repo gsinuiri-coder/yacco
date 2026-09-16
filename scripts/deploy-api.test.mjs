@@ -9,6 +9,7 @@ import { describe, test } from "node:test";
 import {
   ENVIRONMENTS,
   assertImageMatchesCommit,
+  deployCommands,
   imageRepository,
   imageTagFor,
   parseArgs,
@@ -65,6 +66,48 @@ describe("assertImageMatchesCommit", () => {
   test("la imagen de otro commit no pasa", () => {
     const other = "0123456789abcdef0123456789abcdef01234567";
     assert.throws(() => assertImageMatchesCommit(`${REPO}:${imageTagFor(other)}`, SHA));
+  });
+});
+
+describe("deployCommands", () => {
+  const params = (envName) => ({
+    projectId: "yacco-v2-prod",
+    region: "us-east4",
+    config: {},
+    envName,
+    imageRef: `${REPO}:${imageTagFor(SHA)}`,
+    commit: SHA,
+  });
+
+  for (const envName of ["demo", "production"]) {
+    test(`${envName}: ningún comando toca etiquetas de Artifact Registry`, () => {
+      // Mover una etiqueta existente exige artifactregistry.tags.delete, que el
+      // deployer no tiene por diseño: el primer deploy desde CI falló por eso.
+      // Y la etiqueta de entorno no la usaba nadie (D-014).
+      for (const args of deployCommands(params(envName))) {
+        assert.ok(!args.includes("tags"), `comando con etiquetas: gcloud ${args.join(" ")}`);
+        assert.notEqual(
+          args[0],
+          "artifacts",
+          `comando de Artifact Registry: gcloud ${args.join(" ")}`,
+        );
+      }
+    });
+  }
+
+  test("el único comando es gcloud run deploy, con la imagen del sha", () => {
+    const commands = deployCommands(params("production"));
+    assert.equal(commands.length, 1);
+    const [deploy] = commands;
+    assert.deepEqual(deploy.slice(0, 3), ["run", "deploy", "yacco-api"]);
+    assert.ok(deploy.includes(`--image=${REPO}:${imageTagFor(SHA)}`));
+  });
+
+  test("el deploy pasa el commit y el APP_ENV del entorno", () => {
+    const [deploy] = deployCommands(params("demo"));
+    const envVars = deploy.find((arg) => arg.startsWith("--set-env-vars="));
+    assert.match(envVars, new RegExp(`DEPLOYED_COMMIT=${SHA}`));
+    assert.match(envVars, /APP_ENV=demo/);
   });
 });
 

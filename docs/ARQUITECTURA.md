@@ -588,8 +588,31 @@ Lo que sostiene ese orden:
   producción la MISMA imagen, identificada por el sha. No hay un segundo camino
   de build (ni `gcloud run deploy --source` ni buildpacks): el Dockerfile y el
   script son los mismos que se corren a mano. `deploy` se niega a desplegar
-  una imagen con el commit de otra, y nunca despliega por la etiqueta del
-  entorno (`:production`), que queda sólo para leer.
+  una imagen con el commit de otra: la única etiqueta de una imagen es su sha.
+- **Sin etiqueta de entorno (`:demo`, `:production`), y no se repone.** El
+  diseño original, además del sha, movía una etiqueta con el nombre del entorno
+  "para ver de un vistazo qué está desplegado". Se eliminó el 2026-09-16,
+  después de que el primer deploy desde CI fallara justo ahí, en «4a · Cloud Run
+  demo», antes de tocar el servicio. Por tres razones, y cualquiera alcanzaba:
+  1. **No se usaba para desplegar.** Nada despliega por esa etiqueta: se
+     despliega siempre la imagen del sha (`assertImageMatchesCommit`).
+  2. **Requería un permiso que el deployer no tiene por diseño.** Mover una
+     etiqueta existente exige `artifactregistry.tags.delete`, que
+     `artifactregistry.writer` no incluye. Darlo implicaba un rol a medida o
+     `repoAdmin`, que además permite borrar imágenes: ampliar los permisos del
+     que despliega para sostener un dato que nadie consulta.
+  3. **Quedaba desactualizada, o sea que mentía.** El día que se sacó, `:demo`
+     apuntaba a `f66c8c775dac`, una imagen de la fase 3 que no era la que iba a
+     correr. Un puntero decorativo y desactualizado es peor que ninguno:
+     alguien lo lee algún día creyendo que dice qué está desplegado.
+
+  **Qué está desplegado lo dicen el `commit` de `/health` y la revisión activa
+  de Cloud Run** (`gcloud run revisions list --service=…`). Si alguna vez hace
+  falta "más visibilidad", tiene que salir de ahí y no de una etiqueta.
+  `scripts/deploy-api.test.mjs` falla si un comando del deploy vuelve a tocar
+  etiquetas. Las etiquetas viejas `:demo` y `f66c8c775dac` quedan en Artifact
+  Registry sin efecto; la `:demo` la borra el dueño (ver `PROGRESO.md`).
+
 - **"Sana" es verificable.** Después de cada deploy de Cloud Run,
   `scripts/smoke.mjs api --env=…` exige `/health` con el commit recién
   construido y el `environment` correcto, más un login inexistente rechazado
