@@ -635,7 +635,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | Tanda                          | Estado      |
 | ------------------------------ | ----------- |
 | 1 — Esqueleto                  | 🟨 en curso |
-| 2 — Sesión y capa de datos     | ⬜          |
+| 2 — Sesión y capa de datos     | 🟨 en curso |
 | 3+ — Las 22 pantallas          | ⬜          |
 | Final — Corte (después del 24) | ⬜          |
 
@@ -643,7 +643,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 
 | #   | Pantalla (ruta React)                           | PR  | Estado |
 | --- | ----------------------------------------------- | --- | ------ |
-| 1   | Login (`/login`)                                |     | ⬜     |
+| 1   | Login (`/login`)                                | 156 | 🟨     |
 | 2   | Panel (`/`)                                     |     | ⬜     |
 | 3   | Clientes (`/customers`)                         |     | ⬜     |
 | 4   | Nuevo cliente (`/customers/new`)                |     | ⬜     |
@@ -678,7 +678,22 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   credenciales falsas → 401 de la API de demo; headers anti-enmarcado
   presentes.
 - Proyecto de Vercel `yacco-web-nuxt` creado por API y conectado al repo
-  (D-020).
+  (D-020). Necesitó su propio `apps/web-nuxt/vercel.json`: sin él, Vercel tomó
+  el `vercel.json` de la raíz (el del web React) y el primer preview falló.
+- **Criterio de salida, verificado 2026-09-17 tras el merge de #155:**
+  `curl https://yacco-web-nuxt.vercel.app/health` →
+  `{"status":"ok","commit":"420f3b5…","environment":"demo"}`;
+  `POST /api/v1/auth/login` con credenciales falsas por ese dominio → 401 de la
+  API de demo. El login con la pantalla nueva se verifica al cerrar la tanda 2.
+
+### Tanda 2 — Sesión y capa de datos
+
+- `packages/shared`: contratos de auth y las reglas de dinero (`formatSoles`,
+  aritmética en céntimos `bigint`) y de fechas (`formatCalendarDay` partiendo el
+  texto, instantes en hora de Lima), con Vitest y su propio lcov para Sonar.
+- `useApi()` como única puerta; `useSession()` con el access token en memoria
+  y el refresh en `localStorage` (D-022); guard global sólo en el cliente.
+- Login portado (pantalla 1) y el marco de la app con la barra lateral.
 
 ## Al terminar la migración
 

@@ -1,0 +1,77 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildToken } from "../support/session";
+
+describe("readSessionUser", () => {
+  it("lee usuario y roles del payload, con tildes intactas", () => {
+    const token = buildToken({ sub: "u-1", username: "Begoña", roles: ["SELLER", "DRIVER"] });
+
+    expect(readSessionUser(token)).toEqual({
+      id: "u-1",
+      username: "Begoña",
+      roles: ["SELLER", "DRIVER"],
+    });
+  });
+
+  it("devuelve null para lo que no es un JWT legible", () => {
+    expect(readSessionUser("no-es-jwt")).toBeNull();
+    expect(readSessionUser("a..c")).toBeNull();
+    expect(readSessionUser("a.%%%.c")).toBeNull();
+    expect(readSessionUser(`a.${btoa('{"sub":1}')}.c`)).toBeNull();
+  });
+});
+
+describe("safeReturnPath", () => {
+  it("sólo acepta una ruta interna", () => {
+    expect(safeReturnPath("/customers?page=2")).toBe("/customers?page=2");
+    expect(safeReturnPath("//evil.example")).toBe("/");
+    expect(safeReturnPath("/\\evil.example")).toBe("/");
+    expect(safeReturnPath("https://evil.example")).toBe("/");
+    expect(safeReturnPath(["/a"])).toBe("/");
+    expect(safeReturnPath(undefined)).toBe("/");
+  });
+});
+
+describe("refreshTokenStore", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it("guarda, lee y borra", () => {
+    refreshTokenStore.write("r-1");
+    expect(refreshTokenStore.read()).toBe("r-1");
+    refreshTokenStore.clear();
+    expect(refreshTokenStore.read()).toBeNull();
+  });
+
+  // Safari en modo privado lanza al tocar localStorage.
+  it("no rompe la app si el almacenamiento no está disponible", () => {
+    const blocked = () => {
+      throw new Error("almacenamiento bloqueado");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(blocked);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(blocked);
+
+    expect(refreshTokenStore.read()).toBeNull();
+    expect(() => refreshTokenStore.write("r-1")).not.toThrow();
+    expect(() => refreshTokenStore.clear()).not.toThrow();
+  });
+});
+
+describe("visibleNavigation", () => {
+  it("esconde una sección entera si ninguno de sus enlaces es para ese rol", () => {
+    NAVIGATION.push({
+      label: "Sólo admin",
+      links: [{ label: "Cuadre", icon: "i-lucide-scale", to: "/x", onlyFor: "ADMIN" }],
+    });
+    try {
+      expect(visibleNavigation(["SELLER"]).map((section) => section.label)).not.toContain(
+        "Sólo admin",
+      );
+      expect(visibleNavigation(["ADMIN"]).map((section) => section.label)).toContain("Sólo admin");
+    } finally {
+      NAVIGATION.pop();
+    }
+  });
+});

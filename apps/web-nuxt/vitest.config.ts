@@ -26,6 +26,11 @@ export default defineConfig({
           name: "nuxt",
           include: ["test/nuxt/**/*.test.ts"],
           environment: "nuxt",
+          setupFiles: ["./vitest.setup.nuxt.ts"],
+          // Montar una app Nuxt entera y compilar sus componentes en frío tarda
+          // varios segundos la primera vez en cada archivo.
+          testTimeout: 30_000,
+          hookTimeout: 60_000,
           environmentOptions: {
             nuxt: { domEnvironment: "happy-dom" },
           },

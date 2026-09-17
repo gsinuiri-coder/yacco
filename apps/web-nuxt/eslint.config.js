@@ -20,6 +20,10 @@ export default tseslint.config(
     rules: {
       // Las páginas de Nuxt se llaman por su ruta (index.vue, [id].vue).
       "vue/multi-word-component-names": "off",
+      // Nuxt auto-importa composables y utils; que un nombre exista lo
+      // comprueba `nuxt typecheck`, que sí ve esas declaraciones. Es lo que
+      // recomienda typescript-eslint para código TypeScript.
+      "no-undef": "off",
     },
   },
   eslintConfigPrettier,
