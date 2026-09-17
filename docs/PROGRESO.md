@@ -460,6 +460,17 @@ Decisión y detalle en D-018.
   Aplicada con `pnpm gcp:bootstrap` ANTES del merge, para que el deploy del
   merge sea la prueba. Comprobado con `gcloud ... providers describe`.
 
+### A6, la mitad barata — sin `x-powered-by`, sin enmarcado ✅ (2026-09-17)
+
+- **API** (`configureApp`, así lo cubren también los tests de integración):
+  `x-powered-by` deshabilitado, `X-Frame-Options: DENY` y
+  `Content-Security-Policy: frame-ancestors none`, también en 404 y errores.
+  Sin dependencias nuevas: un middleware de cuatro líneas en vez de Helmet.
+- **Web** (`vercel.json`, `headers`): los mismos dos headers en todas las rutas.
+- **Fuera, al backlog con su motivo:** la CSP completa y el refresh token fuera
+  de `localStorage` («Hallazgos de la auditoría de la fase 6 que no entraron
+  antes del corte»).
+
 ## Lo que falta antes de seguir
 
 Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
