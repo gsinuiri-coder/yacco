@@ -19,7 +19,7 @@ app funciona al cerrar cada fase.
 | 3 — La API en Cloud Run | ✅ hecha     |
 | 4 — El web en Vercel    | ✅ hecha     |
 | 5 — CI/CD               | ✅ hecha     |
-| 6 — Ensayo              | 🟨 en curso  |
+| 6 — Ensayo              | ✅ hecha     |
 | 7 — Corte               | ⬜ pendiente |
 
 ## Punto de partida verificado
@@ -269,7 +269,7 @@ por primera vez. **Render sigue sirviendo a los usuarios**: el corte es la fase 
   producción (PR propio, con recomendación antes de cambiar nada).
 - ✅ Validar el token de Vercel en el preflight, antes de la fase 7.
 
-## Fase 6 — Ensayo y auditoría 🟨
+## Fase 6 — Ensayo y auditoría ✅
 
 Nada de esta fase tocó producción: el recorrido escribe sólo en demo, y la
 auditoría fue de solo lectura.
@@ -299,11 +299,35 @@ Las cinco pasaron los nueve jobs. Ninguna cambió el esquema de las bases.
   | URL única del deploy de PRODUCCIÓN `yacco-jff4s9u6e-…` | 302 a `vercel.com/sso-api` | `"environment":"demo"` (D-011)                             |
   | `yacco-web.vercel.app`                                 | público                    | `"environment":"production"`                               |
 
-- **Recorrido de la app contra demo — PENDIENTE.** Se hace en el navegador
-  sobre el preview, que va a demo. Iniciar sesión (escribir la contraseña en el
-  formulario) lo hace una persona. El recorrido previsto: login, pedidos, rutas,
-  registro de paradas, cobranzas y liquidación, anotando qué se probó y qué se
-  vio.
+- **Recorrido de la app contra demo — HECHO, por la API, 2026-09-17 ~04:10
+  UTC.** Antes de darlo por hecho se miró la base: la rama `demo` no tenía
+  **ninguna** escritura desde su creación (ni pedidos, rutas, paradas, ventas,
+  pagos ni liquidaciones), y `main` tampoco desde el 2026-09-15. Un recorrido
+  que registra paradas y cobranzas deja filas, así que no había evidencia de
+  uno de escritura. Se hizo contra `yacco-api-demo` (con `/health` =
+  `"demo"` comprobado antes del primer POST), con el mismo camino HTTP que usa
+  el web:
+
+  | Paso                                                | Qué se vio                                                                                                                  |
+  | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+  | `pnpm demo:data` (copia con el catálogo real)       | parque inicial (80 vacíos), chofer `chofer.demo`, 8 clientes `(Demo)` y lote `LOTE-DEMO-01`                                 |
+  | …su primera carga de ruta                           | **rechazada por FIFO**: «Primero hay que cargar el lote "L-230826"», el lote heredado de `main`. La invariante, funcionando |
+  | Ruta del 2026-09-16, carga de 6                     | tomó las 6 de `L-230826` (2026-08-23), no del lote nuevo                                                                    |
+  | 2 paradas de venta en camión, iniciar               | OK                                                                                                                          |
+  | Parada A: 2 recargas + 2 vacíos devueltos, efectivo | deuda S/ 0.00 → S/ 0.00                                                                                                     |
+  | Parada B: 3 recargas, S/ 8.00 por Yape              | pago PENDING en la bandeja; deuda S/ 0.00 → **S/ 16.00** (3 × 8.00 − 8.00)                                                  |
+  | Terminar y liquidar desde su vista previa           | salieron 6, entregados 5: cerró                                                                                             |
+  | Confirmar el Yape desde la bandeja                  | OK                                                                                                                          |
+
+  Las pantallas del web (`/`, `/login`, `/customers` y el bundle) las carga el
+  smoke. **Lo que NO se hizo:** hacer clic en el navegador; la parte visual del
+  recorrido sigue sin testigo escrito.
+
+  `pnpm demo:data` tal cual no corre contra demo: busca los envases «Con caño» /
+  «Sin caño» del seed local, y el catálogo real (heredado de `main`) dice
+  `BIDON 20L CAÑO` / `BIDON 20L NORMAL`. Se corrió una copia compilada, fuera
+  del control de versiones, con sólo esos dos nombres cambiados. No se tocó el
+  catálogo de demo.
 
 **Encontrado durante el ensayo:**
 
@@ -357,8 +381,10 @@ motivo desde d4f4204).
   frena uno vencido antes de migrar. El problema real no es la duración sino el
   alcance (A1). El 2026-10-16 puede caer dentro del corte: rotarlo antes.
 
-**Qué se arregla antes del corte: lo decide el dueño.** A0 es la única
-recomendación de bloqueo.
+**Qué se arregla antes del corte, decidido por el dueño el 2026-09-16:** A0,
+A2, A3 + A8 (cadena de deploy y WIF) y la parte barata de A6 (`x-powered-by` y
+clickjacking), en ese orden, cada uno en su PR. A1, A4, A5, A7, la CSP completa y
+el refresh token fuera de `localStorage` van al backlog.
 
 ## Lo que falta antes de seguir
 

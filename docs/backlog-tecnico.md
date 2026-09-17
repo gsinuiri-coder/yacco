@@ -1640,3 +1640,20 @@ encontró justamente así, buscando `::error::` en una corrida verde (#139).
 mover la comprobación a un script (`scripts/`) que emita la anotación, como ya
 hace `check-vercel-token.mjs`, o armar el prefijo en tiempo de ejecución. Después,
 verificar en una corrida verde que buscar `::error::` en el log no devuelve nada.
+
+## `pnpm demo:data` no corre contra la demo de Cloud Run
+
+**Estado:** abierto. **Disparador:** la próxima vez que haga falta sembrar
+datos de ensayo en la rama `demo` de Neon.
+
+`seed-demo-plan.ts` busca los tipos de envase «Con caño» y «Sin caño», que son
+los nombres de `seed.ts`. La rama `demo` nació de `main`, y el catálogo real
+dice `BIDON 20L CAÑO` y `BIDON 20L NORMAL`: el script se niega antes de
+escribir nada. En el ensayo de la fase 6 se corrió una copia compilada con esos
+dos nombres cambiados. Además el script asume que no hay lotes con stock previos:
+contra una base con historia, su primera carga choca con FIFO (y queda a medias,
+porque falla después de crear chofer, clientes y lote).
+
+**Para cerrarla:** resolver los envases por su producto (la API ya expone
+`product.containerType`) en vez de por nombre, y cargar las rutas desde los lotes
+con stock en orden FIFO en vez de desde el lote que acaba de crear.
