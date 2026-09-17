@@ -6,6 +6,7 @@ export * from "./business-date.js";
 export * from "./customer-prices.js";
 export * from "./customers.js";
 export * from "./money.js";
+export * from "./orders.js";
 export * from "./pagination.js";
 export * from "./payments.js";
 export * from "./products.js";
