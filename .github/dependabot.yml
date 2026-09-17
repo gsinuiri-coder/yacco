@@ -12,6 +12,20 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Prisma 7 es un salto de major con su propia migración (backlog técnico):
+      # entra en un PR propio, con su verificación, después del corte definitivo
+      # (2026-09-24). Sin esta regla, cada 7.x abre un PR que hay que cerrar a mano.
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
+      # Los tipos siguen al runtime, no al revés: la API corre en Node 22
+      # (FROM node:22-alpine, setup-node 22). Unos @types/node más nuevos dejan
+      # pasar el typecheck con APIs que Node 22 no tiene, y el error aparece en
+      # producción. Se sube a mano junto con el runtime.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"

@@ -499,9 +499,11 @@ esa sonda se borra. Se le pide al agente; la sonda se borra sola si pasa.
 **Demo: `admin` deja de ser `admin123`.** Contraseña aleatoria (192 bits) en
 `yacco-demo-admin-password`, después el hash en la rama `demo`. Contra la API
 pública de demo: `admin123` 200 → **401**; la de Secret Manager → 200. Para
-`pnpm demo:data` contra demo, pasarla en `DEMO_ADMIN_PASSWORD`. Los JWT de demo
-no se rotaron: un refresh emitido con `admin123` en demo sigue valiendo hasta
-2026-10-17, contra datos de ensayo.
+`pnpm demo:data` contra demo, pasarla en `DEMO_ADMIN_PASSWORD`. **JWT de demo rotados el mismo día**, con el mismo procedimiento que producción:
+refresh emitido antes → 200; versión nueva de `yacco-demo-jwt-access-secret` y
+`-refresh-secret`; redeploy de sólo `yacco-api-demo` con la misma imagen;
+refresh viejo → **401**, login nuevo ok, refresh nuevo → 200,
+`smoke api --env=demo` OK.
 
 ### A2 — La contraseña de demo deja de ser la de main ✅ (2026-09-17)
 
@@ -579,7 +581,6 @@ ninguna base.
 | Rama de Neon `backup-pre-ci-deploy-20260916`  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)  | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                                  |
 | Rama de Neon `backup-pre-seed-creds-20260917` | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                                  |
 | Secreto `yacco-admin-initial-password`        | 2026-09-17                                                | El dueño la lee, la cambia desde la app y después destruye la versión: `gcloud secrets versions destroy latest --secret=yacco-admin-initial-password` |
-| Etiqueta `api:demo` en Artifact Registry      | de la fase 3, apunta a `f66c8c775dac`                     | La borra el dueño; sin apuro, nada despliega por ella (D-014)                                                                                         |
 
 **Un token de Vercel vencido frena el deploy en el preflight**, antes de tocar
 ninguna base: `scripts/check-vercel-token.mjs` lo valida con `vercel whoami`.
@@ -642,14 +643,6 @@ vieja de demo es la de `main` y sigue abriéndola. Reset del rol en `main`,
 `pnpm secrets:gcp`, redeploy de producción, y destruir las versiones viejas de
 `yacco-demo-*-url` y `yacco-production-*-url`.
 
-Borrar la etiqueta `:demo` de la imagen en Artifact Registry
-(`us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api:demo`). Apunta a
-`f66c8c775dac`, una imagen de la fase 3, y desde el PR #135 ningún deploy la
-mueve (D-014): es un puntero desactualizado que alguien podría leer como «lo que
-está en demo». La borra el dueño; el deployer no tiene `tags.delete`, a
-propósito. No hay apuro: nada despliega por ella.
-
-```bash
-gcloud artifacts docker tags delete \
-  us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api:demo --quiet
-```
+~~Borrar la etiqueta `:demo` de Artifact Registry~~ — **borrada el 2026-09-17**
+(`gcloud artifacts docker tags delete .../api:demo`, confirmado con `tags list`:
+ninguna etiqueta `demo`).
