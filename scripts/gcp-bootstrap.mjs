@@ -16,6 +16,7 @@
  * que lo hace corrible dos veces. Nada de lo que imprime es un secreto.
  */
 import { loadConfig, run } from "./lib.mjs";
+import { WIF_ATTRIBUTE_MAPPING, wifAttributeCondition } from "./wif-condition.mjs";
 
 const REQUIRED_SERVICES = [
   "run.googleapis.com",
@@ -251,20 +252,11 @@ function ensureWorkloadIdentity(projectId, projectNumber, repository, deployerEm
     { allowFailure: true },
   );
 
-  // La condición ancla el proveedor a ESTE repositorio. Sin ella, el workflow
-  // de cualquier repo de GitHub podría pedir un token contra este proyecto:
-  // el emisor es el mismo para todo GitHub.
-  //
-  // Y a la rama main (D-014): desde la fase 5 el deployer lee las URLs
-  // directas de Neon y el token de Vercel. Anclado sólo al repo, un workflow
-  // agregado en CUALQUIER rama —un PR sin mergear— podría pedir esas
-  // credenciales. Con `ref`, sólo lo que ya está en main las alcanza. Los
-  // eventos `workflow_run` y `workflow_dispatch` sobre main llevan
-  // `ref = refs/heads/main` en el token de OIDC.
-  const attributeCondition =
-    `assertion.repository == '${repository}' && ` + `assertion.ref == 'refs/heads/main'`;
-  const attributeMapping =
-    "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref";
+  // Qué ancla la condición y contra qué protege cada ancla: wif-condition.mjs.
+  // En resumen: este repositorio (por nombre y por id), la rama main y sólo
+  // el workflow deploy.yml.
+  const attributeCondition = wifAttributeCondition({ repository });
+  const attributeMapping = WIF_ATTRIBUTE_MAPPING;
 
   if (providerExists.ok) {
     run("gcloud", [
@@ -279,7 +271,10 @@ function ensureWorkloadIdentity(projectId, projectNumber, repository, deployerEm
       `--attribute-mapping=${attributeMapping}`,
       `--attribute-condition=${attributeCondition}`,
     ]);
-    log("wif provider", `${WIF_PROVIDER} actualizado (anclado a ${repository}, rama main)`);
+    log(
+      "wif provider",
+      `${WIF_PROVIDER} actualizado (anclado a ${repository} por nombre e id, rama main, deploy.yml)`,
+    );
   } else {
     run("gcloud", [
       "iam",
@@ -294,7 +289,10 @@ function ensureWorkloadIdentity(projectId, projectNumber, repository, deployerEm
       `--attribute-mapping=${attributeMapping}`,
       `--attribute-condition=${attributeCondition}`,
     ]);
-    log("wif provider", `${WIF_PROVIDER} creado (anclado a ${repository}, rama main)`);
+    log(
+      "wif provider",
+      `${WIF_PROVIDER} creado (anclado a ${repository} por nombre e id, rama main, deploy.yml)`,
+    );
   }
 
   // Sólo las ejecuciones de ESTE repositorio pueden hacerse pasar por la
@@ -387,7 +385,7 @@ function main() {
   console.log("");
   console.log("Ninguno de los dos es un secreto: identifican recursos, no autorizan nada");
   console.log("por sí solos. Lo que autoriza es la condición del proveedor, anclada al repo");
-  console.log("y a la rama main.");
+  console.log("(nombre e id), a la rama main y a deploy.yml.");
   console.log("");
   console.log("Siguiente paso:  pnpm secrets:gcp");
 }

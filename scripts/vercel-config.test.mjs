@@ -72,3 +72,12 @@ describe("vercel.json", () => {
     }
   });
 });
+
+describe("vercel.json — la instalación", () => {
+  // `vercel build` corre el installCommand dentro del job «5 · Web a Vercel»,
+  // que tiene un token de GCP y el de Vercel en el entorno (A3, fase 6). Sin
+  // --ignore-scripts, cualquier postinstall de las ~960 dependencias corre ahí.
+  test("installCommand no ejecuta scripts de instalación", () => {
+    assert.match(config.installCommand, /(^|\s)--ignore-scripts(\s|$)/);
+  });
+});

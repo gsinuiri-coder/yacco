@@ -1066,6 +1066,55 @@ sesión en el dashboard de Render que el agente no tiene.
 
 ---
 
+### D-018 — La cadena de deploy: actions por SHA, sin scripts de instalación donde hay credenciales, WIF anclado al workflow
+
+**Contexto.** La auditoría de la fase 6 (A3, A8) encontró que el deployer puede
+leer de hecho todos los secretos (`run.admin` + `serviceAccountUser` sobre la
+identidad de runtime), y que en los jobs que obtienen ese token corrían código
+de terceros que nadie fijó: actions por tag, postinstall de ~960 dependencias y
+`npm install -g vercel`. Además el proveedor de WIF confiaba en cualquier
+workflow de `main` del repo, identificado sólo por nombre.
+
+**Decisión.**
+
+1. **Toda action por SHA de commit**, con el tag exacto en un comentario
+   (`@3d3c42e… # v7.0.1`), en `ci.yml`, `codeql.yml` y `deploy.yml`. Un tag se
+   puede mover; un SHA no. Actualizarlas es un PR que cambia el SHA y el
+   comentario juntos.
+2. **`--ignore-scripts` en toda instalación de un job con `id-token: write`**:
+   el `pnpm install` de «2 · Migraciones», los dos `npm install -g vercel`
+   (preflight y web) y el `installCommand` de `vercel.json`, que `vercel build`
+   ejecuta DENTRO del job web con el token de Vercel en el entorno. El
+   `pnpm install` de «1 · Tests de integración» los conserva: ese job no tiene
+   credenciales. **Ningún paquete necesitó su postinstall**, verificado con una
+   instalación limpia: `@prisma/engines` queda sin binarios, y el CLI de Prisma
+   descarga el schema engine al primer uso (por eso `migrate deploy` sigue
+   funcionando); el web construye igual (esbuild resuelve su binario por la
+   dependencia opcional de la plataforma); `vercel@59.11.2` no declara scripts
+   de instalación. `scripts/vercel-config.test.mjs` falla si el
+   `installCommand` pierde el flag.
+3. **WIF anclado por id además del nombre, y a `deploy.yml`**
+   (`scripts/wif-condition.mjs`, con test): `repository_id` y
+   `repository_owner_id` (un repo renombrado y reclamado trae el mismo nombre
+   pero no el mismo id), `ref == refs/heads/main`, y
+   `workflow_ref == gsinuiri-coder/yacco/.github/workflows/deploy.yml@refs/heads/main`.
+   Consecuencia buscada: `ci.yml` o un workflow nuevo en `main` ya no pueden
+   hacerse pasar por el deployer. Consecuencia a recordar: **renombrar o mover
+   `deploy.yml` deja el deploy sin credenciales** hasta actualizar la condición
+   y correr `pnpm gcp:bootstrap`.
+
+**Lo que no cubre.** El código de las dependencias sigue corriendo cuando se lo
+IMPORTA (Prisma en el job de migraciones, Vite y sus plugins en el web): sin
+scripts de instalación se corta el vector más barato, no todos. Y el deployer
+sigue pudiendo leer todos los secretos a través de la identidad de runtime (A4,
+en el backlog).
+
+**Alternativa descartada.** _Mantener tags mayores y confiar en Dependabot._ Un
+tag movido por un compromiso del mantenedor se ejecuta en la corrida siguiente,
+antes de que exista ningún aviso.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una
