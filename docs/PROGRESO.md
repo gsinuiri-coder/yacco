@@ -391,6 +391,17 @@ el refresh token fuera de `localStorage` van al backlog.
 **Mecanismo:** D-019. El web de Render redirige a `yacco-web.vercel.app`; la
 API de Render queda viva sobre la misma rama `main` de Neon.
 
+### El corte, hecho — 2026-09-17 06:28 UTC
+
+| Paso                                        | Evidencia                                                                                                                                     |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Merge del corte (#145, `6ab70cb`)        | 06:28:21 UTC. El sitio de Render se reconstruyó solo: `last-modified` 06:28:56 UTC, bundle con la redirección                                 |
+| …en un navegador real                       | `https://yacco-web.onrender.com/customers` → `https://yacco-web.vercel.app/login`                                                             |
+| Deploy de CI 35190541593                    | nueve jobs verdes; migraciones «No pending migrations» en demo y main                                                                         |
+| 2. `pnpm smoke:prod` con `EXPECTED_COMMIT`  | 06:45 UTC: `Smoke OK.`                                                                                                                        |
+| …`curl https://yacco-web.vercel.app/health` | `{"status":"ok","commit":"6ab70cbe…","environment":"production"}`                                                                             |
+| 3. Render vivo sobre la misma `main`        | `https://yacco-api.onrender.com/health` → `{"status":"ok","commit":"6ab70cbe…","environment":null}` (Render no tiene `APP_ENV`; es esperable) |
+
 ### La ventana de convivencia: 2026-09-17 → **2026-09-24**
 
 Durante la ventana:
