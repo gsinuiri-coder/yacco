@@ -53,6 +53,18 @@
     "overrides": {
       "multer": "^2.3.0",
       "js-yaml@3": "^3.15.2"
+    },
+    "packageExtensions": {
+      "@testing-library/jest-dom": {
+        "peerDependencies": {
+          "vitest": "*"
+        },
+        "peerDependenciesMeta": {
+          "vitest": {
+            "optional": true
+          }
+        }
+      }
     }
   },
   "lint-staged": {
