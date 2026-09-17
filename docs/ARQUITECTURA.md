@@ -1024,6 +1024,48 @@ hacia atrás.
 
 ---
 
+### D-017 — Una credencial de demo nunca abre la base real
+
+**Contexto.** La rama `demo` de Neon nació hija de `main` (D-006) y heredó el
+rol `neondb_owner` **con la misma contraseña**. La separación de secretos por
+entorno existía en Secret Manager pero no en la credencial: una URL «de demo»
+pegada en un chat o un log daba acceso de owner, con DDL, a la base real
+(hallazgo A2 de la fase 6).
+
+**Decisión.** Cada rama de Neon que alimenta un entorno tiene su propia
+contraseña de rol. Una credencial de demo, de preview o de ensayo **nunca** debe
+autenticar contra `main`. Al crear una rama nueva a partir de `main` (incluida
+la `demo` recreada del procedimiento de D-006, paso 3b) se le resetea la
+contraseña del rol ANTES de subir sus URLs a Secret Manager.
+
+**Aplicado el 2026-09-17** sobre `demo` (`br-dawn-field-autu1p5w`), con la API
+de Neon (`reset_password`) y la sesión de `neonctl`, sin imprimir ningún valor;
+después `pnpm secrets:gcp` (versión nueva sólo de `yacco-demo-database-url` y
+`yacco-demo-direct-url`; producción «sin cambios») y redeploy de SÓLO
+`yacco-api-demo` con la imagen que ya corría (revisión `00010-f2m`, mismas
+variables que la `00009`). Entre el reset y el redeploy demo quedó sin base
+(`/health/db` 503) unos minutos: esperable, demo no tiene usuarios.
+
+| Credencial               | contra `demo` | contra `main` |
+| ------------------------ | ------------- | ------------- |
+| contraseña NUEVA de demo | abre          | **rechazada** |
+| contraseña VIEJA de demo | rechazada     | **ABRE**      |
+
+**La segunda fila no es un fallo del arreglo: es la definición del problema.**
+La contraseña vieja de demo ERA la de `main`; cambiar la de demo no puede
+invalidarla. Cerrarla del todo exige rotar la contraseña de `main`, y eso hoy
+rompe Render, que la tiene en su `DATABASE_URL` y sólo se cambia desde su
+dashboard. Se hace **al suspender Render** (fase 7, cierre), cuando `main` ya
+no tiene un consumidor fuera de Secret Manager: reset del rol en `main`,
+`pnpm secrets:gcp`, redeploy de producción, y destruir las versiones viejas
+de `yacco-demo-*-url` y `yacco-production-*-url`, que contienen ese valor.
+
+**Alternativa descartada.** _Rotar `main` ahora._ Deja a Render —que sirve a
+los usuarios y es la vuelta atrás del corte— sin base, y el arreglo necesita una
+sesión en el dashboard de Render que el agente no tiene.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una

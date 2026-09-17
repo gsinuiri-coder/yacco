@@ -430,6 +430,20 @@ los secretos JWT: no estaba pedido. Queda en la lista del dueño: rotar
 `JWT_REFRESH_SECRET` de Render, que es otro valor y sólo se cambia desde su
 dashboard.
 
+### A2 — La contraseña de demo deja de ser la de main ✅ (2026-09-17)
+
+Decisión y detalle en D-017. Resumen:
+
+- Reset de la contraseña de `neondb_owner` en la rama `demo`; `pnpm secrets:gcp`
+  creó versión nueva sólo de las dos URLs de demo.
+- Redeploy de sólo `yacco-api-demo` con la misma imagen
+  (`api:d09c19f38033`), `node scripts/smoke.mjs api --env=demo` → `Smoke OK.`,
+  `/health/db` → 200.
+- **La contraseña nueva de demo contra `main`: rechazada.**
+- **La contraseña VIEJA de demo contra `main`: todavía ABRE**, porque es la de
+  `main`. Se cierra rotando `main` al suspender Render (ver D-017 y «Al
+  terminar la migración»).
+
 ## Lo que falta antes de seguir
 
 Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
@@ -522,6 +536,11 @@ Borrar la rama de respaldo `backup-pre-ci-deploy-20260916` (ver «Punto de
 retorno»), sólo cuando la fase 7 haya cerrado sin incidentes. Si hubo que
 restaurar en algún momento, borrar también `main_before_restore_*` y
 `demo_orphan_*`, una vez que no haga falta recuperar nada de ahí.
+
+**Al suspender Render, rotar la contraseña de `main`** (D-017): la contraseña
+vieja de demo es la de `main` y sigue abriéndola. Reset del rol en `main`,
+`pnpm secrets:gcp`, redeploy de producción, y destruir las versiones viejas de
+`yacco-demo-*-url` y `yacco-production-*-url`.
 
 Borrar la etiqueta `:demo` de la imagen en Artifact Registry
 (`us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api:demo`). Apunta a
