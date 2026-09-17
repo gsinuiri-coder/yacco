@@ -1,0 +1,78 @@
+/*
+ * El tema de Yacco en UN solo lugar: las paletas y las familias tipográficas.
+ * `app/app.config.ts` sólo asigna qué paleta cumple qué papel en Nuxt UI.
+ *
+ * Por qué estas y no los defaults de Nuxt UI (green + slate + system-ui):
+ *
+ * - lagoon: el agua tratada vista de lado, un azul petróleo hondo. Es el color
+ *   de la acción principal y del estado "en curso". Más oscuro que el azul del
+ *   web React para que el texto blanco encima pase AA con margen.
+ * - basalt: un gris con un dejo frío hacia el mismo azul, para que superficies
+ *   y bordes pertenezcan a la paleta en vez de ser un gris cualquiera.
+ * - ochre: el acento cálido, tierra seca de la costa. Se usa poco y a propósito:
+ *   lo que merece que el ojo se detenga (lo que se debe, lo pendiente).
+ *
+ * Tipografía: Public Sans para todo lo que se lee y se compara (tiene cifras
+ * tabulares, que alinean montos y cantidades en columna) y Bricolage Grotesque
+ * sólo para los títulos, que es donde la interfaz puede tener carácter sin
+ * costarle legibilidad a nadie.
+ */
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@theme static {
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Public Sans", ui-sans-serif, sans-serif;
+
+  --color-lagoon-50: oklch(0.975 0.014 222);
+  --color-lagoon-100: oklch(0.945 0.028 222);
+  --color-lagoon-200: oklch(0.885 0.052 222);
+  --color-lagoon-300: oklch(0.8 0.078 222);
+  --color-lagoon-400: oklch(0.68 0.096 222);
+  --color-lagoon-500: oklch(0.56 0.1 224);
+  --color-lagoon-600: oklch(0.48 0.092 226);
+  --color-lagoon-700: oklch(0.41 0.078 228);
+  --color-lagoon-800: oklch(0.345 0.064 230);
+  --color-lagoon-900: oklch(0.29 0.05 232);
+  --color-lagoon-950: oklch(0.21 0.038 234);
+
+  --color-basalt-50: oklch(0.985 0.003 225);
+  --color-basalt-100: oklch(0.966 0.005 225);
+  --color-basalt-200: oklch(0.925 0.008 225);
+  --color-basalt-300: oklch(0.87 0.011 225);
+  --color-basalt-400: oklch(0.71 0.015 228);
+  --color-basalt-500: oklch(0.555 0.018 230);
+  --color-basalt-600: oklch(0.455 0.018 232);
+  --color-basalt-700: oklch(0.375 0.017 234);
+  --color-basalt-800: oklch(0.285 0.015 236);
+  --color-basalt-900: oklch(0.215 0.013 238);
+  --color-basalt-950: oklch(0.155 0.011 240);
+
+  --color-ochre-50: oklch(0.982 0.018 80);
+  --color-ochre-100: oklch(0.955 0.042 80);
+  --color-ochre-200: oklch(0.91 0.08 78);
+  --color-ochre-300: oklch(0.85 0.115 75);
+  --color-ochre-400: oklch(0.79 0.14 70);
+  --color-ochre-500: oklch(0.72 0.15 64);
+  --color-ochre-600: oklch(0.62 0.14 58);
+  --color-ochre-700: oklch(0.52 0.12 55);
+  --color-ochre-800: oklch(0.43 0.098 55);
+  --color-ochre-900: oklch(0.36 0.078 56);
+  --color-ochre-950: oklch(0.26 0.055 58);
+}
+
+:root {
+  --ui-radius: 0.5rem;
+  --ui-bg: var(--color-basalt-50);
+}
+
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
