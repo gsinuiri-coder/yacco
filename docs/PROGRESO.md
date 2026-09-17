@@ -652,8 +652,8 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 7   | Pedidos (`/orders`)                             | 160 | ✅     |
 | 8   | Nuevo pedido (`/orders/new`)                    | 160 | ✅     |
 | 9   | Detalle de pedido (`/orders/:id`)               | 160 | ✅     |
-| 10  | Rutas (`/routes`)                               |     | ⬜     |
-| 11  | Nueva ruta (`/routes/new`)                      |     | ⬜     |
+| 10  | Rutas (`/routes`)                               | 161 | ✅     |
+| 11  | Nueva ruta (`/routes/new`)                      | 161 | ✅     |
 | 12  | Detalle de ruta (`/routes/:id`)                 |     | ⬜     |
 | 13  | Liquidación (`/routes/:id/settlement`)          |     | ⬜     |
 | 14  | Cobranzas (`/payments`)                         |     | ⬜     |
@@ -734,6 +734,13 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   con tests unitarios. El detalle muestra el total de la API (no uno
   recalculado), cancela con confirmación y ante un 409 recarga el estado real.
   `CustomerPicker` sólo ofrece clientes activos.
+- **#161 Rutas: lista y planificación.** Resumen de paradas por ruta (el
+  desglose sólo cuando ya se resolvió alguna), filtros de día, chofer, zona y
+  estado con catálogos que, si caen, dejan el filtro vacío sin romper la lista.
+  Planificar crea la ruta vacía con el día de hoy en Lima; sin zona no manda
+  `zoneId`; distingue «no hay choferes activos» de «no se pudo cargar la lista
+  de choferes» (el React mostraba lo primero en los dos casos). `useCatalog`
+  generaliza la carga de catálogos para selectores.
 
 ## Al terminar la migración
 

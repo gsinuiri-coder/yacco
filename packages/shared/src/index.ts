@@ -10,4 +10,6 @@ export * from "./orders.js";
 export * from "./pagination.js";
 export * from "./payments.js";
 export * from "./products.js";
+export * from "./routes.js";
+export * from "./users.js";
 export * from "./zones.js";
