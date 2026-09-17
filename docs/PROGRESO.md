@@ -654,7 +654,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 9   | Detalle de pedido (`/orders/:id`)               | 160 | ✅     |
 | 10  | Rutas (`/routes`)                               | 161 | ✅     |
 | 11  | Nueva ruta (`/routes/new`)                      | 161 | ✅     |
-| 12  | Detalle de ruta (`/routes/:id`)                 |     | ⬜     |
+| 12  | Detalle de ruta (`/routes/:id`)                 | 162 | ✅     |
 | 13  | Liquidación (`/routes/:id/settlement`)          |     | ⬜     |
 | 14  | Cobranzas (`/payments`)                         |     | ⬜     |
 | 15  | Inventario (`/inventory`)                       |     | ⬜     |
@@ -741,6 +741,18 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   `zoneId`; distingue «no hay choferes activos» de «no se pudo cargar la lista
   de choferes» (el React mostraba lo primero en los dos casos). `useCatalog`
   generaliza la carga de catálogos para selectores.
+- **#162 Detalle de ruta.** Iniciar, terminar (el diálogo explica las paradas
+  pendientes y no ofrece confirmar lo que la API rechaza; un 409 recarga), armar
+  paradas desde pedidos pendientes sin ruta o autoventa, subir/bajar mandando la
+  lista completa, quitar con confirmación sólo lo pendiente. Registrar la parada
+  con los tres escenarios de HU-12, precio pactado por defecto y autorizador
+  obligatorio sólo ante un precio distinto; resumen de venta, cobro y envases, y
+  aviso de límite de crédito que nunca bloquea. Parada corregida: sello con
+  quién, cuándo y motivo, y el motivo de falla sólo si sigue no entregada. Carga
+  del camión con reparto FIFO previo al envío (un POST por lote). Las reglas del
+  marcado y del FIFO viven en `utils/stop-mark.ts` y `utils/fifo-load.ts`, con
+  tests unitarios. **Hallazgo:** `UInput type="number"` con `v-model` entrega
+  un número, no texto; `positiveWhole` acepta los dos.
 
 ## Al terminar la migración
 

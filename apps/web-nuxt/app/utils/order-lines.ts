@@ -1,5 +1,6 @@
 import { MAX_ITEM_QUANTITY, addAmounts, isMoneyInput, timesQuantity } from "@yacco/shared";
 import type { CreateOrderItemBody, EffectivePrice, PriceSource, Product } from "@yacco/shared";
+import { positiveWhole } from "./quantity";
 
 /**
  * Una línea del pedido mientras se arma. `key` es sólo para Vue.
@@ -55,17 +56,11 @@ export function repriceLines(
   );
 }
 
-/** Una cantidad entera positiva, leída del texto; `null` si no lo es. */
-function wholeQuantity(text: string): number | null {
-  const trimmed = text.trim();
-  return /^\d+$/.test(trimmed) ? Number(trimmed) : null;
-}
-
 /** Las mismas reglas que CreateOrderItemDto, para que una línea mala no llegue a la API. */
 export function checkOrderLine(line: OrderLineDraft): string | undefined {
   if (line.productId === "") return "Elige un producto";
-  const quantity = wholeQuantity(line.quantity);
-  if (quantity === null || quantity < 1) return "La cantidad debe ser un número entero mayor que 0";
+  const quantity = positiveWhole(line.quantity);
+  if (quantity === null) return "La cantidad debe ser un número entero mayor que 0";
   if (quantity > MAX_ITEM_QUANTITY) return `La cantidad no puede superar ${MAX_ITEM_QUANTITY}`;
   if (!isMoneyInput(line.unitPrice.trim())) {
     return 'El precio unitario debe ser un monto como "12.50"';
@@ -75,9 +70,9 @@ export function checkOrderLine(line: OrderLineDraft): string | undefined {
 
 /** El subtotal de una línea completa; `null` mientras no se puede calcular. */
 export function lineSubtotal(line: OrderLineDraft): string | null {
-  const quantity = wholeQuantity(line.quantity);
+  const quantity = positiveWhole(line.quantity);
   const price = line.unitPrice.trim();
-  if (quantity === null || quantity < 1 || !isMoneyInput(price)) return null;
+  if (quantity === null || !isMoneyInput(price)) return null;
   return timesQuantity(price, quantity);
 }
 
