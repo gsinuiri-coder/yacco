@@ -1,4 +1,4 @@
-import type { Customer, Page } from "@yacco/shared";
+import type { Customer, Order, Page } from "@yacco/shared";
 
 export function buildCustomer(overrides: Partial<Customer> = {}): Customer {
   return {
@@ -13,6 +13,33 @@ export function buildCustomer(overrides: Partial<Customer> = {}): Customer {
     debtBalance: "0.00",
     active: true,
     createdAt: "2026-08-21T15:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function buildOrder(overrides: Partial<Order> = {}): Order {
+  return {
+    id: "o-1",
+    customerId: "11111111-1111-4111-8111-111111111111",
+    customer: {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "Bodega Santa Rosa",
+      phone: "987654321",
+    },
+    deliveryDate: "2026-08-25",
+    status: "PENDING",
+    createdById: "u-1",
+    createdAt: "2026-08-21T15:00:00.000Z",
+    items: [
+      {
+        id: "item-1",
+        productId: "p-recarga",
+        product: { id: "p-recarga", name: "Recarga 20L" },
+        quantity: 3,
+        unitPrice: "12.50",
+      },
+    ],
+    total: "37.50",
     ...overrides,
   };
 }

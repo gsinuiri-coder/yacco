@@ -28,6 +28,7 @@ export const NAVIGATION: NavigationSection[] = [
     links: [
       { label: "Panel", icon: "i-lucide-layout-dashboard", to: "/" },
       { label: "Clientes", icon: "i-lucide-users", to: "/customers" },
+      { label: "Pedidos", icon: "i-lucide-clipboard-list", to: "/orders" },
     ],
   },
 ];
