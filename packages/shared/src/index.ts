@@ -3,6 +3,7 @@
 export * from "./account-statement.js";
 export * from "./auth.js";
 export * from "./business-date.js";
+export * from "./catalogs.js";
 export * from "./customer-prices.js";
 export * from "./customers.js";
 export * from "./money.js";
