@@ -75,8 +75,9 @@ no se vuelve a discutir en cada PR; se revisa cuando cambia su contexto.
 **Contexto.** Ya existe un proyecto `yacco-2026` (número 1091068368033) con
 facturación activa. No está vacío: tiene habilitadas unas cuarenta APIs de
 Firebase, Firestore, BigQuery y App Engine. Es el Yacco anterior, el que corría
-sobre Firestore — en este mismo repo queda `tools/firestore-export/`, la
-herramienta que se escribió para sacar los datos de ahí.
+sobre Firestore. La herramienta para sacar los datos de ahí,
+`tools/firestore-export/`, vive en la rama `feat/firestore-export` (PR #59, sin
+mergear): no está en `main`.
 
 **Decisión.** Crear un proyecto nuevo para Yacco v2 y dejar `yacco-2026`
 intacto. Vincularlo a la cuenta de facturación `0148EC-33BCAA-9A4CED`
