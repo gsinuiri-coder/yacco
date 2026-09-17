@@ -468,11 +468,40 @@ salvo que el usuario `admin` no exista: lo recrearía con `admin123`.
 **Lo que la rotación NO cierra — sesiones ya emitidas.**
 `AuthService.refreshAccessToken` no mira la contraseña: un refresh token
 obtenido con `admin123` sigue emitiendo access tokens hasta que vence (30 días)
-o hasta que cambie el `JWT_REFRESH_SECRET` de la API que lo firmó. No se rotaron
-los secretos JWT: no estaba pedido. Queda en la lista del dueño: rotar
-`yacco-production-jwt-refresh-secret` (y el de access) en Cloud Run, y el
-`JWT_REFRESH_SECRET` de Render, que es otro valor y sólo se cambia desde su
-dashboard.
+o hasta que cambie el `JWT_REFRESH_SECRET` de la API que lo firmó. Resuelto para Cloud Run el mismo día (ver «Sesiones emitidas con `admin123`»);
+Render, pendiente de cargar su secreto en el dashboard.
+
+### Sesiones emitidas con `admin123`: JWT de producción rotados ✅ (2026-09-17)
+
+Cambiar la contraseña (A0) no invalidaba los refresh tokens ya emitidos: valen
+30 días y `refreshAccessToken` no mira la contraseña. Rotado todo en un solo
+proceso, sin imprimir secretos ni tokens:
+
+1. **Antes**, un refresh token recién emitido por Cloud Run y otro por Render:
+   los dos → **200** (sin esa línea de base, un 401 después no probaría nada).
+2. Versión nueva de `yacco-production-jwt-access-secret` y
+   `yacco-production-jwt-refresh-secret` (48 bytes, base64url), verificadas por
+   lectura.
+3. Redeploy de sólo `yacco-api` con la imagen que ya corría
+   (`api:4f7b854958fe`): revisión `00013-wxc`, configuración idéntica a la
+   `00012` salvo los secretos. `/health` ok, `pnpm smoke:prod` → `Smoke OK.`
+4. **Después**, contra Cloud Run: refresh viejo → **401**; login nuevo → ok;
+   refresh nuevo → 200.
+
+**Render, pendiente del dueño.** Render firma con su propio
+`JWT_REFRESH_SECRET`, cargado a mano en su dashboard: el refresh viejo contra
+Render sigue en **200**. El valor nuevo está en Secret Manager como
+`yacco-render-jwt-refresh-secret` (nunca en el chat, el PR ni un log). Una vez
+cargado y reiniciado Render, se verifica con el refresh emitido en el paso 1,
+guardado como `yacco-tmp-render-refresh-probe`: tiene que dar 401, y entonces
+esa sonda se borra. Se le pide al agente; la sonda se borra sola si pasa.
+
+**Demo: `admin` deja de ser `admin123`.** Contraseña aleatoria (192 bits) en
+`yacco-demo-admin-password`, después el hash en la rama `demo`. Contra la API
+pública de demo: `admin123` 200 → **401**; la de Secret Manager → 200. Para
+`pnpm demo:data` contra demo, pasarla en `DEMO_ADMIN_PASSWORD`. Los JWT de demo
+no se rotaron: un refresh emitido con `admin123` en demo sigue valiendo hasta
+2026-10-17, contra datos de ensayo.
 
 ### A2 — La contraseña de demo deja de ser la de main ✅ (2026-09-17)
 
