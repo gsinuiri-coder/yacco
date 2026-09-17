@@ -25,7 +25,10 @@ export interface NavigationSection {
 export const NAVIGATION: NavigationSection[] = [
   {
     label: "Día a día",
-    links: [{ label: "Panel", icon: "i-lucide-layout-dashboard", to: "/" }],
+    links: [
+      { label: "Panel", icon: "i-lucide-layout-dashboard", to: "/" },
+      { label: "Clientes", icon: "i-lucide-users", to: "/customers" },
+    ],
   },
 ];
 

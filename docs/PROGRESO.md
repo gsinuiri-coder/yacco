@@ -645,10 +645,10 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | --- | ----------------------------------------------- | --- | ------ |
 | 1   | Login (`/login`)                                | 156 | ✅     |
 | 2   | Panel (`/`)                                     | 157 | ✅     |
-| 3   | Clientes (`/customers`)                         |     | ⬜     |
-| 4   | Nuevo cliente (`/customers/new`)                |     | ⬜     |
+| 3   | Clientes (`/customers`)                         | 158 | ✅     |
+| 4   | Nuevo cliente (`/customers/new`)                | 158 | ✅     |
 | 5   | Detalle de cliente (`/customers/:id`)           |     | ⬜     |
-| 6   | Editar cliente (`/customers/:id/edit`)          |     | ⬜     |
+| 6   | Editar cliente (`/customers/:id/edit`)          | 158 | ✅     |
 | 7   | Pedidos (`/orders`)                             |     | ⬜     |
 | 8   | Nuevo pedido (`/orders/new`)                    |     | ⬜     |
 | 9   | Detalle de pedido (`/orders/:id`)               |     | ⬜     |
@@ -706,6 +706,17 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   espera 300 ms, límite 10, sin filtro de activo (supuesto por validar), inactivo
   marcado y elegible, error distinto de «Sin resultados» con «Reintentar».
   Suma saludo y fecha de hoy en Lima.
+  Destapó que `@testing-library/jest-dom/vitest` resolvía el `vitest` que pnpm
+  eleva (5, de web-nuxt) en vez del 3 de `apps/web`: en CI, `apps/web` fallaba
+  al azar con «Invalid Chai property». `pnpm.packageExtensions` en la raíz lo
+  declara peer opcional y cada app lo enlaza con su propio vitest.
+- **#158 Clientes: lista, alta y edición.** `usePagedList` concentra la regla de
+  la página: vuelve a 1 sólo cuando el filtro APLICADO cambia (el bug que el
+  React arrastró semanas). Filtro de estado a un clic (`aria-pressed`), nombre
+  del cliente como enlace a la ficha, «Editar» con el nombre en su nombre
+  accesible. Formulario: opcionales vacíos no viajan, límite como string, zona
+  retirada conservada y marcada, deuda de sólo lectura, baja con
+  `active=false`.
 
 ## Al terminar la migración
 
