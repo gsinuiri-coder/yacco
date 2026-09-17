@@ -386,6 +386,50 @@ A2, A3 + A8 (cadena de deploy y WIF) y la parte barata de A6 (`x-powered-by` y
 clickjacking), en ese orden, cada uno en su PR. A1, A4, A5, A7, la CSP completa y
 el refresh token fuera de `localStorage` van al backlog.
 
+## Antes del corte: los arreglos que lo bloquean
+
+### A0 — Credenciales del seed en producción ✅ (2026-09-17)
+
+**Verificado antes de tocar nada**, comparando con bcrypt en proceso (sin
+imprimir hashes ni URLs): `main` tiene **un solo usuario, `admin`, y aceptaba
+`admin123`**. En `demo`, lo mismo (más `chofer.demo`, creado por el recorrido
+de la fase 6, con contraseña aleatoria).
+
+1. **Respaldo** como en D-006: `backup-pre-seed-creds-20260917`
+   (`br-empty-king-au95xarv`), hija de `main`, sin compute, creada
+   **2026-09-17 04:34:20 UTC**, después del deploy verde de `d1dd298`.
+2. **Contraseña nueva**: 24 bytes aleatorios (192 bits), base64url, generada en
+   proceso. Primero a Secret Manager (`yacco-admin-initial-password`, versión
+   nueva **verificada por lectura**) y recién después el hash en `main` (bcrypt,
+   10 rondas, igual que `UsersService`), con un `updateMany` condicionado al hash
+   viejo que exigió tocar exactamente 1 fila. Si el paso del secreto fallaba, la
+   base no se tocaba. **Ningún valor se imprimió.** El dueño la lee de Secret
+   Manager y la cambia.
+3. **Verificado contra producción después:**
+
+   | Endpoint de login                              | `admin` / `admin123` | `admin` / la de Secret Manager |
+   | ---------------------------------------------- | -------------------- | ------------------------------ |
+   | Cloud Run `yacco-api`                          | **401**              | 200                            |
+   | `yacco-web.vercel.app` (rewrite)               | **401**              | 200                            |
+   | Render `yacco-api.onrender.com` (misma `main`) | **401**              | —                              |
+
+**`db:seed` no corre contra `main` desde ningún camino automático**, revisado:
+`deploy.yml` sólo corre `prisma migrate deploy` (que no siembra; sólo `migrate
+dev` y `migrate reset` lo hacen); `render.yaml` corre `db:deploy`; el
+Dockerfile arranca `node dist/main.js`; CI siembra sólo contra Testcontainers.
+No hizo falta cerrar nada. Queda un camino manual: una persona que corra
+`pnpm db:seed` con la URL de `main`. Ni así pisa la contraseña (`update: {}`),
+salvo que el usuario `admin` no exista: lo recrearía con `admin123`.
+
+**Lo que la rotación NO cierra — sesiones ya emitidas.**
+`AuthService.refreshAccessToken` no mira la contraseña: un refresh token
+obtenido con `admin123` sigue emitiendo access tokens hasta que vence (30 días)
+o hasta que cambie el `JWT_REFRESH_SECRET` de la API que lo firmó. No se rotaron
+los secretos JWT: no estaba pedido. Queda en la lista del dueño: rotar
+`yacco-production-jwt-refresh-secret` (y el de access) en Cloud Run, y el
+`JWT_REFRESH_SECRET` de Render, que es otro valor y sólo se cambia desde su
+dashboard.
+
 ## Lo que falta antes de seguir
 
 Depende del dueño, y bloquea el primer deploy desde CI. En este orden:
@@ -415,11 +459,13 @@ ninguna base.
 
 ## Credenciales y recursos con fecha
 
-| Qué                                          | Fecha                                                    | Qué hacer                                                                                                           |
-| -------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Token de Vercel (`yacco-ci-vercel-token`)    | creado 2026-09-16, **vence 2026-10-16**                  | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015 |
-| Rama de Neon `backup-pre-ci-deploy-20260916` | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                |
-| Etiqueta `api:demo` en Artifact Registry     | de la fase 3, apunta a `f66c8c775dac`                    | La borra el dueño; sin apuro, nada despliega por ella (D-014)                                                       |
+| Qué                                           | Fecha                                                     | Qué hacer                                                                                                                                             |
+| --------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Token de Vercel (`yacco-ci-vercel-token`)     | creado 2026-09-16, **vence 2026-10-16**                   | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015                                   |
+| Rama de Neon `backup-pre-ci-deploy-20260916`  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)  | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                                  |
+| Rama de Neon `backup-pre-seed-creds-20260917` | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                                  |
+| Secreto `yacco-admin-initial-password`        | 2026-09-17                                                | El dueño la lee, la cambia desde la app y después destruye la versión: `gcloud secrets versions destroy latest --secret=yacco-admin-initial-password` |
+| Etiqueta `api:demo` en Artifact Registry      | de la fase 3, apunta a `f66c8c775dac`                     | La borra el dueño; sin apuro, nada despliega por ella (D-014)                                                                                         |
 
 **Un token de Vercel vencido frena el deploy en el preflight**, antes de tocar
 ninguna base: `scripts/check-vercel-token.mjs` lo valida con `vercel whoami`.

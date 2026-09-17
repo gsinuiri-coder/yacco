@@ -54,7 +54,13 @@ que devuelva el usuario desde la base, y usarlo como fuente de verdad en la UI.
 
 ## Password del admin de producción
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo con datos reales.
+**Estado:** RESUELTA el 2026-09-17 (hallazgo A0 de la fase 6, detalle en
+`PROGRESO.md`). Rotada a una contraseña aleatoria guardada en Secret Manager
+(`yacco-admin-initial-password`); `admin123` verificada con 401 contra Cloud
+Run, Vercel y Render. Quedan abiertas las sesiones ya emitidas: ver «Cambiar la
+contraseña no invalida los refresh tokens».
+
+**Estado original:** abierto. **Disparador:** antes del piloto de campo con datos reales.
 
 El usuario `admin` de la base de producción (Neon, proyecto `yacco-production`)
 quedó con la contraseña `admin123` **solo para la Demo 1**. Es la contraseña por
@@ -1657,3 +1663,19 @@ porque falla después de crear chofer, clientes y lote).
 **Para cerrarla:** resolver los envases por su producto (la API ya expone
 `product.containerType`) en vez de por nombre, y cargar las rutas desde los lotes
 con stock en orden FIFO en vez de desde el lote que acaba de crear.
+
+## Cambiar la contraseña no invalida los refresh tokens
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo, o el día que un
+usuario pierda el celular o se vaya de la planta.
+
+`AuthService.refreshAccessToken` verifica la firma y que el usuario exista y esté
+activo, pero no si la contraseña cambió después de emitir el token. Un refresh
+token robado sigue sirviendo 30 días (`JWT_REFRESH_EXPIRES_IN`) aunque se rote la
+contraseña. Hoy la única forma de cortarlo es rotar `JWT_REFRESH_SECRET`, que
+cierra la sesión de TODOS. Se vio al rotar `admin123` (A0, 2026-09-17).
+
+**Para cerrarla** (toca auth: la decide el dueño, y las sesiones revocables con
+tabla quedaron fuera de alcance de la migración): la opción barata es firmar en
+el token un `passwordChangedAt` (o un contador por usuario) y rechazar el
+refresh si no coincide con el de la base.
