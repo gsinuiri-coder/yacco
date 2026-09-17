@@ -1621,3 +1621,39 @@ qué falta y por qué no hay default. Con demo, local o sin `APP_ENV`, el defaul
 de desarrollo queda igual. Tests en `env.validation.test.ts` para los tres
 casos (producción sin la variable, producción con ella, local sin ella), vistos
 en rojo antes de aplicar.
+
+## El preflight imprime `::error::` en corridas verdes
+
+**Estado:** abierto. **Disparador:** antes de la fase 7, cuando los logs del
+deploy se van a leer con atención.
+
+El paso «Los tres secretos tienen valor» del job de preflight
+(`.github/workflows/deploy.yml`) muestra en el log de TODAS las corridas, también
+las verdes, la línea `echo "::error::$name está vacío en Secret Manager."`.
+GitHub imprime el cuerpo del script al empezar el paso. No es un error y no
+genera ninguna anotación. Pero un log verde con ese marcador entrena a leer mal
+los logs: el día que aparezca un `::error::` de verdad, el ojo ya aprendió que
+«ese está siempre». En la fase 7 esos logs se van a mirar para decidir, y se lo
+encontró justamente así, buscando `::error::` en una corrida verde (#139).
+
+**Para cerrarla:** que el marcador no aparezca literal en el script. Por ejemplo,
+mover la comprobación a un script (`scripts/`) que emita la anotación, como ya
+hace `check-vercel-token.mjs`, o armar el prefijo en tiempo de ejecución. Después,
+verificar en una corrida verde que buscar `::error::` en el log no devuelve nada.
+
+## `pnpm demo:data` no corre contra la demo de Cloud Run
+
+**Estado:** abierto. **Disparador:** la próxima vez que haga falta sembrar
+datos de ensayo en la rama `demo` de Neon.
+
+`seed-demo-plan.ts` busca los tipos de envase «Con caño» y «Sin caño», que son
+los nombres de `seed.ts`. La rama `demo` nació de `main`, y el catálogo real
+dice `BIDON 20L CAÑO` y `BIDON 20L NORMAL`: el script se niega antes de
+escribir nada. En el ensayo de la fase 6 se corrió una copia compilada con esos
+dos nombres cambiados. Además el script asume que no hay lotes con stock previos:
+contra una base con historia, su primera carga choca con FIFO (y queda a medias,
+porque falla después de crear chofer, clientes y lote).
+
+**Para cerrarla:** resolver los envases por su producto (la API ya expone
+`product.containerType`) en vez de por nombre, y cargar las rutas desde los lotes
+con stock en orden FIFO en vez de desde el lote que acaba de crear.

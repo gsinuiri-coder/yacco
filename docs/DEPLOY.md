@@ -211,12 +211,19 @@ pasos, cada uno contra un host distinto de `yacco-web`:
    petición autenticada con la sesión de `vercel login`:
 
    ```bash
-   PREVIEW="$(pnpm -s deploy:web --preview)"
-   vercel curl /health --deployment "$PREVIEW"
+   pnpm deploy:web --preview
+   vercel ls yacco-web --environment preview   # la URL del preview recién creado
+   vercel curl "https://<preview>.vercel.app/health"
    # { "status": "ok", "commit": "...", "environment": "demo" }
    ```
 
-   O abrir `$PREVIEW/health` en el navegador ya logueado en Vercel.
+   Dos detalles de la CLI 59.11.2, vistos el 2026-09-16: `deploy:web` imprime
+   `}` en vez de la URL (la CLI devuelve JSON fuera de una terminal), por eso la
+   URL sale de `vercel ls`; y `vercel curl /health --deployment <url>` falla en
+   Windows con «Malformed input to a URL function», así que va la URL completa.
+
+   O abrir `https://<preview>.vercel.app/health` en el navegador ya logueado en
+   Vercel.
 
 **Si cualquiera de los dos contesta `"environment": null`, PARAR.** Significa
 que ese servicio de Cloud Run quedó desplegado sin `APP_ENV`. Hasta que

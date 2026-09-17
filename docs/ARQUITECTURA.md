@@ -980,6 +980,50 @@ llave de larga vida en los secretos de GitHub.
 
 ---
 
+### D-016 — Los Data Access logs de Secret Manager a 30 días NO alcanzan
+
+**Contexto.** Los Data Access logs de Secret Manager (`DATA_READ` +
+`ADMIN_READ`) se prendieron el 2026-09-16, antes del primer uso del token de
+Vercel. Caen en el bucket `_Default`, que retiene 30 días, y no hay métricas ni
+alertas sobre ellos. La auditoría de la fase 6 lo evaluó explícitamente.
+
+**La línea de base medida.** En unas 7 horas, `AccessSecretVersion` tuvo 100
+lecturas de `yacco-api-run` (arranques de instancias), 40 de `yacco-deployer`
+(corridas de deploy) y 15 del dueño (`pnpm secrets:gcp` y verificaciones
+manuales).
+
+**Decisión: 30 días no alcanzan.** El caso para el que existen estos logs es
+investigar una filtración, y una filtración de estas credenciales se descubre
+tarde: una action o dependencia comprometida suele conocerse semanas después,
+cuando se publica el advisory. Para entonces la lectura original ya no está.
+Por eso:
+
+1. **Retención de 400 días para Secret Manager**, en un bucket de logs propio,
+   con un sink filtrado por `protoPayload.serviceName="secretmanager.googleapis.com"`.
+   No se sube la retención de todo `_Default`, que arrastra los logs de request
+   de Cloud Run. El volumen son decenas de entradas por día: costo despreciable.
+2. **Una alerta**: métrica basada en logs sobre `AccessSecretVersion` cuyo
+   principal no sea `yacco-api-run` ni `yacco-deployer`, con aviso por email.
+   Sin esto, la retención sirve para investigar pero no para enterarse.
+
+**No bloquea el corte**: es detección, no prevención, y el corte no cambia qué se
+lee ni quién. Cuándo se ejecuta lo prioriza el dueño junto con el resto de los
+hallazgos de la fase 6 (PROGRESO.md).
+
+**Dos límites que ninguna retención resuelve**, escritos para que no se lean
+estos logs como cobertura total:
+
+- las lecturas del dueño son indistinguibles de las de su laptop comprometida;
+- el USO de una credencial de Neon filtrada por otro lado (Render, `.env.setup`)
+  no deja ningún rastro en Google Cloud.
+
+**Alternativa descartada.** _Dejar 30 días hasta el piloto._ Es justo el período
+en que se estrena el deploy desde CI con dependencias de terceros y un token con
+alcance de team (hallazgos A1 y A3): el momento en que más importa poder mirar
+hacia atrás.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una
