@@ -15,6 +15,8 @@ defineProps<{
   article: "el" | "la";
   backTo: string;
   backLabel: string;
+  /** Cuando lo que no existe no es el recurso que se carga (la liquidación de una ruta inexistente). */
+  notFoundTitle?: string;
 }>();
 defineEmits<{ retry: [] }>();
 </script>
@@ -37,7 +39,7 @@ defineEmits<{ retry: [] }>();
   <UCard v-else-if="notFound">
     <div class="flex flex-col items-start gap-3">
       <p class="font-medium text-highlighted">
-        {{ article === "el" ? "Ese" : "Esa" }} {{ noun }} no existe
+        {{ notFoundTitle ?? `${article === "el" ? "Ese" : "Esa"} ${noun} no existe` }}
       </p>
       <p class="text-muted">Puede que el enlace esté mal copiado.</p>
       <UButton :to="backTo" color="neutral" variant="outline" :label="backLabel" />
