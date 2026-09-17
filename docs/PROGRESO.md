@@ -444,6 +444,22 @@ Decisión y detalle en D-017. Resumen:
   `main`. Se cierra rotando `main` al suspender Render (ver D-017 y «Al
   terminar la migración»).
 
+### A3 + A8 — La cadena de deploy ✅ (2026-09-17)
+
+Decisión y detalle en D-018.
+
+- **Actions por SHA** en los tres workflows (10 actions distintas), con el tag
+  exacto al lado.
+- **`--ignore-scripts`** en el `pnpm install` de migraciones, en los dos
+  `npm install -g vercel` y en el `installCommand` de `vercel.json`, que
+  `vercel build` corre dentro del job web. Ningún paquete necesitó su
+  postinstall (probado con una instalación limpia: Prisma baja su engine al
+  primer uso, el web construye).
+- **WIF**: la condición exige además `repository_id` (1339102029),
+  `repository_owner_id` (71910095) y `workflow_ref` de `deploy.yml` en main.
+  Aplicada con `pnpm gcp:bootstrap` ANTES del merge, para que el deploy del
+  merge sea la prueba. Comprobado con `gcloud ... providers describe`.
+
 ## Lo que falta antes de seguir
 
 Depende del dueño, y bloquea el primer deploy desde CI. En este orden:

@@ -62,7 +62,9 @@ env:
   HUSKY: "0"
   # Nada de esto es secreto: identifica recursos, no autoriza nada. Lo que
   # autoriza es la condición del proveedor de WIF, anclada a este repositorio
-  # y a la rama main (gcp-bootstrap.mjs).
+  # (nombre e id), a la rama main y a ESTE archivo (scripts/wif-condition.mjs).
+  # Renombrar o mover deploy.yml deja el deploy sin credenciales hasta
+  # actualizar esa condición y correr `pnpm gcp:bootstrap`.
   GCP_PROJECT_ID: yacco-v2-prod
   GCP_REGION: us-east4
   GCP_WORKLOAD_IDENTITY_PROVIDER: projects/297699663114/locations/global/workloadIdentityPools/github/providers/github-oidc
@@ -149,11 +151,11 @@ jobs:
     steps:
       # Para scripts/check-vercel-token.mjs y la fecha de vencimiento del token,
       # que ese script lee de docs/PROGRESO.md.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
 
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
@@ -164,7 +166,7 @@ jobs:
       # Si este paso falla con NOT_FOUND, el secreto no existe: se sube con
       # `pnpm secrets:gcp --upload=VERCEL_TOKEN` (el token, desde .env.setup).
       - id: secrets
-        uses: google-github-actions/get-secretmanager-secrets@v3
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
         with:
           secrets: |-
             demo_direct_url:${{ env.GCP_PROJECT_ID }}/yacco-demo-direct-url
@@ -194,7 +196,10 @@ jobs:
       # Vercel». `vercel whoami` no escribe nada. Las URLs de Neon siguen
       # validándose sólo por presencia: si no sirven, fallan en «2 ·
       # Migraciones», antes de desplegar nada.
-      - run: npm install --global vercel@59.11.2
+      # --ignore-scripts (A3): este job tiene un token de GCP y, más abajo, el de
+      # Vercel. Un script de instalación comprometido correría con los dos. La CLI
+      # 59.11.2 no declara scripts de instalación, así que no pierde nada.
+      - run: npm install --global --ignore-scripts vercel@59.11.2
       - name: El token de Vercel sirve
         run: node scripts/check-vercel-token.mjs
         env:
@@ -207,11 +212,11 @@ jobs:
     timeout-minutes: 30
     # Si falla: no se tocó nada en ningún lado.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -237,17 +242,23 @@ jobs:
     # marcada y `migrate deploy` se niega a seguir hasta resolverla). Nada se
     # desplegó: las dos APIs siguen con el código viejo.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts (A3): después de instalar, este mismo job obtiene un
+      # token de GCP y lee las URLs directas de las dos bases. Un postinstall no
+      # necesita ver el token para robarlo: le alcanza con dejar algo en
+      # node_modules que corra después. Lo único que este job ejecuta es `prisma migrate deploy`, y el CLI
+      # de Prisma descarga su schema engine al primer uso si el postinstall de
+      # @prisma/engines no lo hizo (verificado con una instalación limpia).
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
@@ -255,7 +266,7 @@ jobs:
       # el pooler de Neon (modo transacción) no se la da. La pooled es la del
       # runtime y este job nunca la ve.
       - id: secrets
-        uses: google-github-actions/get-secretmanager-secrets@v3
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
         with:
           secrets: |-
             demo_direct_url:${{ env.GCP_PROJECT_ID }}/yacco-demo-direct-url
@@ -297,14 +308,14 @@ jobs:
     # cuando ya no queda código que lo use. Una migración que no se banque
     # este estado no se mergea.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       # El MISMO script y el MISMO Dockerfile que un deploy a mano: no hay un
       # segundo camino de build. Construye una sola imagen, etiquetada con el
       # sha, que después se despliega a demo y a producción sin reconstruir.
@@ -328,14 +339,14 @@ jobs:
     # la base ya migrada, y nada más avanza. Demo puede haber quedado con la
     # revisión nueva y fuera de sano — es para eso que existe.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - run: node scripts/deploy-api.mjs deploy --env=demo --image="$IMAGE"
         env:
           IMAGE: ${{ needs.image.outputs.ref }}
@@ -358,14 +369,14 @@ jobs:
     # Si falla: demo está en el código nuevo; producción, en el viejo o en una
     # revisión nueva que no pasó el gate. El web no se publicó.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       # La MISMA imagen que acaba de pasar en demo, no una reconstruida.
       - run: node scripts/deploy-api.mjs deploy --env=production --image="$IMAGE"
         env:
@@ -386,26 +397,29 @@ jobs:
     # Si falla: las dos APIs están en el código nuevo y el web sigue en su
     # versión anterior (o en ninguna, antes del primer deploy).
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
       # Vercel no acepta WIF de GitHub: el token es de larga vida, pero vive en
       # Secret Manager y no en los secretos de GitHub (D-015).
       - id: secrets
-        uses: google-github-actions/get-secretmanager-secrets@v3
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
         with:
           secrets: |-
             vercel_token:${{ env.GCP_PROJECT_ID }}/yacco-ci-vercel-token
-      - run: npm install --global vercel@59.11.2
+      # --ignore-scripts (A3): este job tiene un token de GCP y, más abajo, el de
+      # Vercel. Un script de instalación comprometido correría con los dos. La CLI
+      # 59.11.2 no declara scripts de instalación, así que no pierde nada.
+      - run: npm install --global --ignore-scripts vercel@59.11.2
       - run: node scripts/deploy-web.mjs
         env:
           VERCEL_TOKEN: ${{ steps.secrets.outputs.vercel_token }}
@@ -417,7 +431,7 @@ jobs:
     timeout-minutes: 10
     # Sin credenciales de ningún tipo: todo lo que comprueba es público.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
       - run: node scripts/smoke.mjs
