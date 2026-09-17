@@ -8,7 +8,7 @@ import "./styles.css";
 // Antes de montar nada: en el host viejo de Render no se renderiza la app,
 // se la manda a producción en Vercel (D-019). replace() y no assign(): el
 // botón «atrás» no tiene que volver a caer en la redirección.
-const redirectTo = cutoverTarget(globalThis.location);
+const redirectTo = cutoverTarget(globalThis.location.hostname);
 if (redirectTo !== null) {
   globalThis.location.replace(redirectTo);
 } else {

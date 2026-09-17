@@ -1127,9 +1127,15 @@ creó a mano). Lo que sí se midió: **ese sitio se reconstruye solo desde `main
 
 **Decisión.** El bundle del web, que es el mismo en Render y en Vercel, mira el
 host antes de montar nada (`apps/web/src/lib/cutover.ts`): si es EXACTAMENTE
-`yacco-web.onrender.com`, hace `location.replace` a
-`https://yacco-web.vercel.app` con la misma ruta, query y hash. En cualquier
-otro host (producción de Vercel, previews, local) no hace nada.
+`yacco-web.onrender.com`, hace `location.replace` a la raíz de
+`https://yacco-web.vercel.app`. En cualquier otro host (producción de Vercel,
+previews, local) no hace nada.
+
+**El destino es fijo, sin la ruta vieja.** La primera versión copiaba ruta,
+query y hash, y SonarCloud la frenó como open redirect (S6105, en el PR #145).
+Con el origen fijo delante no era explotable, pero la regla del proyecto es no
+marcar falsos positivos para pasar el gate: se quitó la entrada. Costo: un
+enlace guardado a una pantalla profunda aterriza en el inicio.
 
 - **Vuelta atrás:** revertir el PR del corte. Render se reconstruye solo y deja
   de redirigir; la API de Render nunca se tocó y sigue sobre la misma `main`.
