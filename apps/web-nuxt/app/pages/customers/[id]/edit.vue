@@ -59,7 +59,14 @@ async function save(values: CustomerFormValues): Promise<void> {
     </template>
 
     <div class="max-w-3xl">
-      <UAlert v-if="slow && loading" role="status" color="neutral" variant="subtle" :title="SLOW_REQUEST_MESSAGE" class="mb-4" />
+      <UAlert
+        v-if="slow && loading"
+        role="status"
+        color="neutral"
+        variant="subtle"
+        :title="SLOW_REQUEST_MESSAGE"
+        class="mb-4"
+      />
 
       <UCard v-if="loading">
         <p role="status" class="text-muted">Cargando cliente…</p>
@@ -93,7 +100,9 @@ async function save(values: CustomerFormValues): Promise<void> {
             <p class="mt-1 text-sm text-muted">
               Sólo lectura: se mueve con las ventas y los pagos, no desde esta pantalla. Límite de
               crédito vigente:
-              {{ customer.creditLimit === null ? "Sin límite" : formatSoles(customer.creditLimit) }}.
+              {{
+                customer.creditLimit === null ? "Sin límite" : formatSoles(customer.creditLimit)
+              }}.
             </p>
           </div>
         </template>

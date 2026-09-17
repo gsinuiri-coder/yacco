@@ -25,9 +25,18 @@ async function register(values: CustomerFormValues): Promise<void> {
 </script>
 
 <template>
-  <AppPage title="Nuevo cliente" description="Se registra con deuda S/ 0.00 y sin envases prestados.">
+  <AppPage
+    title="Nuevo cliente"
+    description="Se registra con deuda S/ 0.00 y sin envases prestados."
+  >
     <template #actions>
-      <UButton to="/customers" color="neutral" variant="ghost" icon="i-lucide-arrow-left" label="Clientes" />
+      <UButton
+        to="/customers"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-arrow-left"
+        label="Clientes"
+      />
     </template>
     <div class="max-w-3xl">
       <CustomerForm
