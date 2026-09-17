@@ -4,6 +4,10 @@ node_modules/
 # Build output
 dist/
 build/
+# Nuxt (apps/web-nuxt): tipos generados por `nuxt prepare` y la salida del build.
+.nuxt/
+.output/
+.data/
 .expo/
 .expo-shared/
 

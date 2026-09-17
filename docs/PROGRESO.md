@@ -625,6 +625,61 @@ entorno del proceso cuando el archivo no está (D-004), y los secretos de
 producción nacen en Secret Manager (D-007). El archivo sigue siendo la forma
 cómoda de no repetir valores a mano en cada comando.
 
+## Migración del web a Nuxt — `apps/web-nuxt`
+
+En paralelo a `apps/web`, que sigue siendo producción hasta el corte.
+Decisiones desde D-020 en `ARQUITECTURA.md`. **Hasta el 2026-09-24 esta
+migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
+`apps/web`.**
+
+| Tanda                          | Estado      |
+| ------------------------------ | ----------- |
+| 1 — Esqueleto                  | 🟨 en curso |
+| 2 — Sesión y capa de datos     | ⬜          |
+| 3+ — Las 22 pantallas          | ⬜          |
+| Final — Corte (después del 24) | ⬜          |
+
+### Pantallas
+
+| #   | Pantalla (ruta React)                           | PR  | Estado |
+| --- | ----------------------------------------------- | --- | ------ |
+| 1   | Login (`/login`)                                |     | ⬜     |
+| 2   | Panel (`/`)                                     |     | ⬜     |
+| 3   | Clientes (`/customers`)                         |     | ⬜     |
+| 4   | Nuevo cliente (`/customers/new`)                |     | ⬜     |
+| 5   | Detalle de cliente (`/customers/:id`)           |     | ⬜     |
+| 6   | Editar cliente (`/customers/:id/edit`)          |     | ⬜     |
+| 7   | Pedidos (`/orders`)                             |     | ⬜     |
+| 8   | Nuevo pedido (`/orders/new`)                    |     | ⬜     |
+| 9   | Detalle de pedido (`/orders/:id`)               |     | ⬜     |
+| 10  | Rutas (`/routes`)                               |     | ⬜     |
+| 11  | Nueva ruta (`/routes/new`)                      |     | ⬜     |
+| 12  | Detalle de ruta (`/routes/:id`)                 |     | ⬜     |
+| 13  | Liquidación (`/routes/:id/settlement`)          |     | ⬜     |
+| 14  | Cobranzas (`/payments`)                         |     | ⬜     |
+| 15  | Inventario (`/inventory`)                       |     | ⬜     |
+| 16  | Producción (`/production`)                      |     | ⬜     |
+| 17  | Movimientos de envases (`/container-movements`) |     | ⬜     |
+| 18  | Tipos de envase (`/container-types`)            |     | ⬜     |
+| 19  | Contar envases (`/container-counts`)            |     | ⬜     |
+| 20  | Cuadre de envases (`/container-reconciliation`) |     | ⬜     |
+| 21  | Zonas (`/zones`)                                |     | ⬜     |
+| 22  | Usuarios (`/users`)                             |     | ⬜     |
+
+### Tanda 1 — Esqueleto
+
+- `apps/web-nuxt`: Nuxt 4.5.2 + Nuxt UI 4.11.1, `ssr: true`, estructura
+  estándar de Nuxt 4 (`app/` con `layouts`, `pages`, `assets`).
+- Tema en un solo lugar: `app/assets/css/main.css` (paletas `lagoon`, `basalt`
+  y `ochre`; Public Sans y Bricolage Grotesque), asignado a los papeles de Nuxt
+  UI en `app/app.config.ts`.
+- Proxy por host como rutas de CDN (D-021). Verificado en local con el build de
+  Node: `/health` → `"environment":"demo"`; `POST /api/v1/auth/login` con
+  credenciales falsas → 401 de la API de demo; headers anti-enmarcado
+  presentes.
+- Proyecto de Vercel `yacco-web-nuxt` creado por API y conectado al repo
+  (D-020).
+
 ## Al terminar la migración
 
 Rotar los tokens que hayan vivido en un archivo plano durante la operación:

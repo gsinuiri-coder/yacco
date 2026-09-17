@@ -1159,6 +1159,108 @@ enlace guardado a una pantalla profunda aterriza en el inicio.
 
 ---
 
+### D-020 — El web Nuxt vive en el monorepo, con su propio proyecto de Vercel que construye desde Git
+
+**Contexto.** La interfaz de `apps/web` funciona pero es genérica. Se reescribe
+en Nuxt 4 + Nuxt UI 4 **en paralelo**, sin tocar la app React, que sigue siendo
+la de producción hasta el corte. Hasta el 2026-09-24 hay además una restricción
+dura: no se tocan la API, el schema, `deploy.yml`, el proyecto `yacco-web` de
+Vercel ni `apps/web` (Render sigue vivo como vuelta atrás, fase 7).
+
+**Versiones, verificadas el 2026-09-17** en nuxt.com, ui.nuxt.com y npm: Nuxt
+**4.5.2** y Nuxt UI **4.11.1**, que depende de `@nuxt/kit ^4.5.2`. La
+combinación más nueva de las dos es compatible: no hizo falta retroceder.
+
+**Decisión.**
+
+1. **`apps/web-nuxt` dentro del monorepo, no un repo aparte.** Consume
+   `packages/shared` (contratos y reglas de formato que así no se duplican),
+   corre en el mismo CI (lint, typecheck, build, tests, audit, SonarCloud con
+   el mismo gate) y sus PR se revisan contra el mismo `AGENTS.md`. Un repo
+   aparte habría copiado tipos y reglas de dinero y fechas —justo lo que más
+   caro sale tener en dos versiones— y habría quedado fuera del gate de Sonar.
+2. **Proyecto de Vercel nuevo, `yacco-web-nuxt`**
+   (`prj_gUnKzWwKJZmWUyoBNZ2DebsNLGfU`, mismo team), con
+   `rootDirectory: apps/web-nuxt`. `yacco-web` no se toca: sigue sirviendo
+   producción. El dominio de producción del proyecto nuevo es
+   `yacco-web-nuxt.vercel.app`, que **no** es el host literal de D-011: todo lo
+   que sirve este proyecto pega a demo.
+3. **Construye Vercel, desde Git** (conectado a `gsinuiri-coder/yacco`, con
+   «sólo proyectos afectados» encendido). Es lo contrario de D-014, y a
+   propósito por ahora: el deploy desde CI obliga a tocar `deploy.yml`, y la
+   condición de WIF está anclada a ese archivo, así que un workflow nuevo no
+   podría leer el token de Vercel. Como nada de lo que sirve este proyecto llega
+   a producción antes del corte, que lo construya Vercel no expone nada. **En la
+   tanda del corte** (después del 24) se vuelve a D-014: el web Nuxt entra en
+   `deploy.yml` como hoy `yacco-web`.
+4. **Misma protección que `yacco-web`:** `ssoProtection:
+all_except_custom_domains`, la condición de la que depende D-011.
+
+**Alternativas descartadas.**
+
+- _Reemplazar `apps/web` en el lugar._ Deja sin vuelta atrás a la app que usa
+  la planta durante semanas de trabajo.
+- _El mismo proyecto `yacco-web` con otra rama._ Los previews compartirían
+  proyecto con producción y habría que cambiar su configuración de build, que
+  la restricción prohíbe.
+
+---
+
+### D-021 — El proxy de `/api/*` y `/health` en Nuxt: rutas de CDN del Build Output API, por host
+
+**Contexto.** D-011/D-012 fijaron que sólo el dominio de producción, escrito
+literal, pega a producción, y que `/health` viaja por el mismo camino que
+`/api/*`. En React eso lo hace `vercel.json`. En Nuxt lo natural es
+`routeRules` con `proxy`, pero:
+
+- **`routeRules` no se condiciona por host.** La documentación de Nitro sólo
+  describe coincidencia por ruta.
+- **El Nitro que trae Nuxt 4.5 (nitropack 2.13.4) no convierte `proxy` en
+  rewrite de CDN.** La documentación actual de Nitro dice que sí, pero describe
+  Nitro 3: con 2.13, el build con `NITRO_PRESET=vercel` deja el proxy dentro de
+  la función `__fallback` (verificado en `.vercel/output/config.json`: ninguna
+  ruta a Cloud Run).
+
+**Decisión.** Las reglas van como **rutas del Build Output API** en
+`nitro.vercel.config.routes` (`apps/web-nuxt/config/api-proxy.ts`). Nitro las
+fusiona con las suyas y quedan **primeras**, antes del filesystem:
+
+```
+1. host == "yacco-web.vercel.app" (has, literal)
+   ^/api/(.*)$  -> https://yacco-api-297699663114.us-east4.run.app/api/$1
+   ^/health$    -> https://yacco-api-297699663114.us-east4.run.app/health
+2. cualquier otro host
+   ^/api/(.*)$  -> https://yacco-api-demo-297699663114.us-east4.run.app/api/$1
+   ^/health$    -> https://yacco-api-demo-297699663114.us-east4.run.app/health
+```
+
+- **No se resolvió por variable de entorno de Vercel**, la salida prevista si
+  Nitro no permitía reglas por host: una variable por Environment no distingue
+  la URL única de un deploy de producción del dominio de producción, que es
+  exactamente lo que D-012 descartó. Las rutas del Build Output API sí tienen
+  `has: host`, así que el default seguro por host queda igual que en React.
+- **`routeRules` repite el default a demo** para cualquier servidor que no sea
+  Vercel (`nuxt preview`, el `.output` de Node), y en `nuxt dev` apunta a la
+  API local. Fuera de Vercel no existe camino a producción.
+- **El `?host=` de D-012 no aplica:** es un efecto de convertir `rewrites` de
+  `vercel.json` con `has`. Estas rutas ya están en el formato final y el
+  destino usa un grupo de captura.
+- **Los íconos salen de `/api`:** `@nuxt/icon` sirve por defecto en
+  `/api/_nuxt_icon`, que la regla 2 mandaría a Cloud Run. Se movió a
+  `/_nuxt_icon`.
+- `X-Frame-Options: DENY` y `frame-ancestors 'none'` (A6) siguen, como
+  `routeRules` de `/**`.
+
+`test/unit/api-proxy.test.ts` falla si el literal cambia, si el default queda
+antes que el literal, si `/health` se separa de `/api/*` o si `nuxt.config`
+deja de publicar estas rutas.
+
+**Pendiente para la tanda del corte:** la regla 1 no se puede ejercitar hasta
+que `yacco-web.vercel.app` apunte al proyecto Nuxt. El corte no se da por hecho
+sin `/health` devolviendo `"production"` por ese host.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una
