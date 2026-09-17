@@ -1115,6 +1115,49 @@ antes de que exista ningún aviso.
 
 ---
 
+### D-019 — El corte es una redirección en el propio web, desde el host de Render
+
+**Contexto.** «Apuntar las URLs públicas a Vercel» supone algo que mover, y no
+hay dominio propio ni DNS: la dirección que usa la planta es
+`yacco-web.onrender.com`, un sitio estático de Render. Cambiarlo desde su
+dashboard (redirección o apagado) necesita una sesión que el agente no tiene, y
+no se sabe si `render.yaml` está sincronizado como Blueprint (el servicio se
+creó a mano). Lo que sí se midió: **ese sitio se reconstruye solo desde `main`**
+(`last-modified` 05:17:37 UTC, 33 s después del merge de #142).
+
+**Decisión.** El bundle del web, que es el mismo en Render y en Vercel, mira el
+host antes de montar nada (`apps/web/src/lib/cutover.ts`): si es EXACTAMENTE
+`yacco-web.onrender.com`, hace `location.replace` a la raíz de
+`https://yacco-web.vercel.app`. En cualquier otro host (producción de Vercel,
+previews, local) no hace nada.
+
+**El destino es fijo, sin la ruta vieja.** La primera versión copiaba ruta,
+query y hash, y SonarCloud la frenó como open redirect (S6105, en el PR #145).
+Con el origen fijo delante no era explotable, pero la regla del proyecto es no
+marcar falsos positivos para pasar el gate: se quitó la entrada. Costo: un
+enlace guardado a una pantalla profunda aterriza en el inicio.
+
+- **Vuelta atrás:** revertir el PR del corte. Render se reconstruye solo y deja
+  de redirigir; la API de Render nunca se tocó y sigue sobre la misma `main`.
+  Tarda lo que un PR (checks + build de Render, ~10 min), no un clic: es el costo
+  de no tener dashboard, y se acepta porque en la ventana los dos lados escriben
+  en la misma base y no se pierde nada mientras tanto.
+- **La sesión no viaja:** los tokens viven en `localStorage`, que es por origen,
+  y los firman secretos JWT distintos. Al llegar a Vercel hay que iniciar sesión
+  otra vez. Hoy el único usuario es el dueño.
+- **`replace` y no `assign`:** «atrás» no vuelve a caer en la redirección.
+
+**Alternativas descartadas.**
+
+- _Redirección en `render.yaml` (`routes: type: redirect`)._ Sólo aplica si el
+  servicio es de un Blueprint sincronizado, y no hay forma de comprobarlo sin
+  dashboard. Un corte que puede no haber ocurrido sin que nada lo diga es peor
+  que uno visible en el código.
+- _Suspender el sitio de Render._ Rompe los enlaces guardados en vez de
+  llevarlos a producción, y necesita el dashboard.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una

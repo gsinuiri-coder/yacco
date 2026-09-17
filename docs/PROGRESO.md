@@ -11,16 +11,16 @@ app funciona al cerrar cada fase.
 
 ## Estado por fase
 
-| Fase                    | Estado       |
-| ----------------------- | ------------ |
-| 0 — Descubrimiento      | ✅ hecha     |
-| 1 — Base del repo       | ✅ hecha     |
-| 2 — Google Cloud        | ✅ hecha     |
-| 3 — La API en Cloud Run | ✅ hecha     |
-| 4 — El web en Vercel    | ✅ hecha     |
-| 5 — CI/CD               | ✅ hecha     |
-| 6 — Ensayo              | ✅ hecha     |
-| 7 — Corte               | ⬜ pendiente |
+| Fase                    | Estado      |
+| ----------------------- | ----------- |
+| 0 — Descubrimiento      | ✅ hecha    |
+| 1 — Base del repo       | ✅ hecha    |
+| 2 — Google Cloud        | ✅ hecha    |
+| 3 — La API en Cloud Run | ✅ hecha    |
+| 4 — El web en Vercel    | ✅ hecha    |
+| 5 — CI/CD               | ✅ hecha    |
+| 6 — Ensayo              | ✅ hecha    |
+| 7 — Corte               | 🟨 en curso |
 
 ## Punto de partida verificado
 
@@ -385,6 +385,39 @@ motivo desde d4f4204).
 A2, A3 + A8 (cadena de deploy y WIF) y la parte barata de A6 (`x-powered-by` y
 clickjacking), en ese orden, cada uno en su PR. A1, A4, A5, A7, la CSP completa y
 el refresh token fuera de `localStorage` van al backlog.
+
+## Fase 7 — El corte 🟨
+
+**Mecanismo:** D-019. El web de Render redirige a `yacco-web.vercel.app`; la
+API de Render queda viva sobre la misma rama `main` de Neon.
+
+### La ventana de convivencia: 2026-09-17 → **2026-09-24**
+
+Durante la ventana:
+
+- **Render queda vivo** (`yacco-api.onrender.com` y su sitio estático), sobre la
+  MISMA `main` que Cloud Run. Es lo que hace real la vuelta atrás.
+- **No se mergea ninguna migración que no sea expand/contract.** Una migración
+  de CI le cambia el esquema a Render en el mismo instante.
+- **Vuelta atrás si algo sale mal:** revertir el PR del corte (D-019) y avisar.
+  Nada de arreglos improvisados con el tráfico cortado.
+
+### Qué hacer el 2026-09-24 (tanda 6), si la ventana cerró sin incidentes
+
+1. **Suspender los dos servicios de Render** (`yacco-api` y `yacco-web`). Lo hace
+   el dueño desde el dashboard: el agente no tiene sesión en Render.
+2. **Rotar la contraseña del rol de `main` en Neon** (D-017): la vieja de demo
+   todavía la abre. Reset del rol, `pnpm secrets:gcp`, redeploy de producción,
+   y destruir las versiones viejas de `yacco-*-database-url` y
+   `yacco-*-direct-url`. Recién se puede con Render suspendido.
+3. **PR propio** que borre `render.yaml`, la redirección de
+   `apps/web/src/lib/cutover.ts` (con Render apagado, ese host ya no sirve nada)
+   y las menciones a Render de `ENTORNOS.md`, `DEPLOY.md` y
+   `.agents/rules/infra.md`.
+4. **Borrar las ramas de respaldo de Neon** `backup-pre-ci-deploy-20260916` y
+   `backup-pre-seed-creds-20260917` (el dueño: los agentes tienen denegado borrar
+   ramas).
+5. **Resumen final** en este archivo y fase 7 ✅.
 
 ## Antes del corte: los arreglos que lo bloquean
 

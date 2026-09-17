@@ -267,7 +267,8 @@ node scripts/smoke.mjs api --env=demo
 ## Vuelta atrás
 
 Mientras Render siga vivo (los 7 días posteriores al corte), volver atrás es
-apuntar las URLs públicas de nuevo al web de Render. Render y Cloud Run
+**revertir el PR del corte** (D-019): el sitio de Render se reconstruye desde
+`main` sin la redirección y la planta vuelve a usar Render, con su API intacta. Render y Cloud Run
 comparten la rama `main` de Neon justamente para que eso no pierda nada de lo
 escrito mientras tanto.
 
