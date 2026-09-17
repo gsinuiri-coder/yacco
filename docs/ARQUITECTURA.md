@@ -1261,6 +1261,46 @@ sin `/health` devolviendo `"production"` por ese host.
 
 ---
 
+### D-022 — Web Nuxt: SSR para el shell, datos autenticados desde el cliente
+
+**Contexto.** `ssr: true` invita a leer que cada pantalla trae sus datos ya
+renderizados desde el servidor. En Yacco **no**, y es a propósito. La sesión es
+la misma del web React: access token en memoria del navegador, refresh token en
+`localStorage`, los dos en `Authorization: Bearer`. El servidor de Nuxt no ve
+ninguno de los dos, así que no puede pedir a la API nada que requiera sesión.
+
+**Decisión.**
+
+- **El SSR sirve lo que no depende de quién mira:** el marco de la app (barra
+  lateral, estructura), el login y cualquier página pública.
+- **Los datos autenticados se piden desde el cliente**, siempre por
+  `useApi()` (`app/composables/useApi.ts`), la única puerta: base `/api/v1`,
+  token, un refresh compartido ante 401 con un solo reintento, y errores de la
+  API como `ApiError` con el mensaje de Nest. Ninguna pantalla hace `fetch`
+  suelto.
+- **El guard corre sólo en el cliente** (`app/middleware/auth.global.ts`):
+  restaura la sesión con el refresh guardado y recién ahí decide. El layout
+  pone el contenido de cada pantalla dentro de `<ClientOnly>` con un estado
+  «Cargando sesión…» como respaldo del servidor.
+- Quien lea `if (import.meta.server) return` o un `<ClientOnly>` en una pantalla
+  autenticada **no está ante un error**: es esta decisión.
+
+**Fase propia, fuera de esta migración: la sesión en cookie `httpOnly`.** Es lo
+que recomienda Nuxt para autenticación con SSR, y lo que habilitaría renderizar
+datos autenticados en el servidor. Además cierra el backlog «Refresh token en
+`localStorage`»: un XSS dejaría de encontrarlo. No entra acá porque cambia cómo
+la API emite y lee la sesión, es decir, auth de producción, y hasta el
+2026-09-24 la API no se toca. Cuando se haga: la API emite el refresh en una
+cookie `httpOnly; Secure; SameSite=Lax` sobre el mismo origen (el proxy de D-021
+lo permite sin CORS), Nuxt lee la sesión en el servidor, y `useApi` deja de
+guardar nada en `localStorage`.
+
+**Alternativa descartada.** _`ssr: false` (SPA pura)._ Iguala al web React,
+pero pierde el shell y el login renderizados de entrada, y habría que volver a
+encenderlo el día de la cookie.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una

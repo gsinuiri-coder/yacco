@@ -1,3 +1,5 @@
-// Shared DTO contracts between @yacco/api and its clients (@yacco/web, @yacco/mobile).
-// TODO: populate with the DTOs defined per module as they land (S1+).
-export {};
+// Contracts and formatting rules shared by the API's clients (@yacco/web-nuxt
+// today). A type or a rule lands here when two sides need it, never copied.
+export * from "./auth.js";
+export * from "./business-date.js";
+export * from "./money.js";

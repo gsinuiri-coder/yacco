@@ -8,7 +8,11 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json",
-    "test": "echo \"no tests yet\""
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "5.0.1",
+    "vitest": "5.0.1"
   }
 }

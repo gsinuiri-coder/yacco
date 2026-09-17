@@ -1,8 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false
   },
-  "include": ["src"]
+  // src más los tests y la config de Vitest: si un archivo no pertenece al
+  // programa de ningún tsconfig, SonarCloud lo indexa pero no lo analiza.
+  "include": ["src", "test", "vitest.config.ts"]
 }
