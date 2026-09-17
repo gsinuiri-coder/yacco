@@ -81,3 +81,16 @@ describe("vercel.json — la instalación", () => {
     assert.match(config.installCommand, /(^|\s)--ignore-scripts(\s|$)/);
   });
 });
+
+describe("vercel.json — headers", () => {
+  // La mitad barata de A6 (fase 6): el web no se deja enmarcar (clickjacking).
+  // A propósito NO es una CSP completa: una que restrinja scripts o conexiones
+  // se prueba antes contra el web y está en el backlog.
+  test("todas las rutas prohíben ser enmarcadas, con el header viejo y con CSP", () => {
+    const catchAll = (config.headers ?? []).find((rule) => rule.source === "/(.*)");
+    assert.ok(catchAll, "falta una regla de headers para /(.*)");
+    const byKey = Object.fromEntries(catchAll.headers.map((h) => [h.key.toLowerCase(), h.value]));
+    assert.equal(byKey["x-frame-options"], "DENY");
+    assert.equal(byKey["content-security-policy"], "frame-ancestors 'none'");
+  });
+});

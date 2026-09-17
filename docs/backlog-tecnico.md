@@ -1679,3 +1679,61 @@ cierra la sesión de TODOS. Se vio al rotar `admin123` (A0, 2026-09-17).
 tabla quedaron fuera de alcance de la migración): la opción barata es firmar en
 el token un `passwordChangedAt` (o un contador por usuario) y rechazar el
 refresh si no coincide con el de la base.
+
+## Hallazgos de la auditoría de la fase 6 que no entraron antes del corte
+
+**Estado:** abiertos. Decidido por el dueño el 2026-09-17: entraron antes del
+corte A0, A2, A3, A8 y la mitad barata de A6. Lo que sigue, en orden de
+prioridad. El detalle de cada hallazgo está en `PROGRESO.md`, «Auditoría de
+seguridad».
+
+### Prioridad 1 — A1: el token de Vercel alcanza a todo el team
+
+**Por qué primero:** un compromiso de Yacco (una action, una dependencia, la
+laptop) alcanza los otros 12 proyectos del team `gsinuiricoders-projects`,
+entre ellos sitios de otros clientes. Es el único hallazgo cuyo daño sale de
+Yacco. **No depende del corte. Lo hace el dueño**: el alcance se elige al crear
+el token en el dashboard de Vercel. Al rotarlo: `.env.setup`,
+`pnpm secrets:gcp --upload=VERCEL_TOKEN` y la fecha en «Credenciales y recursos
+con fecha».
+
+### Prioridad 1 — A5 / D-016: retención de 400 días y alerta sobre Secret Manager
+
+**Por qué:** una filtración de estas credenciales se descubre semanas después,
+y a los 30 días del bucket `_Default` la lectura original ya no está. Sin la
+alerta, nadie se entera en el momento. **Para cerrarla:** lo escrito en D-016
+(bucket propio con sink filtrado, métrica sobre `AccessSecretVersion` de
+principals que no sean `yacco-api-run` ni `yacco-deployer`, aviso por email).
+
+### Prioridad 2 — A4: demo y producción comparten la identidad de runtime
+
+`yacco-api-run` tiene `secretAccessor` sobre todo el proyecto y la usan los dos
+servicios: un fallo explotable en demo lee los JWT y la base de producción. Baja
+a prioridad 2 porque es la misma imagen: un RCE en demo casi siempre existe
+también en producción. Es también lo que deja al deployer leer todos los
+secretos por `serviceAccountUser` (D-018, «Lo que no cubre»). **Para cerrarla:**
+una service account por entorno, con `secretAccessor` secreto por secreto.
+
+### Prioridad 3 — A7: `qs`, digest de la imagen base, escaneo de Artifact Registry
+
+Advisories moderados de DoS en `qs@6.15.3` (vía express), `FROM
+node:22-alpine` sin digest y el escaneo de vulnerabilidades apagado. Ninguno da
+acceso; el primero es disponibilidad. **Para cerrarla:** override de `qs`, fijar
+el digest en el Dockerfile y habilitar `containerscanning.googleapis.com`.
+
+### Prioridad 3 — CSP completa en el web
+
+**Por qué no entró:** una CSP que restrinja `script-src` y `connect-src` se
+prueba contra el web real antes de publicarla —un origen olvidado deja la app en
+blanco— y un web roto durante el corte se confunde con un corte fallido. Hoy el
+web y la API mandan sólo `frame-ancestors none` (mitad barata de A6).
+**Para cerrarla:** política en modo `Content-Security-Policy-Report-Only` en un
+preview, recorrer la app, y recién sin violaciones pasarla a enforcement.
+
+### Prioridad 3 — El refresh token fuera de `localStorage`
+
+**Por qué no entró:** moverlo a una cookie `HttpOnly` cambia el contrato de
+`/auth/login` y `/auth/refresh`, el cliente del web y CORS/SameSite; se prueba
+contra el front y no es un cambio para la semana del corte. Mientras no haya
+CSP, un XSS se lleva un refresh de 30 días: las dos piezas van juntas. Ver
+también «Cambiar la contraseña no invalida los refresh tokens».

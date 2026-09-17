@@ -1,4 +1,5 @@
 import { INestApplication, RequestMethod, ValidationPipe } from "@nestjs/common";
+import type { NextFunction, Request, Response } from "express";
 import { AllExceptionsFilter } from "../common/filters/all-exceptions.filter.js";
 
 // Kept outside the versioned prefix on purpose: Render's health check and
@@ -8,6 +9,28 @@ const GLOBAL_PREFIX_EXCLUDE = [
   { path: "health", method: RequestMethod.GET },
   { path: "health/db", method: RequestMethod.GET },
 ];
+
+/**
+ * The cheap half of finding A6 (phase 6 security audit), without a new
+ * dependency: stop announcing Express, and refuse to be framed (clickjacking)
+ * with both X-Frame-Options, for old browsers, and CSP frame-ancestors.
+ *
+ * Deliberately NOT a full Content-Security-Policy: a policy that restricts
+ * scripts or connections has to be tested against the web first, and is in
+ * the backlog. `frame-ancestors` alone restricts nothing but framing.
+ *
+ * A plain middleware registered before anything else, so it also covers the
+ * 404s and errors that never reach a controller.
+ */
+function applySecurityHeaders(app: INestApplication): void {
+  const httpServer = app.getHttpAdapter().getInstance() as { disable?: (setting: string) => void };
+  httpServer.disable?.("x-powered-by");
+  app.use((_request: Request, response: Response, next: NextFunction) => {
+    response.setHeader("X-Frame-Options", "DENY");
+    response.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+    next();
+  });
+}
 
 /**
  * The app wiring shared by the real process (main.ts) and every integration
@@ -21,6 +44,7 @@ const GLOBAL_PREFIX_EXCLUDE = [
  * not request-handling ones, and integration tests never need them.
  */
 export function configureApp(app: INestApplication): void {
+  applySecurityHeaders(app);
   app.setGlobalPrefix("api/v1", { exclude: GLOBAL_PREFIX_EXCLUDE });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
