@@ -647,7 +647,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 2   | Panel (`/`)                                     | 157 | ✅     |
 | 3   | Clientes (`/customers`)                         | 158 | ✅     |
 | 4   | Nuevo cliente (`/customers/new`)                | 158 | ✅     |
-| 5   | Detalle de cliente (`/customers/:id`)           |     | ⬜     |
+| 5   | Detalle de cliente (`/customers/:id`)           | 159 | ✅     |
 | 6   | Editar cliente (`/customers/:id/edit`)          | 158 | ✅     |
 | 7   | Pedidos (`/orders`)                             |     | ⬜     |
 | 8   | Nuevo pedido (`/orders/new`)                    |     | ⬜     |
@@ -717,6 +717,15 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   accesible. Formulario: opcionales vacíos no viajan, límite como string, zona
   retirada conservada y marcada, deuda de sólo lectura, baja con
   `active=false`.
+- **#159 Ficha del cliente.** Deuda en primer plano; cobro de oficina con la
+  clave de idempotencia reusada en el reintento idéntico y renovada al cambiar
+  método o monto, 409 explicado sin jerga, saldo a favor que no es error y sin
+  aviso de "pendiente"; precios pactados (ADMIN) o efectivos de sólo lectura;
+  estado de cuenta con filas anuladas marcadas y sin `openingBalance`.
+  `useApiResource` + `ResourceState` para cargar un recurso (cargando / no
+  existe / error con reintento), también en la edición. `*.vue` entra en
+  lint-staged: el formato de #158 falló en CI porque prettier no los veía al
+  commitear.
 
 ## Al terminar la migración
 

@@ -305,18 +305,37 @@ describe("Editar cliente", () => {
     );
   });
 
-  it("si el cliente no se puede cargar, lo dice y no muestra el formulario", async () => {
+  it("un cliente que no existe lo dice, sin formulario, con salida a la lista", async () => {
     stubZones([]);
     endpoint(`/api/v1/customers/${CUSTOMER_ID}`, (event: H3Event) => {
       setResponseStatus(event, 404);
-      return { message: `El cliente "${CUSTOMER_ID}" no existe` };
+      return { message: "no existe" };
     });
 
     await renderSuspended(App, { route: editRoute });
 
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("no existe");
+    expect(await screen.findByText("Ese cliente no existe")).toBeTruthy();
     expect(screen.queryByLabelText("Nombre")).toBeNull();
     expect(within(document.body).getByRole("link", { name: "Volver a clientes" })).toBeTruthy();
+  });
+
+  it("si la carga falla por otra cosa, muestra el motivo y deja reintentar", async () => {
+    stubZones([]);
+    let attempt = 0;
+    endpoint(`/api/v1/customers/${CUSTOMER_ID}`, (event: H3Event) => {
+      attempt++;
+      if (attempt === 1) {
+        setResponseStatus(event, 500);
+        return { message: "Base de datos no disponible" };
+      }
+      return baseCustomer();
+    });
+
+    await renderSuspended(App, { route: editRoute });
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Base de datos no disponible");
+    expect(screen.queryByLabelText("Nombre")).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByLabelText("Nombre")).toBeTruthy();
   });
 });
