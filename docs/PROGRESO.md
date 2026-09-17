@@ -634,17 +634,17 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 
 | Tanda                          | Estado      |
 | ------------------------------ | ----------- |
-| 1 — Esqueleto                  | 🟨 en curso |
-| 2 — Sesión y capa de datos     | 🟨 en curso |
-| 3+ — Las 22 pantallas          | ⬜          |
+| 1 — Esqueleto                  | ✅ hecha    |
+| 2 — Sesión y capa de datos     | ✅ hecha    |
+| 3+ — Las 22 pantallas          | 🟨 en curso |
 | Final — Corte (después del 24) | ⬜          |
 
 ### Pantallas
 
 | #   | Pantalla (ruta React)                           | PR  | Estado |
 | --- | ----------------------------------------------- | --- | ------ |
-| 1   | Login (`/login`)                                | 156 | 🟨     |
-| 2   | Panel (`/`)                                     |     | ⬜     |
+| 1   | Login (`/login`)                                | 156 | ✅     |
+| 2   | Panel (`/`)                                     | 157 | ✅     |
 | 3   | Clientes (`/customers`)                         |     | ⬜     |
 | 4   | Nuevo cliente (`/customers/new`)                |     | ⬜     |
 | 5   | Detalle de cliente (`/customers/:id`)           |     | ⬜     |
@@ -694,6 +694,18 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 - `useApi()` como única puerta; `useSession()` con el access token en memoria
   y el refresh en `localStorage` (D-022); guard global sólo en el cliente.
 - Login portado (pantalla 1) y el marco de la app con la barra lateral.
+- **Criterio de salida de la tanda 1, cerrado tras el merge de #156:** contra
+  `https://yacco-web-nuxt.vercel.app`, `POST /api/v1/auth/login` con el admin de
+  demo (contraseña leída de `yacco-demo-admin-password` sin imprimirla) → 200
+  con access y refresh; `GET /api/v1/customers` con ese token → 200;
+  `POST /api/v1/auth/refresh` → 200; `/login` servido por SSR con el formulario.
+
+### Pantallas portadas — notas por PR
+
+- **#157 Panel.** Buscador de clientes con `UInputMenu` (combobox de Reka UI):
+  espera 300 ms, límite 10, sin filtro de activo (supuesto por validar), inactivo
+  marcado y elegible, error distinto de «Sin resultados» con «Reintentar».
+  Suma saludo y fecha de hoy en Lima.
 
 ## Al terminar la migración
 
