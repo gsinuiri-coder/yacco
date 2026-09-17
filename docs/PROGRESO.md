@@ -649,9 +649,9 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 4   | Nuevo cliente (`/customers/new`)                | 158 | ✅     |
 | 5   | Detalle de cliente (`/customers/:id`)           | 159 | ✅     |
 | 6   | Editar cliente (`/customers/:id/edit`)          | 158 | ✅     |
-| 7   | Pedidos (`/orders`)                             |     | ⬜     |
-| 8   | Nuevo pedido (`/orders/new`)                    |     | ⬜     |
-| 9   | Detalle de pedido (`/orders/:id`)               |     | ⬜     |
+| 7   | Pedidos (`/orders`)                             | 160 | ✅     |
+| 8   | Nuevo pedido (`/orders/new`)                    | 160 | ✅     |
+| 9   | Detalle de pedido (`/orders/:id`)               | 160 | ✅     |
 | 10  | Rutas (`/routes`)                               |     | ⬜     |
 | 11  | Nueva ruta (`/routes/new`)                      |     | ⬜     |
 | 12  | Detalle de ruta (`/routes/:id`)                 |     | ⬜     |
@@ -726,6 +726,14 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   existe / error con reintento), también en la edición. `*.vue` entra en
   lint-staged: el formato de #158 falló en CI porque prettier no los veía al
   commitear.
+- **#160 Pedidos: lista, alta y detalle.** Filtros de estado, rango de entrega
+  (`AAAA-MM-DD` tal cual sale del campo) y cliente, con «Limpiar filtros». El
+  alta prellena el precio PACTADO (marcado), reprecia al cambiar de cliente sin
+  pisar lo escrito a mano, calcula el total en céntimos y manda un solo POST
+  ante un doble clic; la lógica de las líneas vive en `utils/order-lines.ts`
+  con tests unitarios. El detalle muestra el total de la API (no uno
+  recalculado), cancela con confirmación y ante un 409 recarga el estado real.
+  `CustomerPicker` sólo ofrece clientes activos.
 
 ## Al terminar la migración
 
