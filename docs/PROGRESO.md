@@ -659,7 +659,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 14  | Cobranzas (`/payments`)                         | 164 | ✅     |
 | 15  | Inventario (`/inventory`)                       | 164 | ✅     |
 | 16  | Producción (`/production`)                      | 164 | ✅     |
-| 17  | Movimientos de envases (`/container-movements`) |     | ⬜     |
+| 17  | Movimientos de envases (`/container-movements`) | 165 | ✅     |
 | 18  | Tipos de envase (`/container-types`)            |     | ⬜     |
 | 19  | Contar envases (`/container-counts`)            |     | ⬜     |
 | 20  | Cuadre de envases (`/container-reconciliation`) |     | ⬜     |
@@ -775,6 +775,18 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   un solo POST. `packages/shared/src/container-movements.ts` trae los
   contratos del ledger de envases con un test que lee `schema.prisma`
   directo para no desincronizarse del backend.
+- **#165 Movimientos de envases.** Sólo las tres operaciones que la oficina
+  anota a mano (ingreso, baja por daño, baja por pérdida): las que emiten
+  otros procesos (llenado, ruta) no se ofrecen. El origen sólo se pregunta
+  cuando la operación admite más de uno (baja por daño); ingreso y pérdida
+  tienen un origen fijo y no muestran el selector. Baja por pérdida manda el
+  `locationId` de la ubicación elegida, nunca el id del cliente — la matriz
+  de operaciones vive en `utils/container-movements.ts`, espejo acotado de
+  la del backend (un desfase se manifiesta como 400, nunca como dato
+  corrupto). Un cliente sin ubicaciones muestra su propio mensaje, no un
+  desplegable vacío. El historial muestra TODAS las operaciones del libro,
+  filtra por tipo, tipo de envase y rango de fechas, y pagina con
+  `usePagedList`. Doble clic manda un solo POST.
 
 ## Al terminar la migración
 

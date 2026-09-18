@@ -1,4 +1,12 @@
-import type { Customer, Order, Page, Route, RouteStop, User } from "@yacco/shared";
+import type {
+  Customer,
+  CustomerLocation,
+  Order,
+  Page,
+  Route,
+  RouteStop,
+  User,
+} from "@yacco/shared";
 
 export function buildCustomer(overrides: Partial<Customer> = {}): Customer {
   return {
@@ -90,6 +98,19 @@ export function buildRoute(overrides: Partial<Route> = {}): Route {
     createdById: "u-admin",
     createdAt: "2026-08-28T12:00:00.000Z",
     stops: [],
+    ...overrides,
+  };
+}
+
+export function buildLocation(overrides: Partial<CustomerLocation> = {}): CustomerLocation {
+  return {
+    id: "loc-1",
+    name: "Principal",
+    address: "Av. Los Álamos 452",
+    addressReference: "Portón azul",
+    phone: "987654321",
+    isPrimary: true,
+    active: true,
     ...overrides,
   };
 }
