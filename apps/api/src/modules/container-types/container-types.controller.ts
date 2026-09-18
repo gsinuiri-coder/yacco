@@ -68,7 +68,7 @@ export class ContainerTypesController {
     return this.containerTypesService.findAll(query);
   }
 
-  // Sin consumidor en apps/web, y así se queda: mismo
+  // Sin consumidor en apps/web-nuxt, y así se queda: mismo
   // ContainerTypeResponseDto que un elemento del listado (los dos usan
   // CONTAINER_TYPE_SELECT), y la API embebe {id, name} en toda referencia a
   // tipo de envase. Quien lo va a necesitar es el móvil, para resolver un id

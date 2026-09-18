@@ -26,10 +26,10 @@ import type { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.
  * para quien lo lee. Ver la regla en docs/backlog-tecnico.md, «los mensajes
  * de error que llegan a pantalla van en español».
  *
- * Las palabras son las mismas que `ORDER_STATUS_LABELS` en
- * `apps/web/src/components/order-status-badge.tsx`: el mensaje de error y el
- * badge de la fila tienen que llamar igual al mismo estado, o el usuario cree
- * que son dos cosas distintas.
+ * Las palabras son las mismas que `ORDER_STATUS` en
+ * `apps/web-nuxt/app/utils/order-status.ts`: el mensaje de error y el badge
+ * de la fila tienen que llamar igual al mismo estado, o el usuario cree que
+ * son dos cosas distintas.
  *
  * `RoutesService` tiene el mismo defecto en seis mensajes que interpolan
  * `RouteStatus`/`StopStatus`; queda anotado en el backlog y este mapa es el

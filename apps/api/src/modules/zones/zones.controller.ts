@@ -66,7 +66,7 @@ export class ZonesController {
     return this.zonesService.findAll(query);
   }
 
-  // Sin consumidor en apps/web, y así se queda. Devuelve exactamente el mismo
+  // Sin consumidor en apps/web-nuxt, y así se queda. Devuelve exactamente el mismo
   // ZoneResponseDto que un elemento del listado (los dos usan ZONE_SELECT),
   // y la API embebe {id, name} en toda referencia a zona, así que la web
   // nunca tiene un id suelto que resolver. Quien lo va a necesitar es el

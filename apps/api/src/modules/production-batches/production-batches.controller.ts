@@ -78,7 +78,7 @@ export class ProductionBatchesController {
     return this.productionBatchesService.findAll(query);
   }
 
-  // Sin consumidor en apps/web, y así se queda: pasa por el mismo
+  // Sin consumidor en apps/web-nuxt, y así se queda: pasa por el mismo
   // BATCH_INCLUDE y el mismo toBatchResponse que el listado, así que devuelve
   // exactamente un elemento de esa lista — la pantalla de producción ya tiene
   // el lote entero, con sus líneas, sin pedirlo de nuevo. Quien lo va a

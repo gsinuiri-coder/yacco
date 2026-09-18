@@ -8,8 +8,10 @@ avisá en vez de seguir dos reglas distintas.
 
 Management system for a water purification plant in Peru (currency: soles, S/).
 pnpm monorepo. **Built today:** `apps/api` (NestJS modular monolith +
-Prisma/PostgreSQL), `apps/web` (React + Vite), `packages/shared` (DTO
-contracts) — that is the whole of `packages/`. **Reserved, not built:**
+Prisma/PostgreSQL), `apps/web-nuxt` (Nuxt 4 + Nuxt UI), `packages/shared`
+(DTO contracts) — that is the whole of `packages/`. The original `apps/web`
+(React + Vite) was retired once `apps/web-nuxt` reached feature parity; it no
+longer exists in the repo. **Reserved, not built:**
 `apps/mobile` (Expo, offline-first driver app) holds a `.gitkeep` and nothing
 else, and `packages/sync-engine` (pure-TS offline queue) has no directory at
 all. Both are planned scope (spec §1.3, §4.2), not code you can import or

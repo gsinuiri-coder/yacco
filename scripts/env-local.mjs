@@ -1,5 +1,5 @@
 /**
- * `pnpm env:local` — escribe los `.env` de cada app a partir de `.env.setup`,
+ * `pnpm env:local` — escribe el `.env` de la API a partir de `.env.setup`,
  * apuntando al Postgres LOCAL de Docker.
  *
  * No toca ninguna base desplegada: existe para que `pnpm dev:api` arranque con
@@ -21,7 +21,7 @@ const COMPOSE_SERVICE = "postgres";
 const COMPOSE_INTERNAL_PORT = "5432";
 const DEFAULT_PORT = "5432";
 const API_PORT = "3100";
-const WEB_DEV_ORIGIN = "http://localhost:5173";
+const WEB_DEV_ORIGIN = "http://localhost:3000";
 
 /**
  * Pregunta primero a Docker, que es la única fuente que ya resolvió el
@@ -88,18 +88,10 @@ function main() {
     "",
   ].join("\n");
 
-  // El web local pega a la API local directo, sin el rewrite de Vercel: en
-  // `vite dev` no hay nada que reescriba /api/*.
-  const webEnv = [
-    "# Generado por `pnpm env:local`. No lo edites a mano: se regenera.",
-    `VITE_API_BASE_URL=http://localhost:${API_PORT}/api/v1`,
-    "",
-  ].join("\n");
-
-  const targets = [
-    { path: join(REPO_ROOT, "apps", "api", ".env"), contents: apiEnv },
-    { path: join(REPO_ROOT, "apps", "web", ".env"), contents: webEnv },
-  ];
+  // apps/web-nuxt no necesita un .env propio: `LOCAL_API_ORIGIN` en
+  // config/api-proxy.ts ya apunta a la API local en tiempo de compilación,
+  // así que no hay ninguna VITE_*/NUXT_* equivalente que generar acá.
+  const targets = [{ path: join(REPO_ROOT, "apps", "api", ".env"), contents: apiEnv }];
 
   for (const target of targets) {
     writeFileSync(target.path, target.contents, { encoding: "utf8", mode: 0o600 });

@@ -13,8 +13,8 @@ process itself, not just the code.
 
 1. **Estado por módulo.** Regenerate `docs/estado-por-modulo.md` from the
    code, not from memory: walk `apps/api/src/modules/**/*.controller.ts` for
-   endpoints, `apps/web/src/app.tsx` + `apps/web/src/pages/` +
-   `apps/web/src/api/` for which screens exist and consume them. This is the
+   endpoints, `apps/web-nuxt/app/pages/` + `apps/web-nuxt/app/composables/`
+   for which screens exist and consume them. This is the
    last moment the table can reflect this sprint's real code, so it runs
    before the commit is tagged: regenerate first, then verify CI (step 2) on
    the now-complete commit, then tag (step 3). If a domain's state changed

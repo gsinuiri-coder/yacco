@@ -89,10 +89,10 @@ Manager y no tienen por qué coincidir: ver D-007.
 ## Desarrollo local
 
 ```bash
-pnpm env:local     # escribe apps/api/.env y apps/web/.env apuntando a Docker
+pnpm env:local     # escribe apps/api/.env apuntando a Docker
 pnpm demo:up       # Postgres + migraciones + seed, de un tirón
 pnpm dev:api       # en una terminal
-pnpm dev:web       # en otra
+pnpm dev:web-nuxt  # en otra
 ```
 
 `env:local` apunta **siempre** al Postgres de Docker, nunca a Neon, y averigua

@@ -7,22 +7,23 @@ en realidad estaba hecho.
 **Regla central: esta tabla se deriva del código, no de otra documentación.**
 Se arma recorriendo `apps/api/src/modules/**/*.controller.ts` (prefijo de
 `@Controller` + método y ruta de cada `@Get`/`@Post`/`@Patch`/`@Delete`),
-`apps/web/src/app.tsx` (árbol de rutas real) y `apps/web/src/pages/` +
-`apps/web/src/api/` (qué pantalla existe y qué cliente HTTP la alimenta). Si
-el código y algún documento se contradicen, gana el código.
+`apps/web-nuxt/app/pages/` (árbol de rutas real, por convención de Nuxt) y
+`apps/web-nuxt/app/composables/` + llamadas directas a `$fetch`/`useFetch`
+(qué pantalla existe y qué cliente HTTP la alimenta). Si el código y algún
+documento se contradicen, gana el código.
 
 Convención de rutas para no repetirlas en cada celda: el controller de un
 dominio vive en `apps/api/src/modules/<dominio>/<dominio>.controller.ts`; sus
-páginas web, en `apps/web/src/pages/<página>.tsx`. Toda ruta de API omite el
-prefijo `/api/v1` salvo que se indique lo contrario (`health` queda afuera de
-ese prefijo a propósito, ver `apps/api/src/main.ts`).
+páginas web, en `apps/web-nuxt/app/pages/<página>.vue`. Toda ruta de API omite
+el prefijo `/api/v1` salvo que se indique lo contrario (`health` queda afuera
+de ese prefijo a propósito, ver `apps/api/src/main.ts`).
 
 ## Estados
 
-- **Completo** — hay endpoints y hay una pantalla en `apps/web` que cubre lo
-  que el negocio necesita hacer con ese dominio (propia o embebida dentro de
-  otra).
-- **Solo API** — los endpoints existen; no hay nada en `apps/web` que los
+- **Completo** — hay endpoints y hay una pantalla en `apps/web-nuxt` que cubre
+  lo que el negocio necesita hacer con ese dominio (propia o embebida dentro
+  de otra).
+- **Solo API** — los endpoints existen; no hay nada en `apps/web-nuxt` que los
   llame.
 - **Interno** — el módulo no tiene `controller`; se invoca desde otro
   servicio o desde el CLI.
@@ -35,9 +36,9 @@ ese prefijo a propósito, ver `apps/api/src/main.ts`).
 `Parcial` no es "algún endpoint sin cliente web". Contado así mezcla dos cosas
 que no se parecen: una capacidad que el negocio necesita y no tiene —que
 bloquea trabajo real— con un endpoint que ningún cliente llama y que no bloquea
-nada ni lo va a bloquear, como `GET /zones/:id`, sin función en
-`apps/web/src/api/zones.ts`. Un estado que señala las dos cosas igual no señala
-ninguna.
+nada ni lo va a bloquear, como `GET /zones/:id`, que ningún composable de
+`apps/web-nuxt/app/composables/` invoca. Un estado que señala las dos cosas
+igual no señala ninguna.
 
 **Hoy ninguna fila está en `Parcial`, así que el ejemplo de la izquierda va en
 pasado.** Las dos que lo estuvieron fueron la misma fila, `users`, y las dos
