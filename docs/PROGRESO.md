@@ -663,7 +663,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 18  | Tipos de envase (`/container-types`)            | 166 | ✅     |
 | 19  | Contar envases (`/container-counts`)            | 167 | ✅     |
 | 20  | Cuadre de envases (`/container-reconciliation`) | 168 | ✅     |
-| 21  | Zonas (`/zones`)                                |     | ⬜     |
+| 21  | Zonas (`/zones`)                                | 169 | ✅     |
 | 22  | Usuarios (`/users`)                             |     | ⬜     |
 
 ### Tanda 1 — Esqueleto
@@ -818,6 +818,14 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   403 genérico de Nest se traduce al vocabulario de la planta. Reusa
   `formatDifference` de `utils/settlement.ts` (mismo "+2"/"-3" con signo) en
   vez de duplicarlo.
+- **#169 Zonas.** Misma forma que Tipos de envase (lectura ADMIN+SELLER,
+  escritura sólo ADMIN; activas y retiradas juntas, ordenadas; retirar con
+  confirmación vía `WithdrawConfirm.vue` compartido, reactivar sin ella) más
+  los días de reparto: nunca obligatorios, una lista vacía se muestra como
+  "Sin días definidos" y el alta OMITE `deliveryDays` en vez de mandarlo
+  vacío. `DeliveryDaysField.vue` es el mismo grupo de casillas para el alta
+  y para la edición en fila (con su etiqueta oculta ahí, porque el nombre
+  accesible de la fila ya la identifica).
 
 ## Al terminar la migración
 
