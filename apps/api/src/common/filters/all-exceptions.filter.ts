@@ -33,8 +33,9 @@ function translateIfNestEnglish(message: string): string | undefined {
  * Global exception filter: only rewrites the handful of messages Nest
  * generates in English on its own. Every domain/validation message the
  * services and DTOs already throw in Spanish passes through untouched —
- * that text is exactly what apps/web renders (see readErrorMessage in
- * apps/web/src/api/api-client.ts), so overwriting it here would break the UI.
+ * that text is exactly what apps/web-nuxt renders (see errorFromResponse in
+ * apps/web-nuxt/app/utils/api-transport.ts), so overwriting it here would
+ * break the UI.
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {

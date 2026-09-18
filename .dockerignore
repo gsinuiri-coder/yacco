@@ -39,9 +39,6 @@ docs
 
 # El resto del monorepo que la API no necesita.
 apps/mobile
-apps/web/src
-apps/web/public
-apps/web/index.html
 design-kit
 tools
 

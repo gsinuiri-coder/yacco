@@ -38,7 +38,7 @@ export class PaymentMethodsController {
     return this.paymentMethodsService.findAll(query);
   }
 
-  // Sin consumidor en apps/web, y así se queda: mismo
+  // Sin consumidor en apps/web-nuxt, y así se queda: mismo
   // PaymentMethodResponseDto que un elemento del listado (los dos usan
   // PAYMENT_METHOD_SELECT), y la API embebe {id, name} en toda referencia a
   // método de pago. Quien lo va a necesitar es el móvil, para resolver un id

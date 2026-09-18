@@ -1,8 +1,8 @@
 /**
  * Tests de `scripts/lib.mjs`, con el runner de Node (`node --test`): estos
  * scripts corren fuera de toda app, así que no los alcanza ni Jest (apps/api)
- * ni Vitest (apps/web), y `node:test` viene con la plataforma — no agrega
- * ninguna dependencia.
+ * ni Vitest (apps/web-nuxt), y `node:test` viene con la plataforma — no
+ * agrega ninguna dependencia.
  *
  * Lo que se prueba acá es sobre todo el TACHADO de secretos. Es un control de
  * seguridad: si deja de funcionar, nada falla ruidosamente, simplemente

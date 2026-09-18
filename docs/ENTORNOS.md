@@ -25,10 +25,10 @@ convivencia" más abajo: es el plan de vuelta atrás, no un entorno que se use.
 El único entorno que no necesita ninguna credencial de nube.
 
 ```bash
-pnpm env:local     # escribe apps/api/.env y apps/web/.env desde .env.setup
+pnpm env:local     # escribe apps/api/.env desde .env.setup
 pnpm demo:up       # Postgres en Docker + migraciones + seed
 pnpm dev:api       # en una terminal
-pnpm dev:web       # en otra
+pnpm dev:web-nuxt  # en otra
 ```
 
 `env:local` apunta siempre al Postgres de Docker y **nunca** a Neon. El puerto

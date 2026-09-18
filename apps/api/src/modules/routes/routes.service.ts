@@ -1240,11 +1240,13 @@ export class RoutesService {
 /**
  * FIFO estricto: la carga de una ruta consume el lote más antiguo que
  * todavía tenga unidades de ese tipo de envase (CLAUDE.md, invariante de
- * dominio). Hasta acá la regla la sostenía únicamente el reparto que hace la
- * web (`apps/web/src/lib/fifo-load-plan.ts`): cualquier otro cliente —el
- * móvil, un script, Swagger— podía mandar el batchItem que quisiera y el
- * servidor lo aceptaba. Una invariante que solo vive en un cliente no es una
- * invariante.
+ * dominio). Originalmente la regla la sostenía únicamente el reparto que
+ * hacía la web (el entonces `apps/web/src/lib/fifo-load-plan.ts`, hoy
+ * `apps/web-nuxt/app/utils/fifo-load.ts`): cualquier otro cliente —el móvil,
+ * un script, Swagger— podía mandar el batchItem que quisiera y el servidor lo
+ * aceptaba. Una invariante que solo vive en un cliente no es una invariante,
+ * así que el servidor la aplica acá también; el cálculo del lado de la web
+ * sigue existiendo, para mostrar el plan antes de confirmarlo.
  *
  * El orden es el mismo que devuelve `GET /production-batches`
  * (`[{ date: "asc" }, { code: "asc" }]`): fecha del lote, y el código como

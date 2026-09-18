@@ -1161,11 +1161,23 @@ enlace guardado a una pantalla profunda aterriza en el inicio.
 
 ### D-020 — El web Nuxt vive en el monorepo, con su propio proyecto de Vercel que construye desde Git
 
-**Contexto.** La interfaz de `apps/web` funciona pero es genérica. Se reescribe
-en Nuxt 4 + Nuxt UI 4 **en paralelo**, sin tocar la app React, que sigue siendo
-la de producción hasta el corte. Hasta el 2026-09-24 hay además una restricción
-dura: no se tocan la API, el schema, `deploy.yml`, el proyecto `yacco-web` de
-Vercel ni `apps/web` (Render sigue vivo como vuelta atrás, fase 7).
+**Actualización 2026-09-18 — el corte se adelanta.** El plazo del
+2026-09-24 de abajo queda superado: Giancarlo pidió explícitamente sacar
+`apps/web` del repo hoy, a sabiendas de que eso deja a Render (y al job
+«5 · Web a Vercel» de `deploy.yml`) sin poder reconstruirlo si hiciera falta
+volver atrás — la alternativa que esta misma decisión había descartado más
+abajo. `render.yaml`, `deploy.yml`, `scripts/deploy-web.mjs` y el `vercel.json`
+raíz NO se tocaron en ese cambio (siguen apuntando a `apps/web`, que ya no
+existe): el corte real de esos cuatro archivos —apuntarlos a
+`apps/web-nuxt`, fase 7 de verdad— queda pendiente como su propia decisión,
+todavía sin tomar.
+
+**Contexto (histórico, plan original).** La interfaz de `apps/web` funciona
+pero es genérica. Se reescribe en Nuxt 4 + Nuxt UI 4 **en paralelo**, sin
+tocar la app React, que sigue siendo la de producción hasta el corte. Hasta
+el 2026-09-24 había además una restricción dura: no se tocan la API, el
+schema, `deploy.yml`, el proyecto `yacco-web` de Vercel ni `apps/web`
+(Render sigue vivo como vuelta atrás, fase 7).
 
 **Versiones, verificadas el 2026-09-17** en nuxt.com, ui.nuxt.com y npm: Nuxt
 **4.5.2** y Nuxt UI **4.11.1**, que depende de `@nuxt/kit ^4.5.2`. La

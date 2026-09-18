@@ -9,7 +9,6 @@
   },
   "scripts": {
     "dev:api": "pnpm --filter @yacco/api dev",
-    "dev:web": "pnpm --filter @yacco/web dev",
     "dev:web-nuxt": "pnpm --filter @yacco/web-nuxt dev",
     "lint": "pnpm -r lint && pnpm exec eslint scripts",
     "typecheck": "pnpm -r typecheck",
