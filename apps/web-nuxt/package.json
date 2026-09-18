@@ -27,13 +27,13 @@
     "@testing-library/vue": "8.1.0",
     "@vitest/coverage-v8": "5.0.1",
     "@vue/test-utils": "2.5.1",
-    "eslint": "^10.8.1",
+    "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "10.11.0",
     "h3": "1.15.11",
     "happy-dom": "20.14.5",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.16.0",
+    "typescript-eslint": "^8.70.0",
     "vitest": "5.0.1",
     "vue-tsc": "3.3.11"
   }
