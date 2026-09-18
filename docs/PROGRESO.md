@@ -632,12 +632,12 @@ Decisiones desde D-020 en `ARQUITECTURA.md`. **Hasta el 2026-09-24 esta
 migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 `apps/web`.**
 
-| Tanda                          | Estado      |
-| ------------------------------ | ----------- |
-| 1 — Esqueleto                  | ✅ hecha    |
-| 2 — Sesión y capa de datos     | ✅ hecha    |
-| 3+ — Las 22 pantallas          | 🟨 en curso |
-| Final — Corte (después del 24) | ⬜          |
+| Tanda                          | Estado   |
+| ------------------------------ | -------- |
+| 1 — Esqueleto                  | ✅ hecha |
+| 2 — Sesión y capa de datos     | ✅ hecha |
+| 3+ — Las 22 pantallas          | ✅ hecha |
+| Final — Corte (después del 24) | ⬜       |
 
 ### Pantallas
 
@@ -664,7 +664,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 19  | Contar envases (`/container-counts`)            | 167 | ✅     |
 | 20  | Cuadre de envases (`/container-reconciliation`) | 168 | ✅     |
 | 21  | Zonas (`/zones`)                                | 169 | ✅     |
-| 22  | Usuarios (`/users`)                             |     | ⬜     |
+| 22  | Usuarios (`/users`)                             | 170 | ✅     |
 
 ### Tanda 1 — Esqueleto
 
@@ -826,6 +826,22 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   vacío. `DeliveryDaysField.vue` es el mismo grupo de casillas para el alta
   y para la edición en fila (con su etiqueta oculta ahí, porque el nombre
   accesible de la fila ya la identifica).
+- **#170 Usuarios — última de las 22 pantallas.** Cuatro modos que se
+  excluyen entre sí (alta, renombrar, cambiar contraseña, corregir roles),
+  con `closeAllModes` como único lugar que los cierra a todos. Cambiar la
+  contraseña NO cierra la sesión abierta de esa persona —el refresh sólo
+  valida la firma y que siga activa, nunca compara contra el hash— y el
+  bloque lo dice con esas palabras; lo que sí corta es desactivar, en el
+  próximo refresco. Un administrador puede cambiarse la contraseña a sí
+  mismo (es la forma de rotar la del entorno demo) pero no puede
+  desactivarse ni quitarse a sí mismo la administración: la pantalla no lo
+  ofrece en vez de dejarlo pasar y avisar después. Quitarle "Chofer" a
+  alguien con rutas sin cerrar cuenta cuántas con dos `GET /routes` (una
+  por estado) y AVISA con el número exacto, sin bloquear ni tocar las
+  rutas —`route.driverId` es un hecho histórico—; si la consulta falla, se
+  confirma igual diciendo que no se pudo. El aviso de "contraseña
+  cambiada" nombra una fila y no sobrevive a un cambio de filtro ni a una
+  respuesta que llega tarde sobre una lista que ya es otra.
 
 ## Al terminar la migración
 
