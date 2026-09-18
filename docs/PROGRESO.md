@@ -661,7 +661,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 16  | Producción (`/production`)                      | 164 | ✅     |
 | 17  | Movimientos de envases (`/container-movements`) | 165 | ✅     |
 | 18  | Tipos de envase (`/container-types`)            | 166 | ✅     |
-| 19  | Contar envases (`/container-counts`)            |     | ⬜     |
+| 19  | Contar envases (`/container-counts`)            | 167 | ✅     |
 | 20  | Cuadre de envases (`/container-reconciliation`) |     | ⬜     |
 | 21  | Zonas (`/zones`)                                |     | ⬜     |
 | 22  | Usuarios (`/users`)                             |     | ⬜     |
@@ -795,6 +795,20 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   Zonas); reactivar es un solo clic. El error de renombrar o retirar/
   reactivar viaja con el id de la fila y se muestra pegado a ella, no una
   vez arriba de la card.
+- **#167 Contar envases.** El avance ("X de Y ubicaciones contadas") es
+  sobre TODO el padrón, no sobre la página filtrada: se pide aparte con dos
+  peticiones de una fila (`limit=1`). Clientes y ubicaciones de baja quedan
+  visibles y marcados, nunca escondidos; un saldo negativo se explica como
+  "el cliente devolvió más envases de los que se le registraron, falta
+  registrar una entrega" (distinto del negativo de Inventario, que es
+  literalmente el mismo número con otro significado). La planilla de
+  conteo (`ContainerCountForm.vue`) muestra el número del sistema al lado
+  del campo por tipo; un campo en blanco es "no contado", 0 es un conteo
+  real; si algo difiere, la diferencia con signo se revisa ANTES de
+  confirmar — información, no error. Se puede contar un tipo que la
+  ubicación no tenía según el sistema. Sin filtro de zona: no hay endpoint
+  de catálogo de zonas para ofrecer las opciones, y un catálogo nunca se
+  deriva de otro recurso ni se escribe a mano.
 
 ## Al terminar la migración
 
