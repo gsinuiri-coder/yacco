@@ -660,7 +660,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 15  | Inventario (`/inventory`)                       | 164 | ✅     |
 | 16  | Producción (`/production`)                      | 164 | ✅     |
 | 17  | Movimientos de envases (`/container-movements`) | 165 | ✅     |
-| 18  | Tipos de envase (`/container-types`)            |     | ⬜     |
+| 18  | Tipos de envase (`/container-types`)            | 166 | ✅     |
 | 19  | Contar envases (`/container-counts`)            |     | ⬜     |
 | 20  | Cuadre de envases (`/container-reconciliation`) |     | ⬜     |
 | 21  | Zonas (`/zones`)                                |     | ⬜     |
@@ -787,6 +787,14 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   desplegable vacío. El historial muestra TODAS las operaciones del libro,
   filtra por tipo, tipo de envase y rango de fechas, y pagina con
   `usePagedList`. Doble clic manda un solo POST.
+- **#166 Tipos de envase.** Lista activos Y retirados (la API los separa por
+  `active`; la pantalla pide las dos mitades): un tipo retirado sigue siendo
+  stock real en la calle y queda visible, marcado, nunca escondido. Nunca
+  ofrece eliminar, sólo baja lógica. Retirar pide confirmación explícita con
+  la consecuencia dicha (`WithdrawConfirm.vue`, componente compartido con
+  Zonas); reactivar es un solo clic. El error de renombrar o retirar/
+  reactivar viaja con el id de la fila y se muestra pegado a ella, no una
+  vez arriba de la card.
 
 ## Al terminar la migración
 
