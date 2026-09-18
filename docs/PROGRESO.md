@@ -655,7 +655,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 10  | Rutas (`/routes`)                               | 161 | ✅     |
 | 11  | Nueva ruta (`/routes/new`)                      | 161 | ✅     |
 | 12  | Detalle de ruta (`/routes/:id`)                 | 162 | ✅     |
-| 13  | Liquidación (`/routes/:id/settlement`)          |     | ⬜     |
+| 13  | Liquidación (`/routes/:id/settlement`)          | 163 | ✅     |
 | 14  | Cobranzas (`/payments`)                         |     | ⬜     |
 | 15  | Inventario (`/inventory`)                       |     | ⬜     |
 | 16  | Producción (`/production`)                      |     | ⬜     |
@@ -753,6 +753,16 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   marcado y del FIFO viven en `utils/stop-mark.ts` y `utils/fifo-load.ts`, con
   tests unitarios. **Hallazgo:** `UInput type="number"` con `v-model` entrega
   un número, no texto; `positiveWhole` acepta los dos.
+- **#163 Liquidación.** El libro (con cuántos llenos deberían volver), el
+  conteo en la puerta con vacíos por tipo (en blanco vale cero; los tipos
+  retirados que volvieron también se cuentan), diferencias en vivo con signo que
+  nunca bloquean, y la liquidación cerrada con sus diferencias recalculadas. El
+  aviso de liquidación desactualizada dice sólo lo que mide (una parada corregida
+  después del cierre), aclara la diferencia de vacíos y no le atribuye la deriva
+  de dinero a los pagos cuando hubo corrección. Reglas en `utils/settlement.ts`
+  y fórmulas del libro en `packages/shared`, con tests. Los límites de día en
+  Lima para filtros por instante (`limaDayStart`/`limaDayEnd`) también
+  entran a `packages/shared`.
 
 ## Al terminar la migración
 

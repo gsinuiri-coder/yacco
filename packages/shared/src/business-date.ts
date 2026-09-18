@@ -32,6 +32,22 @@ export function limaToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: LIMA_TIME_ZONE }).format(now);
 }
 
+/**
+ * The first and last second of a Lima calendar day as ISO instants, built as
+ * TEXT: `new Date(day)` would read midnight as UTC and land a day earlier.
+ * Peru is UTC-5 with no daylight saving, so the offset is fixed. Filters on
+ * instants (`paidFrom`/`paidTo`, `countedFrom`) take these; `undefined`
+ * when the day is not "AAAA-MM-DD".
+ */
+export function limaDayStart(day: string): string | undefined {
+  return CALENDAR_DAY.test(day) ? `${day}T00:00:00-05:00` : undefined;
+}
+
+/** The API's "to" filters are inclusive (lte), so the day needs its last second. */
+export function limaDayEnd(day: string): string | undefined {
+  return CALENDAR_DAY.test(day) ? `${day}T23:59:59-05:00` : undefined;
+}
+
 const INSTANT_FORMAT = new Intl.DateTimeFormat("en-GB", {
   timeZone: LIMA_TIME_ZONE,
   year: "numeric",

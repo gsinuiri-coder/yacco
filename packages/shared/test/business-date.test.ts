@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatCalendarDay, formatInstantInLima, limaToday } from "../src/business-date.js";
+import {
+  formatCalendarDay,
+  formatInstantInLima,
+  limaDayEnd,
+  limaDayStart,
+  limaToday,
+} from "../src/business-date.js";
 
 describe("formatCalendarDay", () => {
   it("formatea el día partiendo el texto", () => {
@@ -40,5 +46,17 @@ describe("formatInstantInLima", () => {
 
   it("devuelve intacto lo que no se puede leer como instante", () => {
     expect(formatInstantInLima("ayer")).toBe("ayer");
+  });
+});
+
+describe("limaDayStart / limaDayEnd", () => {
+  it("arman los límites del día en Lima como texto, con el offset fijo de Perú", () => {
+    expect(limaDayStart("2026-08-01")).toBe("2026-08-01T00:00:00-05:00");
+    expect(limaDayEnd("2026-08-31")).toBe("2026-08-31T23:59:59-05:00");
+  });
+
+  it("un día vacío o mal escrito no filtra", () => {
+    expect(limaDayStart("")).toBeUndefined();
+    expect(limaDayEnd("31/08/2026")).toBeUndefined();
   });
 });
