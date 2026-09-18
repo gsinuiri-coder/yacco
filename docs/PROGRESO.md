@@ -656,9 +656,9 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 11  | Nueva ruta (`/routes/new`)                      | 161 | ✅     |
 | 12  | Detalle de ruta (`/routes/:id`)                 | 162 | ✅     |
 | 13  | Liquidación (`/routes/:id/settlement`)          | 163 | ✅     |
-| 14  | Cobranzas (`/payments`)                         |     | ⬜     |
-| 15  | Inventario (`/inventory`)                       |     | ⬜     |
-| 16  | Producción (`/production`)                      |     | ⬜     |
+| 14  | Cobranzas (`/payments`)                         | 164 | ✅     |
+| 15  | Inventario (`/inventory`)                       | 164 | ✅     |
+| 16  | Producción (`/production`)                      | 164 | ✅     |
 | 17  | Movimientos de envases (`/container-movements`) |     | ⬜     |
 | 18  | Tipos de envase (`/container-types`)            |     | ⬜     |
 | 19  | Contar envases (`/container-counts`)            |     | ⬜     |
@@ -763,6 +763,18 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   y fórmulas del libro en `packages/shared`, con tests. Los límites de día en
   Lima para filtros por instante (`limaDayStart`/`limaDayEnd`) también
   entran a `packages/shared`.
+- **#164 Cobranzas, inventario y producción.** Cobranzas arranca en
+  Pendiente (es el trabajo, no un filtro más); anular no cambia el estado,
+  así que `canResolve` mira `voidedAt` además de `status`; rechazo y
+  anulación nombran cada motivo por separado; 409/404 recargan la bandeja,
+  403 explica el permiso. Inventario pivota el libro plano en una matriz
+  por tipo y estado; el vacío es "no hay filas", nunca "las cantidades
+  suman cero" (el bug de producción del React, cubierto con su propia
+  prueba). Producción: un tipo de envase no se ofrece dos veces entre
+  líneas, sobreproducción avisada sin leerse como error, doble clic manda
+  un solo POST. `packages/shared/src/container-movements.ts` trae los
+  contratos del ledger de envases con un test que lee `schema.prisma`
+  directo para no desincronizarse del backend.
 
 ## Al terminar la migración
 
