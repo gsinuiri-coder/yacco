@@ -662,7 +662,7 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
 | 17  | Movimientos de envases (`/container-movements`) | 165 | ✅     |
 | 18  | Tipos de envase (`/container-types`)            | 166 | ✅     |
 | 19  | Contar envases (`/container-counts`)            | 167 | ✅     |
-| 20  | Cuadre de envases (`/container-reconciliation`) |     | ⬜     |
+| 20  | Cuadre de envases (`/container-reconciliation`) | 168 | ✅     |
 | 21  | Zonas (`/zones`)                                |     | ⬜     |
 | 22  | Usuarios (`/users`)                             |     | ⬜     |
 
@@ -809,6 +809,15 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   ubicación no tenía según el sistema. Sin filtro de zona: no hay endpoint
   de catálogo de zonas para ofrecer las opciones, y un catálogo nunca se
   deriva de otro recurso ni se escribe a mano.
+- **#168 Cuadre de envases.** Deja explícito QUÉ se compara contra QUÉ: el
+  libro de movimientos (reconstruido desde cero por una consulta aparte) contra
+  el saldo materializado que muestran las demás pantallas — dos cuentas
+  independientes a propósito, para que un descuadre no termine probando que
+  algo coincide consigo mismo. El resultado esperado es la lista vacía, así
+  que se muestra como buena noticia. Informa, nunca corrige. Sólo ADMIN; el
+  403 genérico de Nest se traduce al vocabulario de la planta. Reusa
+  `formatDifference` de `utils/settlement.ts` (mismo "+2"/"-3" con signo) en
+  vez de duplicarlo.
 
 ## Al terminar la migración
 
