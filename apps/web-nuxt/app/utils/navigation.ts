@@ -30,6 +30,38 @@ export const NAVIGATION: NavigationSection[] = [
       { label: "Clientes", icon: "i-lucide-users", to: "/customers" },
       { label: "Pedidos", icon: "i-lucide-clipboard-list", to: "/orders" },
       { label: "Rutas", icon: "i-lucide-truck", to: "/routes" },
+      { label: "Pagos", icon: "i-lucide-wallet", to: "/payments" },
+    ],
+  },
+  {
+    label: "Envases y producción",
+    links: [
+      { label: "Producción", icon: "i-lucide-factory", to: "/production" },
+      { label: "Tipos de envase", icon: "i-lucide-package", to: "/container-types" },
+      { label: "Inventario de envases", icon: "i-lucide-package-open", to: "/inventory" },
+      {
+        label: "Envases en poder de clientes",
+        icon: "i-lucide-clipboard-check",
+        to: "/container-counts",
+      },
+      {
+        label: "Movimientos de envases",
+        icon: "i-lucide-package-search",
+        to: "/container-movements",
+      },
+      {
+        label: "Cuadre de envases",
+        icon: "i-lucide-scale",
+        to: "/container-reconciliation",
+        onlyFor: "ADMIN",
+      },
+    ],
+  },
+  {
+    label: "Administración",
+    links: [
+      { label: "Zonas", icon: "i-lucide-map-pin", to: "/zones" },
+      { label: "Usuarios", icon: "i-lucide-user-cog", to: "/users" },
     ],
   },
 ];
