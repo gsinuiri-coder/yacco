@@ -18,11 +18,11 @@ avance por fase está en [`PROGRESO.md`](./PROGRESO.md); cómo desplegar, en
 ```
                     ┌──────────────────────────────────────┐
    navegador ──────▶│ Vercel — proyecto yacco-web          │
-   (Lima)           │ SPA estática: apps/web/dist          │
+   (Lima)           │ Nuxt SSR: apps/web-nuxt (D-023)      │
                     │                                      │
-                    │ vercel.json:                         │
+                    │ rutas del Build Output (D-021):      │
                     │  /api/*, /health ──────┐             │
-                    │  /(.*)      ──▶ index.html (Router)  │
+                    │  /(.*) ──▶ función SSR (__fallback)  │
                     └────────────────────────┼─────────────┘
                                              │  HTTPS, servidor a servidor.
                                              │  El navegador nunca ve este
@@ -1161,6 +1161,12 @@ enlace guardado a una pantalla profunda aterriza en el inicio.
 
 ### D-020 — El web Nuxt vive en el monorepo, con su propio proyecto de Vercel que construye desde Git
 
+> **Superada por D-023 (2026-09-23).** Producción no la sirve `yacco-web-nuxt`
+> construido por Vercel desde Git: la sirve `yacco-web`, construido en CI desde
+> `apps/web-nuxt`. El punto 1 (Nuxt dentro del monorepo) sigue en pie; los
+> puntos 2 y 3 quedan como historia, y `yacco-web-nuxt` se borra una vez
+> verificado el corte.
+
 **Actualización 2026-09-18 — el corte se adelanta.** El plazo del
 2026-09-24 de abajo queda superado: Giancarlo pidió explícitamente sacar
 `apps/web` del repo hoy, a sabiendas de que eso deja a Render (y al job
@@ -1269,7 +1275,8 @@ deja de publicar estas rutas.
 
 **Pendiente para la tanda del corte:** la regla 1 no se puede ejercitar hasta
 que `yacco-web.vercel.app` apunte al proyecto Nuxt. El corte no se da por hecho
-sin `/health` devolviendo `"production"` por ese host.
+sin `/health` devolviendo `"production"` por ese host. Lo hace D-023: desde ahí
+la regla 1 la sirve el Nuxt, y el smoke de cada deploy la ejercita.
 
 ---
 
@@ -1310,6 +1317,89 @@ guardar nada en `localStorage`.
 **Alternativa descartada.** _`ssr: false` (SPA pura)._ Iguala al web React,
 pero pierde el shell y el login renderizados de entrada, y habría que volver a
 encenderlo el día de la cookie.
+
+---
+
+### D-023 — El corte real del web: `yacco-web` construye `apps/web-nuxt` en CI
+
+**Contexto.** #171 sacó `apps/web` del repo sin tocar lo que lo construía, y
+dejó dos cosas rotas a la vez:
+
+- **`main` no se desplegaba.** `apps/api/Dockerfile` copiaba
+  `apps/web/package.json`; sin ese archivo, «3 · Imagen» fallaba en el
+  `COPY`. Las dos APIs quedaron en `19a3553` (#170).
+- **El web de producción seguía siendo el React.** `yacco-web.vercel.app`
+  servía el build de #170; el Nuxt sólo existía en `yacco-web-nuxt`, que pega
+  a demo (D-020).
+
+Giancarlo decidió el 2026-09-23 que producción la sirve el proyecto
+`yacco-web`, construido en CI como exigen D-014/D-015, y **no** mover el alias
+a `yacco-web-nuxt`.
+
+**Decisión.**
+
+1. **El proyecto `yacco-web` construye desde `apps/web-nuxt`.** Setting
+   cambiado por la API de Vercel (`PATCH /v9/projects/…`, con la sesión de la
+   CLI) el 2026-09-23:
+
+   | Setting         | Antes                 | Después         |
+   | --------------- | --------------------- | --------------- |
+   | `rootDirectory` | `null` (la raíz, `.`) | `apps/web-nuxt` |
+   | `framework`     | `null` (Other)        | sin cambios     |
+
+   `framework` no se tocó: lo declara `apps/web-nuxt/vercel.json`
+   (`nuxtjs`), que es el vercel.json que Vercel lee con ese `rootDirectory`
+   — el mismo archivo con que ya construía `yacco-web-nuxt`. El `vercel.json`
+   de la raíz se borró: con `rootDirectory` en otra carpeta nadie lo lee, y
+   un archivo que parece mandar y no manda es una trampa.
+   `scripts/vercel-config.test.mjs` falla si vuelve.
+
+2. **Sigue siendo D-014:** `vercel pull` + `vercel build` + `deploy
+--prebuilt` en el job «5 · Web a Vercel», con el token de D-015.
+   `deploy.yml` no cambió de forma.
+3. **Dónde queda la salida, verificado con `vercel build` local:** Nitro
+   (preset `vercel`) escribe en `apps/web-nuxt/.vercel/output`, relativo a su
+   `rootDir`, y la CLI lo copia a `.vercel/output` de la raíz del repo, que es
+   donde corre `deploy --prebuilt`.
+4. **Nada del web React sobrevive en la salida.** Los `rewrites` de su
+   `vercel.json` desaparecen con el archivo: el proxy son las rutas del Build
+   Output de D-021, y el catch-all es `/(.*) → /__fallback` (la función SSR),
+   no `/index.html`. Los headers A6 salen de `routeRules` como una ruta
+   `/(.*)` con `X-Frame-Options: DENY` y `frame-ancestors 'none'`; en lo
+   servido los llevan los documentos HTML, no los assets estáticos de
+   `/_nuxt/`, que es donde importa el enmarcado.
+5. **Guardia antes de publicar.** `deploy-web.mjs` lee
+   `.vercel/output/config.json` después del build y ABORTA, sin llegar a
+   `deploy --prebuilt`, si falta la ruta `has: host == yacco-web.vercel.app`
+   hacia `yacco-api` para `/api/*` o `/health`, si va después del default a
+   demo, si hay una ruta a `/index.html` o si faltan los headers A6
+   (`checkBuildOutput`, con test). Un `config.json` ausente es un error, no
+   una lista vacía.
+6. **El smoke distingue el corte.** El chequeo del web exige
+   `<div id="__nuxt">`, un módulo `/_nuxt/*.js` que responda 200 y los
+   headers A6 en `/`, `/login` y `/customers/new`. Contra el React falla,
+   que es lo que lo hace testigo.
+
+**Vuelta atrás.** Promover en Vercel el último deploy React de `yacco-web`
+(`dpl_DbcUwLGm5UfPVmKVtGFzignnbaUj`, commit `19a3553`):
+`vercel promote dpl_DbcUwLGm5UfPVmKVtGFzignnbaUj --scope gsinuiricoders-projects`
+o, desde el dashboard, «Promote to Production» sobre ese deploy. Promover no
+reconstruye, así que no depende del `rootDirectory` nuevo ni de `apps/web`.
+Las APIs no se tocan: el React habla con la misma API por su propio rewrite.
+Después, avisar; nada de arreglos improvisados.
+
+**Alternativas descartadas.**
+
+- _Mover el dominio de producción a `yacco-web-nuxt`._ Lo descartó Giancarlo:
+  ese proyecto construye Vercel desde Git, que es lo que D-014 sacó del camino
+  a producción (lo publicado tiene que ser el commit que CI probó).
+- _Dejar `rootDirectory` en la raíz y un `vercel.json` raíz para Nuxt._ Nitro
+  escribe su salida relativa a `apps/web-nuxt` y `vercel build` la buscaría en
+  la raíz; habría que mover el `output.dir` de Nitro a mano, una segunda
+  configuración de build que `yacco-web-nuxt` nunca probó.
+- _Correr `vercel build` con `cwd` en `apps/web-nuxt`, sin tocar el setting._
+  Evita el cambio en el dashboard a costa de un `.vercel/` fuera de la raíz y
+  un camino que depende de desde dónde se lanza el script.
 
 ---
 

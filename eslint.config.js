@@ -30,6 +30,8 @@ export default tseslint.config(
         fetch: "readonly",
         AbortSignal: "readonly",
         URL: "readonly",
+        // Headers también: los tests del smoke arman respuestas con él.
+        Headers: "readonly",
       },
     },
   },

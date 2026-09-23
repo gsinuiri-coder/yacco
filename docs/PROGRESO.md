@@ -421,10 +421,9 @@ Durante la ventana:
    todavía la abre. Reset del rol, `pnpm secrets:gcp`, redeploy de producción,
    y destruir las versiones viejas de `yacco-*-database-url` y
    `yacco-*-direct-url`. Recién se puede con Render suspendido.
-3. **PR propio** que borre `render.yaml`, la redirección de
-   `apps/web/src/lib/cutover.ts` (con Render apagado, ese host ya no sirve nada)
-   y las menciones a Render de `ENTORNOS.md`, `DEPLOY.md` y
-   `.agents/rules/infra.md`.
+3. **PR propio** que borre `render.yaml` y las menciones a Render de
+   `ENTORNOS.md`, `DEPLOY.md` y `.agents/rules/infra.md`. La redirección de
+   D-019 ya no existe: se fue con el web React en #171.
 4. **Borrar las ramas de respaldo de Neon** `backup-pre-ci-deploy-20260916` y
    `backup-pre-seed-creds-20260917` (el dueño: los agentes tienen denegado borrar
    ramas).
@@ -627,17 +626,16 @@ cómoda de no repetir valores a mano en cada comando.
 
 ## Migración del web a Nuxt — `apps/web-nuxt`
 
-En paralelo a `apps/web`, que sigue siendo producción hasta el corte.
-Decisiones desde D-020 en `ARQUITECTURA.md`. **Hasta el 2026-09-24 esta
-migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
-`apps/web`.**
+Empezó en paralelo a `apps/web`, que #171 retiró del repo. Decisiones desde
+D-020 en `ARQUITECTURA.md`; el corte real, que pone el Nuxt en `yacco-web`,
+es D-023.
 
-| Tanda                          | Estado   |
-| ------------------------------ | -------- |
-| 1 — Esqueleto                  | ✅ hecha |
-| 2 — Sesión y capa de datos     | ✅ hecha |
-| 3+ — Las 22 pantallas          | ✅ hecha |
-| Final — Corte (después del 24) | ⬜       |
+| Tanda                      | Estado   |
+| -------------------------- | -------- |
+| 1 — Esqueleto              | ✅ hecha |
+| 2 — Sesión y capa de datos | ✅ hecha |
+| 3+ — Las 22 pantallas      | ✅ hecha |
+| Final — Corte              | 🟨 PR    |
 
 ### Pantallas
 
@@ -842,6 +840,30 @@ migración no toca la API, el schema, `deploy.yml`, el proyecto `yacco-web` ni
   confirma igual diciendo que no se pudo. El aviso de "contraseña
   cambiada" nombra una fila y no sobrevive a un cambio de filtro ni a una
   respuesta que llega tarde sobre una lista que ya es otra.
+
+### Tanda final — Corte (D-023)
+
+Estado al 2026-09-23: **PR abierto, sin mergear.** El merge espera que
+Giancarlo confirme el recorrido de paridad contra demo.
+
+- **Antes del PR, `main` no se desplegaba:** #171 dejó el Dockerfile copiando
+  `apps/web/package.json` y «3 · Imagen» fallaba. Las APIs, en `19a3553`; el
+  web de producción, todavía el React de #170.
+- `yacco-web` pasó a `rootDirectory: apps/web-nuxt` (antes `null`), aplicado
+  el 2026-09-23. No afecta al deploy React que sirve hoy: un setting sólo
+  cambia builds nuevos.
+- Vuelta atrás: promover `dpl_DbcUwLGm5UfPVmKVtGFzignnbaUj` (React, `19a3553`).
+
+Después del merge, el corte no está hecho sin:
+
+1. El deploy de CI con los nueve jobs en verde y las dos APIs en el commit
+   nuevo.
+2. `curl https://yacco-web.vercel.app/health` → `"production"` y el commit
+   nuevo, servido por el Nuxt (regla 1 de D-021).
+3. El HTML de `/` y `/login` es el del Nuxt, con los headers A6.
+4. `pnpm smoke:prod` con `EXPECTED_COMMIT` → `Smoke OK.`
+5. Giancarlo desconecta Git de `yacco-web-nuxt` y, verificado el corte, lo
+   borra.
 
 ## Al terminar la migración
 

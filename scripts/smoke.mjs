@@ -18,8 +18,11 @@
  *      prueba el rewrite de host de verdad, no una copia de sus reglas.
  *   3. Un login que TIENE que fallar (401), a través de Vercel. Ver
  *      checkRejectedLogin.
- *   4. Las pantallas principales del web: el HTML de la SPA en `/`, `/login` y
- *      una ruta profunda, y el bundle de JavaScript que ese HTML referencia.
+ *   4. Las pantallas principales del web: el HTML del Nuxt (D-023) en `/`,
+ *      `/login` y una ruta profunda, con los headers anti-enmarcado (A6), y el
+ *      módulo de entrada `/_nuxt/*.js` que ese HTML referencia. Una página
+ *      servida por el web React (`<div id="root">`, `/assets/*.js`) FALLA: es
+ *      lo que distingue si el corte ocurrió.
  *
  * Si EXPECTED_COMMIT está en el entorno (CI la pone), el commit de cada API
  * tiene que coincidir. Sin ella (a mano) se comprueba todo lo demás.
@@ -27,7 +30,8 @@
 import { pathToFileURL } from "node:url";
 
 // URLs deterministas de Cloud Run (formato SERVICE-PROJECT_NUMBER.REGION), las
-// mismas que usa vercel.json: ver D-012 en docs/ARQUITECTURA.md.
+// mismas que usa apps/web-nuxt/config/api-proxy.ts: ver D-012 y D-021 en
+// docs/ARQUITECTURA.md. La guardia de deploy-web.mjs las compara contra el build.
 export const TARGETS = {
   apis: {
     demo: "https://yacco-api-demo-297699663114.us-east4.run.app",
@@ -47,9 +51,10 @@ export const SYNTHETIC_LOGIN = {
 // en frío de ~6 s. El margen es para eso, no para tolerar una API lenta.
 const REQUEST_TIMEOUT_MS = 30_000;
 
-// Las rutas del web que se cargan. `/customers` es una ruta profunda del
-// router: prueba el fallback a index.html de vercel.json, que sin él daría 404.
-const WEB_SCREENS = ["/", "/login", "/customers"];
+// Las rutas del web que se cargan. `/customers/new` es una ruta profunda que
+// existe en apps/web-nuxt/app/pages: el SSR la tiene que renderizar, y una
+// ruta que no existe daría 404 (Nuxt no tiene fallback a index.html).
+export const WEB_SCREENS = ["/", "/login", "/customers/new"];
 
 /**
  * Evalúa el cuerpo de /health. Devuelve la lista de problemas; vacía = sano.
@@ -112,21 +117,33 @@ export function checkRejectedLogin(status) {
 }
 
 /**
- * El HTML de la SPA. Devuelve los problemas y la ruta del bundle, para
- * comprobar que el JavaScript también se sirve (un index.html sin su bundle
- * es una pantalla en blanco que da 200).
+ * El HTML del web Nuxt. Devuelve los problemas y la ruta del módulo de
+ * entrada, para comprobar que el JavaScript también se sirve (un HTML sin su
+ * JavaScript es una pantalla que da 200 y no hidrata).
  */
-export function checkSpaShell(html) {
+export function checkNuxtShell(html) {
   const problems = [];
-  if (!html.includes('<div id="root">')) {
-    problems.push('el HTML no tiene <div id="root">: no es la SPA de Yacco');
+  if (!html.includes('<div id="__nuxt"')) {
+    problems.push('el HTML no tiene <div id="__nuxt">: no lo sirve el web Nuxt');
   }
-  const match = /<script[^>]+src="(\/assets\/[^"]+\.js)"/.exec(html);
+  const match = /<script[^>]+src="(\/_nuxt\/[^"]+\.js)"/.exec(html);
   if (match === null) {
-    problems.push("el HTML no referencia ningún bundle en /assets/*.js");
-    return { problems, bundlePath: null };
+    problems.push("el HTML no referencia ningún módulo en /_nuxt/*.js");
+    return { problems, entryPath: null };
   }
-  return { problems, bundlePath: match[1] };
+  return { problems, entryPath: match[1] };
+}
+
+/** A6: nadie enmarca la app. Recibe los headers de la respuesta (`Headers`). */
+export function checkFrameHeaders(headers) {
+  const problems = [];
+  if (headers.get("x-frame-options") !== "DENY") {
+    problems.push("falta X-Frame-Options: DENY");
+  }
+  if (!(headers.get("content-security-policy") ?? "").includes("frame-ancestors 'none'")) {
+    problems.push("falta Content-Security-Policy: frame-ancestors 'none'");
+  }
+  return problems;
 }
 
 async function request(url, init = {}) {
@@ -136,7 +153,12 @@ async function request(url, init = {}) {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const text = await response.text();
-  return { status: response.status, contentType: response.headers.get("content-type") ?? "", text };
+  return {
+    status: response.status,
+    headers: response.headers,
+    contentType: response.headers.get("content-type") ?? "",
+    text,
+  };
 }
 
 function parseJson(text) {
@@ -166,24 +188,25 @@ async function smokeRejectedLogin(label, baseUrl) {
   return checkRejectedLogin(response.status).map((problem) => `${label}: ${problem}`);
 }
 
-async function smokeWebScreens(baseUrl) {
+export async function smokeWebScreens(baseUrl) {
   const problems = [];
-  let bundlePath = null;
+  let entryPath = null;
   for (const path of WEB_SCREENS) {
     const response = await request(`${baseUrl}${path}`);
     if (response.status !== 200) {
       problems.push(`web ${path}: devolvió ${response.status}`);
       continue;
     }
-    const shell = checkSpaShell(response.text);
-    problems.push(...shell.problems.map((problem) => `web ${path}: ${problem}`));
-    bundlePath ??= shell.bundlePath;
+    const shell = checkNuxtShell(response.text);
+    const pageProblems = [...shell.problems, ...checkFrameHeaders(response.headers)];
+    problems.push(...pageProblems.map((problem) => `web ${path}: ${problem}`));
+    entryPath ??= shell.entryPath;
   }
 
-  if (bundlePath !== null) {
-    const bundle = await request(`${baseUrl}${bundlePath}`);
-    if (bundle.status !== 200 || !bundle.contentType.includes("javascript")) {
-      problems.push(`web ${bundlePath}: devolvió ${bundle.status} (${bundle.contentType})`);
+  if (entryPath !== null) {
+    const entry = await request(`${baseUrl}${entryPath}`);
+    if (entry.status !== 200 || !entry.contentType.includes("javascript")) {
+      problems.push(`web ${entryPath}: devolvió ${entry.status} (${entry.contentType})`);
     }
   }
   return problems;

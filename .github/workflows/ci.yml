@@ -93,9 +93,10 @@ jobs:
         run: pnpm build
 
       - name: Unit tests
-        # `pnpm -r test`: Jest en @yacco/api y Vitest en @yacco/web. Ambos dejan
-        # su lcov en disco aquí, antes del scan de SonarCloud, que es quien lo
-        # lee vía sonar.javascript.lcov.reportPaths.
+        # `pnpm -r test`: Jest en @yacco/api y Vitest en @yacco/web-nuxt y
+        # @yacco/shared. Todos dejan su lcov en disco aquí, antes del scan de
+        # SonarCloud, que es quien lo lee vía sonar.javascript.lcov.reportPaths.
+        # Después, `test:scripts` corre los tests de scripts/ con node --test.
         run: pnpm test
 
       - name: Integration tests (Testcontainers)

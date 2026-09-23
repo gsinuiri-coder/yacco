@@ -1,96 +1,71 @@
 /**
- * Invariantes de vercel.json que ningún build ni ningún test de las apps ve.
+ * Invariantes de la configuración de build del web en Vercel que ningún test
+ * de las apps ve.
  *
- * El más importante no es obvio: Vercel le AGREGA al destino de un rewrite,
- * como query string, cada parámetro de `has` que el destino no use — salvo que
- * el path del destino use algún parámetro con nombre. Con `has: host` y un
- * destino del estilo `/api/$1`, cada petición a producción llega a Cloud Run
- * como `/api/v1/customers?host=yacco-web.vercel.app`. El ValidationPipe de la
- * API corre con `forbidNonWhitelisted`, así que todo endpoint con un DTO de
- * query contestaría 400 — sólo en producción, porque las reglas de demo no
- * llevan `has`. Y el smoke no lo vería: sin credenciales, los guards contestan
- * 401 antes de validar la query. Ver D-012 en docs/ARQUITECTURA.md.
+ * Desde D-023 el proyecto `yacco-web` construye `apps/web-nuxt`
+ * (`rootDirectory: apps/web-nuxt`), así que el vercel.json que manda es el de
+ * esa carpeta. El proxy de `/api/*` y `/health` por host NO vive ahí: son las
+ * rutas del Build Output API de D-021 (`apps/web-nuxt/config/api-proxy.ts`,
+ * con su test), y la guardia de `scripts/deploy-web.mjs` las vuelve a revisar
+ * en la salida real del build antes de publicar. Los headers A6 son
+ * `routeRules` de nuxt.config (mismo test, y la misma guardia).
+ *
+ * Lo que se cuida acá es que no vuelva nada del web React: sus `rewrites`, y
+ * sobre todo el catch-all `/(.*) -> /index.html`, que en Nuxt taparía el SSR.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 
 import { REPO_ROOT } from "./lib.mjs";
-import { TARGETS } from "./smoke.mjs";
 
-const config = JSON.parse(readFileSync(join(REPO_ROOT, "vercel.json"), "utf8"));
-const PRODUCTION_HOST = new URL(TARGETS.web).host;
+const WEB_VERCEL_JSON = join(REPO_ROOT, "apps", "web-nuxt", "vercel.json");
+const ROOT_VERCEL_JSON = join(REPO_ROOT, "vercel.json");
 
-function namedParams(pattern) {
-  return [...pattern.matchAll(/:([A-Za-z_]\w*)/g)].map((match) => match[1]);
+const config = JSON.parse(readFileSync(WEB_VERCEL_JSON, "utf8"));
+
+/** Todo destino que declare un vercel.json, en `rewrites` o en `routes`. */
+function destinations(vercelJson) {
+  return [...(vercelJson.rewrites ?? []), ...(vercelJson.routes ?? [])].map(
+    (rule) => rule.destination ?? rule.dest,
+  );
 }
 
-describe("vercel.json", () => {
-  test("toda regla con `has` usa en el destino un parámetro con nombre del source", () => {
-    for (const rule of config.rewrites.filter((r) => r.has !== undefined)) {
-      const destinationPath = new URL(rule.destination).pathname;
-      const shared = namedParams(rule.source).filter((name) =>
-        namedParams(destinationPath).includes(name),
-      );
-      assert.ok(
-        shared.length > 0,
-        `${rule.source} -> ${rule.destination}: sin un parámetro con nombre en el destino, ` +
-          "Vercel le agrega ?host=... a cada petición y la API la rechaza con 400",
-      );
-    }
+describe("apps/web-nuxt/vercel.json", () => {
+  test("construye el Nuxt, y sólo el Nuxt", () => {
+    assert.equal(config.framework, "nuxtjs");
+    assert.match(config.buildCommand, /--filter @yacco\/web-nuxt build/);
   });
 
-  test("el orden es: host de producción, cualquier otro host, fallback de la SPA", () => {
-    const [prodApi, prodHealth, demoApi, demoHealth, spa] = config.rewrites;
-
-    for (const rule of [prodApi, prodHealth]) {
-      assert.deepEqual(rule.has, [{ type: "host", value: PRODUCTION_HOST }]);
-      assert.ok(rule.destination.startsWith(TARGETS.apis.production));
-    }
-    for (const rule of [demoApi, demoHealth]) {
-      // Sin condición: el default es demo (D-011).
-      assert.equal(rule.has, undefined);
-      assert.ok(rule.destination.startsWith(TARGETS.apis.demo));
-    }
-    assert.deepEqual(spa, { source: "/(.*)", destination: "/index.html" });
-    assert.equal(config.rewrites.length, 5);
+  test("no reescribe nada a /index.html: el catch-all del web React taparía el SSR", () => {
+    assert.ok(
+      !destinations(config).includes("/index.html"),
+      "un catch-all a /index.html manda cada ruta al HTML estático y el SSR de Nuxt no contesta",
+    );
   });
 
-  test("/health viaja con la MISMA regla de source que su par de /api, en los dos hosts", () => {
-    const [prodApi, prodHealth, demoApi, demoHealth] = config.rewrites;
-    assert.equal(prodApi.source, demoApi.source);
-    assert.equal(prodHealth.source, demoHealth.source);
-    assert.deepEqual(prodApi.has, prodHealth.has);
-  });
-
-  test("el host de producción es un literal, nunca una regex", () => {
-    for (const rule of config.rewrites.filter((r) => r.has !== undefined)) {
-      for (const condition of rule.has) {
-        assert.match(condition.value, /^[a-z0-9.-]+$/, `${condition.value} no es un host literal`);
-      }
-    }
+  test("no declara rewrites ni routes: el proxy por host son las rutas de D-021", () => {
+    // Un rewrite de vercel.json con `has: host` le agrega ?host=... al destino
+    // (D-012) y competiría en orden con las rutas que genera Nitro.
+    assert.equal(config.rewrites, undefined);
+    assert.equal(config.routes, undefined);
   });
 });
 
-describe("vercel.json — la instalación", () => {
+describe("vercel.json de la raíz", () => {
+  test("no existe: el proyecto yacco-web construye desde apps/web-nuxt", () => {
+    // Con rootDirectory en apps/web-nuxt Vercel lo ignoraría, y un archivo que
+    // se lee como si mandara y no manda es la forma más barata de equivocarse.
+    assert.equal(existsSync(ROOT_VERCEL_JSON), false);
+  });
+});
+
+describe("apps/web-nuxt/vercel.json — la instalación", () => {
   // `vercel build` corre el installCommand dentro del job «5 · Web a Vercel»,
   // que tiene un token de GCP y el de Vercel en el entorno (A3, fase 6). Sin
-  // --ignore-scripts, cualquier postinstall de las ~960 dependencias corre ahí.
+  // --ignore-scripts, cualquier postinstall de las dependencias corre ahí.
   test("installCommand no ejecuta scripts de instalación", () => {
     assert.match(config.installCommand, /(^|\s)--ignore-scripts(\s|$)/);
-  });
-});
-
-describe("vercel.json — headers", () => {
-  // La mitad barata de A6 (fase 6): el web no se deja enmarcar (clickjacking).
-  // A propósito NO es una CSP completa: una que restrinja scripts o conexiones
-  // se prueba antes contra el web y está en el backlog.
-  test("todas las rutas prohíben ser enmarcadas, con el header viejo y con CSP", () => {
-    const catchAll = (config.headers ?? []).find((rule) => rule.source === "/(.*)");
-    assert.ok(catchAll, "falta una regla de headers para /(.*)");
-    const byKey = Object.fromEntries(catchAll.headers.map((h) => [h.key.toLowerCase(), h.value]));
-    assert.equal(byKey["x-frame-options"], "DENY");
-    assert.equal(byKey["content-security-policy"], "frame-ancestors 'none'");
   });
 });
