@@ -15,17 +15,18 @@
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, test } from "node:test";
 
 import { REPO_ROOT } from "./lib.mjs";
 
 const WEB_VERCEL_JSON = join(REPO_ROOT, "apps", "web-nuxt", "vercel.json");
-const ROOT_VERCEL_JSON = join(REPO_ROOT, "vercel.json");
+// El mismo archivo, en la raíz del repo: ahí vivía la config del web React.
+const ROOT_CONFIG = join(REPO_ROOT, basename(WEB_VERCEL_JSON));
 
 const config = JSON.parse(readFileSync(WEB_VERCEL_JSON, "utf8"));
 
-/** Todo destino que declare un vercel.json, en `rewrites` o en `routes`. */
+/** Todo destino que declare la config de Vercel, en `rewrites` o en `routes`. */
 function destinations(vercelJson) {
   return [...(vercelJson.rewrites ?? []), ...(vercelJson.routes ?? [])].map(
     (rule) => rule.destination ?? rule.dest,
@@ -46,18 +47,18 @@ describe("apps/web-nuxt/vercel.json", () => {
   });
 
   test("no declara rewrites ni routes: el proxy por host son las rutas de D-021", () => {
-    // Un rewrite de vercel.json con `has: host` le agrega ?host=... al destino
+    // Un rewrite de esta config con `has: host` le agrega ?host=... al destino
     // (D-012) y competiría en orden con las rutas que genera Nitro.
     assert.equal(config.rewrites, undefined);
     assert.equal(config.routes, undefined);
   });
 });
 
-describe("vercel.json de la raíz", () => {
-  test("no existe: el proyecto yacco-web construye desde apps/web-nuxt", () => {
+describe("la raíz del repo", () => {
+  test("no tiene config de Vercel propia: yacco-web construye desde apps/web-nuxt", () => {
     // Con rootDirectory en apps/web-nuxt Vercel lo ignoraría, y un archivo que
     // se lee como si mandara y no manda es la forma más barata de equivocarse.
-    assert.equal(existsSync(ROOT_VERCEL_JSON), false);
+    assert.equal(existsSync(ROOT_CONFIG), false);
   });
 });
 

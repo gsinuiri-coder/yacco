@@ -12,7 +12,7 @@ Las decisiones de infraestructura detrás de esta tabla están en
 
 | Entorno        | Web                           | API                        | Base de datos      | Escribe datos reales |
 | -------------- | ----------------------------- | -------------------------- | ------------------ | -------------------- |
-| **local**      | `vite dev`, `:5173`           | `:3100`                    | Postgres en Docker | no                   |
+| **local**      | `nuxt dev`                    | `:3100`                    | Postgres en Docker | no                   |
 | **demo**       | previews de Vercel            | Cloud Run `yacco-api-demo` | Neon, rama `demo`  | no                   |
 | **producción** | Vercel, dominio de producción | Cloud Run `yacco-api`      | Neon, rama `main`  | **sí**               |
 | **Render**     | static site (se apaga)        | `yacco-api.onrender.com`   | Neon, rama `main`  | **sí**               |
@@ -100,12 +100,13 @@ mostrar ninguno.
 | `JWT_*_EXPIRES_IN`      | `.env` local | variable en claro    | —      | —                       |
 | `WEB_ORIGIN`            | `.env` local | variable en claro    | —      | —                       |
 | `PORT`                  | 3100         | lo inyecta Cloud Run | —      | —                       |
-| `VITE_API_BASE_URL`     | `.env` local | —                    | build  | —                       |
 | `VERCEL_TOKEN`          | `.env.setup` | —                    | —      | Secret Manager, por WIF |
 
-`VITE_API_BASE_URL` merece una nota: Vite **hornea** las `VITE_*` en el bundle
-que descarga el navegador. No es configuración de runtime y no puede contener
-un secreto: lo que se ponga ahí queda publicado.
+El web (`apps/web-nuxt`) no tiene ninguna variable: le pide todo a `/api/v1`
+de su propio origen, y a qué API llega lo decide el host en las rutas del
+Build Output (D-021, D-023), no una variable. Si algún día hiciera falta una,
+ojo con `runtimeConfig.public` / `NUXT_PUBLIC_*`: viajan en el HTML que
+descarga el navegador, así que nunca un secreto.
 
 ## Los 7 días de convivencia
 

@@ -90,7 +90,7 @@ function main() {
 
   // apps/web-nuxt no necesita un .env propio: `LOCAL_API_ORIGIN` en
   // config/api-proxy.ts ya apunta a la API local en tiempo de compilación,
-  // así que no hay ninguna VITE_*/NUXT_* equivalente que generar acá.
+  // así que no hay ninguna variable del web que generar acá.
   const targets = [{ path: join(REPO_ROOT, "apps", "api", ".env"), contents: apiEnv }];
 
   for (const target of targets) {
