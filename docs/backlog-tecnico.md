@@ -1739,6 +1739,12 @@ con fecha».
 
 ### Prioridad 1 — A5 / D-016: retención de 400 días y alerta sobre Secret Manager
 
+**Estado:** RESUELTA el 2026-09-24 (ítem 5 de `plan-endurecimiento.md`),
+con `pnpm gcp:audit`. Verificado: una lectura manual del dueño (21:03 UTC)
+quedó en el bucket `secret-manager-audit` con su principal y sumó 1 en la
+métrica `unexpected-secret-access`; las lecturas del deployer en el deploy de
+las 20:41 están en el bucket y NO movieron la métrica. Registro original:
+
 **Por qué:** una filtración de estas credenciales se descubre semanas después,
 y a los 30 días del bucket `_Default` la lectura original ya no está. Sin la
 alerta, nadie se entera en el momento. **Para cerrarla:** lo escrito en D-016
@@ -1763,6 +1769,16 @@ secretos por `serviceAccountUser` (D-018, «Lo que no cubre»). **Para cerrarla:
 una service account por entorno, con `secretAccessor` secreto por secreto.
 
 ### Prioridad 3 — A7: `qs`, digest de la imagen base, escaneo de Artifact Registry
+
+**Estado:** RESUELTA el 2026-09-24 (ítem 6 de `plan-endurecimiento.md`).
+Override `"qs@6": "^6.16.0"` (el lockfile resuelve 6.16.0); `FROM
+node:22-alpine@sha256:0a71…e402` (índice multi-arquitectura) con Dependabot
+para el ecosistema docker; `containerscanning.googleapis.com` habilitada, así
+que cada imagen que sube el deploy se escanea. `scripts/supply-chain.test.mjs`
+lee el Dockerfile y el lockfile reales. `pnpm audit` pasó de 5 a 3 hallazgos;
+los que quedan no entran a la imagen de la API: `uuid` 9 (moderado, vía
+`firebase-admin` en `tools/firestore-export`) y `esbuild` 0.27 (bajo, build del
+web vía `@nuxt/fonts`). Registro original:
 
 Advisories moderados de DoS en `qs@6.15.3` (vía express), `FROM
 node:22-alpine` sin digest y el escaneo de vulnerabilidades apagado. Ninguno da
@@ -2040,3 +2056,51 @@ devuelve al JavaScript de la página justo lo que la cookie esconde.
 **Para cerrarla:** sacar `refreshToken` de `AuthTokensDto` (y del contrato
 compartido), dejar solo la cookie en `JwtRefreshStrategy`, y ajustar los tests
 de integración que todavía usan el header.
+
+## Migración a Prisma 7
+
+**Estado:** abierto. **Registrado:** 2026-08 en la rama `chore/dependency-hygiene`,
+que nunca se mergeó; rescatado el 2026-09-24 (ítem 7 de
+`plan-endurecimiento.md`). **Disparador:** cuando Prisma 7 pueda cargarse
+desde el runtime CommonJS de Nest.
+
+Seguimos en `prisma`/`@prisma/client` 6.19.3. Prisma 7 se distribuye como ESM
+puro y Nest corre en CommonJS: es un conflicto de arquitectura, no una tarea
+pendiente. `.github/dependabot.yml` ignora los majors de los dos paquetes para
+que cada 7.x no abra un PR que hay que cerrar a mano (ya pasó: #4, cerrado sin
+mergear). La premisa de ESM puro no se volvió a verificar al rescatarla.
+
+**Para cerrarla:** que el generador de Prisma 7 emita un cliente CommonJS, o
+que Nest soporte ESM estable. Entonces, en un PR propio: revisar
+`pnpm.auditConfig.ignoreGhsas` del `package.json` raíz, que hoy ignora
+`GHSA-ggr8-5vv4-36mx` (`deepmerge-ts`, transitiva de Prisma 7) a propósito.
+
+## TypeScript 6
+
+**Estado:** abierto. **Registrado:** 2026-08 en `chore/dependency-hygiene`;
+rescatado el 2026-09-24. **Disparador:** el próximo PR de Dependabot que lo
+proponga, fuera de una semana de piloto.
+
+Seguimos en TypeScript 5.x (`^5.7.2`). La auditoría del PR #6 no encontró
+cambios que rompan el repo; se pospuso por calendario, no por un problema
+técnico. El motivo de entonces («después de la Demo 1») ya venció. No hay
+regla de `ignore` en Dependabot, así que el PR vuelve solo. ESLint 10, que
+estaba en la misma entrada, ya está (hoy `^10.11.0`).
+
+## La imagen de la API trae `npm` con dependencias vulnerables que el runtime no usa
+
+**Estado:** abierto. **Registrado:** 2026-09-24, con el primer escaneo de
+Artifact Registry (ítem 6 de `plan-endurecimiento.md`). **Disparador:** el
+próximo cambio al Dockerfile, o un hallazgo CRITICAL.
+
+El escaneo de `api:fd0bd204bd39` dio 15 hallazgos (8 HIGH, 6 MEDIUM, 1 LOW).
+Salvo `qs` (A7, ya corregido) y `deepmerge-ts` (de Prisma, ver «Migración a
+Prisma 7»), todos están en `/usr/local/lib/node_modules/npm`: `sigstore`,
+`pacote`, `ip-address`, `brace-expansion`, `picomatch`, `@sigstore/core`. Los
+trae la imagen `node:22-alpine`. La API corre `node dist/main.js` y nunca llama
+a `npm` en runtime: es superficie sin uso.
+
+**Para cerrarla:** en la etapa `runtime` del Dockerfile, borrar `npm`, `npx` y
+`corepack` (`/usr/local/lib/node_modules/{npm,corepack}` y sus binarios en
+`/usr/local/bin`). La etapa `base` los sigue necesitando para `pnpm`. Probarlo
+con el paso «API image» de CI y comparar el escaneo antes y después.

@@ -5,7 +5,11 @@
 # El lockfile y el workspace viven en la raíz, y los filtros de pnpm resuelven
 # contra ella.
 
-FROM node:22-alpine AS base
+# Imagen base fijada por digest (A7): la etiqueta `22-alpine` se mueve con cada
+# parche, y dos builds del mismo commit podían salir de bases distintas sin que
+# nadie lo viera. El digest es el del índice multi-arquitectura; Dependabot
+# (ecosistema docker en .github/dependabot.yml) propone el nuevo como PR.
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
 # Husky no tiene nada que hacer dentro de una imagen: no hay .git, y su

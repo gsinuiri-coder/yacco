@@ -65,13 +65,22 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
    - **Hecho** tras el deploy verde de `b4e8a6d`: quitado el `secretAccessor` de proyecto a
      `yacco-api-run`. Troubleshooter: demo → producción `CANNOT_ACCESS`, producción → demo
      `CANNOT_ACCESS`, cada una → lo suyo `CAN_ACCESS`; `/health/db` 200 en las dos.
-5. [ ] **A5 / D-016:** bucket de logs con retención de 400 días para los
+5. [x] (#210) **A5 / D-016:** bucket de logs con retención de 400 días para los
        accesos a Secret Manager y una alerta ante una lectura de una identidad
        que no sea las esperadas.
-6. [ ] **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
+   - Aplicado con `pnpm gcp:audit` antes del merge (no toca el deploy). El
+     canal de email es la cuenta dueña del proyecto. Giancarlo
+     confirmó (2026-09-24) que le llegó el email de las lecturas de prueba (20:20, 20:26 y
+     21:03 UTC).
+6. [x] (#211) **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
        vulnerabilidades en Artifact Registry.
-7. [ ] **Ramas:** rescatar de `chore/dependency-hygiene` el typecheck del
+   - Escaneo verificado sobre la primera imagen de un deploy: `api:fd0bd204bd39`
+     15 hallazgos (8 HIGH); `api:9fcc56512854` (este ítem) 13, sin los dos de
+     `qs`. Los que quedan vienen del `npm` de la imagen base y de Prisma
+     (backlog).
+7. [x] (#212) **Ramas:** rescatar de `chore/dependency-hygiene` el typecheck del
        tsconfig de `prisma/` y las entradas de backlog que sigan vigentes (PR
        propio). Después [OK] para borrar esa rama, `feat/firestore-export` y
        `docs/backlog-stat-cache`.
+   - [OK] de Giancarlo (2026-09-24) para borrar las tres, después del merge.
 8. [ ] **Cierre:** PROGRESO.md, backlog y un reporte corto.

@@ -26,6 +26,7 @@
     "env:local": "node scripts/env-local.mjs",
     "secrets:generate": "node scripts/secrets-generate.mjs",
     "gcp:bootstrap": "node scripts/gcp-bootstrap.mjs",
+    "gcp:audit": "node scripts/gcp-audit.mjs",
     "secrets:gcp": "node scripts/secrets-gcp.mjs",
     "deploy:api": "node scripts/deploy-api.mjs",
     "deploy:web": "node scripts/deploy-web.mjs",
@@ -53,7 +54,8 @@
     },
     "overrides": {
       "multer": "^2.3.0",
-      "js-yaml@3": "^3.15.2"
+      "js-yaml@3": "^3.15.2",
+      "qs@6": "^6.16.0"
     },
     "packageExtensions": {
       "@testing-library/jest-dom": {
