@@ -136,42 +136,36 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        demo por D-011) con un chofer de demo con contraseña en Secret Manager.
        Verificarlo de punta a punta con Playwright: el ciclo pedido → ruta → Mi
        ruta del chofer → liquidación → reportes.
-10. [bloqueado] **Carga real [OK]:**
+10. [x] **Carga real [OK]:**
     - antes, una rama de respaldo de main (D-006);
     - después, la carga del padrón en main con el reporte de la corrida en
       demo a la vista;
     - desde acá vuelven las restricciones: la ventana de migraciones de 08:00
       a 20:00 de Lima (AGENTS.md) y el deny de ramas de Neon sin excepciones.
-11. [bloqueado] **Cierre:** sprint-close, PROGRESO.md con el estado final, y un
-    reporte final corto para Giancarlo:
+11. [x] **Cierre:** sprint-close, PROGRESO.md con el estado final, y un
+        reporte final corto para Giancarlo:
     - la URL del preview y cómo entrar como admin y como chofer (dónde está
       cada contraseña en Secret Manager, nunca el valor);
     - qué revisar, en 10 pasos;
     - la lista de decisiones delegadas para llevarle al dueño.
 
-## Estado al 2026-09-24 (fin de la sesión)
+## Estado final — 2026-09-24
 
-- **Paso 0, sigue bloqueado.** El token nuevo de Vercel no llegó a Secret
-  Manager: la subida del agente fue denegada por el control de permisos. El
-  preflight de cada deploy lo rechaza, así que **ningún merge de hoy está
-  desplegado**: la demo y producción siguen en `e53f827`. Lo destraba
-  Giancarlo con `GCP_PROJECT_ID=yacco-v2-prod NEON_PROJECT_ID=late-union-50177487
-NEON_ORG_ID=org-still-lake-04900241 pnpm secrets:gcp --upload=VERCEL_TOKEN`,
-  y después relanzando el deploy de la punta de `main`.
-- **Ítem 9, hecho a medias.** `pnpm demo:data` ya corre contra la demo
-  (#196) y la demo quedó sembrada: 5 días de rutas, chofer
-  `chofer.demo.piloto` con su contraseña en el secreto
-  `yacco-demo-driver-password`. El padrón real también está en demo (ítem 8).
-  **Falta**, y depende del deploy: el preview de `yacco-web` y el recorrido
-  e2e contra él (pedido → ruta → Mi ruta → liquidación → reportes), que
-  además confirma la CSP en Vercel.
-- **Ítem 10, espera dos cosas:** el [OK] del dueño y el deploy (la migración
-  `token_version` tiene que estar aplicada en `main` antes de cargar con el
-  código nuevo). Los CSV y el reporte de demo están listos.
-- **Ítem 11, parcial:** PROGRESO.md tiene el estado final de esta tanda. El
-  sprint-close completo (tag, deploy verificado, demo con el dueño) espera al
-  deploy.
+Cola terminada. Detalle y evidencia en PROGRESO.md, «Cierre para el piloto».
+Lo único pendiente es **F**, que espera a que Giancarlo diga «cerramos».
 
 ## Ítems agregados por Giancarlo el 2026-09-24
 
 - [x] **C. Corregir una parada ya registrada desde la web** (HU-24, E1–E5 como tests).
+- [x] **A.** Deploy de la punta de `main` (21 PRs) vigilando 4a; login real
+      con cookie y CSP verificados en `yacco-web.vercel.app`.
+- [x] **B.** Ítem 9 contra el deploy nuevo: preview + Playwright de punta a
+      punta (#201, #203).
+- [x] **D.** Carga real en `main`: respaldo `backup-pre-roster-20260924`,
+      conciliación contra la fuente (604 y S/ 113 329,82) antes y después.
+- [x] **E.** Demo sin datos reales, export y CSV borrados, restricciones de
+      vuelta (#204).
+- [ ] **F.** Rotar la contraseña del admin de producción cuando Giancarlo diga
+      «cerramos»: pudo quedar en una URL por el defecto que arregló #187 (el
+      envío nativo del login antes de hidratar).
+- [x] **G.** Cierre y reporte final.
