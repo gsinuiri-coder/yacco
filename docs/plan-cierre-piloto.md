@@ -76,7 +76,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
          la venta;
    - [x] d) «Arriba del camión»: separar lo cargado de lo que queda (cargado
          menos entregado menos vendido);
-   - [ ] e) la columna «Diferencia» del conteo lleva la palabra (faltan N /
+   - [x] e) la columna «Diferencia» del conteo lleva la palabra (faltan N /
          sobran N), y cierra la entrada de backlog que ya existe.
 4. [ ] **Llenos que vuelven al galpón** (backlog «Devolver llenos al galpón no
        repone el lote»; fullReturned quedó afuera de la decisión del 29/08).

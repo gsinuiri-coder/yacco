@@ -1392,8 +1392,10 @@ le sirva más una sola frase neutra que dos diagnósticos.
 
 ## Los textos de diferencia de la liquidación no concuerdan en singular
 
-**Estado:** abierto. **Disparador:** la próxima diferencia de una sola unidad en
-una liquidación, que es el caso más común de todos.
+**Estado:** RESUELTA el 2026-09-24 junto con la entrada de abajo (ítem 3e de
+`plan-cierre-piloto.md`). `describeGap` de `apps/web-nuxt/app/utils/settlement.ts`
+concuerda el verbo («falta 1» / «sobra 1» / «faltan 2») y es el único lugar que
+arma la frase; las rutas de abajo son del React retirado. Registro original:
 
 `apps/web/src/pages/route-settlement-page.tsx` elige entre «faltan» y «sobran»
 mirando solo el signo, y deja el verbo en plural siempre. Son tres lugares con la
@@ -1417,8 +1419,11 @@ abajo pide la misma frase en un cuarto lugar.
 
 ## La columna «Diferencia» del formulario de conteo se lee al revés sin la palabra
 
-**Estado:** abierto. **Disparador:** la primera vez que alguien corrija un conteo
-para «arreglar» un número que estaba bien.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3e de `plan-cierre-piloto.md`). La
+celda del formulario de `routes/[id]/settlement.vue` dice «+2: faltan 2» /
+«-1: sobra 1», con el mismo ayudante `describeDifference` que la nota por tipo
+de la vista de resultado. Las rutas de abajo son del React retirado. Registro
+original:
 
 `apps/web/src/lib/difference.ts` formatea con signo, y el signo es
 esperado − contado: lo fija

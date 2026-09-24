@@ -11,9 +11,16 @@ export function formatDifference(value: number): string {
   return value > 0 ? `+${value}` : String(value);
 }
 
-/** "faltan 2" o "sobran 3", respecto del libro. */
+/** "faltan 2" o "sobran 3", respecto del libro; una unidad, en singular. */
 export function describeGap(value: number): string {
-  return `${value > 0 ? "faltan" : "sobran"} ${Math.abs(value)}`;
+  const units = Math.abs(value);
+  const verb = value > 0 ? "falta" : "sobra";
+  return `${units === 1 ? verb : `${verb}n`} ${units}`;
+}
+
+/** "+2: faltan 2": el signo sin la palabra se lee al revés («dos de más»). */
+export function describeDifference(value: number): string {
+  return `${formatDifference(value)}: ${describeGap(value)}`;
 }
 
 /** Un conteo entero, 0 o más; `null` si no lo es. */
@@ -94,7 +101,7 @@ export function typeDifferenceNote(
 ): string {
   const found = differences.emptiesByType.find((row) => row.containerTypeId === containerTypeId);
   if (found === undefined || found.difference === 0) return "";
-  return `(${formatDifference(found.difference)}: ${describeGap(found.difference)} respecto del libro)`;
+  return `(${describeDifference(found.difference)} respecto del libro)`;
 }
 
 /**

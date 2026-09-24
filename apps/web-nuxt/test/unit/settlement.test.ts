@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   countOrNull,
   countableTypes,
+  describeDifference,
+  describeGap,
   emptiesCountOrNull,
   formatDifference,
   liveDifference,
@@ -96,6 +98,18 @@ describe("textos de diferencia", () => {
     expect(formatDifference(2)).toBe("+2");
     expect(formatDifference(-3)).toBe("-3");
     expect(formatDifference(0)).toBe("0");
+  });
+
+  it("el verbo concuerda con la cantidad: una unidad va en singular", () => {
+    expect(describeGap(1)).toBe("falta 1");
+    expect(describeGap(-1)).toBe("sobra 1");
+    expect(describeGap(2)).toBe("faltan 2");
+    expect(describeGap(-3)).toBe("sobran 3");
+  });
+
+  it("la diferencia lleva la palabra al lado del signo", () => {
+    expect(describeDifference(2)).toBe("+2: faltan 2");
+    expect(describeDifference(-1)).toBe("-1: sobra 1");
   });
 
   it("la nota por tipo sólo aparece cuando ese tipo no cuadró", () => {
