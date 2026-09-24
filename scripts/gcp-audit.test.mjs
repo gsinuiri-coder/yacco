@@ -55,7 +55,11 @@ describe("unexpectedAccessFilter", () => {
   });
 
   test("el dueño NO está excluido: una lectura a mano también avisa", () => {
-    assert.doesNotMatch(filter, /gmail\.com/);
+    // Lo único excluido son service accounts: ninguna persona, ni el dueño.
+    const not = /NOT protoPayload\.authenticationInfo\.principalEmail=\(([^)]*)\)/.exec(filter);
+    const excluded = not[1].split(" OR ").map((quoted) => quoted.replaceAll('"', ""));
+    assert.equal(excluded.length, 3);
+    for (const email of excluded) assert.ok(email.endsWith(".iam.gserviceaccount.com"), email);
   });
 });
 
