@@ -1842,7 +1842,12 @@ ejemplo numérico.
 
 ## Web: «Arriba del camión» muestra lo cargado, no lo que queda
 
-**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3d de `plan-cierre-piloto.md`). La
+pregunta al dueño la resolvió la delegación: se muestran los dos números.
+«Cargado» sale de `route_loads`; «Queda arriba» de `GET
+/routes/:id/truck-stock`, que lo lee del libro por estado (cargado menos
+entregado menos vendido, neto de anulaciones). Con la ruta planificada solo
+se muestra lo cargado. **Registrado:** 2026-09-24.
 
 «Arriba del camión» muestra lo que se cargó en la ruta, no lo que queda
 después de las entregas. **Para cerrarla:** decidir con el dueño qué número

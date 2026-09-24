@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { PRODUCTION_BATCHES_MAX_LIMIT, formatCalendarDay } from "@yacco/shared";
-import type { ContainerType, Page, ProductionBatch, Route, RouteLoad } from "@yacco/shared";
+import type {
+  ContainerType,
+  Page,
+  ProductionBatch,
+  Route,
+  RouteLoad,
+  RouteTruckStockLine,
+} from "@yacco/shared";
 import type { LoadPlanLine } from "../utils/fifo-load";
 
 /**
@@ -22,6 +29,7 @@ const loads = ref<RouteLoad[]>([]);
 const loading = ref(true);
 const loadError = ref<string | null>(null);
 const batches = ref<ProductionBatch[]>([]);
+const truckStock = ref<RouteTruckStockLine[]>([]);
 const containerTypes = useCatalog<ContainerType>("/container-types");
 
 async function reload(): Promise<void> {
@@ -43,6 +51,19 @@ async function reload(): Promise<void> {
     batches.value = page.data;
   } catch {
     batches.value = [];
+  }
+  // Lo que queda arriba solo cambia con la ruta en la calle; planificada, es lo
+  // cargado. Si no se puede leer, no se muestra: nunca un número inventado.
+  if (props.route.status === "PLANNED") {
+    truckStock.value = [];
+    return;
+  }
+  try {
+    truckStock.value = await api.request<RouteTruckStockLine[]>(
+      `/routes/${props.route.id}/truck-stock`,
+    );
+  } catch {
+    truckStock.value = [];
   }
 }
 onMounted(reload);
@@ -81,8 +102,8 @@ const typeItems = computed(() =>
   containerTypes.items.value.map((type) => ({ label: type.name, value: type.id })),
 );
 
-/** Lo que va arriba del camión, sumado por tipo de envase. */
-const onBoard = computed(() => {
+/** Lo que se cargó al camión, sumado por tipo de envase. */
+const loadedByType = computed(() => {
   const byType = new Map<string, { name: string; quantity: number }>();
   for (const load of loads.value) {
     const current = byType.get(load.batchItem.containerTypeId);
@@ -160,14 +181,34 @@ async function remove(load: RouteLoad): Promise<void> {
     "
   >
     <div class="space-y-5">
-      <div v-if="onBoard.length > 0" class="flex flex-wrap gap-2" aria-label="Arriba del camión">
-        <span class="text-sm font-medium text-muted">Arriba del camión:</span>
+      <div
+        v-if="loadedByType.length > 0"
+        role="group"
+        class="flex flex-wrap gap-2"
+        aria-label="Cargado en el camión"
+      >
+        <span class="text-sm font-medium text-muted">Cargado:</span>
         <UBadge
-          v-for="entry in onBoard"
+          v-for="entry in loadedByType"
           :key="entry.name"
-          color="primary"
+          color="neutral"
           variant="subtle"
           :label="`${entry.quantity} × ${entry.name}`"
+        />
+      </div>
+      <div
+        v-if="truckStock.length > 0"
+        role="group"
+        class="flex flex-wrap gap-2"
+        aria-label="Queda arriba del camión"
+      >
+        <span class="text-sm font-medium text-muted">Queda arriba:</span>
+        <UBadge
+          v-for="line in truckStock"
+          :key="line.containerType.id"
+          color="primary"
+          variant="subtle"
+          :label="`${line.onBoard} × ${line.containerType.name}`"
         />
       </div>
 
