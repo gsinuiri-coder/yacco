@@ -28,8 +28,9 @@ process itself, not just the code.
    …) per the schedule in the execution plan §4.
 4. **Changelog.** Generate it from the Conventional Commits merged this
    sprint.
-5. **Deploy verified.** Confirm the tagged commit is actually live (Render
-   API + web, `prisma migrate deploy` applied). Hit `/health`. Smoke-test the
+5. **Deploy verified.** Confirm the tagged commit is actually live (Cloud Run
+   API + Vercel web, `prisma migrate deploy` applied; `pnpm smoke:prod` with
+   `EXPECTED_COMMIT`). Hit `/health`. Smoke-test the
    sprint's headline flow.
 6. **Demo seed.** Run the `demo-seed` skill's procedure so the demo
    environment has realistic data for the sprint being shown.

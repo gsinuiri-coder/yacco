@@ -20,7 +20,7 @@ export interface HealthResponse {
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
-  // Render's health check target: must never touch the database, or a cold
+  // The liveness target: must never touch the database, or a cold
   // Neon pooler would fail the liveness probe instead of just being slow.
   //
   // `commit` is exposed here, on the public unauthenticated route, on

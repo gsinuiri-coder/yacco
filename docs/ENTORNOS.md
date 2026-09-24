@@ -8,17 +8,16 @@ Las decisiones de infraestructura detrás de esta tabla están en
 [`ARQUITECTURA.md`](./ARQUITECTURA.md); cómo desplegar a cada uno, en
 [`DEPLOY.md`](./DEPLOY.md).
 
-## Los cuatro entornos
+## Los tres entornos
 
 | Entorno        | Web                           | API                        | Base de datos      | Escribe datos reales |
 | -------------- | ----------------------------- | -------------------------- | ------------------ | -------------------- |
 | **local**      | `nuxt dev`                    | `:3100`                    | Postgres en Docker | no                   |
 | **demo**       | previews de Vercel            | Cloud Run `yacco-api-demo` | Neon, rama `demo`  | no                   |
 | **producción** | Vercel, dominio de producción | Cloud Run `yacco-api`      | Neon, rama `main`  | **sí**               |
-| **Render**     | static site (se apaga)        | `yacco-api.onrender.com`   | Neon, rama `main`  | **sí**               |
 
-Render aparece porque durante la migración sigue vivo. Ver "Los 7 días de
-convivencia" más abajo: es el plan de vuelta atrás, no un entorno que se use.
+Render ya no es un entorno: quedó retirado en la fase 7, vivo pero sin acceso
+a ninguna base (ver `PROGRESO.md`).
 
 ## local
 
@@ -107,16 +106,3 @@ de su propio origen, y a qué API llega lo decide el host en las rutas del
 Build Output (D-021, D-023), no una variable. Si algún día hiciera falta una,
 ojo con `runtimeConfig.public` / `NUXT_PUBLIC_*`: viajan en el HTML que
 descarga el navegador, así que nunca un secreto.
-
-## Los 7 días de convivencia
-
-Después del corte, Render queda vivo **apuntando a la misma rama `main` de
-Neon** que Cloud Run, durante 7 días. Esa es la única razón por la que la vuelta
-atrás es real: si los dos no compartieran la base, volver a Render perdería
-todo lo escrito mientras tanto.
-
-La consecuencia hay que decirla en voz alta: **una migración que corra en CI le
-cambia el esquema a Render en el mismo instante.** Por eso las migraciones son
-expand/contract, y por eso en esos 7 días no se mergea ninguna que no lo sea.
-Pasado el plazo sin incidentes, se suspende Render y `render.yaml` se borra en
-un commit propio.

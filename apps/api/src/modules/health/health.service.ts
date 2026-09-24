@@ -15,13 +15,10 @@ export class HealthService {
    * The git commit the running build was made from, or null when no host
    * injects one (local development, tests).
    *
-   * Two variables, in this order, because two hosts serve this app at once
-   * during the migration: DEPLOYED_COMMIT, which the Cloud Run deploy sets
-   * explicitly, and RENDER_GIT_COMMIT, which Render injects on its own.
-   * Cloud Run injects NOTHING equivalent — it was verified in a real deploy,
-   * where /health answered `commit: null` — so the value has to be passed in
-   * at deploy time, and a platform-neutral name is what lets the same code
-   * serve both while Render stays alive as the way back.
+   * DEPLOYED_COMMIT, which the Cloud Run deploy sets explicitly. Cloud Run
+   * injects nothing equivalent — verified in a real deploy, where /health
+   * answered `commit: null` — so the value is passed in at deploy time. The
+   * RENDER_GIT_COMMIT fallback (D-009) left with Render, in phase 7.
    *
    * Deliberately NO fallback that reads git from the process: a container has
    * no repository, and a plausible-but-false value is worse than null — the
@@ -30,12 +27,8 @@ export class HealthService {
    * against `git rev-parse`.
    */
   deployedCommit(): string | null {
-    const candidates = [
-      this.configService.get<string>("DEPLOYED_COMMIT"),
-      this.configService.get<string>("RENDER_GIT_COMMIT"),
-    ];
-    const commit = candidates.find((value) => value !== undefined && value !== "");
-    return commit ?? null;
+    const commit = this.configService.get<string>("DEPLOYED_COMMIT");
+    return commit === undefined || commit === "" ? null : commit;
   }
 
   /**

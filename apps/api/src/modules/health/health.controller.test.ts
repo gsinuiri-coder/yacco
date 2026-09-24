@@ -34,15 +34,15 @@ describe("GET /health", () => {
     await app.close();
   });
 
-  it("answers 200 with commit null when RENDER_GIT_COMMIT is not set", async () => {
+  it("answers 200 with commit null when DEPLOYED_COMMIT is not set", async () => {
     app = await bootApp({});
 
     const response = await request(app.getHttpServer()).get("/health").expect(200);
     expect(response.body).toEqual({ status: "ok", commit: null, environment: null });
   });
 
-  it("answers 200 with the injected commit when RENDER_GIT_COMMIT is set", async () => {
-    app = await bootApp({ RENDER_GIT_COMMIT: "89deab1aaeda3eb6de53ecdce57e820ff054abf6" });
+  it("answers 200 with the injected commit when DEPLOYED_COMMIT is set", async () => {
+    app = await bootApp({ DEPLOYED_COMMIT: "89deab1aaeda3eb6de53ecdce57e820ff054abf6" });
 
     const response = await request(app.getHttpServer()).get("/health").expect(200);
     expect(response.body).toEqual({

@@ -104,24 +104,14 @@ export class EnvironmentVariables {
   WEB_ORIGIN: string[] = parseWebOrigins(undefined);
 
   /**
-   * Injected by Render into the service environment: the git commit the
-   * running build was made from. Surfaced by GET /health so what is deployed
-   * can be compared against the tip of main in seconds — an auto-deploy that
-   * silently never fired (it happened, 2026-08-24) is otherwise invisible
-   * until some consequence shows up. Absent locally and in tests on purpose;
-   * HealthService reports null then, never a guess.
-   */
-  @IsOptional()
-  @IsString()
-  RENDER_GIT_COMMIT?: string;
-
-  /**
-   * The same thing, for hosts that inject nothing. Cloud Run has no equivalent
-   * of RENDER_GIT_COMMIT — verified in a real deploy, where /health answered
-   * `commit: null` — so `pnpm deploy:api` passes the sha explicitly. The name
-   * does not mention a platform because it outlives this migration;
-   * RENDER_GIT_COMMIT stays as the fallback while Render is alive as the way
-   * back. See HealthService.deployedCommit for the precedence.
+   * The git commit the running build was made from. Surfaced by GET /health
+   * so what is deployed can be compared against the tip of main in seconds —
+   * an auto-deploy that silently never fired (it happened, 2026-08-24) is
+   * otherwise invisible until some consequence shows up. Cloud Run injects
+   * nothing equivalent — verified in a real deploy, where /health answered
+   * `commit: null` — so `pnpm deploy:api` passes the sha explicitly. Absent
+   * locally and in tests on purpose; HealthService reports null then, never
+   * a guess. Render's RENDER_GIT_COMMIT fallback (D-009) left with Render.
    */
   @IsOptional()
   @IsString()

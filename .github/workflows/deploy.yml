@@ -281,10 +281,6 @@ jobs:
           DATABASE_URL: ${{ steps.secrets.outputs.demo_direct_url }}
           DIRECT_URL: ${{ steps.secrets.outputs.demo_direct_url }}
 
-      # main es también la base de Render mientras dure la convivencia (fase 7):
-      # esta migración le cambia el esquema a Render en el mismo instante. Si
-      # Render corre su propio `db:deploy` a la vez, Prisma serializa las dos
-      # con un advisory lock.
       - name: prisma migrate deploy — rama main
         run: pnpm --filter @yacco/api exec prisma migrate deploy
         env:

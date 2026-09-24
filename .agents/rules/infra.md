@@ -76,10 +76,9 @@ access`, `vercel env pull`).
 
 ## Vuelta atrás
 
-- Después del corte, Render queda vivo apuntando a la **misma rama `main` de
-  Neon** que Cloud Run durante 7 días. Es lo que hace real la vuelta atrás: si
-  no compartieran la base, volver a Render perdería todo lo escrito mientras
-  tanto.
-- Consecuencia: **una migración que corra en CI le cambia el esquema a Render
-  en el mismo instante.** En esos 7 días no se mergea ninguna migración que no
-  sea expand/contract.
+- El web vuelve atrás promoviendo en Vercel un deploy anterior de `yacco-web`
+  (D-023). Después de un Instant Rollback, los deploys nuevos no toman el
+  dominio hasta «Undo Rollback» o `vercel promote <deploy nuevo>`: cerrar
+  siempre el rollback. Procedimiento en `docs/DEPLOY.md`.
+- Render quedó retirado en la fase 7, sin acceso a ninguna base: no es vuelta
+  atrás.

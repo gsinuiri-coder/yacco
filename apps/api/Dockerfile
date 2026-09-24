@@ -3,7 +3,7 @@
 # Se construye SIEMPRE desde la raíz del monorepo, no desde apps/api:
 #     docker build -f apps/api/Dockerfile .
 # El lockfile y el workspace viven en la raíz, y los filtros de pnpm resuelven
-# contra ella. Es la misma razón por la que render.yaml no declara rootDir.
+# contra ella.
 
 FROM node:22-alpine AS base
 ENV PNPM_HOME=/pnpm

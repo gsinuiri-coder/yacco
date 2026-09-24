@@ -40,9 +40,12 @@ describe("HealthService.checkDatabase", () => {
 });
 
 describe("HealthService.deployedCommit", () => {
-  it("returns RENDER_GIT_COMMIT verbatim when Render injects it", async () => {
-    const sha = "00cae6e8b887a5c71cd92bc88799a68e92fa1016";
-    const { service } = await buildService({ RENDER_GIT_COMMIT: sha });
+  it("returns DEPLOYED_COMMIT, which is the one Cloud Run gets at deploy time", async () => {
+    // Cloud Run no inyecta ninguna variable con el commit: se verificó en un
+    // deploy real, donde /health contestó `commit: null`. El valor se pasa
+    // explícitamente al desplegar, con un nombre que no nombra plataforma.
+    const sha = "11bf5b37e0b842e08dcfdc8c4aefc000bfea6e4c";
+    const { service } = await buildService({ DEPLOYED_COMMIT: sha });
 
     expect(service.deployedCommit()).toBe(sha);
   });
@@ -54,43 +57,22 @@ describe("HealthService.deployedCommit", () => {
   });
 
   it("returns null when the variable is present but empty, as a local .env leaves it", async () => {
-    const { service } = await buildService({ RENDER_GIT_COMMIT: "" });
+    const { service } = await buildService({ DEPLOYED_COMMIT: "" });
 
     expect(service.deployedCommit()).toBeNull();
   });
 
-  it("returns DEPLOYED_COMMIT, which is the one Cloud Run gets at deploy time", async () => {
-    // Cloud Run no inyecta ninguna variable con el commit: se verificó en un
-    // deploy real, donde /health contestó `commit: null`. El valor se pasa
-    // explícitamente al desplegar, con un nombre que no nombra plataforma.
-    const sha = "11bf5b37e0b842e08dcfdc8c4aefc000bfea6e4c";
-    const { service } = await buildService({ DEPLOYED_COMMIT: sha });
-
-    expect(service.deployedCommit()).toBe(sha);
-  });
-
-  it("prefers DEPLOYED_COMMIT over RENDER_GIT_COMMIT when both are present", async () => {
-    // Los dos valores son DISTINTOS a propósito: con el mismo sha de los dos
-    // lados el test pasaría aunque la precedencia estuviera al revés. El caso
-    // es real mientras Render siga vivo como vuelta atrás, porque Render
-    // inyecta el suyo solo y no se puede apagar.
-    const cloudRun = "11bf5b37e0b842e08dcfdc8c4aefc000bfea6e4c";
+  it("ignores RENDER_GIT_COMMIT: Render is retired and nothing deploys through it", async () => {
+    // RENDER_GIT_COMMIT con valor y DEPLOYED_COMMIT ausente o vacía: son los
+    // dos casos en que la reserva de Render (D-009) contestaba. Con
+    // DEPLOYED_COMMIT presente la reserva nunca se leía y el test pasaría
+    // aunque siguiera en el código.
     const render = "00cae6e8b887a5c71cd92bc88799a68e92fa1016";
-    const { service } = await buildService({
-      DEPLOYED_COMMIT: cloudRun,
-      RENDER_GIT_COMMIT: render,
-    });
+    const absent = await buildService({ RENDER_GIT_COMMIT: render });
+    const empty = await buildService({ DEPLOYED_COMMIT: "", RENDER_GIT_COMMIT: render });
 
-    expect(service.deployedCommit()).toBe(cloudRun);
-  });
-
-  it("falls back to RENDER_GIT_COMMIT when DEPLOYED_COMMIT is empty", async () => {
-    // Una variable exportada en blanco es tan fácil como no exportarla, y
-    // dejar que gane devolvería null teniendo un valor bueno al lado.
-    const render = "00cae6e8b887a5c71cd92bc88799a68e92fa1016";
-    const { service } = await buildService({ DEPLOYED_COMMIT: "", RENDER_GIT_COMMIT: render });
-
-    expect(service.deployedCommit()).toBe(render);
+    expect(absent.service.deployedCommit()).toBeNull();
+    expect(empty.service.deployedCommit()).toBeNull();
   });
 });
 

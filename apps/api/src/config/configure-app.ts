@@ -2,9 +2,9 @@ import { INestApplication, RequestMethod, ValidationPipe } from "@nestjs/common"
 import type { NextFunction, Request, Response } from "express";
 import { AllExceptionsFilter } from "../common/filters/all-exceptions.filter.js";
 
-// Kept outside the versioned prefix on purpose: Render's health check and
-// manual DB diagnostics are infra concerns, not a domain REST resource, and
-// Render's own config (render.yaml) points at the unversioned /health path.
+// Kept outside the versioned prefix on purpose: the health check and manual
+// DB diagnostics are infra concerns, not a domain REST resource, and the
+// smoke and D-012's host routing point at the unversioned /health path.
 const GLOBAL_PREFIX_EXCLUDE = [
   { path: "health", method: RequestMethod.GET },
   { path: "health/db", method: RequestMethod.GET },
