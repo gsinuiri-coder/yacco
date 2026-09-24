@@ -81,6 +81,8 @@ export interface RouteSettlementDifferences {
 /** CreateRouteSettlementDto: only what a person counts at the plant gate. */
 export interface CreateRouteSettlementBody {
   fullReturned: number;
+  /** Por tipo de envase; su suma es `fullReturned`. Cada línea repone el lote más antiguo que cargó la ruta. */
+  fullReturnedByType?: Array<{ containerTypeId: string; quantity: number }>;
   emptiesCollected: Array<{ containerTypeId: string; quantity: number }>;
   notes?: string;
 }

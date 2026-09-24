@@ -40,6 +40,12 @@ export function emptiesCountOrNull(value: string | number): number | null {
   return String(value).trim() === "" ? 0 : countOrNull(value);
 }
 
+/** Una fila de una hoja de conteo de la liquidación (SettlementCountSheet.vue). */
+export interface CountSheetRow {
+  type: { id: string; name: string };
+  expected: number;
+}
+
 export interface CountableType {
   id: string;
   name: string;
