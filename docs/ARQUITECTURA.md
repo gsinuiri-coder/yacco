@@ -855,8 +855,10 @@ ninguna llave de larga vida, y el diagrama original lo contradecía
 en el momento, sólo en el job que publica el web. La CLI de Vercel lo recibe
 por la variable `VERCEL_TOKEN`, nunca por `--token`.
 
-**Vencimiento: el token se crea con 30 días. Creado el 2026-09-16, vence el
-2026-10-16.** Si se creó otro día, corregir las dos fechas acá y en
+**Vencimiento.** El primero (2026-09-16) vencía el 2026-10-16 y dejó de
+validar antes. El que está en uso desde el **2026-09-24 no tiene vencimiento**:
+el preflight no puede avisar por fecha, y la fila de PROGRESO pide rotarlo al
+cerrar el piloto. Si se creó otro día, corregir las dos fechas acá y en
 `PROGRESO.md`. Al rotarlo: token nuevo en `.env.setup`,
 `pnpm secrets:gcp --upload=VERCEL_TOKEN` y fecha nueva en los dos lugares.
 
