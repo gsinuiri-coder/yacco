@@ -13,15 +13,15 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 
 ## Paso 0 — antes que nada
 
-- [bloqueado] Token nuevo de Vercel: `secrets:gcp --upload=VERCEL_TOKEN` (ids
-  por el entorno), `check-vercel-token`, relanzar el deploy de 415dd7b en
-  verde, destruir la versión vieja del secreto, fecha en PROGRESO y D-015.
-  **Motivo (2026-09-24):** el agente no tiene permiso para escribir en Secret
-  Manager; el clasificador de permisos denegó la subida. Lo corre Giancarlo
-  (comando en PROGRESO.md, fila del token). Hasta entonces el preflight de
-  cada deploy rechaza el token viejo y **ningún deploy corre**: se detiene
-  antes de tocar ninguna base, así que los merges se acumulan sin riesgo y
-  salen todos en el primer deploy verde.
+- [x] (2026-09-24, lo subió Giancarlo; validado con `check-vercel-token`, versión vieja destruida tras el deploy verde de `07aa0fa`) Token nuevo de Vercel: `secrets:gcp --upload=VERCEL_TOKEN` (ids
+      por el entorno), `check-vercel-token`, relanzar el deploy de 415dd7b en
+      verde, destruir la versión vieja del secreto, fecha en PROGRESO y D-015.
+      **Motivo (2026-09-24):** el agente no tiene permiso para escribir en Secret
+      Manager; el clasificador de permisos denegó la subida. Lo corre Giancarlo
+      (comando en PROGRESO.md, fila del token). Hasta entonces el preflight de
+      cada deploy rechaza el token viejo y **ningún deploy corre**: se detiene
+      antes de tocar ninguna base, así que los merges se acumulan sin riesgo y
+      salen todos en el primer deploy verde.
 - [x] #174 (Dependabot, minor-and-patch).
 - [x] #180 (backlog: validar `secrets:gcp` antes de rotar Neon; respaldo de
       `main` antes del piloto).

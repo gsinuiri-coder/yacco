@@ -16,7 +16,14 @@ describe("readTokenExpiry", () => {
     // Contra el archivo de verdad: si alguien cambia el formato de la tabla,
     // esto falla acá y no el día que el token venza.
     const progreso = readFileSync(join(REPO_ROOT, "docs", "PROGRESO.md"), "utf8");
-    assert.match(readTokenExpiry(progreso), /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(readTokenExpiry(progreso), /^(\d{4}-\d{2}-\d{2}|sin vencimiento)$/);
+  });
+
+  test("un token sin vencimiento se reconoce como tal y el mensaje lo dice", () => {
+    const row =
+      "| Token de Vercel (`yacco-ci-vercel-token`) | versión 2 creada 2026-09-24, **sin vencimiento** | Rotarlo al cerrar |";
+    assert.equal(readTokenExpiry(`# Progreso\n\n${row}\n`), "sin vencimiento");
+    assert.match(invalidTokenMessage("sin vencimiento"), /No tiene vencimiento registrado/);
   });
 
   test("toma la fecha de vencimiento, no la de creación", () => {

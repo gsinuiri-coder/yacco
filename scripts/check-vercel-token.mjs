@@ -29,11 +29,16 @@ export const TOKEN_SECRET = "yacco-ci-vercel-token";
  * token se actualiza ESA fila (así lo indica D-015), y un segundo lugar con la
  * fecha quedaría desactualizado justo el día que alguien lo necesite.
  */
+export const NO_EXPIRY = "sin vencimiento";
+
 export function readTokenExpiry(progreso) {
   const row = progreso
     .split(/\r?\n/)
     .find((line) => line.includes(TOKEN_SECRET) && line.startsWith("|"));
   if (row === undefined) return null;
+  // Un token creado sin vencimiento (el de 2026-09-24) se anota así, a
+  // propósito: es un dato, no una fila mal escrita.
+  if (/sin vencimiento/i.test(row)) return NO_EXPIRY;
   const match = /vence\D*(\d{4}-\d{2}-\d{2})/.exec(row);
   return match === null ? null : match[1];
 }
@@ -41,9 +46,11 @@ export function readTokenExpiry(progreso) {
 /** El mensaje cuando el token no sirve: nombra el secreto y el vencimiento. */
 export function invalidTokenMessage(expiry) {
   const when =
-    expiry === null
-      ? "No encontré su fecha de vencimiento en docs/PROGRESO.md: revisá la fila del token."
-      : `Su vencimiento registrado en docs/PROGRESO.md es ${expiry}: si ya pasó, esa es la causa.`;
+    expiry === NO_EXPIRY
+      ? "No tiene vencimiento registrado en docs/PROGRESO.md: si dejó de servir, lo revocaron o le cambiaron el alcance en Vercel."
+      : expiry === null
+        ? "No encontré su fecha de vencimiento en docs/PROGRESO.md: revisá la fila del token."
+        : `Su vencimiento registrado en docs/PROGRESO.md es ${expiry}: si ya pasó, esa es la causa.`;
   return (
     `El token de Vercel (${TOKEN_SECRET}) no es válido: \`vercel whoami\` lo rechazó. ${when} ` +
     "Para rotarlo: token nuevo en .env.setup, `pnpm secrets:gcp --upload=VERCEL_TOKEN`, y " +
