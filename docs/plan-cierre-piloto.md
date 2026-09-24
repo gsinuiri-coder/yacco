@@ -130,12 +130,12 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      por qué (duplicados por teléfono, sin nombre, etc.);
    - si no hay acceso a Firestore, se para este ítem, se reporta y se sigue
      con el 9.
-9. [bloqueado] **Entorno de revisión para Giancarlo:** que `pnpm demo:data` corra
-   contra la demo de Cloud Run (hoy no corre, está en el backlog), sembrar
-   demo con datos de varios días, y publicar un preview de yacco-web (apunta a
-   demo por D-011) con un chofer de demo con contraseña en Secret Manager.
-   Verificarlo de punta a punta con Playwright: el ciclo pedido → ruta → Mi
-   ruta del chofer → liquidación → reportes.
+9. [x] **Entorno de revisión para Giancarlo:** que `pnpm demo:data` corra
+       contra la demo de Cloud Run (hoy no corre, está en el backlog), sembrar
+       demo con datos de varios días, y publicar un preview de yacco-web (apunta a
+       demo por D-011) con un chofer de demo con contraseña en Secret Manager.
+       Verificarlo de punta a punta con Playwright: el ciclo pedido → ruta → Mi
+       ruta del chofer → liquidación → reportes.
 10. [bloqueado] **Carga real [OK]:**
     - antes, una rama de respaldo de main (D-006);
     - después, la carga del padrón en main con el reporte de la corrida en
