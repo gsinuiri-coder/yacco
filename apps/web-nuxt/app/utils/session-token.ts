@@ -31,32 +31,47 @@ export function readSessionUser(token: string): SessionUser | null {
 }
 
 /**
- * El refresh token en localStorage, igual que el web React (D-022). Mover la
- * sesión a una cookie httpOnly es una fase propia: toca auth de producción.
- * Safari en modo privado lanza al tocar localStorage; la sesión se degrada a
- * "sólo mientras dure la pestaña", nunca rompe la app.
+ * El refresh token ya NO está acá: la API lo deja en una cookie httpOnly que
+ * este código no puede leer (D-024). Lo único que el navegador guarda es una
+ * marca sin secreto —«en este navegador hubo una sesión»—, que sirve para dos
+ * cosas: no pedir un refresh cuando nadie ingresó nunca, y saber si un refresh
+ * que falla es una sesión que VENCIÓ (se avisa) o que nunca existió (no).
+ *
+ * `LEGACY_REFRESH_TOKEN_KEY` es donde el web guardaba el token antes del
+ * cambio: se borra al pasar por acá, para que no quede un token renovable en
+ * disco. Safari en modo privado lanza al tocar localStorage; se degrada sin
+ * romper la app.
  */
-export const refreshTokenStore = {
-  read(): string | null {
+export const SESSION_MARKER_KEY = "yacco.session";
+export const LEGACY_REFRESH_TOKEN_KEY = "yacco.refreshToken";
+
+function safely(action: () => void): void {
+  try {
+    action();
+  } catch {
+    // Sin almacenamiento, la marca no persiste: la sesión dura lo que la pestaña.
+  }
+}
+
+export const sessionMarker = {
+  present(): boolean {
     try {
-      return localStorage.getItem(REFRESH_TOKEN_KEY);
+      return localStorage.getItem(SESSION_MARKER_KEY) === "1";
     } catch {
-      return null;
+      return false;
     }
   },
-  write(token: string): void {
-    try {
-      localStorage.setItem(REFRESH_TOKEN_KEY, token);
-    } catch {
-      // Sin persistencia la sesión dura lo que la pestaña.
-    }
+  set(): void {
+    safely(() => {
+      localStorage.setItem(SESSION_MARKER_KEY, "1");
+      localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY);
+    });
   },
   clear(): void {
-    try {
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
-    } catch {
-      // Nada que limpiar si el almacenamiento no está disponible.
-    }
+    safely(() => {
+      localStorage.removeItem(SESSION_MARKER_KEY);
+      localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY);
+    });
   },
 };
 

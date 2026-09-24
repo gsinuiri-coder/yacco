@@ -83,8 +83,8 @@ describe("useApi — la única puerta a la API", () => {
       `Bearer ${buildToken({ username: "vencido" })}`,
       `Bearer ${renewed}`,
     ]);
-    // El refresh token viaja en Authorization: JwtRefreshStrategy lo lee de ahí.
-    expect(refreshBearers()).toEqual(["Bearer refresh-1"]);
+    // El refresh viaja en la cookie httpOnly (D-024), nunca en Authorization.
+    expect(refreshBearers()).toEqual([undefined]);
     expect(useSession().user.value?.username).toBe("renovado");
   });
 

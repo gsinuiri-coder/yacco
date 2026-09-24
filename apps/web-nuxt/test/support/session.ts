@@ -37,7 +37,9 @@ export function resetSession(): void {
  * Devuelve la función que quita el endpoint.
  */
 export function signIn(roles: UserRole[] = ["ADMIN"], username = "admin"): () => void {
-  localStorage.setItem("yacco.refreshToken", "refresh-valido");
+  // Lo que deja un login: la marca de sesión. El refresh token está en una
+  // cookie httpOnly que el navegador manda solo (D-024).
+  localStorage.setItem("yacco.session", "1");
   return registerEndpoint("/api/v1/auth/refresh", {
     method: "POST",
     handler: () => ({ accessToken: buildToken({ roles, username }) }),

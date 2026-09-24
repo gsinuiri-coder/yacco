@@ -31,17 +31,25 @@ describe("safeReturnPath", () => {
   });
 });
 
-describe("refreshTokenStore", () => {
+describe("sessionMarker", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
   });
 
-  it("guarda, lee y borra", () => {
-    refreshTokenStore.write("r-1");
-    expect(refreshTokenStore.read()).toBe("r-1");
-    refreshTokenStore.clear();
-    expect(refreshTokenStore.read()).toBeNull();
+  it("marca, lee y borra, sin guardar ningún token", () => {
+    sessionMarker.set();
+    expect(sessionMarker.present()).toBe(true);
+    sessionMarker.clear();
+    expect(sessionMarker.present()).toBe(false);
+  });
+
+  // Antes del cambio el web guardaba el refresh token en disco: pasar por la
+  // marca lo borra, para que no quede un token renovable al alcance de un XSS.
+  it("borra el refresh token que haya dejado la versión anterior", () => {
+    localStorage.setItem("yacco.refreshToken", "token-viejo");
+    sessionMarker.set();
+    expect(localStorage.getItem("yacco.refreshToken")).toBeNull();
   });
 
   // Safari en modo privado lanza al tocar localStorage.
@@ -53,9 +61,9 @@ describe("refreshTokenStore", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
     vi.spyOn(Storage.prototype, "removeItem").mockImplementation(blocked);
 
-    expect(refreshTokenStore.read()).toBeNull();
-    expect(() => refreshTokenStore.write("r-1")).not.toThrow();
-    expect(() => refreshTokenStore.clear()).not.toThrow();
+    expect(sessionMarker.present()).toBe(false);
+    expect(() => sessionMarker.set()).not.toThrow();
+    expect(() => sessionMarker.clear()).not.toThrow();
   });
 });
 

@@ -109,7 +109,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      visible, una ruta ajena NO visible (con dos choferes y dos rutas en los
      datos), y registro de una entrega.
 7. [ ] **Seguridad antes de datos reales:**
-   - [ ] a) refresh token en cookie httpOnly; Secure; SameSite=Lax por el
+   - [x] a) refresh token en cookie httpOnly; Secure; SameSite=Lax por el
          mismo origen del proxy (la fase propia de D-022), y fuera de
          localStorage;
    - [x] b) cambiar la contraseña o desactivar a un usuario invalida sus

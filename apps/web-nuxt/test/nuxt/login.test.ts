@@ -44,7 +44,10 @@ describe("login", () => {
     expect(await screen.findByRole("heading", { name: "Panel" })).toBeTruthy();
     // La API valida con whitelist: un campo "email" sería un 400.
     expect(received).toEqual([{ username: "giancarlo", password: "secreta" }]);
-    expect(localStorage.getItem("yacco.refreshToken")).toBe("refresh-nuevo");
+    // El refresh token quedó en la cookie httpOnly que escribe la API; en disco
+    // solo la marca de que hubo sesión (D-024).
+    expect(localStorage.getItem("yacco.session")).toBe("1");
+    expect(localStorage.getItem("yacco.refreshToken")).toBeNull();
     expect(await screen.findByText("giancarlo")).toBeTruthy();
   });
 
@@ -60,7 +63,7 @@ describe("login", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Usuario o contraseña incorrectos.");
     expect(screen.queryByRole("heading", { name: "Panel" })).toBeNull();
-    expect(localStorage.getItem("yacco.refreshToken")).toBeNull();
+    expect(localStorage.getItem("yacco.session")).toBeNull();
   });
 
   it("si la API falla por otra cosa, dice eso y no culpa a la contraseña", async () => {
