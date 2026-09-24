@@ -47,7 +47,9 @@ import { UpdateContainerTypeDto } from "./dto/update-container-type.dto.js";
 @ApiBearerAuth()
 @ApiForbiddenResponse({ description: "Authenticated but missing the required role" })
 @UseGuards(JwtAccessGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.SELLER)
+// DRIVER lee el catálogo (el formulario de parada de «Mi ruta»); escribir
+// sigue siendo ADMIN, por el @Roles de cada método.
+@Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER)
 @Controller("container-types")
 export class ContainerTypesController {
   constructor(private readonly containerTypesService: ContainerTypesService) {}

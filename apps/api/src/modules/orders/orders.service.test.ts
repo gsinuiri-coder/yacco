@@ -69,6 +69,7 @@ function buildPrismaMock() {
     order: {
       create: jest.fn<() => Promise<unknown>>(),
       findMany: jest.fn<() => Promise<unknown>>(),
+      findFirst: jest.fn<() => Promise<unknown>>(),
       findUnique: jest.fn<() => Promise<unknown>>(),
       count: jest.fn<() => Promise<unknown>>(),
       updateMany: jest.fn<() => Promise<unknown>>(),
@@ -503,7 +504,7 @@ describe("OrdersService", () => {
 
   describe("findOne", () => {
     it("returns the order with its items", async () => {
-      prisma.order.findUnique.mockResolvedValue(buildOrder());
+      prisma.order.findFirst.mockResolvedValue(buildOrder());
 
       const result = await service.findOne(ORDER_ID);
 
@@ -513,7 +514,7 @@ describe("OrdersService", () => {
     });
 
     it("throws NotFoundException for an unknown id", async () => {
-      prisma.order.findUnique.mockResolvedValue(null);
+      prisma.order.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne(ORDER_ID)).rejects.toBeInstanceOf(NotFoundException);
     });
@@ -522,7 +523,7 @@ describe("OrdersService", () => {
   describe("cancel", () => {
     it("cancels a PENDING order, guarding the status inside the WHERE clause", async () => {
       prisma.order.updateMany.mockResolvedValue({ count: 1 });
-      prisma.order.findUnique.mockResolvedValue(buildOrder({ status: OrderStatus.CANCELLED }));
+      prisma.order.findFirst.mockResolvedValue(buildOrder({ status: OrderStatus.CANCELLED }));
 
       const result = await service.cancel(ORDER_ID);
 

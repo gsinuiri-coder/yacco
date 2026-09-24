@@ -324,6 +324,32 @@ línea de delegación con la fecha, más las cuatro de siempre.
   movimiento de la liquidación dejaría de reponer el lote directamente. Si se
   descartan, el retorno sería una baja por daño y no un `FULL_RETURN`.
 
+### 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** para el
+  piloto no hay app nativa ni modo sin conexión. El chofer entra al mismo web,
+  ve solo sus rutas del día en un diseño para celular («Mi ruta») y registra
+  cada parada con el mismo `PATCH` que usa la oficina. Lee los catálogos, y
+  los precios pactados y el pedido solo de los clientes de sus rutas. **No
+  cambia precios:** cobra el pactado, y un precio distinto lo corrige la
+  oficina. Quedan **diferidos al post-piloto** el trabajo sin conexión y la
+  sincronización (HU-11 E1, HU-16) y las fotos de evidencia (HU-15).
+- **Asumimos:** que en la zona del piloto el chofer tiene señal suficiente
+  para registrar cada parada en el momento, y que un precio distinto del
+  pactado es una excepción que puede esperar a la oficina.
+- **Construido encima:** la página `/my-route` del web, el menú reducido para
+  quien solo tiene el rol Chofer, y la apertura de lectura por recurso en
+  `OrdersService.findOne` y `CustomerPricesService.findEffectivePrices`
+  (`common/viewer.ts`).
+- **Preguntar:** ¿sus choferes tienen señal en todo el recorrido? Cuando un
+  cliente paga distinto de lo pactado, ¿el chofer lo decide ahí o lo tiene
+  que llamar a usted?
+- **Si dice que no:** sin señal, es caro: es el módulo de sincronización
+  entero (diseño en `.agents/rules/sync-protocol.md`), que hoy no existe. Si
+  el chofer tiene que poder cambiar el precio, es barato: mostrarle el campo
+  de precio y resolver quién autoriza (hoy la lista de usuarios es solo de la
+  oficina).
+
 ## Validados
 
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026
