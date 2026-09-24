@@ -1721,6 +1721,12 @@ con fecha».
 
 ### Prioridad 1 — A5 / D-016: retención de 400 días y alerta sobre Secret Manager
 
+**Estado:** RESUELTA el 2026-09-24 (ítem 5 de `plan-endurecimiento.md`),
+con `pnpm gcp:audit`. Verificado: una lectura manual del dueño (21:03 UTC)
+quedó en el bucket `secret-manager-audit` con su principal y sumó 1 en la
+métrica `unexpected-secret-access`; las lecturas del deployer en el deploy de
+las 20:41 están en el bucket y NO movieron la métrica. Registro original:
+
 **Por qué:** una filtración de estas credenciales se descubre semanas después,
 y a los 30 días del bucket `_Default` la lectura original ya no está. Sin la
 alerta, nadie se entera en el momento. **Para cerrarla:** lo escrito en D-016

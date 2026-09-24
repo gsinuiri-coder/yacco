@@ -1015,6 +1015,16 @@ Por eso:
    principal no sea `yacco-api-run` ni `yacco-deployer`, con aviso por email.
    Sin esto, la retención sirve para investigar pero no para enterarse.
 
+**Aplicada el 2026-09-24** (ítem 5 de `plan-endurecimiento.md`) con
+`pnpm gcp:audit` (`scripts/gcp-audit.mjs`, idempotente): bucket
+`secret-manager-audit` (global, 400 días), sink del mismo nombre filtrado por
+el servicio de Secret Manager, métrica `unexpected-secret-access` y una
+política de alerta por email sobre ella (umbral: una lectura). Las esperadas
+son las dos identidades de runtime de D-025 y el deployer; **el dueño no**: una
+lectura a mano llega como un email que se confirma, que es la única forma de
+distinguirla de su laptop comprometida. El sink tardó unos 15 minutos en
+propagarse: lo leído antes quedó sólo en `_Default`.
+
 **No bloquea el corte**: es detección, no prevención, y el corte no cambia qué se
 lee ni quién. Cuándo se ejecuta lo prioriza el dueño junto con el resto de los
 hallazgos de la fase 6 (PROGRESO.md).
