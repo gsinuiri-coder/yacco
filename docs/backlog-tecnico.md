@@ -11,7 +11,11 @@ y cuál es el disparador que obliga a resolverla.
 
 ## Refresh token en localStorage
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA el 2026-09-24 (ítem 7a de `plan-cierre-piloto.md`, D-024):
+la API escribe el refresh en una cookie `httpOnly; Secure; SameSite=Lax`, lo
+lee de ahí en `/auth/refresh`, y `POST /auth/logout` la borra. El web ya no
+guarda ningún token en disco. Queda el paso contract en la entrada «Retirar el
+refresh token del cuerpo del login». Registro original:
 
 El refresh token se guarda en `localStorage` (`apps/web/src/auth/token-storage.ts`)
 y el access token vive solo en memoria, en el estado de React.
@@ -201,8 +205,12 @@ el dueño de la planta no vio. Están en
 
 ## No hay forma de invalidar un token ya emitido
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo, o el día que
-haya que sacar a alguien del sistema en el acto.
+**Estado:** RESUELTA el 2026-09-24 (ítem 7b de `plan-cierre-piloto.md`, D-024)
+para los refresh tokens: `users.token_version` va en cada refresh token y sube
+al cambiar la contraseña o al desactivar; reactivar no la baja, así que el
+token viejo no revive. El access token vigente sigue hasta su vencimiento (15
+minutos): el corte «en el acto» exigiría consultar la base en cada petición,
+y no se hizo. Registro original:
 
 El esquema no guarda nada por sesión: ni `tokenVersion` en `users`, ni `jti`,
 ni una tabla de refresh tokens. `AuthService.refreshAccessToken` solo chequea
@@ -1674,8 +1682,9 @@ con stock en orden FIFO en vez de desde el lote que acaba de crear.
 
 ## Cambiar la contraseña no invalida los refresh tokens
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo, o el día que un
-usuario pierda el celular o se vaya de la planta.
+**Estado:** RESUELTA el 2026-09-24 con la entrada «No hay forma de invalidar un
+token ya emitido» (arriba): el contador por usuario de la opción barata es
+`users.token_version` (D-024). Registro original:
 
 `AuthService.refreshAccessToken` verifica la firma y que el usuario exista y esté
 activo, pero no si la contraseña cambió después de emitir el token. Un refresh
@@ -1965,3 +1974,18 @@ Apareció al regenerar `estado-por-modulo.md` contra `apps/web-nuxt` el
 ADMIN, que abra el mismo formulario de `RouteStopMarkForm.vue` precargado con
 lo anotado y un motivo obligatorio, y que muestre el `stockShortfall` que la
 API devuelve (supuesto 10). Al cerrarla, `routes` vuelve a `Completo`.
+
+## Retirar el refresh token del cuerpo del login
+
+**Estado:** abierto. **Disparador:** cuando el web con la cookie httpOnly
+(D-024) esté desplegado en producción y en demo.
+
+Es el paso contract de D-024. Mientras un web anterior pudiera estar sirviendo,
+`POST /auth/login` sigue devolviendo `refreshToken` en el cuerpo y
+`JwtRefreshStrategy` sigue aceptando el header `Authorization`. Con el web
+nuevo desplegado, ninguno de los dos tiene quien lo use, y el del cuerpo le
+devuelve al JavaScript de la página justo lo que la cookie esconde.
+
+**Para cerrarla:** sacar `refreshToken` de `AuthTokensDto` (y del contrato
+compartido), dejar solo la cookie en `JwtRefreshStrategy`, y ajustar los tests
+de integración que todavía usan el header.

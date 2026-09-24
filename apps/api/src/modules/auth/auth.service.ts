@@ -34,7 +34,7 @@ export class AuthService {
     const roles = user.roles.map((assignment) => assignment.role.name);
     return {
       accessToken: this.signAccessToken(user.id, user.username, roles),
-      refreshToken: this.signRefreshToken(user.id, user.username, roles),
+      refreshToken: this.signRefreshToken(user.id, user.username, roles, user.tokenVersion),
     };
   }
 
@@ -43,9 +43,20 @@ export class AuthService {
     if (!user || !user.active) {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
+    // Cambiar la contraseña o desactivar sube la versión (D-024): un refresh
+    // emitido antes ya no renueva nada, aunque su firma y su vencimiento valgan.
+    if ((payload.tv ?? 0) !== user.tokenVersion) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
 
     const roles = user.roles.map((assignment) => assignment.role.name);
     return { accessToken: this.signAccessToken(user.id, user.username, roles) };
+  }
+
+  /** Cuándo vence un refresh token recién firmado: la cookie vence con él. */
+  refreshTokenExpiry(refreshToken: string): Date {
+    const { exp } = this.jwtService.decode<{ exp: number }>(refreshToken);
+    return new Date(exp * 1000);
   }
 
   private signAccessToken(sub: string, username: string, roles: UserRole[]): string {
@@ -60,8 +71,13 @@ export class AuthService {
     });
   }
 
-  private signRefreshToken(sub: string, username: string, roles: UserRole[]): string {
-    const payload: JwtPayload = { sub, username, roles, type: "refresh" };
+  private signRefreshToken(
+    sub: string,
+    username: string,
+    roles: UserRole[],
+    tokenVersion: number,
+  ): string {
+    const payload: JwtPayload = { sub, username, roles, type: "refresh", tv: tokenVersion };
     return this.jwtService.sign(payload, {
       secret: this.configService.getOrThrow<string>("JWT_REFRESH_SECRET"),
       expiresIn: this.configService.getOrThrow<string>("JWT_REFRESH_EXPIRES_IN") as NonNullable<

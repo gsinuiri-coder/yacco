@@ -135,6 +135,14 @@ línea de delegación con la fecha, más las cuatro de siempre.
 - **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
   mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
   al dueño en el piloto.
+- **Ahora sí se corta la sesión (2026-09-24, ítem 7b del plan, D-024):**
+  cambiar la contraseña o desactivar a alguien deja viejo su refresh token, y
+  el sistema le pide volver a ingresar en cuanto vence su acceso actual (a lo
+  sumo 15 minutos). La pantalla dice eso ahora. El supuesto de abajo queda
+  como registro de lo que se asumió mientras no era así; la pregunta sigue
+  valiendo para saber si esos 15 minutos le alcanzan o necesita el corte en
+  el acto. Vale también para el administrador que se cambia la suya
+  (supuesto 3): su propia sesión se corta igual.
 - **Asumimos:** que alcanza con **avisar** que cambiar la contraseña no cierra
   la sesión que esa persona tenga abierta, y que para cortarle el acceso hay
   que desactivarla.

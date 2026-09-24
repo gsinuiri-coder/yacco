@@ -1346,7 +1346,8 @@ ninguno de los dos, así que no puede pedir a la API nada que requiera sesión.
 - Quien lea `if (import.meta.server) return` o un `<ClientOnly>` en una pantalla
   autenticada **no está ante un error**: es esta decisión.
 
-**Fase propia, fuera de esta migración: la sesión en cookie `httpOnly`.** Es lo
+**Fase propia, fuera de esta migración: la sesión en cookie `httpOnly`.**
+_Hecha el 2026-09-24: ver D-024._ Es lo
 que recomienda Nuxt para autenticación con SSR, y lo que habilitaría renderizar
 datos autenticados en el servidor. Además cierra el backlog «Refresh token en
 `localStorage`»: un XSS dejaría de encontrarlo. No entra acá porque cambia cómo
@@ -1485,6 +1486,62 @@ está en el commit nuevo. Cerrar siempre el rollback (`DEPLOY.md`).
 - _Correr `vercel build` con `cwd` en `apps/web-nuxt`, sin tocar el setting._
   Evita el cambio en el dashboard a costa de un `.vercel/` fuera de la raíz y
   un camino que depende de desde dónde se lanza el script.
+
+---
+
+### D-024 — La sesión se puede cortar: una versión por usuario en cada refresh token
+
+**Contexto.** Hasta el 2026-09-24 un refresh token valía sus 30 días pasara lo
+que pasara: `refreshAccessToken` solo miraba la firma y que el usuario
+siguiera activo. Cambiar la contraseña no sacaba a nadie, y desactivar solo
+tapaba la puerta mientras duraba: al reactivar, el token viejo volvía a
+servir. Antes de cargar datos reales eso no alcanza (ítem 7b de
+`plan-cierre-piloto.md`).
+
+**Decisión.**
+
+- `users.token_version` (entero, 0 por defecto; migración
+  `20260924120000_user_token_version`, expand). El refresh token la lleva en
+  el claim `tv` al emitirse, y `/auth/refresh` la compara con la de la base:
+  distinta, 401.
+- **Sube** al cambiar la contraseña y al desactivar (`UsersService.update`).
+  Reactivar **no** la baja, así que un token de antes de desactivar no
+  revive. Renombrar o cambiar roles no la toca: los roles ya se releen de la
+  base en cada refresco.
+- Un token emitido antes de este cambio no trae `tv` y se lee como 0, que es
+  la versión de todas las filas existentes: nadie pierde la sesión por el
+  deploy.
+- El **access token** no consulta la versión: sigue hasta que vence (15
+  minutos). Cortarlo en el acto exigiría leer la base en cada petición;
+  para el piloto se aceptan esos minutos (supuesto 4).
+
+**El refresh token viaja en una cookie httpOnly** (ítem 7a del plan, la «fase
+propia» que dejó pendiente D-022):
+
+- `POST /auth/login` escribe `yacco_refresh` con `HttpOnly; Secure;
+SameSite=Lax; Path=/api/v1/auth` y el vencimiento del propio token. El web
+  llega a la API por su mismo origen (el proxy de D-021), así que la cookie es
+  de primera parte y no hace falta CORS con credenciales.
+- `POST /auth/refresh` lee la cookie primero y, si no está, el header
+  `Authorization`. `POST /auth/logout` (nuevo, sin guard) la borra.
+- El web ya no guarda el token: en `localStorage` queda solo la marca
+  `yacco.session` («en este navegador hubo sesión»), sin secreto, para no pedir
+  un refresh a quien nunca ingresó y para distinguir una sesión vencida. Al
+  pasar por ahí borra el `yacco.refreshToken` que dejaba la versión anterior.
+- **Expand/contract.** El cuerpo del login sigue trayendo `refreshToken`, y el
+  refresh sigue aceptando el header, para un cliente anterior al cambio.
+  Retirar las dos cosas es el paso contract, en un PR propio, cuando el web
+  nuevo esté desplegado (entrada de backlog «Retirar el refresh token del
+  cuerpo del login»).
+- `SameSite=Lax` alcanza contra CSRF acá: refresh y logout son POST, y un POST
+  que dispara otro sitio no lleva cookies Lax. Lo que devuelve el refresh (un
+  access token en JSON) otro origen no lo puede leer.
+
+**Alternativa descartada.** _Una tabla de refresh tokens emitidos, revocables
+de a uno._ Permite cerrar una sola sesión (un celular perdido) sin tocar las
+demás, pero agrega una tabla, una escritura en cada login y una limpieza de
+vencidos. Hoy toda invalidación que hace falta es «todas las de esta
+persona», que es exactamente lo que un contador resuelve.
 
 ---
 

@@ -109,10 +109,10 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      visible, una ruta ajena NO visible (con dos choferes y dos rutas en los
      datos), y registro de una entrega.
 7. [ ] **Seguridad antes de datos reales:**
-   - [ ] a) refresh token en cookie httpOnly; Secure; SameSite=Lax por el
+   - [x] a) refresh token en cookie httpOnly; Secure; SameSite=Lax por el
          mismo origen del proxy (la fase propia de D-022), y fuera de
          localStorage;
-   - [ ] b) cambiar la contraseña o desactivar a un usuario invalida sus
+   - [x] b) cambiar la contraseña o desactivar a un usuario invalida sus
          refresh tokens ya emitidos (backlog «No hay forma de invalidar un token
          ya emitido» y «Cambiar la contraseña no invalida los refresh tokens»). Al
          supuesto 4 se le agrega que ahora sí se corta la sesión;

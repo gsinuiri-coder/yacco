@@ -356,16 +356,16 @@ describe("Usuarios", () => {
     expect(screen.queryByRole("form", { name: "Cambiar la contraseña de Luis Quispe" })).toBeNull();
   });
 
-  it("el bloque dice que cambiarla no cierra la sesión abierta y qué hacer para eso", async () => {
+  it("el bloque dice que cambiarla cierra la sesión abierta, y que para que no entre más hay que desactivar", async () => {
     stubList([SELF, DRIVER]);
 
     await renderPage();
     const form = await openReset("Luis Quispe");
 
     expect(form.textContent).toContain(
-      "Cambiar la contraseña no cierra la sesión abierta de esa persona",
+      "Cambiar la contraseña cierra la sesión que esa persona tenga abierta",
     );
-    expect(form.textContent).toContain("Para que alguien deje de entrar, desactívalo");
+    expect(form.textContent).toContain("Para que alguien deje de entrar del todo, desactívalo");
   });
 
   it("una contraseña nueva de menos de 8 caracteres no se envía y lo dice", async () => {
