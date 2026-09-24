@@ -15,3 +15,15 @@ export const CONTAINER_TYPE_COLUMNS = {
 } as const;
 
 export type ContainerTypeColumn = keyof typeof CONTAINER_TYPE_COLUMNS;
+
+/**
+ * Cómo se ENCUENTRA cada tipo en la base: por su recarga. Los nombres de arriba
+ * son solo las etiquetas del resumen: en main y en demo los tipos se llaman
+ * «BIDON 20L CAÑO» y «BIDON 20L NORMAL», no como en seed.ts, mientras que las
+ * recargas se llaman igual en todas las bases. El cargador sigue sin crear
+ * nada: si falta la recarga, falla en la validación, antes de escribir.
+ */
+export const CONTAINER_TYPE_REFILL: Record<ContainerTypeColumn, string> = {
+  qtySpout: "Recarga 20L con caño",
+  qtyNoSpout: "Recarga 20L sin caño",
+};
