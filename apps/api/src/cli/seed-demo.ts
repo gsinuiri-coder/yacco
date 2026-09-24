@@ -191,6 +191,7 @@ async function apiFetch<T>(
     throw new Error(
       `No se pudo conectar con la API en ${baseUrl}. ¿Está levantada? ` +
         `(pnpm demo:up && pnpm dev:api)\n${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 
@@ -315,6 +316,7 @@ async function createDriver(token: string): Promise<UserResponse> {
         `El seed de demo ya corrió antes: el usuario "${DEMO_DRIVER_USERNAME}" ya existe. ` +
           "Este script no se limpia solo — reseteá la base local de Docker " +
           "(cd apps/api && npx prisma migrate reset) y volvé a correr pnpm demo:data.",
+        { cause: error },
       );
     }
     throw error;
