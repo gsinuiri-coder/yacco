@@ -1961,7 +1961,13 @@ no se pueden regenerar con el seed.
 
 ## La corrección de una parada no tiene pantalla
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo — desde el
+**Estado:** RESUELTA el 2026-09-24 (ítem C del pedido de Giancarlo, antes de la carga real):
+«Corregir» en cada parada resuelta, solo ADMIN, con la ruta en curso, terminada o
+liquidada; el mismo formulario de registro con un motivo obligatorio, contra
+`PATCH .../correction`. El faltante de stock de una corrección hacia arriba se
+avisa en pantalla (supuesto 10). Registro original:
+
+**Estado (original):** abierto. **Disparador:** antes del piloto de campo — desde el
 primer día real, la oficina anota paradas dictadas y el error de anotación es
 el caso normal (spec §4.3).
 

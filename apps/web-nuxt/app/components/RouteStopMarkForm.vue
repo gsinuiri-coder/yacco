@@ -28,8 +28,15 @@ const props = withDefaults(
      * la lista de usuarios, que es de la oficina.
      */
     canChangePrice?: boolean;
+    /**
+     * Corregir una parada ya registrada (HU-24, solo ADMIN): pide un motivo,
+     * anula lo anotado y lo vuelve a registrar con PATCH .../correction. Quien
+     * corrige queda como autorizador de un precio distinto (supuesto 8), así
+     * que no se pregunta.
+     */
+    correction?: boolean;
   }>(),
-  { canChangePrice: true },
+  { canChangePrice: true, correction: false },
 );
 const emit = defineEmits<{ cancel: []; marked: [result: RouteStop] }>();
 
@@ -58,6 +65,7 @@ const draft = reactive<StopMarkDraft>({
   authorizerId: "",
 });
 
+const correctionReason = ref("");
 const validationError = ref<string | null>(null);
 const submitError = ref<string | null>(null);
 const submitting = ref(false);
@@ -140,17 +148,23 @@ function addReturn(): void {
 
 async function submit(): Promise<void> {
   if (submitting.value) return;
-  const body = buildMarkBody(draft, effective.items.value);
+  const body = buildMarkBody(draft, effective.items.value, { correction: props.correction });
   if (typeof body === "string") {
     validationError.value = body;
+    return;
+  }
+  const reason = correctionReason.value.trim();
+  if (props.correction && reason === "") {
+    validationError.value = "Escribe el motivo de la corrección";
     return;
   }
   submitting.value = true;
   submitError.value = null;
   try {
-    const result = await api.request<RouteStop>(`/routes/${props.routeId}/stops/${props.stop.id}`, {
+    const path = `/routes/${props.routeId}/stops/${props.stop.id}`;
+    const result = await api.request<RouteStop>(props.correction ? `${path}/correction` : path, {
       method: "PATCH",
-      body,
+      body: props.correction ? { ...body, correctionReason: reason } : body,
     });
     emit("marked", result);
   } catch (error) {
@@ -165,7 +179,11 @@ async function submit(): Promise<void> {
   <form
     class="space-y-6"
     novalidate
-    :aria-label="`Registrar la parada de ${stop.location.customer.name}`"
+    :aria-label="
+      correction
+        ? `Corregir la parada de ${stop.location.customer.name}`
+        : `Registrar la parada de ${stop.location.customer.name}`
+    "
     @submit.prevent="submit"
   >
     <SegmentedFilter
@@ -355,7 +373,7 @@ async function submit(): Promise<void> {
             />
           </UFormField>
         </div>
-        <UFormField v-if="hasOverride" label="¿Quién autorizó el precio distinto?">
+        <UFormField v-if="hasOverride && !correction" label="¿Quién autorizó el precio distinto?">
           <USelect
             v-model="draft.authorizerId"
             :items="authorizerItems"
@@ -366,6 +384,19 @@ async function submit(): Promise<void> {
         </UFormField>
       </section>
     </template>
+
+    <UFormField
+      v-if="correction"
+      label="Motivo de la corrección"
+      help="Queda escrito en la parada. Lo anotado antes se anula con este motivo y sigue visible; no se borra."
+    >
+      <UInput
+        v-model="correctionReason"
+        placeholder="Se anotaron 3 bidones y fueron 2"
+        :disabled="submitting"
+        class="w-full"
+      />
+    </UFormField>
 
     <UAlert
       v-if="validationError"
@@ -387,7 +418,15 @@ async function submit(): Promise<void> {
       <UButton
         type="submit"
         :disabled="submitting"
-        :label="submitting ? 'Registrando…' : 'Registrar la parada'"
+        :label="
+          submitting
+            ? correction
+              ? 'Guardando…'
+              : 'Registrando…'
+            : correction
+              ? 'Guardar la corrección'
+              : 'Registrar la parada'
+        "
       />
     </div>
   </form>

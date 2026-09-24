@@ -171,3 +171,7 @@ NEON_ORG_ID=org-still-lake-04900241 pnpm secrets:gcp --upload=VERCEL_TOKEN`,
 - **Ítem 11, parcial:** PROGRESO.md tiene el estado final de esta tanda. El
   sprint-close completo (tag, deploy verificado, demo con el dueño) espera al
   deploy.
+
+## Ítems agregados por Giancarlo el 2026-09-24
+
+- [x] **C. Corregir una parada ya registrada desde la web** (HU-24, E1–E5 como tests).

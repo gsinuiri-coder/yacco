@@ -96,6 +96,7 @@ export function saleTotal(
 export function buildMarkBody(
   draft: StopMarkDraft,
   effective: readonly EffectivePrice[],
+  options: { correction?: boolean } = {},
 ): MarkRouteStopBody | string {
   if (draft.outcome === "FAILED") {
     const reason = draft.failureReason.trim();
@@ -144,8 +145,10 @@ export function buildMarkBody(
     return 'El monto cobrado debe ser un monto como "25.00"';
   }
 
+  // En una corrección, quien corrige es quien autoriza (supuesto 8): la API
+  // lo fija sola y rechaza que venga en el cuerpo.
   const override = draft.items.some((line) => isPriceOverride(line, effective));
-  if (override && draft.authorizerId === "") {
+  if (override && draft.authorizerId === "" && options.correction !== true) {
     return "Un precio distinto del pactado necesita quién lo autorizó";
   }
 
@@ -154,6 +157,8 @@ export function buildMarkBody(
     items,
     ...(containersReturned.length > 0 ? { containersReturned } : {}),
     ...(amount === "" ? {} : { payment: { paymentMethodId: draft.paymentMethodId, amount } }),
-    ...(draft.authorizerId === "" ? {} : { priceOverrideAuthorizedById: draft.authorizerId }),
+    ...(draft.authorizerId === "" || options.correction === true
+      ? {}
+      : { priceOverrideAuthorizedById: draft.authorizerId }),
   };
 }

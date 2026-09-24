@@ -53,5 +53,17 @@ const summary = computed(() => {
       icon="i-lucide-triangle-alert"
       :title="`Esta venta superó el límite de crédito de ${stopName}. Quedó registrada igual.`"
     />
+    <!-- Supuesto 10: una corrección hacia arriba se registra aunque el camión no
+         figurara con esos llenos; el saldo del camión queda negativo y acá se
+         avisa. Lo típico detrás es una carga mal anotada. -->
+    <UAlert
+      v-for="line in result.stockShortfall ?? []"
+      :key="line.containerTypeId"
+      role="status"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-triangle-alert"
+      :title="`Según lo cargado, el camión tenía ${line.available} × ${line.containerType.name} y se registraron ${line.requested}. Quedó registrado igual; revisá la carga de la ruta.`"
+    />
   </div>
 </template>

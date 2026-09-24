@@ -288,8 +288,8 @@ línea de delegación con la fecha, más las cuatro de siempre.
 - **Construido encima:** `allowStockShortfall` en
   `SalesService.registerStopDeliveryWithinTransaction`, que solo prende
   `RoutesService.correctStop`. El chequeo de llenos en el camión deja de
-  bloquear, el faltante viaja en `stockShortfall` para que la pantalla lo
-  avise (PR de la web) y la corrección se registra igual. Tiene dos
+  bloquear, el faltante viaja en `stockShortfall` y la pantalla lo avisa
+  (`RouteMarkOutcome.vue`, desde el 2026-09-24) y la corrección se registra igual. Tiene dos
   consecuencias que conviene tener presentes: el saldo de ese camión queda
   **negativo** en `FULL_ON_ROUTE` —y por lo tanto también en el inventario
   general, igual que ya pasa con los saldos de envases de un cliente—, y si la
