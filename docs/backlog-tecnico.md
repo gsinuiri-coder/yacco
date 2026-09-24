@@ -1729,7 +1729,15 @@ principals que no sean `yacco-api-run` ni `yacco-deployer`, aviso por email).
 
 ### Prioridad 2 — A4: demo y producción comparten la identidad de runtime
 
-`yacco-api-run` tiene `secretAccessor` sobre todo el proyecto y la usan los dos
+**Estado:** RESUELTA el 2026-09-24 (ítem 4 de `plan-endurecimiento.md`,
+D-025). `yacco-api-demo-run` para demo y `yacco-api-run` para producción, cada
+una con `secretAccessor` sólo sobre sus cuatro secretos. Verificado con el
+Policy Troubleshooter: `yacco-api-demo-run` → `yacco-production-*`
+`CANNOT_ACCESS`; → `yacco-demo-*` `CAN_ACCESS`. El `secretAccessor` de
+proyecto de `yacco-api-run` se quita después del deploy que pasa demo a su
+identidad nueva. Registro original:
+
+`yacco-api-run` tenía `secretAccessor` sobre todo el proyecto y la usan los dos
 servicios: un fallo explotable en demo lee los JWT y la base de producción. Baja
 a prioridad 2 porque es la misma imagen: un RCE en demo casi siempre existe
 también en producción. Es también lo que deja al deployer leer todos los
