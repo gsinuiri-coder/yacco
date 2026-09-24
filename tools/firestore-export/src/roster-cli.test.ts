@@ -67,5 +67,8 @@ describe("runRoster con el disco de verdad", () => {
     expect(runRoster(["--in", dir, "--out", join(dir, "csv")], REAL_ROSTER_DEPS)).toBe(0);
     expect(readFileSync(join(dir, "csv", "customers.csv"), "utf8")).toContain("a,Ana,");
     expect(runRoster([], REAL_ROSTER_DEPS)).toBe(2);
+    // El directorio temporal no se deja atrás.
+    const { rmSync } = await import("node:fs");
+    rmSync(dir, { recursive: true, force: true });
   });
 });
