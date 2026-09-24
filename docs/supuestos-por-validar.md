@@ -64,15 +64,15 @@ que dijo que sí.
 
 - **Asumimos:** que un cliente desactivado que todavía debe plata es
   exactamente a quien viene a buscar en el Panel.
-- **Construido encima:** `apps/web/src/components/customer-quick-search.tsx`
-  omite el filtro `active` que `CustomerSelect` sí aplica. Buscar por nombre o
-  teléfono devuelve clientes en uso y desactivados por igual.
+- **Construido encima:** `apps/web-nuxt/app/components/CustomerQuickSearch.vue`
+  omite el filtro `active` que `CustomerPicker.vue` sí aplica. Buscar por
+  nombre o teléfono devuelve clientes en uso y desactivados por igual.
 - **Preguntar:** cuando busca a un cliente en la pantalla de inicio, ¿espera
   encontrar también a los que dio de baja, o esos deberían desaparecer de la
   búsqueda?
-- **Si dice que no:** barato. Pasarle `active: true` a `listCustomers` en ese
-  componente, igual que hace `CustomerSelect`. No cambia el diseño de la
-  búsqueda.
+- **Si dice que no:** barato. Agregarle `active: true` a la consulta de
+  `/customers` en ese componente, igual que hace `CustomerPicker.vue`. No
+  cambia el diseño de la búsqueda.
 
 ### 2. Al cambiar una contraseña, el administrador la elige y la dicta
 
@@ -80,9 +80,9 @@ que dijo que sí.
   la persona, en vez de que el sistema genere una temporal que la persona
   cambie al entrar.
 - **Construido encima:** el bloque «Cambiar contraseña» de
-  `apps/web/src/pages/users-page.tsx`. Hoy no existe pantalla de «cambiar mi
-  contraseña» en `apps/web/src/pages`, así que una temporal no tendría a dónde
-  ir.
+  `apps/web-nuxt/app/pages/users.vue`. Hoy no existe pantalla de «cambiar mi
+  contraseña» en `apps/web-nuxt/app/pages`, así que una temporal no tendría a
+  dónde ir.
 - **Preguntar:** cuando a alguien se le olvida su contraseña, ¿prefiere
   ponerle una usted y decírsela, o que el sistema le dé una provisional y que
   la persona se ponga la suya la primera vez que entre?
@@ -95,9 +95,9 @@ que dijo que sí.
 
 - **Asumimos:** que está bien que el administrador se cambie la suya desde la
   misma pantalla, y que esa es la forma prevista de rotar `admin123`.
-- **Construido encima:** `users-page.tsx` ofrece «Cambiar contraseña» también
-  en la propia fila. La guarda de `isSelf` que sí tiene «Desactivar» —para no
-  cerrarse la puerta desde adentro— deliberadamente no se aplica acá.
+- **Construido encima:** `users.vue` ofrece «Cambiar contraseña» también en
+  la propia fila. La guarda de «es uno mismo» que sí tiene «Desactivar» —para
+  no cerrarse la puerta desde adentro— deliberadamente no se aplica acá.
 - **Preguntar:** ¿quiere poder cambiarse su propia contraseña desde esta
   pantalla, o prefiere que su contraseña se toque solo desde afuera del
   sistema?
@@ -129,7 +129,7 @@ que dijo que sí.
 - **Asumimos:** que si el administrador le quita «Chofer» a alguien que todavía
   tiene rutas sin cerrar, corresponde **avisarle cuántas** y dejarlo decidir, en
   vez de impedírselo hasta que las cierre.
-- **Construido encima:** el bloque «Roles» de `apps/web/src/pages/users-page.tsx`
+- **Construido encima:** el bloque «Roles» de `apps/web-nuxt/app/pages/users.vue`
   consulta las rutas `PLANNED` e `IN_PROGRESS` de esa persona y pide
   confirmación diciendo el número. Si la consulta falla, se confirma igual
   diciendo que no se pudo verificar. Es coherente con la filosofía del resto del
