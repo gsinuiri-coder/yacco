@@ -1665,8 +1665,13 @@ verificar en una corrida verde que buscar `::error::` en el log no devuelve nada
 
 ## `pnpm demo:data` no corre contra la demo de Cloud Run
 
-**Estado:** abierto. **Disparador:** la próxima vez que haga falta sembrar
-datos de ensayo en la rama `demo` de Neon.
+**Estado:** RESUELTA el 2026-09-24 (ítem 9 de `plan-cierre-piloto.md`): los tipos
+de envase se resuelven por su recarga (`resolveContainerTypeIds`), las rutas se
+cargan en orden FIFO desde los lotes con stock (`planFifoLoads`), y
+`DEMO_RUN_TAG` permite volver a sembrar una base que ya tiene una demo.
+`DEMO_DRIVER_PASSWORD` le da al chofer una contraseña conocida, que no se
+imprime, para entrar a «Mi ruta». Probado de punta a punta contra la base local
+con historia. Registro original:
 
 `seed-demo-plan.ts` busca los tipos de envase «Con caño» y «Sin caño», que son
 los nombres de `seed.ts`. La rama `demo` nació de `main`, y el catálogo real
