@@ -59,8 +59,11 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      canal de email es la cuenta dueña del proyecto. Falta que Giancarlo
      confirme que le llegó el aviso de las lecturas de prueba (20:20, 20:26 y
      21:03 UTC).
-6. [ ] **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
+6. [x] (#211) **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
        vulnerabilidades en Artifact Registry.
+   - El escaneo se verifica sobre la primera imagen que suba un deploy
+     después de habilitarlo (hallazgos con `gcloud artifacts docker images
+  describe … --show-package-vulnerability`).
 7. [ ] **Ramas:** rescatar de `chore/dependency-hygiene` el typecheck del
        tsconfig de `prisma/` y las entradas de backlog que sigan vigentes (PR
        propio). Después [OK] para borrar esa rama, `feat/firestore-export` y

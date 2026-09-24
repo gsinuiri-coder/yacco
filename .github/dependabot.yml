@@ -36,3 +36,15 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # La imagen base de la API va fijada por digest (A7). Dependabot propone el
+  # digest nuevo de node:22-alpine, y el paso «API image» de ci.yml lo prueba
+  # antes del merge. Node 23+ se ignora: el runtime sube a mano, con los tipos.
+  - package-ecosystem: docker
+    directory: "/apps/api"
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
