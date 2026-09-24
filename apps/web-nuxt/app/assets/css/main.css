@@ -76,3 +76,21 @@ h3 {
   font-family: var(--font-display);
   letter-spacing: -0.01em;
 }
+
+/*
+ * Un desplegable abierto no deja el resto de la página muerta.
+ *
+ * Reka UI (debajo de Nuxt UI) abre `USelect` y los diálogos como capas modales
+ * y, mientras están abiertas, escribe `pointer-events: none` en línea sobre el
+ * `body`. El clic que el usuario hace sobre OTRO control para cerrar el
+ * desplegable solo lo cerraba y se perdía: había que repetirlo (medido con
+ * Playwright, 10 de 10; `e2e/first-click.test.ts`). Un `!important` de hoja de
+ * estilos gana sobre un estilo en línea sin él, así que esto lo anula para
+ * todos los desplegables, incluidos los que se agreguen después.
+ *
+ * Los diálogos no pierden nada: su fondo oscuro es un elemento propio que
+ * cubre la página y recibe ese clic, así que nada de atrás se activa igual.
+ */
+body {
+  pointer-events: auto !important;
+}

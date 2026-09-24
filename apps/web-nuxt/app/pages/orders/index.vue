@@ -73,12 +73,7 @@ function openOrder(_event: Event, row: { original: Order }): void {
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
         <UFormField label="Estado" class="w-44">
-          <USelect
-            v-model="status"
-            :content="NON_BLOCKING_SELECT"
-            :items="STATUS_ITEMS"
-            class="w-full"
-          />
+          <USelect v-model="status" :items="STATUS_ITEMS" class="w-full" />
         </UFormField>
         <UFormField label="Entrega desde">
           <UInput v-model="deliveryDateFrom" type="date" />

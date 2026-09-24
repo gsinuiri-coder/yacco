@@ -146,20 +146,10 @@ function rejectStale(message: string): void {
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
         <UFormField label="Estado" class="w-40">
-          <USelect
-            v-model="status"
-            :content="NON_BLOCKING_SELECT"
-            :items="statusItems"
-            class="w-full"
-          />
+          <USelect v-model="status" :items="statusItems" class="w-full" />
         </UFormField>
         <UFormField label="Método de pago" class="w-44">
-          <USelect
-            v-model="methodId"
-            :content="NON_BLOCKING_SELECT"
-            :items="methodItems"
-            class="w-full"
-          />
+          <USelect v-model="methodId" :items="methodItems" class="w-full" />
         </UFormField>
         <UFormField label="Cobrado desde">
           <UInput v-model="paidFromDay" type="date" />

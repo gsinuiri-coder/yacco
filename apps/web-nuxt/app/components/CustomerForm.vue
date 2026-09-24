@@ -83,12 +83,7 @@ function submit(): void {
           <UInput v-model="values.addressReference" class="w-full" autocomplete="off" />
         </UFormField>
         <UFormField label="Zona (opcional)" name="zoneId">
-          <USelect
-            v-model="zoneModel"
-            :content="NON_BLOCKING_SELECT"
-            :items="zoneItems"
-            class="w-full"
-          />
+          <USelect v-model="zoneModel" :items="zoneItems" class="w-full" />
         </UFormField>
         <UFormField
           label="Límite de crédito (opcional)"

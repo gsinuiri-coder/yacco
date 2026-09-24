@@ -162,7 +162,6 @@ const summary = computed(() => {
               >
                 <UFormField :label="`Tipo de envase ${index + 1}`" class="min-w-56">
                   <USelect
-                    :content="NON_BLOCKING_SELECT"
                     :model-value="line.containerTypeId === '' ? undefined : line.containerTypeId"
                     :items="
                       typesForLine(catalog.items.value, lines, index).map((type) => ({

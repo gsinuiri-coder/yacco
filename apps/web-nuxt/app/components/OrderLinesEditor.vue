@@ -153,7 +153,6 @@ const productPlaceholder = computed(() => {
             <tr v-for="(line, index) in lines" :key="line.key">
               <td class="px-3 py-2">
                 <USelect
-                  :content="NON_BLOCKING_SELECT"
                   :model-value="line.productId === '' ? undefined : line.productId"
                   :items="productItems"
                   :placeholder="productPlaceholder"

@@ -562,7 +562,6 @@ const rolesSubmitLabel = computed(() => {
           <UFormField label="Rol" class="w-44">
             <USelect
               v-model="roleFilter"
-              :content="NON_BLOCKING_SELECT"
               :items="[
                 { label: 'Todos', value: ALL },
                 ...ROLE_ORDER.map((role) => ({ label: ROLE_LABEL[role], value: role })),
@@ -573,7 +572,6 @@ const rolesSubmitLabel = computed(() => {
           <UFormField label="Estado" class="w-40">
             <USelect
               v-model="statusFilter"
-              :content="NON_BLOCKING_SELECT"
               :items="[
                 { label: 'En uso', value: 'active' },
                 { label: 'Desactivados', value: 'inactive' },

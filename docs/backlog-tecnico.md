@@ -1820,8 +1820,9 @@ minutos de runner; la caché de BuildKit del job lo acota.
 **Estado:** RESUELTA el 2026-09-24 (ítem 3a de `plan-cierre-piloto.md`).
 Reproducido con Playwright, eran dos causas: (1) con un `USelect` abierto,
 Reka UI deja el `body` en `pointer-events: none` y el clic sobre otro control
-solo cierra el desplegable (10 de 10 clics perdidos); se arregla con
-`NON_BLOCKING_SELECT` (`app/utils/select.ts`) en las 29 `USelect`. (2) Un
+solo cierra el desplegable (10 de 10 clics perdidos); se arregla con una
+regla en `app/assets/css/main.css` que anula ese estilo en línea para todos
+los desplegables. (2) Un
 clic en «Ingresar» antes de hidratar hacía el envío nativo del formulario:
 un GET que recargaba la página **con usuario y contraseña en la URL**; el
 botón espera a hidratar y el formulario es `method="post"`. Tests de

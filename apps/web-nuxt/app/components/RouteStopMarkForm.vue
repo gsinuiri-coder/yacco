@@ -196,7 +196,6 @@ async function submit(): Promise<void> {
                 <td class="px-3 py-2">
                   <USelect
                     v-model="line.productId"
-                    :content="NON_BLOCKING_SELECT"
                     :items="productItems"
                     placeholder="Elige un producto"
                     :aria-label="`Producto ${index + 1}`"
@@ -282,7 +281,6 @@ async function submit(): Promise<void> {
           <UFormField :label="`Tipo de envase ${index + 1}`" class="min-w-52">
             <USelect
               v-model="row.containerTypeId"
-              :content="NON_BLOCKING_SELECT"
               :items="containerTypeItems"
               placeholder="Elige un tipo de envase"
               :disabled="submitting"
@@ -323,7 +321,6 @@ async function submit(): Promise<void> {
           <UFormField label="Método de pago">
             <USelect
               v-model="paymentModel"
-              :content="NON_BLOCKING_SELECT"
               :items="paymentItems"
               :disabled="submitting"
               class="w-full"
@@ -336,7 +333,7 @@ async function submit(): Promise<void> {
             <UInput
               v-model="draft.amount"
               inputmode="decimal"
-              placeholder="25.00"
+              :placeholder="total"
               :disabled="submitting"
               class="w-full"
             />
@@ -345,7 +342,6 @@ async function submit(): Promise<void> {
         <UFormField v-if="hasOverride" label="¿Quién autorizó el precio distinto?">
           <USelect
             v-model="draft.authorizerId"
-            :content="NON_BLOCKING_SELECT"
             :items="authorizerItems"
             placeholder="Elige quién lo autorizó"
             :disabled="submitting"
