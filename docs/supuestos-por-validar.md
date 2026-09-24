@@ -62,7 +62,7 @@ que dijo que sí.
 
 Desde el 2026-09-24 Giancarlo delegó en Claude (la capa arquitectónica) las
 decisiones de producto necesarias para cerrar el piloto (ver
-[`plan-cierre-piloto.md`](./plan-cierre-piloto.md)). Sobre los diez supuestos
+[`plan-cierre-piloto.md`](./plan-cierre-piloto.md)). Sobre los diez primeros supuestos
 de esta sección la decisión fue la misma: **se mantiene el comportamiento
 actual**.
 
@@ -299,6 +299,30 @@ línea de delegación con la fecha, más las cuatro de siempre.
   funciona con la ruta PLANNED. Es decir, la alternativa no existe todavía:
   antes de apagarlo hay que darle a la oficina una forma de corregir la carga
   de una ruta que ya salió.
+
+### 11. Los llenos que vuelven reponen el lote más antiguo del que salieron
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** al
+  liquidar, los llenos que volvieron sin entregar se devuelven al galpón con
+  su movimiento, **desde lo contado**, igual que los vacíos, y reponen el lote
+  del que salieron: primero el más antiguo de los que cargó esa ruta, y a
+  ninguno más de lo que la ruta cargó de él. El conteo va por tipo de envase.
+  Contar más llenos de un tipo de los que la ruta cargó es un error de conteo
+  que la pantalla rechaza, no una diferencia que se registra.
+- **Asumimos:** que en el galpón un lleno que vuelve se vuelve a cargar en la
+  próxima ruta como cualquier otro, y que al dueño no le importa de qué lote
+  exacto era ese bidón mientras el lote más viejo se use primero.
+- **Construido encima:** `RouteSettlementService.returnFullsToPlant`: un
+  `FULL_RETURN` por lote repuesto y el `available_qty` de ese lote, en la misma
+  transacción de la liquidación. El origen de cada carga ya estaba en
+  `route_loads`: no hizo falta columna nueva.
+- **Preguntar:** cuando el chofer vuelve con bidones llenos que no entregó,
+  ¿esos bidones vuelven al stock para cargar mañana, o se tratan aparte (por
+  ejemplo, se revisan o se descartan por la fecha del lote)?
+- **Si dice que no:** medio. Si se revisan antes de volver al stock, hace falta
+  un estado intermedio (lleno en revisión) y una operación para liberarlo; el
+  movimiento de la liquidación dejaría de reponer el lote directamente. Si se
+  descartan, el retorno sería una baja por daño y no un `FULL_RETURN`.
 
 ## Validados
 

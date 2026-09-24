@@ -674,6 +674,153 @@ describe("liquidar descarga los vacíos al galpón (EMPTY_UNLOAD)", () => {
   });
 });
 
+// Decisión delegada del 2026-09-24 (supuestos-por-validar.md): los llenos que
+// vuelven al galpón se emiten DESDE LO CONTADO, por tipo de envase como los
+// vacíos, y reponen primero el lote más antiguo del que salieron, sin pasarse
+// nunca de lo que la ruta cargó de cada lote.
+describe("liquidar devuelve los llenos al galpón y repone su lote (FULL_RETURN)", () => {
+  async function batchAvailable(batchItemId: string): Promise<number> {
+    const item = await prisma.batchItem.findUniqueOrThrow({ where: { id: batchItemId } });
+    return item.availableQty;
+  }
+
+  function fullReturnsOf(routeId: string) {
+    return prisma.containerMovement.findMany({
+      where: { routeId, type: ContainerMovementType.FULL_RETURN },
+      orderBy: { quantity: "desc" },
+    });
+  }
+
+  /** Una ruta terminada de un tipo propio, con sus cargas y una entrega. */
+  async function finishedRouteOf(
+    typeId: string,
+    loads: { batchItemId: string; quantity: number }[],
+    delivered: number,
+  ): Promise<string> {
+    const refill = await createProductFor(typeId, "REFILL");
+    const { locationId } = await createFreshLocation();
+    const routeId = await createRoute();
+    for (const load of loads) await addLoad(routeId, load.batchItemId, load.quantity);
+    const stopId = await addStop(routeId, locationId);
+    await startRoute(routeId);
+    await deliverStop(routeId, stopId, {
+      items: [{ productId: refill, quantity: delivered }],
+    }).then((r) => expect(r.status).toBe(200));
+    await finishRoute(routeId);
+    return routeId;
+  }
+
+  test("6 cargados, 5 entregados y 1 contado de vuelta: el inventario y el lote cierran", async () => {
+    const typeId = await createContainerType();
+    const batchItemId = await createBatchItem(6, typeId);
+    const routeId = await finishedRouteOf(typeId, [{ batchItemId, quantity: 6 }], 5);
+    expect(await batchAvailable(batchItemId)).toBe(0);
+    expect(await fullsOnRoute(typeId)).toBe(1);
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 1,
+      fullReturnedByType: [{ containerTypeId: typeId, quantity: 1 }],
+      emptiesCollected: [],
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.differences.containers).toBe(0);
+    const returns = await fullReturnsOf(routeId);
+    expect(returns).toHaveLength(1);
+    expect(returns[0]).toEqual(
+      expect.objectContaining({
+        fromState: ContainerState.FULL_ON_ROUTE,
+        toState: ContainerState.FULL_AT_PLANT,
+        quantity: 1,
+        recordedById: adminUserId,
+      }),
+    );
+    // El camión quedó vacío de llenos, y el lleno que volvió se puede volver a
+    // cargar: el galpón (por estado) y el lote (available_qty) dicen lo mismo.
+    expect(await fullsOnRoute(typeId)).toBe(0);
+    expect(await batchAvailable(batchItemId)).toBe(1);
+    expect(await netInState(typeId, ContainerState.FULL_AT_PLANT)).toBe(1);
+  });
+
+  test("repone primero el lote más antiguo del que salió, con tope en lo que la ruta cargó de él", async () => {
+    const typeId = await createContainerType();
+    // Las fechas de lote van hacia atrás: el segundo creado es el MÁS ANTIGUO.
+    const newer = await createBatchItem(10, typeId);
+    const older = await createBatchItem(4, typeId);
+    // FIFO: los 4 del antiguo primero, después 2 del nuevo.
+    const routeId = await finishedRouteOf(
+      typeId,
+      [
+        { batchItemId: older, quantity: 4 },
+        { batchItemId: newer, quantity: 2 },
+      ],
+      1,
+    );
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 5,
+      fullReturnedByType: [{ containerTypeId: typeId, quantity: 5 }],
+      emptiesCollected: [],
+    });
+
+    expect(response.status).toBe(201);
+    // 5 vuelven: 4 llenan lo que salió del antiguo y el quinto va al nuevo.
+    // Con otra regla (el más nuevo primero, o proporcional) estos números no
+    // salen, por eso las cargas son desparejas.
+    expect(await batchAvailable(older)).toBe(4);
+    expect(await batchAvailable(newer)).toBe(9);
+    const returns = await fullReturnsOf(routeId);
+    expect(returns.map((movement) => movement.quantity)).toEqual([4, 1]);
+    expect(await fullsOnRoute(typeId)).toBe(0);
+  });
+
+  test("sin desglose, una ruta de un solo tipo de envase devuelve el total a ese tipo", async () => {
+    const typeId = await createContainerType();
+    const batchItemId = await createBatchItem(6, typeId);
+    const routeId = await finishedRouteOf(typeId, [{ batchItemId, quantity: 6 }], 4);
+
+    const response = await postSettlement(routeId, { fullReturned: 2, emptiesCollected: [] });
+
+    expect(response.status).toBe(201);
+    expect(await batchAvailable(batchItemId)).toBe(2);
+    expect(await fullsOnRoute(typeId)).toBe(0);
+  });
+
+  test("contar más llenos de los que la ruta cargó de ese tipo es imposible: 400 y nada se escribe", async () => {
+    const typeId = await createContainerType();
+    const batchItemId = await createBatchItem(3, typeId);
+    const routeId = await finishedRouteOf(typeId, [{ batchItemId, quantity: 3 }], 1);
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 4,
+      fullReturnedByType: [{ containerTypeId: typeId, quantity: 4 }],
+      emptiesCollected: [],
+    });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("cargó 3");
+    expect(await batchAvailable(batchItemId)).toBe(0);
+    expect(await fullReturnsOf(routeId)).toHaveLength(0);
+    await getSettlement(routeId).then((r) => expect(r.body.settlement).toBeNull());
+  });
+
+  test("el total y el desglose por tipo tienen que coincidir", async () => {
+    const typeId = await createContainerType();
+    const batchItemId = await createBatchItem(3, typeId);
+    const routeId = await finishedRouteOf(typeId, [{ batchItemId, quantity: 3 }], 1);
+
+    const response = await postSettlement(routeId, {
+      fullReturned: 1,
+      fullReturnedByType: [{ containerTypeId: typeId, quantity: 2 }],
+      emptiesCollected: [],
+    });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("no coincide");
+    expect(await fullReturnsOf(routeId)).toHaveLength(0);
+  });
+});
+
 describe("idempotency and route state guards", () => {
   test("a second POST is rejected with 409 and only one settlement row exists", async () => {
     const { routeId } = await freshFinishedRoute();
