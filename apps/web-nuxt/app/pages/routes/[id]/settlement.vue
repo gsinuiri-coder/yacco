@@ -12,7 +12,9 @@ import type {
   Route,
   RouteSettlementDifferences,
   RouteSettlementView,
+  RouteTruckStockLine,
 } from "@yacco/shared";
+import type { CountSheetRow } from "../../../utils/settlement";
 
 /**
  * La liquidación de la ruta (HU-17): la pantalla contra la que se cuentan los
@@ -29,6 +31,7 @@ const api = useApi();
 const route = ref<Route | null>(null);
 const view = ref<RouteSettlementView | null>(null);
 const catalog = ref<ContainerType[]>([]);
+const truckStock = ref<RouteTruckStockLine[]>([]);
 const loading = ref(true);
 const loadError = ref<unknown>(null);
 const slow = useSlowRequest(loading);
@@ -37,15 +40,19 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    const [routeResponse, viewResponse, types] = await Promise.all([
+    const [routeResponse, viewResponse, types, stock] = await Promise.all([
       api.request<Route>(`/routes/${routeId}`),
       api.request<RouteSettlementView>(`/routes/${routeId}/settlement`),
       // El catálogo de su endpoint: arma la hoja de conteo de vacíos por tipo.
       api.request<ContainerType[]>("/container-types"),
+      // Qué tipos de lleno cargó la ruta y cuántos siguen arriba según el
+      // libro: arma la hoja de llenos que vuelven.
+      api.request<RouteTruckStockLine[]>(`/routes/${routeId}/truck-stock`),
     ]);
     route.value = routeResponse;
     view.value = viewResponse;
     catalog.value = types;
+    truckStock.value = stock;
   } catch (error) {
     loadError.value = error;
   } finally {
@@ -67,7 +74,7 @@ const settlement = computed(() => view.value?.settlement ?? null);
 const canSettle = computed(() => route.value?.status === "FINISHED" && settlement.value === null);
 
 // Lo que se escribe, en crudo.
-const fullReturned = ref("");
+const fullsByType = reactive<Record<string, string>>({});
 const emptiesByType = reactive<Record<string, string>>({});
 const notes = ref("");
 const validationError = ref<string | null>(null);
@@ -76,19 +83,38 @@ const submitting = ref(false);
 /** Sólo llegan en la respuesta del POST; al volver a entrar se recalculan lo que se puede. */
 const differences = ref<RouteSettlementDifferences | null>(null);
 
-watch([fullReturned, emptiesByType], () => {
+watch([fullsByType, emptiesByType], () => {
   validationError.value = null;
 });
 
 const types = computed(() =>
   view.value ? countableTypes(catalog.value, view.value.expected) : [],
 );
-const counted = computed(() =>
-  types.value.map((type) => ({
-    type,
-    quantity: emptiesCountOrNull(emptiesByType[type.id] ?? ""),
-  })),
+const emptiesRows = computed(() =>
+  view.value
+    ? types.value.map((type) => ({ type, expected: pickedUpOf(view.value!.expected, type.id) }))
+    : [],
 );
+/** Llenos por tipo que cargó la ruta; «según el libro» es lo que sigue arriba. */
+const fullRows = computed(() =>
+  truckStock.value.map((line) => ({ type: line.containerType, expected: line.onBoard })),
+);
+
+/** Cada fila con lo escrito ya leído: `null` si no es un conteo válido. */
+function readSheet(rows: CountSheetRow[], raw: Record<string, string>) {
+  const lines = rows.map((row) => ({
+    type: row.type,
+    quantity: emptiesCountOrNull(raw[row.type.id] ?? ""),
+  }));
+  return {
+    lines,
+    typed: rows.some((row) => String(raw[row.type.id] ?? "").trim() !== ""),
+    valid: lines.every((line) => line.quantity !== null),
+    total: lines.reduce((sum, line) => sum + (line.quantity ?? 0), 0),
+  };
+}
+const counted = computed(() => readSheet(emptiesRows.value, emptiesByType));
+const countedFulls = computed(() => readSheet(fullRows.value, fullsByType));
 
 /**
  * El aviso agregado espera a que alguien escriba: un campo vacío vale cero,
@@ -98,28 +124,32 @@ const counted = computed(() =>
  */
 const live = computed(() => {
   if (!view.value) return { kind: "none" } as const;
-  const typed = types.value.some((type) => String(emptiesByType[type.id] ?? "").trim() !== "");
-  const valid = counted.value.every((row) => row.quantity !== null);
-  const total = counted.value.reduce((sum, row) => sum + (row.quantity ?? 0), 0);
+  const sheetTotal = (sheet: ReturnType<typeof readSheet>) =>
+    sheet.typed && sheet.valid ? sheet.total : null;
   return liveDifference(
     view.value.expected,
-    countOrNull(fullReturned.value),
-    typed && valid ? total : null,
+    sheetTotal(countedFulls.value),
+    sheetTotal(counted.value),
   );
 });
 
 async function settle(): Promise<void> {
   if (submitting.value) return;
-  const returned = countOrNull(fullReturned.value);
-  if (returned === null) {
-    validationError.value = "Los llenos que volvieron deben ser un número entero, 0 o más";
+  const invalidFull = countedFulls.value.lines.find((line) => line.quantity === null);
+  if (invalidFull) {
+    validationError.value = `Los llenos que volvieron de ${invalidFull.type.name} deben ser un número entero, 0 o más`;
     return;
   }
-  const invalid = counted.value.find((row) => row.quantity === null);
+  const invalid = counted.value.lines.find((line) => line.quantity === null);
   if (invalid) {
     validationError.value = `Los vacíos contados de ${invalid.type.name} deben ser un número entero, 0 o más`;
     return;
   }
+  // Sólo las líneas con algo: contar cero de un tipo no es un movimiento.
+  const withSomething = (sheet: ReturnType<typeof readSheet>) =>
+    sheet.lines
+      .filter((line) => (line.quantity ?? 0) > 0)
+      .map((line) => ({ containerTypeId: line.type.id, quantity: line.quantity! }));
 
   submitting.value = true;
   submitError.value = null;
@@ -129,11 +159,9 @@ async function settle(): Promise<void> {
       {
         method: "POST",
         body: {
-          fullReturned: returned,
-          // Sólo las líneas con algo: contar cero de un tipo no es un movimiento.
-          emptiesCollected: counted.value
-            .filter((row) => (row.quantity ?? 0) > 0)
-            .map((row) => ({ containerTypeId: row.type.id, quantity: row.quantity! })),
+          fullReturned: countedFulls.value.total,
+          fullReturnedByType: withSomething(countedFulls.value),
+          emptiesCollected: withSomething(counted.value),
           ...(notes.value.trim() === "" ? {} : { notes: notes.value.trim() }),
         },
       },
@@ -271,88 +299,38 @@ const settledEmpties = computed(() =>
           description="Lo único que se cuenta a mano. Todo lo demás sale del libro."
         >
           <form class="space-y-6" novalidate aria-label="Liquidar la ruta" @submit.prevent="settle">
-            <div class="grid gap-5 sm:grid-cols-[14rem_1fr]">
-              <UFormField
-                label="Llenos que volvieron sin entregar"
-                :help="`Según el libro deberían volver ${expectedFullReturn(view.expected)}.`"
-              >
-                <UInput
-                  v-model="fullReturned"
-                  type="number"
-                  :min="0"
-                  :step="1"
-                  :disabled="submitting || !canSettle"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField
-                label="Nota (opcional)"
-                help="Si hay una diferencia, acá se explica. La diferencia se registra igual."
-              >
-                <UInput
-                  v-model="notes"
-                  placeholder="Faltaron 2 bidones; el chofer dice que se rompió uno en la ruta"
-                  :disabled="submitting || !canSettle"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
+            <SettlementCountSheet
+              v-if="fullRows.length > 0"
+              v-model="fullsByType"
+              title="Llenos que volvieron sin entregar"
+              :description="`Uno por tipo de envase: cada línea vuelve al galpón y repone el lote más antiguo del que salió. Según el libro deberían volver ${expectedFullReturn(view.expected)}. Un campo vacío cuenta como cero.`"
+              caption="Llenos que volvieron sin entregar, por tipo de envase"
+              input-label="Llenos que volvieron de"
+              :rows="fullRows"
+              :disabled="submitting || !canSettle"
+            />
 
-            <div class="space-y-2">
-              <h3 class="font-medium text-highlighted">Vacíos contados al descargar</h3>
-              <p class="text-sm text-muted">
-                Uno por tipo de envase: cada línea vuelve al galpón como su propio movimiento. Un
-                campo vacío cuenta como cero.
-              </p>
-              <table class="w-full text-sm">
-                <caption class="sr-only">
-                  Vacíos contados al descargar el camión, por tipo de envase
-                </caption>
-                <thead class="text-left text-xs tracking-wide text-muted uppercase">
-                  <tr>
-                    <th scope="col" class="py-2 font-medium">Tipo de envase</th>
-                    <th scope="col" class="py-2 text-right font-medium">Según el libro</th>
-                    <th scope="col" class="py-2 pl-6 font-medium">Contados</th>
-                    <th scope="col" class="py-2 text-right font-medium">Diferencia</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <tr v-for="row in counted" :key="row.type.id">
-                    <td class="py-2 font-medium text-highlighted">{{ row.type.name }}</td>
-                    <td class="py-2 text-right tabular-nums">
-                      {{ pickedUpOf(view.expected, row.type.id) }}
-                    </td>
-                    <td class="py-2 pl-6">
-                      <UInput
-                        v-model="emptiesByType[row.type.id]"
-                        type="number"
-                        :min="0"
-                        :step="1"
-                        :aria-label="`Vacíos contados de ${row.type.name}`"
-                        :disabled="submitting || !canSettle"
-                        class="w-28"
-                      />
-                    </td>
-                    <td
-                      class="py-2 text-right font-medium tabular-nums"
-                      :class="
-                        pickedUpOf(view.expected, row.type.id) - (row.quantity ?? 0) === 0
-                          ? 'text-success'
-                          : 'text-warning'
-                      "
-                    >
-                      {{
-                        pickedUpOf(view.expected, row.type.id) - (row.quantity ?? 0) === 0
-                          ? "Cuadra"
-                          : describeDifference(
-                              pickedUpOf(view.expected, row.type.id) - (row.quantity ?? 0),
-                            )
-                      }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <SettlementCountSheet
+              v-model="emptiesByType"
+              title="Vacíos contados al descargar"
+              description="Uno por tipo de envase: cada línea vuelve al galpón como su propio movimiento. Un campo vacío cuenta como cero."
+              caption="Vacíos contados al descargar el camión, por tipo de envase"
+              input-label="Vacíos contados de"
+              :rows="emptiesRows"
+              :disabled="submitting || !canSettle"
+            />
+
+            <UFormField
+              label="Nota (opcional)"
+              help="Si hay una diferencia, acá se explica. La diferencia se registra igual."
+            >
+              <UInput
+                v-model="notes"
+                placeholder="Faltaron 2 bidones; el chofer dice que se rompió uno en la ruta"
+                :disabled="submitting || !canSettle"
+                class="w-full"
+              />
+            </UFormField>
 
             <UAlert
               v-if="live.kind === 'squares'"
