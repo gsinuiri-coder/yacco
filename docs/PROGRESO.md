@@ -11,16 +11,16 @@ app funciona al cerrar cada fase.
 
 ## Estado por fase
 
-| Fase                    | Estado      |
-| ----------------------- | ----------- |
-| 0 — Descubrimiento      | ✅ hecha    |
-| 1 — Base del repo       | ✅ hecha    |
-| 2 — Google Cloud        | ✅ hecha    |
-| 3 — La API en Cloud Run | ✅ hecha    |
-| 4 — El web en Vercel    | ✅ hecha    |
-| 5 — CI/CD               | ✅ hecha    |
-| 6 — Ensayo              | ✅ hecha    |
-| 7 — Corte               | 🟨 en curso |
+| Fase                    | Estado   |
+| ----------------------- | -------- |
+| 0 — Descubrimiento      | ✅ hecha |
+| 1 — Base del repo       | ✅ hecha |
+| 2 — Google Cloud        | ✅ hecha |
+| 3 — La API en Cloud Run | ✅ hecha |
+| 4 — El web en Vercel    | ✅ hecha |
+| 5 — CI/CD               | ✅ hecha |
+| 6 — Ensayo              | ✅ hecha |
+| 7 — Corte               | ✅ hecha |
 
 ## Punto de partida verificado
 
@@ -386,7 +386,7 @@ A2, A3 + A8 (cadena de deploy y WIF) y la parte barata de A6 (`x-powered-by` y
 clickjacking), en ese orden, cada uno en su PR. A1, A4, A5, A7, la CSP completa y
 el refresh token fuera de `localStorage` van al backlog.
 
-## Fase 7 — El corte 🟨
+## Fase 7 — El corte ✅
 
 **Mecanismo:** D-019. El web de Render redirige a `yacco-web.vercel.app`; la
 API de Render queda viva sobre la misma rama `main` de Neon.
@@ -402,32 +402,30 @@ API de Render queda viva sobre la misma rama `main` de Neon.
 | …`curl https://yacco-web.vercel.app/health` | `{"status":"ok","commit":"6ab70cbe…","environment":"production"}`                                                                             |
 | 3. Render vivo sobre la misma `main`        | `https://yacco-api.onrender.com/health` → `{"status":"ok","commit":"6ab70cbe…","environment":null}` (Render no tiene `APP_ENV`; es esperable) |
 
-### La ventana de convivencia: 2026-09-17 → **2026-09-24**
+### Cierre — 2026-09-23/24 (hora de Lima: la noche del 23)
 
-Durante la ventana:
+Giancarlo levantó el plazo del 2026-09-24: sin usuarios reales, la fase se
+cerró de corrido. **Render NO se suspendió** (no hay `RENDER_API_KEY`, y se
+decidió no pedirla): la rotación de `main` le cortó la base.
 
-- **Render queda vivo** (`yacco-api.onrender.com` y su sitio estático), sobre la
-  MISMA `main` que Cloud Run. Es lo que hace real la vuelta atrás.
-- **No se mergea ninguna migración que no sea expand/contract.** Una migración
-  de CI le cambia el esquema a Render en el mismo instante.
-- **Vuelta atrás si algo sale mal:** revertir el PR del corte (D-019) y avisar.
-  Nada de arreglos improvisados con el tráfico cortado.
+| Paso                                          | Resultado                                                                                                                                                                                                                                    |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Corte del web a Nuxt (#175, `2ed19f1`)        | El deploy falló en «5 · Web a Vercel» sin publicar nada (las APIs, en `2ed19f1`; el web, todavía el React). Causa y arreglo en D-023, punto 7                                                                                                |
+| Arreglo del preset de Nitro (#176, `0e0f58d`) | 9/9 jobs verdes. Las dos APIs y `/health` por `yacco-web.vercel.app` en `0e0f58d` (`production`); `/`, `/login` y `/customers/new` sirven el Nuxt con los headers A6; `smoke:prod` con `EXPECTED_COMMIT` → `Smoke OK.`                       |
+| `yacco-web-nuxt` borrado                      | Desconectado de Git y borrado con `vercel api` (D-023, punto 8)                                                                                                                                                                              |
+| Chequeo previo a la fase B                    | 9/9 jobs de `0e0f58d`, `smoke:prod` OK, `yacco-api` y `yacco-api-demo` `Ready` al 100%, **cero respuestas 5xx en las dos desde el corte** (2026-09-17 06:28 UTC)                                                                             |
+| Rotación de la contraseña de `main` (D-017)   | Hecha el 2026-09-24 a las 03:11 UTC. La contraseña vieja de `main` (que era la vieja de demo) queda **rechazada** contra `main`; producción en la revisión `00035-4dd`; destruida la v1 de las cuatro URLs. Incidente de ~2,5 min: ver D-017 |
+| Render                                        | **Vivo, pero sin acceso a la base**: `yacco-api.onrender.com/health/db` → 503 «Database is unreachable» después de reiniciar el compute de `main`                                                                                            |
+| Secretos huérfanos de Render                  | Borrados `yacco-render-jwt-refresh-secret` y `yacco-tmp-render-refresh-probe` (no queda ningún secreto con «render» en el nombre)                                                                                                            |
+| Render fuera del repo                         | `render.yaml` borrado; fuera las menciones operativas y la reserva `RENDER_GIT_COMMIT` de `/health` (D-009, con test)                                                                                                                        |
 
-### Qué hacer el 2026-09-24 (tanda 6), si la ventana cerró sin incidentes
+**Pendiente de Giancarlo, sin urgencia:** borrar los dos servicios de Render
+(`yacco-api` y `yacco-web`) desde su dashboard. No sirven nada útil: la API
+no llega a la base y el web es el React viejo.
 
-1. **Suspender los dos servicios de Render** (`yacco-api` y `yacco-web`). Lo hace
-   el dueño desde el dashboard: el agente no tiene sesión en Render.
-2. **Rotar la contraseña del rol de `main` en Neon** (D-017): la vieja de demo
-   todavía la abre. Reset del rol, `pnpm secrets:gcp`, redeploy de producción,
-   y destruir las versiones viejas de `yacco-*-database-url` y
-   `yacco-*-direct-url`. Recién se puede con Render suspendido.
-3. **PR propio** que borre `render.yaml` y las menciones a Render de
-   `ENTORNOS.md`, `DEPLOY.md` y `.agents/rules/infra.md`. La redirección de
-   D-019 ya no existe: se fue con el web React en #171.
-4. **Borrar las ramas de respaldo de Neon** `backup-pre-ci-deploy-20260916` y
-   `backup-pre-seed-creds-20260917` (el dueño: los agentes tienen denegado borrar
-   ramas).
-5. **Resumen final** en este archivo y fase 7 ✅.
+**En curso en esta misma fase:** los PR de Dependabot, la rotación del token
+de Vercel y el borrado de las ramas de respaldo de Neon. Los registra el PR
+que los cierra.
 
 ## Antes del corte: los arreglos que lo bloquean
 
@@ -574,12 +572,12 @@ ninguna base.
 
 ## Credenciales y recursos con fecha
 
-| Qué                                           | Fecha                                                     | Qué hacer                                                                                                                                             |
-| --------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Token de Vercel (`yacco-ci-vercel-token`)     | creado 2026-09-16, **vence 2026-10-16**                   | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015                                   |
-| Rama de Neon `backup-pre-ci-deploy-20260916`  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)  | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                                  |
-| Rama de Neon `backup-pre-seed-creds-20260917` | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                                  |
-| Secreto `yacco-admin-initial-password`        | 2026-09-17                                                | El dueño la lee, la cambia desde la app y después destruye la versión: `gcloud secrets versions destroy latest --secret=yacco-admin-initial-password` |
+| Qué                                           | Fecha                                                     | Qué hacer                                                                                                                            |
+| --------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Token de Vercel (`yacco-ci-vercel-token`)     | creado 2026-09-16, **vence 2026-10-16**                   | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015                  |
+| Rama de Neon `backup-pre-ci-deploy-20260916`  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)  | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                 |
+| Rama de Neon `backup-pre-seed-creds-20260917` | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                 |
+| Secreto `yacco-admin-initial-password`        | 2026-09-17                                                | **No se cambia hasta el final del proyecto** (Giancarlo, 2026-09-24). Entonces: la lee, la cambia desde la app y destruye la versión |
 
 **Un token de Vercel vencido frena el deploy en el preflight**, antes de tocar
 ninguna base: `scripts/check-vercel-token.mjs` lo valida con `vercel whoami`.
@@ -843,8 +841,9 @@ es D-023.
 
 ### Tanda final — Corte (D-023)
 
-Estado al 2026-09-23: **PR abierto, sin mergear.** El merge espera que
-Giancarlo confirme el recorrido de paridad contra demo.
+Estado: **hecha.** #175 mergeado el 2026-09-23 con el OK de Giancarlo al
+recorrido de paridad. Su deploy falló en el web y lo arregló #176; el corte
+quedó verificado sobre `0e0f58d` (ver «Cierre», en la fase 7).
 
 - **Antes del PR, `main` no se desplegaba:** #171 dejó el Dockerfile copiando
   `apps/web/package.json` y «3 · Imagen» fallaba. Las APIs, en `19a3553`; el
@@ -862,8 +861,8 @@ Después del merge, el corte no está hecho sin:
    nuevo, servido por el Nuxt (regla 1 de D-021).
 3. El HTML de `/` y `/login` es el del Nuxt, con los headers A6.
 4. `pnpm smoke:prod` con `EXPECTED_COMMIT` → `Smoke OK.`
-5. Giancarlo desconecta Git de `yacco-web-nuxt` y, verificado el corte, lo
-   borra.
+5. Verificado el corte, se desconecta Git de `yacco-web-nuxt` y se lo borra.
+   Hecho por el agente con `vercel api` (D-023, punto 8).
 
 ## Al terminar la migración
 
@@ -871,17 +870,16 @@ Rotar los tokens que hayan vivido en un archivo plano durante la operación:
 `VERCEL_TOKEN` —que además vive en Secret Manager como `yacco-ci-vercel-token`
 y hay que volver a subir con `pnpm secrets:gcp --upload=VERCEL_TOKEN` después
 de rotarlo (D-015)—, y
-`GH_TOKEN` / `NEON_API_KEY` / `RENDER_API_KEY` si se llegaron a usar.
+`GH_TOKEN` / `NEON_API_KEY` si se llegaron a usar. `RENDER_API_KEY` no se
+llegó a usar.
 
 Borrar la rama de respaldo `backup-pre-ci-deploy-20260916` (ver «Punto de
 retorno»), sólo cuando la fase 7 haya cerrado sin incidentes. Si hubo que
 restaurar en algún momento, borrar también `main_before_restore_*` y
 `demo_orphan_*`, una vez que no haga falta recuperar nada de ahí.
 
-**Al suspender Render, rotar la contraseña de `main`** (D-017): la contraseña
-vieja de demo es la de `main` y sigue abriéndola. Reset del rol en `main`,
-`pnpm secrets:gcp`, redeploy de producción, y destruir las versiones viejas de
-`yacco-demo-*-url` y `yacco-production-*-url`.
+~~Rotar la contraseña de `main`~~ — **hecho el 2026-09-24** (D-017), sin
+suspender Render: la contraseña vieja de demo ya no abre `main`.
 
 ~~Borrar la etiqueta `:demo` de Artifact Registry~~ — **borrada el 2026-09-17**
 (`gcloud artifacts docker tags delete .../api:demo`, confirmado con `tags list`:

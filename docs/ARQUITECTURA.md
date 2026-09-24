@@ -419,6 +419,12 @@ optimizar el costo antes que la experiencia.
 
 ### D-009 — El commit desplegado viaja en `DEPLOYED_COMMIT`, con `RENDER_GIT_COMMIT` de reserva
 
+> **La reserva se fue con Render (fase 7).** Desde el PR «chore: retire
+> Render», `deployedCommit()` lee sólo `DEPLOYED_COMMIT`. Un test fija que
+> `RENDER_GIT_COMMIT` se ignora, y lo hace justo en los dos casos en que la
+> reserva contestaba: la variable ausente y la variable vacía. El resto de
+> la decisión sigue en pie.
+
 **Contexto.** `/health` publica el commit del build corriendo para poder
 comparar en segundos lo desplegado contra el tip de `main`. Existe porque un
 auto-deploy que nunca disparó ya pasó desapercibido una vez (2026-08-24).
@@ -1061,6 +1067,42 @@ no tiene un consumidor fuera de Secret Manager: reset del rol en `main`,
 `pnpm secrets:gcp`, redeploy de producción, y destruir las versiones viejas
 de `yacco-demo-*-url` y `yacco-production-*-url`, que contienen ese valor.
 
+**Cerrado el 2026-09-24 03:11 UTC (fase 7, B3).** Se hizo sin suspender
+Render, por decisión de Giancarlo (sin usuarios reales): la rotación le cortó
+la base. Sin imprimir ningún valor:
+
+1. Primero la línea de base: la contraseña vieja de `main` ABRE `main`. Sin
+   ese dato, un rechazo después no probaría nada.
+2. Reset de `neondb_owner` en `main` (`br-sweet-poetry-au36xqnj`) por la API
+   de Neon.
+3. `pnpm secrets:gcp`: versión nueva sólo de `yacco-production-database-url`
+   y `yacco-production-direct-url`; las de demo «sin cambios».
+4. Redeploy de sólo `yacco-api` con la imagen que ya corría
+   (`api:0e0f58d100c9`), revisión `00034-kcv` → `00035-4dd`. `/health/db` 200
+   y `pnpm smoke:prod` OK.
+5. Recién con todo verde, destruida la versión 1 de las cuatro URLs
+   (`yacco-{production,demo}-{database,direct}-url`). Se comprobó una por una
+   que tenían la contraseña vieja.
+
+| Credencial                                      | contra `main`             |
+| ----------------------------------------------- | ------------------------- |
+| contraseña VIEJA de `main` (= la vieja de demo) | **rechazada** (autentic.) |
+| contraseña NUEVA de `main`                      | abre                      |
+| contraseña de demo                              | **rechazada** (autentic.) |
+
+**Incidente.** El primer intento abortó entre el reset y `secrets:gcp`:
+`.env.setup` no tenía `GCP_PROJECT_ID`, `NEON_PROJECT_ID` ni `NEON_ORG_ID`.
+Se completó pasando esos ids (no son secretos) por el entorno (D-004).
+Durante unos 2,5 minutos (03:11:15 → 03:13:56 UTC) producción no pudo abrir
+conexiones nuevas a la base. **La lección:** antes de un paso irreversible,
+correr en seco lo que depende de él (`secrets:gcp` sin cambios).
+
+**Render, sin base.** Después de la rotación, `yacco-api.onrender.com/health/db`
+siguió en 200: una conexión que Render tenía abierta sobrevive a un cambio de
+contraseña. Se reinició el compute de `main` (`ep-damp-scene-aurftg1h`) para
+cortar las sesiones. Después: Render → **503 «Database is unreachable»**;
+Cloud Run → 200, y el smoke, OK.
+
 **Alternativa descartada.** _Rotar `main` ahora._ Deja a Render —que sirve a
 los usuarios y es la vuelta atrás del corte— sin base, y el arreglo necesita una
 sesión en el dashboard de Render que el agente no tiene.
@@ -1403,7 +1445,16 @@ build` no cambian, así que fuera de Vercel sigue el default a demo de
    `buildCommand` como lo corre `vercel build` (desde `apps/web-nuxt`, con
    `VERCEL=1` y `NOW_BUILDER=1`) y le pasa `assertPublishable` a
    `apps/web-nuxt/.vercel/output/config.json`. Un PR que rompa la salida del
-   web queda rojo antes del merge.
+   web queda rojo antes del merge. Mergeado en #176 (`0e0f58d`); su deploy
+   salió con los 9 jobs en verde y publicó el Nuxt.
+
+8. **`yacco-web-nuxt` borrado** (2026-09-23, con el corte ya verificado sobre
+   `0e0f58d`). Con `vercel api` y la sesión de la CLI: estaba conectado a Git
+   (`gsinuiri-coder/yacco`, rama `main`) y sólo tenía sus dominios
+   `*.vercel.app`. Primero `DELETE /v9/projects/{id}/link` (quedó
+   `link: null`) y después `DELETE /v9/projects/{id}`. Después, la API
+   contesta `Project not found` (404) y `yacco-web-nuxt.vercel.app` da 404.
+   Con él se van el check «Vercel» y el comentario de preview de los PR.
 
 **Vuelta atrás.** Promover en Vercel el último deploy React de `yacco-web`
 (`dpl_DbcUwLGm5UfPVmKVtGFzignnbaUj`, commit `19a3553`):
@@ -1412,6 +1463,15 @@ o, desde el dashboard, «Promote to Production» sobre ese deploy. Promover no
 reconstruye, así que no depende del `rootDirectory` nuevo ni de `apps/web`.
 Las APIs no se tocan: el React habla con la misma API por su propio rewrite.
 Después, avisar; nada de arreglos improvisados.
+
+**Volver adelante después de un rollback** (verificado contra la
+documentación de Vercel). Después de un Instant Rollback, los deploys nuevos
+de producción no toman el dominio: el job 5 crea el deploy, pero
+`yacco-web.vercel.app` sigue en el del rollback hasta «Undo Rollback» en el
+dashboard o `vercel promote <deploy nuevo>`. Si el rollback fue al React, el
+smoke lo detecta, porque exige el HTML del Nuxt. Si fue a otro deploy del
+Nuxt, no lo detecta: `/health` por el dominio lo contesta la API, que sí
+está en el commit nuevo. Cerrar siempre el rollback (`DEPLOY.md`).
 
 **Alternativas descartadas.**
 

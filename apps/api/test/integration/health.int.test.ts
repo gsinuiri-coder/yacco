@@ -2,7 +2,7 @@ import request from "supertest";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
-// Simulates what Render injects into the service environment, set BEFORE
+// Simulates what the Cloud Run deploy sets on the service (deploy-api.mjs), set BEFORE
 // the app boots because ConfigModule reads process.env at bootstrap. The
 // null case (variable absent) is covered at the route by
 // health.controller.test.ts without a database.
@@ -11,12 +11,12 @@ const DEPLOYED_COMMIT = "2fdd15c8aeb2f626e00e1345ef90499c7f28651a";
 let ctx: TestAppContext;
 
 beforeAll(async () => {
-  process.env.RENDER_GIT_COMMIT = DEPLOYED_COMMIT;
+  process.env.DEPLOYED_COMMIT = DEPLOYED_COMMIT;
   ctx = await startTestApp();
 }, 180000);
 
 afterAll(async () => {
-  delete process.env.RENDER_GIT_COMMIT;
+  delete process.env.DEPLOYED_COMMIT;
   await stopTestApp(ctx);
 });
 

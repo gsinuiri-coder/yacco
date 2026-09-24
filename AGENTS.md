@@ -77,7 +77,7 @@ spec disagree, STOP and ask before proceeding.
 - Una migración ya aplicada en cualquier base —incluida la local de Docker—
   está congelada. No se edita, ni siquiera un comentario: cambiar el archivo
   rompe el checksum y `prisma migrate deploy` se niega a avanzar, lo que en
-  el build de Render significa deploy fallido contra una base viva. Las
+  el deploy de CI significa deploy fallido contra una base viva. Las
   correcciones van en una migración nueva, o el comentario se escribe en el
   código que la acompaña. Si el archivo ya se editó por error y solo afecta
   a la base local, se resuelve con `prisma migrate reset` en Docker, nunca

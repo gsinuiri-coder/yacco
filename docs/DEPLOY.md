@@ -4,9 +4,9 @@ Qué comando corre qué, y en qué orden. Los entornos y qué base mira cada uno
 están en [`ENTORNOS.md`](./ENTORNOS.md); el porqué de cada decisión, en
 [`ARQUITECTURA.md`](./ARQUITECTURA.md).
 
-> **Estado:** fases 2 a 5 construidas. El deploy corre desde CI; el tráfico de
-> los usuarios sigue en Render hasta el corte (fase 7). Lo que hay hecho está
-> en [`PROGRESO.md`](./PROGRESO.md).
+> **Estado:** migración terminada (fase 7). Producción es Cloud Run + Vercel y
+> el deploy corre desde CI; Render está retirado. Lo que hay hecho está en
+> [`PROGRESO.md`](./PROGRESO.md).
 
 ## Preparar la máquina, una vez
 
@@ -80,7 +80,7 @@ pnpm env:check          # lista qué falta, sin mostrar ningún valor
 ```
 
 `secrets:generate` no pisa un valor que ya exista; para rotarlos, `--force`.
-Los secretos son **nuevos**, no copiados de Render: rotarlos sólo invalida
+Los secretos son **nuevos**: rotarlos sólo invalida
 sesiones abiertas, y hoy el único usuario es el dueño del repo.
 
 Estos secretos son los del entorno **local**. Los de producción viven en Secret
@@ -237,16 +237,10 @@ configurado" de "no se pudo verificar". CI ya falla en ese caso.
 ### Las migraciones
 
 Corren en un paso propio de CI, **antes** del deploy, contra `DIRECT_URL` — la
-conexión directa, no la del pooler. Es la misma forma que ya usa `render.yaml`,
-que las corre al final del build y lo explica en un comentario.
+conexión directa, no la del pooler.
 
 **Nunca al arrancar el contenedor.** Cloud Run levanta varias instancias y
 todas correrían `migrate deploy` a la vez contra la misma base.
-
-Durante los 7 días en que Render y Cloud Run comparten la rama `main` de Neon,
-**una migración le cambia el esquema a los dos en el mismo instante**. Por eso
-son expand/contract, y por eso en esos 7 días no se mergea ninguna que no lo
-sea.
 
 ### Verificar
 
@@ -271,14 +265,25 @@ node scripts/smoke.mjs api --env=demo
 
 ## Vuelta atrás
 
-Mientras Render siga vivo (los 7 días posteriores al corte), volver atrás es
-**revertir el PR del corte** (D-019): el sitio de Render se reconstruye desde
-`main` sin la redirección y la planta vuelve a usar Render, con su API intacta. Render y Cloud Run
-comparten la rama `main` de Neon justamente para que eso no pierda nada de lo
-escrito mientras tanto.
+**El web** (D-023): promover en Vercel un deploy anterior de `yacco-web`, con
+`vercel promote <deploy> --scope gsinuiricoders-projects` o con «Instant
+Rollback» / «Promote to Production» en el dashboard. No reconstruye nada.
+Después, avisar; nada de arreglos improvisados.
 
-Pasado el plazo sin incidentes se suspende Render, se registra, y `render.yaml`
-se borra en un commit propio con su PR.
+**Volver adelante tiene una trampa.** Después de un Instant Rollback, los
+deploys nuevos de producción NO toman el dominio: el `deploy --prebuilt --prod`
+del job 5 crea el deploy, pero `yacco-web.vercel.app` sigue sirviendo el del
+rollback hasta que alguien hace «Undo Rollback» en el dashboard o
+`vercel promote <deploy nuevo>`. Cerrar siempre un rollback con uno de los dos.
+
+**El smoke lo detecta** si el rollback fue al web React (el de D-023): exige el
+HTML del Nuxt en `/`, `/login` y `/customers/new`, así que el job 6 falla
+mientras el dominio siga en el React. Si el rollback fue a otro deploy del
+Nuxt, NO lo distingue: `/health` por el dominio lo contesta la API, que sí
+está en el commit nuevo.
+
+Render ya no es vuelta atrás: quedó vivo pero sin acceso a la base desde la
+rotación de `main` (D-017, fase 7).
 
 ## Reglas que no se negocian
 

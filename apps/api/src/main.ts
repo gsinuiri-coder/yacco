@@ -13,7 +13,7 @@ export async function bootstrap(): Promise<INestApplication> {
 
   // Registers SIGTERM/SIGINT handlers that call app.close() (which runs
   // PrismaService.onModuleDestroy -> $disconnect()) so a platform recycling
-  // the instance (Render) doesn't leave the pooled connection dangling.
+  // the instance (Cloud Run) doesn't leave the pooled connection dangling.
   app.enableShutdownHooks();
 
   // credentials:true requires explicit origins (not "*"); WEB_ORIGIN is a
@@ -45,7 +45,7 @@ export async function bootstrap(): Promise<INestApplication> {
   }
 
   const port = process.env.PORT ?? 3000;
-  // Render injects PORT and drops the service if it doesn't bind 0.0.0.0.
+  // Cloud Run injects PORT and only routes to a container bound on 0.0.0.0.
   await app.listen(port, "0.0.0.0");
 
   return app;

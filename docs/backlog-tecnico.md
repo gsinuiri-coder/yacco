@@ -1809,3 +1809,51 @@ bases antes de fallar.
 sin publicarla (`docker build`, sin credenciales ni `id-token`), que corra en
 cada PR o al menos en los que tocan las rutas del disparador. Tiene costo de
 minutos de runner; la caché de BuildKit del job lo acota.
+
+## Web: el primer clic después de cerrar un desplegable o cargar una página a veces no toma
+
+**Estado:** abierto, **a confirmar a mano**. **Registrado:** 2026-09-24, al
+cerrar la fase 7, sin investigar.
+
+Observado en el web Nuxt: el primer clic después de cerrar un desplegable, o
+recién cargada una página, a veces no hace nada y hay que repetirlo. Todavía
+no está reproducido de forma confiable. **Para cerrarla:** reproducirlo a mano
+con pasos fijos (qué pantalla, qué desplegable) antes de tocar código. Puede
+estar relacionado con la entrada siguiente, si el clic cae antes de que
+termine la hidratación.
+
+## Web: «Hydration completed but contains mismatches» en la consola
+
+**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+
+La consola del navegador muestra ese aviso de Vue en el web Nuxt: el HTML del
+SSR no coincide con lo que renderiza el cliente. **Para cerrarla:** identificar
+qué componente difiere (en desarrollo, Nuxt nombra el nodo) y hacer que el
+servidor y el cliente rendericen lo mismo.
+
+## Web: el ejemplo «25.00» en «Monto cobrado» no tiene nada que ver con el total
+
+**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+
+El campo «Monto cobrado» muestra «25.00» de ejemplo, un monto fijo que no sale
+del total que se está cobrando. A quien lo ve, puede parecerle un valor
+sugerido. **Para cerrarla:** que el ejemplo derive del total, o que no haya
+ejemplo numérico.
+
+## Web: «Arriba del camión» muestra lo cargado, no lo que queda
+
+**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+
+«Arriba del camión» muestra lo que se cargó en la ruta, no lo que queda
+después de las entregas. **Para cerrarla:** decidir con el dueño qué número
+espera ver ahí (lo que queda, o los dos) y calcularlo desde el ledger.
+
+## Demo: 1 bidón lleno varado «en camión» desde la ruta del 16/09
+
+**Estado:** abierto, **cubierto por «Devolver llenos al galpón no repone el
+lote del que salieron»** (arriba). **Registrado:** 2026-09-24.
+
+En demo queda 1 bidón lleno en `FULL_ON_ROUTE` desde la ruta del 16/09. Es un
+caso observado de esa entrada: al liquidar, los llenos que vuelven se
+registran como número y no emiten movimiento. Se resuelve con ella; no hace
+falta un arreglo aparte ni corregir el dato a mano.
