@@ -6,6 +6,13 @@
  *   pnpm secrets:gcp                             URLs de Neon; JWT desde Secret Manager
  *   pnpm secrets:gcp --upload=VERCEL_TOKEN       además, sube el token de Vercel
  *   pnpm secrets:gcp --env-file=<ruta> ...       lee la configuración de otro archivo
+ *   pnpm secrets:gcp --check                     sólo valida: no escribe NADA
+ *
+ * `--check` es el primer paso de toda rotación de una credencial de Neon
+ * (D-017): valida la configuración y que los ids de GCP y de Neon abren lo que
+ * tienen que abrir, ANTES de un reset que no tiene vuelta atrás. No crea
+ * secretos, versiones ni permisos, y no lee el valor de ningún secreto: sólo
+ * sus metadatos.
  *
  * Qué valores salen de la CONFIGURACIÓN (.env.setup o el entorno) y van a
  * Secret Manager es una lista EXPLÍCITA y cerrada: UPLOADABLE_FROM_CONFIG, y
@@ -89,7 +96,10 @@ export const NEVER_UPLOADED_FROM_CONFIG = {
  */
 export function parseArgs(argv) {
   const unknown = argv.filter(
-    (argument) => !argument.startsWith("--upload=") && !argument.startsWith("--env-file="),
+    (argument) =>
+      argument !== "--check" &&
+      !argument.startsWith("--upload=") &&
+      !argument.startsWith("--env-file="),
   );
   if (unknown.length > 0) {
     return { error: `Argumento desconocido: ${unknown.join(" ")}` };
@@ -123,7 +133,7 @@ export function parseArgs(argv) {
   const envFile = flag("env-file") ?? ENV_SETUP_PATH;
   if (envFile.length === 0) return { error: "--env-file vacío." };
 
-  return { upload, envFile };
+  return { upload, envFile, check: argv.includes("--check") };
 }
 
 /**
@@ -251,8 +261,77 @@ function neonConnectionString(config, branch, { pooled }) {
   return run("neonctl", args, { quiet: true, env });
 }
 
-function requireConfig(config, keys) {
-  const missing = keys.filter((key) => (config[key] ?? "").trim().length === 0);
+const REQUIRED_CONFIG = ["GCP_PROJECT_ID", "NEON_PROJECT_ID", "NEON_ORG_ID"];
+
+/** Las claves obligatorias que faltan (o están vacías) en la configuración. */
+export function missingConfig(config) {
+  return REQUIRED_CONFIG.filter((key) => (config[key] ?? "").trim().length === 0);
+}
+
+// Los secretos de runtime que la corrida real lee o crea, por entorno.
+const RUNTIME_KEYS = ["database-url", "direct-url", "jwt-access-secret", "jwt-refresh-secret"];
+
+/**
+ * `--check`: lo que la corrida real necesita para no abortar a mitad, SIN
+ * escribir nada. Devuelve la lista de problemas (vacía si puede correr).
+ *
+ * Recibe `run` para que el test vea qué comandos lanza: ninguno puede ser de
+ * escritura (`create`, `versions add`, `add-iam-policy-binding`) ni leer el
+ * valor de un secreto (`versions access`).
+ */
+export function checkCanRun(config, upload, { run: runCommand = run } = {}) {
+  const missing = missingConfig(config);
+  if (missing.length > 0) {
+    return [`Faltan claves: ${missing.join(", ")}. Corré \`pnpm env:check\` para el detalle.`];
+  }
+  const uploadError = checkUploadsHaveValue(config, upload);
+  if (uploadError !== null) return [uploadError];
+
+  const projectId = config.GCP_PROJECT_ID.trim();
+  const problems = [];
+  const probe = (description, command, args) => {
+    const result = runCommand(command, args, { quiet: true, allowFailure: true });
+    if (!result.ok) problems.push(`${description}: ${result.stderr.trim() || "falló"}`);
+  };
+
+  probe(`Proyecto de GCP ${projectId}`, "gcloud", [
+    "projects",
+    "describe",
+    projectId,
+    "--format=value(projectId)",
+  ]);
+
+  const secrets = [];
+  for (const environment of ENVIRONMENTS) {
+    probe(`Rama ${environment.neonBranch} de Neon`, "neonctl", [
+      "branches",
+      "get",
+      environment.neonBranch,
+      `--project-id=${config.NEON_PROJECT_ID.trim()}`,
+      `--org-id=${config.NEON_ORG_ID.trim()}`,
+      "--output=json",
+    ]);
+    for (const key of RUNTIME_KEYS) secrets.push(secretName(environment.name, key));
+  }
+  for (const key of upload) secrets.push(UPLOADABLE_FROM_CONFIG[key]);
+
+  // Metadatos de la última versión, nunca su valor.
+  for (const name of secrets) {
+    probe(`Secreto ${name}`, "gcloud", [
+      "secrets",
+      "versions",
+      "describe",
+      "latest",
+      `--secret=${name}`,
+      `--project=${projectId}`,
+      "--format=value(state)",
+    ]);
+  }
+  return problems;
+}
+
+function requireConfig(config) {
+  const missing = missingConfig(config);
   if (missing.length > 0) {
     console.error(`Faltan claves: ${missing.join(", ")}`);
     console.error("Corré `pnpm env:check` para el detalle.");
@@ -268,7 +347,20 @@ function main() {
   }
 
   const config = loadConfig(args.envFile);
-  requireConfig(config, ["GCP_PROJECT_ID", "NEON_PROJECT_ID", "NEON_ORG_ID"]);
+
+  if (args.check) {
+    const problems = checkCanRun(config, args.upload);
+    if (problems.length > 0) {
+      console.error("secrets:gcp NO puede correr:");
+      for (const problem of problems) console.error(`  - ${problem}`);
+      process.exit(1);
+    }
+    console.log("secrets:gcp puede correr: config completa, proyecto de GCP, ramas de Neon y");
+    console.log("secretos alcanzables. No se escribió nada ni se leyó el valor de ningún secreto.");
+    return;
+  }
+
+  requireConfig(config);
 
   const uploadError = checkUploadsHaveValue(config, args.upload);
   if (uploadError !== null) {

@@ -1914,7 +1914,15 @@ falta un arreglo aparte ni corregir el dato a mano.
 
 ## Rotar una credencial de Neon sin validar antes que `secrets:gcp` puede correr
 
-**Estado:** abierto. **Disparador:** la próxima rotación de una credencial de
+**Estado:** RESUELTA el 2026-09-24 (ítem 2 de `plan-endurecimiento.md`).
+`pnpm secrets:gcp --check` valida la config, el proyecto de GCP, las ramas
+`main` y `demo` de Neon y la última versión de los ocho secretos de runtime,
+sin escribir nada ni leer ningún valor (tests en `scripts/secrets-gcp.test.mjs`,
+con un `run` falso que anota cada comando). D-017 lo nombra como paso 0 de la
+rotación. Corrido contra el proyecto real: 0 con los ids correctos, 1 sin
+config y 1 con un id de Neon equivocado. Lo que sigue es el registro original.
+
+**Disparador (original):** la próxima rotación de una credencial de
 Neon. **Referencia:** el incidente de ~2,5 minutos de D-017 (2026-09-24).
 
 En la rotación de `main` (fase 7, B3), `pnpm secrets:gcp` abortó DESPUÉS del
