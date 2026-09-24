@@ -12,6 +12,16 @@ const errorMessage = ref<string | null>(null);
 const submitting = ref(false);
 const slow = useSlowRequest(submitting);
 
+// Antes de hidratar el formulario no tiene manejador: un clic en «Ingresar»
+// hacía el envío NATIVO del navegador, un GET que dejaba usuario y contraseña
+// en la URL (historial, logs) y recargaba la página como si el clic no hubiera
+// tomado. El botón espera a que la página esté lista, y `method="post"` cubre
+// el Enter: aun sin JavaScript, la contraseña nunca viaja en la URL.
+const ready = ref(false);
+onMounted(() => {
+  ready.value = true;
+});
+
 // El aviso de sesión vencida sólo si venció: nunca tras "Cerrar sesión".
 const showExpired = computed(() => session.expired.value && errorMessage.value === null);
 
@@ -89,7 +99,7 @@ async function submit(): Promise<void> {
         <h1 class="mt-6 text-3xl font-semibold text-highlighted lg:mt-0">Ingresar</h1>
         <p class="mt-2 text-muted">Con el usuario que te dio la planta.</p>
 
-        <form class="mt-8 space-y-5" novalidate @submit.prevent="submit">
+        <form method="post" class="mt-8 space-y-5" novalidate @submit.prevent="submit">
           <UAlert
             v-if="showExpired"
             role="status"
@@ -141,6 +151,7 @@ async function submit(): Promise<void> {
             size="xl"
             block
             :loading="submitting"
+            :disabled="!ready"
             :label="submitting ? 'Ingresando…' : 'Ingresar'"
           />
         </form>

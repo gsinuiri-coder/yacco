@@ -54,3 +54,7 @@ docker-compose.override.yml
 # repo. Sin esta línea, `git status` en el checkout principal los ofrece como
 # archivos nuevos y es cuestión de tiempo que uno entre en un commit.
 .claude/worktrees/
+
+# Playwright (apps/web-nuxt/e2e): reportes y trazas de cada corrida.
+test-results/
+playwright-report/
