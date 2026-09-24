@@ -39,4 +39,13 @@ Avisos (entran igual):
 - Verificado después en la base: la deuda materializada de los 604 es igual a
   la reconstruida desde sus ventas de apertura (S/ 113 329,82 las dos).
 
-La carga en `main` (ítem 10) usa estos mismos CSV y espera el [OK] del dueño.
+## Carga en `main` (2026-09-24, 16:17–16:24 UTC)
+
+Con el OK de Giancarlo, después de la rama de respaldo `backup-pre-roster-20260924`
+y de conciliar contra un export fresco de la fuente (604 clientes, S/ 113 329,82,
+CSV idénticos a los de esta corrida). Resultado en `main`: 604 clientes y 604
+ubicaciones, 102 cargos de apertura, deuda materializada = deuda del libro =
+fuente = **S/ 113 329,82**.
+
+Después se borraron de demo los 604 clientes reales y sus cargos, y los archivos
+del export. Demo vuelve a tener solo datos inventados.
