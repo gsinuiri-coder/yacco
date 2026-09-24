@@ -245,12 +245,19 @@ describe("POST / PATCH / GET :id — managing the catalog", () => {
 });
 
 describe("role guard", () => {
-  test("DRIVER is refused on the container-types route", async () => {
+  // Desde «Mi ruta» (2026-09-24) el chofer lee el catálogo; escribir sigue
+  // siendo ADMIN. Ver driver-scope.int.test.ts.
+  test("DRIVER reads the container-types catalog but cannot create one", async () => {
     const response = await request(server())
       .get("/api/v1/container-types")
       .set("Authorization", `Bearer ${driverToken}`);
+    expect(response.status).toBe(200);
 
-    expect(response.status).toBe(403);
+    const create = await request(server())
+      .post("/api/v1/container-types")
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({ name: "Intento de chofer" });
+    expect(create.status).toBe(403);
   });
 
   test("an unauthenticated request is refused with 401", async () => {

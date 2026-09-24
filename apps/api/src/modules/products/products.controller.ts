@@ -23,7 +23,8 @@ import { ProductsService } from "./products.service.js";
 @ApiBearerAuth()
 @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
 @UseGuards(JwtAccessGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.SELLER)
+// DRIVER lee el catálogo: el formulario de parada de «Mi ruta» lo necesita.
+@Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER)
 @Controller("products")
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}

@@ -1032,6 +1032,8 @@ Endpoints principales previstos (prefijo `/api/v1`):
 
 > Diseño previsto: el detalle campo a campo de cada petición y respuesta vivirá en la especificación OpenAPI generada, no en este documento.
 
+> **Lectura del chofer (2026-09-24, «Mi ruta»).** Un usuario con rol DRIVER registra sus paradas desde la web con el mismo formulario que la oficina, así que lee lo que ese formulario lee: los catálogos `GET /products` y `GET /container-types` enteros, y lo que es de un cliente solo si ese cliente está en una ruta suya: `GET /customers/:id/effective-prices` (403 si no) y `GET /orders/:id` (404 si el pedido no es parada de una ruta suya). Todo lo demás de pedidos, clientes y usuarios sigue siendo de la oficina.
+
 ---
 
 # Capítulo V: Verificación y Validación

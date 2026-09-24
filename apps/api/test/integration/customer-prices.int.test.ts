@@ -429,7 +429,10 @@ describe("role guard", () => {
     expect(response.status).toBe(403);
   });
 
-  test("DRIVER is refused on every customer-prices route", async () => {
+  // effective-prices se abrió al chofer SOLO para clientes de sus rutas (ver
+  // driver-scope.int.test.ts); este cliente no está en ninguna, así que el 403
+  // sigue siendo la respuesta correcta.
+  test("DRIVER is refused on the prices of a customer on none of their routes", async () => {
     const list = await request(server())
       .get(`/api/v1/customers/${customerId}/prices`)
       .set("Authorization", `Bearer ${driverToken}`);
