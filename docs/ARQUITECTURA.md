@@ -1379,6 +1379,31 @@ a `yacco-web-nuxt`.
    `<div id="__nuxt">`, un módulo `/_nuxt/*.js` que responda 200 y los
    headers A6 en `/`, `/login` y `/customers/new`. Contra el React falla,
    que es lo que lo hace testigo.
+7. **El preset de Nitro va explícito en el build de Vercel** (agregado el
+   2026-09-23, después del primer deploy de este corte). El deploy de
+   `2ed19f1` (#175) falló en «5 · Web a Vercel» con `No Output Directory
+named "dist"`; las dos APIs quedaron en `2ed19f1` y el web siguió siendo
+   el React, sin publicar nada. Causa, reproducida con `vercel pull` +
+   `vercel build --prod` en `node:22` Linux: Nitro elige el preset por el
+   proveedor que detecta `std-env` (4.2.0), que prueba `GITHUB_ACTIONS` antes
+   que `VERCEL`/`NOW_BUILDER`. En el runner salió `node-server`, la salida
+   quedó en `apps/web-nuxt/.output` y la CLI cayó al `dist` por defecto del
+   preset `nuxtjs`. Sin `GITHUB_ACTIONS`, el mismo build sale `vercel`: por
+   eso el `vercel build` local de #175 pasó.
+
+   Los settings del proyecto quedaron descartados como causa: leídos por
+   `vercel pull`, `framework`, `outputDirectory`, `buildCommand` e
+   `installCommand` están en `null`, y `rootDirectory` en `apps/web-nuxt`.
+   **No se cambió ningún setting de Vercel.**
+
+   Arreglo: `buildCommand` pasa a `pnpm --filter @yacco/web-nuxt
+build:vercel`, que es `nuxt build --preset vercel`. `nuxt dev` y `nuxt
+build` no cambian, así que fuera de Vercel sigue el default a demo de
+   D-021. En `ci.yml`, `scripts/check-web-build.mjs` corre ese mismo
+   `buildCommand` como lo corre `vercel build` (desde `apps/web-nuxt`, con
+   `VERCEL=1` y `NOW_BUILDER=1`) y le pasa `assertPublishable` a
+   `apps/web-nuxt/.vercel/output/config.json`. Un PR que rompa la salida del
+   web queda rojo antes del merge.
 
 **Vuelta atrás.** Promover en Vercel el último deploy React de `yacco-web`
 (`dpl_DbcUwLGm5UfPVmKVtGFzignnbaUj`, commit `19a3553`):
