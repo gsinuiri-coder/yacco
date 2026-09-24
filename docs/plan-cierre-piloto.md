@@ -13,7 +13,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 
 ## Paso 0 — antes que nada
 
-- [x] (2026-09-24, lo subió Giancarlo; validado con `check-vercel-token`, versión vieja del secreto pendiente de destruir con [OK]) Token nuevo de Vercel: `secrets:gcp --upload=VERCEL_TOKEN` (ids
+- [x] (2026-09-24, lo subió Giancarlo; validado con `check-vercel-token`, versión vieja destruida tras el deploy verde de `07aa0fa`) Token nuevo de Vercel: `secrets:gcp --upload=VERCEL_TOKEN` (ids
       por el entorno), `check-vercel-token`, relanzar el deploy de 415dd7b en
       verde, destruir la versión vieja del secreto, fecha en PROGRESO y D-015.
       **Motivo (2026-09-24):** el agente no tiene permiso para escribir en Secret
