@@ -62,7 +62,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 1. [x] **Docs al día con el código:** regenerar estado-por-modulo.md
        recorriendo apps/web-nuxt (hoy nombra archivos .tsx del React), y
        actualizar en supuestos-por-validar.md las rutas del React a las del Nuxt.
-2. [ ] **Decisiones de Claude sobre los 10 supuestos pendientes:** se mantiene
+2. [x] **Decisiones de Claude sobre los 10 supuestos pendientes:** se mantiene
        el comportamiento actual en todos. Cada uno pasa a «Decidido por Claude por
        delegación», conservando su «Preguntar» para el piloto. Sin cambios de
        código.
