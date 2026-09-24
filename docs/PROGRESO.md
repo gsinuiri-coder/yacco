@@ -591,12 +591,13 @@ ninguna base.
 
 ## Credenciales y recursos con fecha
 
-| Qué                                               | Fecha                                                     | Qué hacer                                                                                                                                                                                                     |
-| ------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Token de Vercel (`yacco-ci-vercel-token`)         | creado 2026-09-16, **vence 2026-10-16**                   | **Giancarlo, antes del vencimiento.** La API no deja crearlo con la sesión de la CLI (403, 2026-09-24). Token nuevo en el dashboard, `pnpm secrets:gcp --upload=VERCEL_TOKEN`, y actualizar esta fila y D-015 |
-| ~~Rama de Neon `backup-pre-ci-deploy-20260916`~~  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)  | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                |
-| ~~Rama de Neon `backup-pre-seed-creds-20260917`~~ | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`) | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                |
-| Secreto `yacco-admin-initial-password`            | 2026-09-17                                                | **No se cambia hasta el final del proyecto** (Giancarlo, 2026-09-24). Entonces: la lee, la cambia desde la app y destruye la versión                                                                          |
+| Qué                                               | Fecha                                                     | Qué hacer                                                                                                                                                                                                                                     |
+| ------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Token de Vercel (`yacco-ci-vercel-token`)         | creado 2026-09-16, **vence 2026-10-16**                   | **Giancarlo, antes del vencimiento.** La API no deja crearlo con la sesión de la CLI (403, 2026-09-24). Token nuevo en el dashboard, `pnpm secrets:gcp --upload=VERCEL_TOKEN`, y actualizar esta fila y D-015                                 |
+| ~~Rama de Neon `backup-pre-ci-deploy-20260916`~~  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)  | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                                                |
+| ~~Rama de Neon `backup-pre-seed-creds-20260917`~~ | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`) | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                                                |
+| Secreto `yacco-demo-driver-password`              | creado 2026-09-24                                         | La contraseña de `chofer.demo.piloto` en la demo, para revisar «Mi ruta». Se lee con `gcloud secrets versions access latest --secret yacco-demo-driver-password`, nunca se pega en un chat. Se destruye cuando termine la revisión del piloto |
+| Secreto `yacco-admin-initial-password`            | 2026-09-17                                                | **No se cambia hasta el final del proyecto** (Giancarlo, 2026-09-24). Entonces: la lee, la cambia desde la app y destruye la versión                                                                                                          |
 
 **Un token de Vercel vencido frena el deploy en el preflight**, antes de tocar
 ninguna base: `scripts/check-vercel-token.mjs` lo valida con `vercel whoami`.
@@ -906,3 +907,30 @@ suspender Render: la contraseña vieja de demo ya no abre `main`.
 ~~Borrar la etiqueta `:demo` de Artifact Registry~~ — **borrada el 2026-09-17**
 (`gcloud artifacts docker tags delete .../api:demo`, confirmado con `tags list`:
 ninguna etiqueta `demo`).
+
+## Cierre para el piloto — 2026-09-24
+
+La cola de `docs/plan-cierre-piloto.md`, en 18 PRs (#181–#198, más #174 y
+#180). Todos con los cinco checks en verde, squash sin `--admin` y con la
+salida en rojo de sus tests en el cuerpo.
+
+| Ítem                                                           | Estado                                                                               | PRs                 |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------- |
+| 1 · Docs al día con el Nuxt                                    | ✅ (apareció un Parcial real: corregir una parada no tiene pantalla)                 | #182                |
+| 2 · Los 10 supuestos, decididos por delegación                 | ✅                                                                                   | #183                |
+| 3 · Defectos del recorrido de paridad                          | ✅ (clic perdido: 10/10 → 0/10; contraseña en la URL antes de hidratar; hidratación) | #184 #185 #186 #187 |
+| 4 · Llenos que vuelven reponen su lote                         | ✅                                                                                   | #188 #189           |
+| 5 · Reportes HU-19/20/21                                       | ✅                                                                                   | #191                |
+| 6 · «Mi ruta» del chofer en el celular                         | ✅                                                                                   | #190 #192           |
+| 7 · Sesión revocable, refresh en cookie httpOnly, CSP completa | ✅ (D-024)                                                                           | #193 #194 #195      |
+| 8 · Padrón del Yacco viejo                                     | ✅ cargado en DEMO: 604 entran, 0 descartados                                        | #197 #198           |
+| 9 · Entorno de revisión                                        | 🟨 demo sembrada; preview y e2e esperan el deploy                                    | #196                |
+| 10 · Carga real en main                                        | ⏸ espera el [OK] del dueño y el deploy                                               | —                   |
+| 11 · Cierre                                                    | 🟨 este registro; sprint-close espera el deploy                                      | —                   |
+
+**Bloqueo que arrastra todo lo que falta:** el token de Vercel de CI. Detalle y
+comando en el plan, «Estado al 2026-09-24».
+
+Decisiones delegadas nuevas en `supuestos-por-validar.md`: 11 (llenos al
+lote más antiguo), 12 (chofer en línea y sin cambiar precios), 13 («debe
+desde» del reporte de deuda), 14 (padrón sin zona y sin envases).
