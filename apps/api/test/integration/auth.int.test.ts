@@ -196,56 +196,89 @@ test("refresh: a user deactivated after issuing a refresh token loses access on 
     .expect(401);
 });
 
-// The sibling of the test above, and the reason it exists is a UI promise: the
-// web users screen tells the plant owner, in those words, that resetting
-// someone's password does NOT close that person's open session. That is true
-// only because `refreshAccessToken` checks the signature and `active` and
-// nothing else — there is no `tokenVersion` or `jti` in the schema (see
-// docs/backlog-tecnico.md, "No hay forma de invalidar un token ya emitido").
-// Pin the fact here, not just the sentence: the day someone adds token
-// invalidation, this test goes red and the on-screen text has to change with
-// it, instead of quietly starting to lie.
-test("refresh: resetting a user's password does NOT invalidate a refresh token already issued", async () => {
+/**
+ * Un usuario nuevo con sesión abierta, y el token de administrador para
+ * tocarlo. Los tres tests de abajo parten de acá.
+ */
+async function userWithOpenSession(
+  username: string,
+): Promise<{ adminToken: string; userId: string; refreshToken: string }> {
   const adminLogin = await request(server())
     .post("/api/v1/auth/login")
     .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
     .expect(200);
   const adminToken = adminLogin.body.accessToken as string;
-
   const created = await request(server())
     .post("/api/v1/users")
     .set("Authorization", `Bearer ${adminToken}`)
-    .send({
-      name: "Le Cambian La Clave",
-      username: "password-reset-after-refresh",
-      password: "throwaway-password",
-      roles: ["DRIVER"],
-    })
+    .send({ name: username, username, password: "throwaway-password", roles: ["DRIVER"] })
     .expect(201);
-
-  const driverLogin = await request(server())
+  const login = await request(server())
     .post("/api/v1/auth/login")
-    .send({ username: "password-reset-after-refresh", password: "throwaway-password" })
+    .send({ username, password: "throwaway-password" })
     .expect(200);
-  const driverRefreshToken = driverLogin.body.refreshToken as string;
+  return { adminToken, userId: created.body.id, refreshToken: login.body.refreshToken as string };
+}
+
+function refreshWith(refreshToken: string): request.Test {
+  return request(server())
+    .post("/api/v1/auth/refresh")
+    .set("Authorization", `Bearer ${refreshToken}`);
+}
+
+// Hasta el 2026-09-24 este test decía lo contrario («does NOT invalidate») y
+// fijaba a propósito que la pantalla de usuarios avisara que la sesión seguía
+// abierta. Desde el ítem 7b de docs/plan-cierre-piloto.md, cambiar la
+// contraseña corta la sesión: el refresh token viejo lleva una versión que ya
+// no es la del usuario. El texto de users.vue cambió en el mismo commit.
+test("refresh: resetting a user's password invalidates a refresh token already issued", async () => {
+  const { adminToken, userId, refreshToken } = await userWithOpenSession(
+    "password-reset-after-refresh",
+  );
 
   await request(server())
-    .patch(`/api/v1/users/${created.body.id}`)
+    .patch(`/api/v1/users/${userId}`)
     .set("Authorization", `Bearer ${adminToken}`)
     .send({ password: "the-admin-dictated-this-one" })
     .expect(200);
 
-  // The old password stops working at the door...
-  await request(server())
+  await refreshWith(refreshToken).expect(401);
+  // La contraseña nueva sí abre una sesión nueva, y su refresh vale.
+  const again = await request(server())
     .post("/api/v1/auth/login")
-    .send({ username: "password-reset-after-refresh", password: "throwaway-password" })
-    .expect(401);
-
-  // ...but whoever was already inside stays inside.
-  await request(server())
-    .post("/api/v1/auth/refresh")
-    .set("Authorization", `Bearer ${driverRefreshToken}`)
+    .send({ username: "password-reset-after-refresh", password: "the-admin-dictated-this-one" })
     .expect(200);
+  await refreshWith(again.body.refreshToken as string).expect(200);
+});
+
+// Antes, reactivar a alguien revivía su refresh token viejo: desactivar solo
+// tapaba la puerta mientras duraba.
+test("refresh: deactivating and reactivating a user does NOT revive the old refresh token", async () => {
+  const { adminToken, userId, refreshToken } = await userWithOpenSession("deactivated-then-back");
+
+  for (const active of [false, true]) {
+    await request(server())
+      .patch(`/api/v1/users/${userId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ active })
+      .expect(200);
+  }
+
+  await refreshWith(refreshToken).expect(401);
+});
+
+// Lo que NO corta la sesión: cambiarle el nombre. Sin este test, invalidar de
+// más (en cualquier PATCH) pasaría igual los dos de arriba.
+test("refresh: renaming a user keeps their session", async () => {
+  const { adminToken, userId, refreshToken } = await userWithOpenSession("renamed-keeps-session");
+
+  await request(server())
+    .patch(`/api/v1/users/${userId}`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ name: "Nombre Corregido" })
+    .expect(200);
+
+  await refreshWith(refreshToken).expect(200);
 });
 
 // The strategies' `type` claim check is defense-in-depth beyond secret

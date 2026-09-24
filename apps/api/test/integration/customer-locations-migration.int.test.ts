@@ -123,9 +123,16 @@ test("the migration backfills a pre-existing customer/order and reattaches them 
       listPrice: "8.00",
     },
   });
-  const user = await prisma.user.create({
-    data: { name: "Admin migración", username: "admin-migracion", passwordHash: "x" },
-  });
+  // En crudo desde que `users` ganó `token_version` (D-024): el cliente tipado
+  // la pide en el RETURNING y esa columna no existe en el mundo viejo.
+  const user = { id: randomUUID() };
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "users" ("id", "name", "username", "password_hash") VALUES ($1::uuid, $2, $3, $4)`,
+    user.id,
+    "Admin migración",
+    "admin-migracion",
+    "x",
+  );
 
   const customerId = randomUUID();
   const seededAddress = {

@@ -11,10 +11,11 @@ import type { Page, Route, User, UserRole } from "@yacco/shared";
  * `closeAllModes` es el único lugar que los cierra a todos, para no repetir
  * la exclusión en cada `start*` y olvidarla en alguno nuevo.
  *
- * Cambiar la contraseña NO cierra la sesión abierta de esa persona (el
- * refresh sólo valida la firma y que siga activa, nunca compara contra el
- * hash); lo que sí corta es desactivar, en el próximo refresco. El bloque
- * lo dice con esas palabras para que nadie confunda las dos operaciones.
+ * Cambiar la contraseña SÍ cierra la sesión abierta de esa persona desde el
+ * 2026-09-24 (D-024): su refresh token lleva una versión que el cambio deja
+ * vieja. El corte llega cuando vence su acceso actual, a lo sumo en 15
+ * minutos. Desactivar corta igual y además no la deja volver a entrar. El
+ * bloque lo dice con esas palabras para que nadie confunda las dos cosas.
  *
  * Quitarle "Chofer" a alguien con rutas sin cerrar AVISA, no bloquea, y las
  * rutas no se tocan: `route.driverId` es un hecho histórico y ninguna queda
@@ -442,7 +443,7 @@ const rolesSubmitLabel = computed(() => {
             role="status"
             color="neutral"
             variant="subtle"
-            title="Cambiar la contraseña no cierra la sesión abierta de esa persona: si tiene el sistema abierto, sigue adentro. Esto es para cuando alguien olvidó su contraseña. Para que alguien deje de entrar, desactívalo: eso sí lo saca la próxima vez que el sistema le renueve la sesión."
+            title="Cambiar la contraseña cierra la sesión que esa persona tenga abierta: en unos minutos (a lo sumo 15) el sistema le pide que vuelva a ingresar, ya con la contraseña nueva. Para que alguien deje de entrar del todo, desactívalo."
           />
           <UFormField
             label="Contraseña nueva"
