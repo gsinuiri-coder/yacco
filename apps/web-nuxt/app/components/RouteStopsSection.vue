@@ -10,6 +10,7 @@ const emit = defineEmits<{
 }>();
 
 const api = useApi();
+const session = useSession();
 
 const editable = computed(
   () => props.route.status === "PLANNED" || props.route.status === "IN_PROGRESS",
@@ -18,6 +19,13 @@ const editable = computed(
 // Es la misma regla que aplica RoutesService.markStop.
 const canMark = computed(() => props.route.status === "IN_PROGRESS");
 const stops = computed(() => props.route.stops);
+/**
+ * Corregir una parada ya registrada (HU-24): solo ADMIN, y solo con la ruta ya
+ * en la calle o cerrada. Planificada no tiene nada registrado que corregir.
+ */
+const canCorrect = computed(() => session.hasRole("ADMIN") && props.route.status !== "PLANNED");
+const showActions = computed(() => editable.value || canCorrect.value);
+const correcting = ref<RouteStop | null>(null);
 
 const adding = ref(false);
 const marking = ref<RouteStop | null>(null);
@@ -75,6 +83,20 @@ function startMarking(stop: RouteStop): void {
   emit("marked", null);
 }
 
+function startCorrecting(stop: RouteStop): void {
+  marking.value = null;
+  correcting.value = stop;
+  stopError.value = null;
+  emit("marked", null);
+}
+
+function correctionDone(result: RouteStop): void {
+  const stop = correcting.value!;
+  emit("marked", { stopName: stop.location.customer.name, result });
+  correcting.value = null;
+  emit("changed");
+}
+
 function markDone(result: RouteStop): void {
   const stop = marking.value!;
   emit("marked", { stopName: stop.location.customer.name, result });
@@ -123,6 +145,23 @@ function markDone(result: RouteStop): void {
         />
       </div>
 
+      <div v-if="correcting" class="rounded-md border border-warning/40 bg-warning/5 p-4">
+        <h3 class="text-base font-semibold text-highlighted">
+          Corregir la parada {{ correcting.position }}: {{ correcting.location.customer.name }}
+        </h3>
+        <p class="mb-4 text-sm text-muted">
+          Lo anotado se anula con el motivo que escribas y sigue visible; se registra de nuevo con
+          estos datos.
+        </p>
+        <RouteStopMarkForm
+          :route-id="route.id"
+          :stop="correcting"
+          correction
+          @cancel="correcting = null"
+          @marked="correctionDone"
+        />
+      </div>
+
       <UAlert v-if="stopError" role="alert" color="error" variant="subtle" :title="stopError" />
 
       <ListStatus
@@ -152,7 +191,7 @@ function markDone(result: RouteStop): void {
               <th scope="col" class="py-2 font-medium">Cliente</th>
               <th scope="col" class="py-2 font-medium">Origen</th>
               <th scope="col" class="py-2 font-medium">Estado</th>
-              <th v-if="editable" scope="col" class="py-2">
+              <th v-if="showActions" scope="col" class="py-2">
                 <span class="sr-only">Acciones</span>
               </th>
             </tr>
@@ -205,7 +244,7 @@ function markDone(result: RouteStop): void {
                   </p>
                 </template>
               </td>
-              <td v-if="editable" class="py-3 text-right">
+              <td v-if="showActions" class="py-3 text-right">
                 <div
                   v-if="removingId === stop.id"
                   role="group"
@@ -239,6 +278,17 @@ function markDone(result: RouteStop): void {
                     @click="startMarking(stop)"
                   />
                   <UButton
+                    v-if="canCorrect && stop.status !== 'PENDING'"
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    label="Corregir"
+                    :aria-label="`Corregir la parada de ${stop.location.customer.name}`"
+                    :disabled="busyId !== null"
+                    @click="startCorrecting(stop)"
+                  />
+                  <UButton
+                    v-if="editable"
                     color="neutral"
                     variant="ghost"
                     size="sm"
@@ -248,6 +298,7 @@ function markDone(result: RouteStop): void {
                     @click="move(index, -1)"
                   />
                   <UButton
+                    v-if="editable"
                     color="neutral"
                     variant="ghost"
                     size="sm"
@@ -259,7 +310,7 @@ function markDone(result: RouteStop): void {
                   <!-- Una parada resuelta tiene venta y movimientos colgando: la
                        API no deja quitarla y acá ni se ofrece. -->
                   <UButton
-                    v-if="stop.status === 'PENDING'"
+                    v-if="editable && stop.status === 'PENDING'"
                     color="neutral"
                     variant="ghost"
                     size="sm"
