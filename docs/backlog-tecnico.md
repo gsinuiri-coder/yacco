@@ -1857,3 +1857,50 @@ En demo queda 1 bidón lleno en `FULL_ON_ROUTE` desde la ruta del 16/09. Es un
 caso observado de esa entrada: al liquidar, los llenos que vuelven se
 registran como número y no emiten movimiento. Se resuelve con ella; no hace
 falta un arreglo aparte ni corregir el dato a mano.
+
+## Rotar una credencial de Neon sin validar antes que `secrets:gcp` puede correr
+
+**Estado:** abierto. **Disparador:** la próxima rotación de una credencial de
+Neon. **Referencia:** el incidente de ~2,5 minutos de D-017 (2026-09-24).
+
+En la rotación de `main` (fase 7, B3), `pnpm secrets:gcp` abortó DESPUÉS del
+reset del rol, con «Faltan claves: GCP_PROJECT_ID, NEON_PROJECT_ID,
+NEON_ORG_ID»: el `.env.setup` local no las tenía. Con la contraseña ya
+cambiada en Neon y las URLs viejas todavía en Secret Manager, producción no
+pudo abrir conexiones nuevas hasta completar el paso pasando esos ids por el
+entorno (D-004).
+
+**Regla:** antes del reset, validar que `secrets:gcp` puede correr: config
+completa y los ids de GCP y Neon presentes. El reset es irreversible (Neon
+genera una contraseña nueva y la vieja no vuelve), así que la validación va
+antes, no después.
+
+**Hoy, sin tocar el script:** correr `pnpm secrets:gcp` sin argumentos antes
+del reset. Sólo crea una versión si un valor cambió; antes del reset, nada
+cambió, así que no escribe nada (sí reaplica los permisos del deployer, que es
+idempotente). Si le falta config, falla ahí, sin haber tocado Neon. Así se
+hizo la rotación del token de Vercel (B8).
+
+**Mejora del script, para cerrarla:** `secrets:gcp` no tiene un modo de sólo
+validar (`parseArgs` acepta únicamente `--upload` y `--env-file`). Agregar un
+`--check` que valide la config (`requireConfig`) y el acceso a Neon y a Secret
+Manager SIN escribir nada, ni versiones ni permisos, con un test que lo vea
+fallar sin la config. Que el procedimiento de rotación de D-017 lo nombre como
+primer paso.
+
+## Rama de respaldo de `main` antes del primer dato real del piloto
+
+**Estado:** abierto. **Disparador:** antes de cargar el primer dato real del
+piloto de campo (el padrón de clientes, #59, u otra carga).
+
+Desde el 2026-09-24 **no hay ninguna rama de respaldo de `main`**: las dos de
+la fase 7 se borraron al cerrarla (PROGRESO.md, «Punto de retorno»). El único
+punto de retorno es el historial de Neon, con las 6 horas de retención del
+proyecto.
+
+**Para cerrarla:** justo antes de la primera carga real, crear una rama de
+respaldo de `main` con el procedimiento de D-006 (hija de `main`, sin compute,
+`--no-compute --no-secrets`, con la hora exacta registrada), y anotarla en
+«Credenciales y recursos con fecha» de PROGRESO.md con quién la borra y
+cuándo. Es el estado de la base justo antes de que empiece a tener datos que
+no se pueden regenerar con el seed.
