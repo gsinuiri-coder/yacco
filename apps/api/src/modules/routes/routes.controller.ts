@@ -35,7 +35,7 @@ import { FindRouteQueryDto } from "./dto/find-route-query.dto.js";
 import { ListRoutesQueryDto } from "./dto/list-routes-query.dto.js";
 import { MarkRouteStopDto } from "./dto/mark-route-stop.dto.js";
 import { ReorderRouteStopsDto } from "./dto/reorder-route-stops.dto.js";
-import { RouteLoadResponseDto } from "./dto/route-load-response.dto.js";
+import { RouteLoadResponseDto, RouteTruckStockLineDto } from "./dto/route-load-response.dto.js";
 import {
   PaginatedRoutesDto,
   RouteResponseDto,
@@ -298,6 +298,19 @@ export class RoutesController {
     @Req() request: AuthenticatedRequest,
   ): Promise<RouteLoadResponseDto[]> {
     return this.routesService.listLoads(id, actorFrom(request));
+  }
+
+  @ApiOperation({
+    summary: "Lo cargado y lo que queda arriba del camión, por tipo de envase",
+  })
+  @ApiResponse({ status: 200, type: RouteTruckStockLineDto, isArray: true })
+  @ApiNotFoundResponse({ description: "Route id does not exist" })
+  @Get(":id/truck-stock")
+  truckStock(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RouteTruckStockLineDto[]> {
+    return this.routesService.truckStock(id, actorFrom(request));
   }
 
   @ApiOperation({ summary: "Corrige una carga mal ingresada (solo con la ruta PLANNED)" })

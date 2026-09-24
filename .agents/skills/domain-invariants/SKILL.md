@@ -75,9 +75,16 @@ the plant door. It is emitted from that PHYSICAL COUNT, never from the ledger's
 own `EMPTY_PICKUP` total — so if the driver hands back more than anyone
 recorded, `EMPTY_ON_ROUTE` goes negative for that type. That sign is the
 finding ("there are pickups nobody registered"), same reasoning as a negative
-customer balance: never block it, never clamp it to zero. `fullReturned` is
-NOT symmetric and emits nothing — see the backlog entry, it needs a batch
-attribution rule first.
+customer balance: never block it, never clamp it to zero.
+
+`FULL_RETURN` at settlement (since 2026-09-24, a delegated decision) is the
+full-container twin, with one asymmetry: a full container belongs to a batch.
+It is emitted from the count too, per container type, and each unit goes back
+to the OLDEST batch this route loaded from, never more to a batch than the
+route loaded from it (`route_loads` already records the origin), restoring
+`batch_items.available_qty` in the same transaction. Counting more fulls of a
+type than the route loaded of that type is impossible, not a difference: 400,
+nothing written.
 
 ## Reconciliation routine
 

@@ -275,6 +275,31 @@ describe("Carga del camión", () => {
     expect(screen.queryByRole("button", { name: /Corregir la carga/ })).toBeNull();
   });
 
+  it("con la ruta en curso separa lo cargado de lo que queda arriba del camión", async () => {
+    stubSection("IN_PROGRESS", [[load("l-1", 30)]]);
+    cleanups.push(
+      registerEndpoint("/api/v1/routes/r-1/truck-stock", () => [
+        { containerType: { id: "ct-bidon", name: "Bidón 20L" }, loaded: 30, onBoard: 12 },
+      ]),
+    );
+
+    await renderSection();
+
+    const loaded = await screen.findByRole("group", { name: "Cargado en el camión" });
+    expect(within(loaded).getByText("30 × Bidón 20L")).toBeTruthy();
+    const remaining = await screen.findByRole("group", { name: "Queda arriba del camión" });
+    expect(within(remaining).getByText("12 × Bidón 20L")).toBeTruthy();
+  });
+
+  it("una ruta planificada muestra solo lo cargado: todavía no salió", async () => {
+    stubSection("PLANNED", [[load("l-1", 30)]]);
+
+    await renderSection();
+
+    await screen.findByRole("group", { name: "Cargado en el camión" });
+    expect(screen.queryByRole("group", { name: "Queda arriba del camión" })).toBeNull();
+  });
+
   it("una ruta terminada no ofrece cargar nada", async () => {
     stubSection("FINISHED", [[]]);
 

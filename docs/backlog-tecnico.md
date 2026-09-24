@@ -1264,9 +1264,13 @@ decisión de dominio.
 
 ## Devolver llenos al galpón no repone el lote del que salieron
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo, o cuando el
-conteo físico de llenos en planta no cierre contra la suma de
-`batch_items.available_qty`.
+**Estado:** RESUELTA en la API el 2026-09-24 (ítem 4 de
+`plan-cierre-piloto.md`), con la regla de atribución decidida por delegación
+(supuesto 11 de `supuestos-por-validar.md`): la liquidación emite un
+`FULL_RETURN` por lote, desde lo contado, reponiendo primero el lote más
+antiguo que cargó la ruta. La pantalla de liquidación manda el conteo por tipo
+en el PR siguiente; mientras tanto, una ruta de un solo tipo de envase ya
+devuelve su total. Registro original:
 
 Al liquidar, `fullReturned` se guarda como número y **no emite ningún
 movimiento**: los llenos que vuelven sin entregar se quedan, para el libro, en
@@ -1851,7 +1855,9 @@ servidor y el cliente rendericen lo mismo.
 
 ## Web: el ejemplo «25.00» en «Monto cobrado» no tiene nada que ver con el total
 
-**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3c de `plan-cierre-piloto.md`): el
+ejemplo del campo es el total de la venta que se está registrando, el mismo
+número de «Total de la venta». **Registrado:** 2026-09-24.
 
 El campo «Monto cobrado» muestra «25.00» de ejemplo, un monto fijo que no sale
 del total que se está cobrando. A quien lo ve, puede parecerle un valor
@@ -1860,7 +1866,12 @@ ejemplo numérico.
 
 ## Web: «Arriba del camión» muestra lo cargado, no lo que queda
 
-**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3d de `plan-cierre-piloto.md`). La
+pregunta al dueño la resolvió la delegación: se muestran los dos números.
+«Cargado» sale de `route_loads`; «Queda arriba» de `GET
+/routes/:id/truck-stock`, que lo lee del libro por estado (cargado menos
+entregado menos vendido, neto de anulaciones). Con la ruta planificada solo
+se muestra lo cargado. **Registrado:** 2026-09-24.
 
 «Arriba del camión» muestra lo que se cargó en la ruta, no lo que queda
 después de las entregas. **Para cerrarla:** decidir con el dueño qué número

@@ -61,6 +61,9 @@ async function choose(label: string, option: string) {
   await user.click(await screen.findByRole("option", { name: option }));
 }
 
+const amountPlaceholder = () =>
+  (screen.getByLabelText("Monto cobrado") as HTMLInputElement).placeholder;
+
 const submitMark = () =>
   userEvent.setup().click(screen.getByRole("button", { name: "Registrar la parada" }));
 
@@ -104,6 +107,8 @@ describe("Registrar lo que pasó en la parada", () => {
     await user.type(screen.getByLabelText("Cantidad del producto 1"), "3");
     expect(screen.getByText("Pactado: S/ 12.50")).toBeTruthy();
     expect(screen.getByText("Total de la venta").parentElement?.textContent).toContain("S/ 37.50");
+    // El ejemplo del cobro es el total de ESTA venta, no un monto fijo.
+    expect(amountPlaceholder()).toBe("37.50");
     await user.click(screen.getByRole("button", { name: "Agregar envases devueltos" }));
     await choose("Tipo de envase 1", "Bidón 20L");
     await user.clear(screen.getByLabelText("Vacíos devueltos 1"));
@@ -237,6 +242,7 @@ describe("Registrar lo que pasó en la parada", () => {
       ),
     );
     expect(screen.getByText("Total de la venta").parentElement?.textContent).toContain("S/ 62.50");
+    expect(amountPlaceholder()).toBe("62.50");
   });
 
   it("muestra tal cual el error de la API (stock del camión) y no cierra el formulario", async () => {

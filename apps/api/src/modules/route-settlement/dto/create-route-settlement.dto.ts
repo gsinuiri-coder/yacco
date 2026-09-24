@@ -14,6 +14,18 @@ export class SettlementEmptiesLineDto {
   quantity!: number;
 }
 
+/** Un tipo de envase y cuántos llenos de ese tipo volvieron sin entregar. */
+export class SettlementFullLineDto {
+  @ApiProperty({ format: "uuid" })
+  @IsUUID("4", { message: "El tipo de envase debe ser un UUID válido" })
+  containerTypeId!: string;
+
+  @ApiProperty({ minimum: 0, example: 1 })
+  @IsInt({ message: "Los llenos retornados deben ser un número entero" })
+  @Min(0, { message: "Los llenos retornados no pueden ser negativos" })
+  quantity!: number;
+}
+
 /**
  * The only numbers a human enters: physical counts at the plant door when the
  * truck comes back. Everything else in a settlement — fullOut, fullDelivered,
@@ -22,15 +34,33 @@ export class SettlementEmptiesLineDto {
  *
  * Los vacíos van desglosados POR TIPO y no como un total: liquidar emite un
  * `EMPTY_UNLOAD` por cada línea, y un movimiento de envases siempre nombra de
- * qué tipo es. Un total no alcanza para escribirlo. `fullReturned` sigue
- * siendo un número solo porque no emite ningún movimiento — ver la entrada
- * «Devolver llenos al galpón no repone el lote» en docs/backlog-tecnico.md.
+ * qué tipo es. Un total no alcanza para escribirlo. Desde el 2026-09-24 los
+ * llenos también emiten el suyo (`FULL_RETURN`, que repone el lote), así que
+ * llegan desglosados en `fullReturnedByType`. `fullReturned` se queda como el
+ * total que se persiste: es expand/contract, y un cliente que todavía manda
+ * solo el total sigue funcionando (ver `RouteSettlementService.settle`).
  */
 export class CreateRouteSettlementDto {
   @ApiProperty({ minimum: 0, example: 6, description: "Llenos que vuelven sin entregar ni vender" })
   @IsInt({ message: "Los llenos retornados deben ser un número entero" })
   @Min(0, { message: "Los llenos retornados no pueden ser negativos" })
   fullReturned!: number;
+
+  /**
+   * Opcional por compatibilidad. Si viene, su suma tiene que ser `fullReturned`
+   * y no puede repetir un tipo. Si no viene, el total se atribuye al único tipo
+   * de envase que cargó la ruta; con más de uno no hay a qué tipo atribuirlo y
+   * no se emite nada, como antes.
+   */
+  @ApiPropertyOptional({
+    type: [SettlementFullLineDto],
+    description: "Llenos contados al descargar el camión, por tipo de envase",
+  })
+  @IsOptional()
+  @IsArray({ message: "Los llenos retornados deben ser una lista por tipo de envase" })
+  @ValidateNested({ each: true })
+  @Type(() => SettlementFullLineDto)
+  fullReturnedByType?: SettlementFullLineDto[];
 
   /**
    * El arreglo vacío es válido: puede no volver ningún vacío. Una línea en
