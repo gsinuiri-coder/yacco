@@ -2022,3 +2022,33 @@ devuelve al JavaScript de la página justo lo que la cookie esconde.
 **Para cerrarla:** sacar `refreshToken` de `AuthTokensDto` (y del contrato
 compartido), dejar solo la cookie en `JwtRefreshStrategy`, y ajustar los tests
 de integración que todavía usan el header.
+
+## Migración a Prisma 7
+
+**Estado:** abierto. **Registrado:** 2026-08 en la rama `chore/dependency-hygiene`,
+que nunca se mergeó; rescatado el 2026-09-24 (ítem 7 de
+`plan-endurecimiento.md`). **Disparador:** cuando Prisma 7 pueda cargarse
+desde el runtime CommonJS de Nest.
+
+Seguimos en `prisma`/`@prisma/client` 6.19.3. Prisma 7 se distribuye como ESM
+puro y Nest corre en CommonJS: es un conflicto de arquitectura, no una tarea
+pendiente. `.github/dependabot.yml` ignora los majors de los dos paquetes para
+que cada 7.x no abra un PR que hay que cerrar a mano (ya pasó: #4, cerrado sin
+mergear). La premisa de ESM puro no se volvió a verificar al rescatarla.
+
+**Para cerrarla:** que el generador de Prisma 7 emita un cliente CommonJS, o
+que Nest soporte ESM estable. Entonces, en un PR propio: revisar
+`pnpm.auditConfig.ignoreGhsas` del `package.json` raíz, que hoy ignora
+`GHSA-ggr8-5vv4-36mx` (`deepmerge-ts`, transitiva de Prisma 7) a propósito.
+
+## TypeScript 6
+
+**Estado:** abierto. **Registrado:** 2026-08 en `chore/dependency-hygiene`;
+rescatado el 2026-09-24. **Disparador:** el próximo PR de Dependabot que lo
+proponga, fuera de una semana de piloto.
+
+Seguimos en TypeScript 5.x (`^5.7.2`). La auditoría del PR #6 no encontró
+cambios que rompan el repo; se pospuso por calendario, no por un problema
+técnico. El motivo de entonces («después de la Demo 1») ya venció. No hay
+regla de `ignore` en Dependabot, así que el PR vuelve solo. ESLint 10, que
+estaba en la misma entrada, ya está (hoy `^10.11.0`).
