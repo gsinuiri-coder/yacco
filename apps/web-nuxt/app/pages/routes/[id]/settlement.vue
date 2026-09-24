@@ -344,7 +344,7 @@ const settledEmpties = computed(() =>
                       {{
                         pickedUpOf(view.expected, row.type.id) - (row.quantity ?? 0) === 0
                           ? "Cuadra"
-                          : formatDifference(
+                          : describeDifference(
                               pickedUpOf(view.expected, row.type.id) - (row.quantity ?? 0),
                             )
                       }}
