@@ -13,6 +13,10 @@ export default tseslint.config(
   {
     rules: {
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      // La trae el `eslint:recommended` de @eslint/js 10 (#14): un error que se
+      // relanza sin `cause` pierde la traza del original. Explícita hasta esa
+      // subida, para que el bump no encuentre nada que arreglar.
+      "preserve-caught-error": "error",
     },
   },
   {
