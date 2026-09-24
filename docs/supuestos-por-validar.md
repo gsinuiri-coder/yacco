@@ -58,10 +58,28 @@ Lo que no se puede es escribirla como si él la hubiera pedido — el día que
 diga otra cosa, el documento tiene que mostrar que nunca se lo preguntamos, no
 que dijo que sí.
 
-## Pendientes
+## Pendientes — decididos por delegación, a confirmar en el piloto
+
+Desde el 2026-09-24 Giancarlo delegó en Claude (la capa arquitectónica) las
+decisiones de producto necesarias para cerrar el piloto (ver
+[`plan-cierre-piloto.md`](./plan-cierre-piloto.md)). Sobre los diez supuestos
+de esta sección la decisión fue la misma: **se mantiene el comportamiento
+actual**.
+
+Eso **no** los valida. Una decisión delegada no es una respuesta del dueño: por
+eso siguen en Pendientes, con su **Preguntar** intacto, y no bajan a Validados
+hasta que él conteste. La línea **Decidido por Claude por delegación** de cada
+uno dice quién decidió y cuándo, para que el día que el dueño diga otra cosa el
+documento muestre que nunca se lo preguntamos.
+
+Las decisiones delegadas NUEVAS que tome el agente siguen el mismo formato: la
+línea de delegación con la fecha, más las cuatro de siempre.
 
 ### 1. El buscador del Panel muestra clientes desactivados
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos:** que un cliente desactivado que todavía debe plata es
   exactamente a quien viene a buscar en el Panel.
 - **Construido encima:** `apps/web-nuxt/app/components/CustomerQuickSearch.vue`
@@ -76,6 +94,9 @@ que dijo que sí.
 
 ### 2. Al cambiar una contraseña, el administrador la elige y la dicta
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos:** que el administrador elige la contraseña nueva y se la dicta a
   la persona, en vez de que el sistema genere una temporal que la persona
   cambie al entrar.
@@ -93,6 +114,9 @@ que dijo que sí.
 
 ### 3. El administrador puede cambiarse la contraseña a sí mismo
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos:** que está bien que el administrador se cambie la suya desde la
   misma pantalla, y que esa es la forma prevista de rotar `admin123`.
 - **Construido encima:** `users.vue` ofrece «Cambiar contraseña» también en
@@ -108,6 +132,9 @@ que dijo que sí.
 
 ### 4. Decirle que la sesión abierta no se cierra alcanza
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos:** que alcanza con **avisar** que cambiar la contraseña no cierra
   la sesión que esa persona tenga abierta, y que para cortarle el acceso hay
   que desactivarla.
@@ -126,6 +153,9 @@ que dijo que sí.
 
 ### 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos:** que si el administrador le quita «Chofer» a alguien que todavía
   tiene rutas sin cerrar, corresponde **avisarle cuántas** y dejarlo decidir, en
   vez de impedírselo hasta que las cierre.
@@ -146,6 +176,9 @@ que dijo que sí.
 
 ### 6. Las rutas conservan al chofer que las hizo
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos:** que al quitarle el rol de chofer a alguien, sus rutas ya
   planificadas o en curso **siguen a su nombre**, sin reasignarse ni cancelarse.
 - **Construido encima:** el cambio de roles no toca `routes` en absoluto.
@@ -162,6 +195,9 @@ que dijo que sí.
 
 ### 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos** que el ciclo normal es: el chofer deja llenos hoy y se lleva los
   vacíos de la visita anterior, así que un cliente habitual queda con más o
   menos una visita de envases en la mano. También asumimos que un saldo
@@ -182,6 +218,9 @@ que dijo que sí.
 
 ### 8. El administrador que corrige una parada queda como quien autorizó el precio
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos** que, en una corrección, no hace falta preguntarle a nadie más:
   quien corrige es el administrador, la operación ya lleva su motivo escrito, y
   que él mismo figure como el que autorizó el precio de esa venta es fiel a lo
@@ -205,6 +244,9 @@ que dijo que sí.
 
 ### 9. La parada muestra solo la última corrección, no todas
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos** que corregir una parada dos veces es raro, y que cuando pasa lo
   que la oficina necesita ver es cómo quedó y por qué se cambió la última vez.
   El historial completo de correcciones lo asumimos material de auditoría, no
@@ -226,6 +268,9 @@ que dijo que sí.
 
 ### 10. Corregir hacia arriba deja el camión en negativo en vez de frenar
 
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
+  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
+  al dueño en el piloto.
 - **Asumimos** que cuando el dueño corrige una visita y dice que se entregaron
   más bidones de los que el sistema creía que llevaba el camión, lo que hay que
   hacer es creerle y anotarlo: el camión ya volvió, el hecho físico está
