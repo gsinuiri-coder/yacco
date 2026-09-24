@@ -1264,9 +1264,13 @@ decisión de dominio.
 
 ## Devolver llenos al galpón no repone el lote del que salieron
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo, o cuando el
-conteo físico de llenos en planta no cierre contra la suma de
-`batch_items.available_qty`.
+**Estado:** RESUELTA en la API el 2026-09-24 (ítem 4 de
+`plan-cierre-piloto.md`), con la regla de atribución decidida por delegación
+(supuesto 11 de `supuestos-por-validar.md`): la liquidación emite un
+`FULL_RETURN` por lote, desde lo contado, reponiendo primero el lote más
+antiguo que cargó la ruta. La pantalla de liquidación manda el conteo por tipo
+en el PR siguiente; mientras tanto, una ruta de un solo tipo de envase ya
+devuelve su total. Registro original:
 
 Al liquidar, `fullReturned` se guarda como número y **no emite ningún
 movimiento**: los llenos que vuelven sin entregar se quedan, para el libro, en

@@ -86,13 +86,39 @@ function toSettlementDto(
  * repetición delata una pantalla o un script mal armados. Mismo idioma que
  * `RoutesService.reorderStops` con los ids repetidos de su lista.
  */
-function assertNoRepeatedContainerType(lines: { containerTypeId: string }[]): void {
+function assertNoRepeatedContainerType(
+  lines: { containerTypeId: string }[],
+  what: "vacíos" | "llenos" = "vacíos",
+): void {
   const seen = new Set(lines.map((line) => line.containerTypeId));
   if (seen.size !== lines.length) {
     throw new BadRequestException(
-      "La lista de vacíos no puede repetir un tipo de envase: cada tipo va en una sola línea",
+      `La lista de ${what} no puede repetir un tipo de envase: cada tipo va en una sola línea`,
     );
   }
+}
+
+/** Una carga de la ruta, con el lote del que salió; en orden FIFO. */
+interface LoadOrigin {
+  batchItemId: string;
+  quantity: number;
+  batchItem: { containerTypeId: string; batchId: string };
+}
+
+/**
+ * Los llenos que vuelven, por tipo. Si quien liquida mandó el desglose, es
+ * ése. Si no (un cliente de antes del desglose), el total va al único tipo
+ * que la ruta cargó; con más de un tipo no hay a cuál atribuirlo y no se
+ * emite nada, que es lo que pasaba antes con cualquier ruta.
+ */
+function fullReturnLines(
+  dto: CreateRouteSettlementDto,
+  loads: LoadOrigin[],
+): { containerTypeId: string; quantity: number }[] {
+  if (dto.fullReturnedByType !== undefined) return dto.fullReturnedByType;
+  const types = new Set(loads.map((load) => load.batchItem.containerTypeId));
+  if (types.size !== 1) return [];
+  return [{ containerTypeId: [...types][0]!, quantity: dto.fullReturned }];
 }
 
 /**
@@ -393,6 +419,79 @@ export class RouteSettlementService {
   }
 
   /**
+   * Los llenos que vuelven sin entregar pasan del camión al galpón
+   * (`FULL_RETURN`, FULL_ON_ROUTE -> FULL_AT_PLANT) y reponen el
+   * `available_qty` del lote del que salieron, para que se puedan volver a
+   * cargar. Decisión delegada del 2026-09-24 (supuestos-por-validar.md):
+   *
+   * - Se emite **desde lo contado**, igual que los vacíos. Si el libro decía
+   *   menos, FULL_ON_ROUTE queda negativo, y ese negativo es la información.
+   * - El lote se elige como la carga pero al revés de su sentido: primero el
+   *   **más antiguo** de los que cargó esta ruta, y a ninguno se le devuelve
+   *   más de lo que la ruta cargó de él. `route_loads` ya guarda de qué lote
+   *   salió cada carga, así que no hace falta ninguna columna nueva.
+   * - Contar más llenos de un tipo de los que la ruta cargó de ese tipo no es
+   *   una diferencia sino un imposible (esos envases no salieron en este
+   *   camión): 400, y la transacción entera se deshace. Reponerlos a algún
+   *   lote inventaría stock que se podría cargar y no existe.
+   */
+  private async returnFullsToPlant(
+    tx: Prisma.TransactionClient,
+    routeId: string,
+    dto: CreateRouteSettlementDto,
+    actorId: string,
+  ): Promise<void> {
+    const loads: LoadOrigin[] = await tx.routeLoad.findMany({
+      where: { routeId },
+      select: {
+        batchItemId: true,
+        quantity: true,
+        batchItem: { select: { containerTypeId: true, batchId: true } },
+      },
+      orderBy: [
+        { batchItem: { batch: { date: "asc" } } },
+        { batchItem: { batch: { code: "asc" } } },
+      ],
+    });
+
+    for (const line of fullReturnLines(dto, loads)) {
+      if (line.quantity === 0) continue;
+      const ofType = loads.filter(
+        (load) => load.batchItem.containerTypeId === line.containerTypeId,
+      );
+      const loaded = ofType.reduce((sum, load) => sum + load.quantity, 0);
+      if (line.quantity > loaded) {
+        throw new BadRequestException(
+          `Se contaron ${line.quantity} llenos de un tipo de envase del que la ruta cargó ${loaded}: no pueden volver más de los que salieron en el camión`,
+        );
+      }
+
+      let pending = line.quantity;
+      for (const load of ofType) {
+        if (pending === 0) break;
+        const back = Math.min(pending, load.quantity);
+        pending -= back;
+        await tx.batchItem.update({
+          where: { id: load.batchItemId },
+          data: { availableQty: { increment: back } },
+        });
+        await this.containerMovementsService.createWithinTransaction(
+          tx,
+          {
+            type: ContainerMovementType.FULL_RETURN,
+            containerTypeId: line.containerTypeId,
+            quantity: back,
+            fromState: ContainerState.FULL_ON_ROUTE,
+            toState: ContainerState.FULL_AT_PLANT,
+          },
+          actorId,
+          { batchId: load.batchItem.batchId, routeId },
+        );
+      }
+    }
+  }
+
+  /**
    * FINISHED -> SETTLED, and nothing else — same idiom as RoutesService's
    * start()/finish(): the status guard lives in the WHERE clause of the
    * UPDATE itself, so two simultaneous settlements of the same route have
@@ -448,6 +547,15 @@ export class RouteSettlementService {
     }
 
     assertNoRepeatedContainerType(dto.emptiesCollected);
+    if (dto.fullReturnedByType !== undefined) {
+      assertNoRepeatedContainerType(dto.fullReturnedByType, "llenos");
+      const byTypeTotal = dto.fullReturnedByType.reduce((sum, line) => sum + line.quantity, 0);
+      if (byTypeTotal !== dto.fullReturned) {
+        throw new BadRequestException(
+          `El total de llenos retornados (${dto.fullReturned}) no coincide con la suma por tipo de envase (${byTypeTotal})`,
+        );
+      }
+    }
     const emptiesCollectedTotal = dto.emptiesCollected.reduce(
       (sum, line) => sum + line.quantity,
       0,
@@ -486,6 +594,8 @@ export class RouteSettlementService {
           { routeId },
         );
       }
+
+      await this.returnFullsToPlant(tx, routeId, dto, actorId);
 
       const settlement = await tx.routeSettlement.create({
         data: {
