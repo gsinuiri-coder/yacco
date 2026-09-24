@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -25,7 +26,9 @@ import {
 import { UserRole } from "@prisma/client";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
+import { viewerFrom } from "../../common/viewer.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
+import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { CustomerPricesService } from "./customer-prices.service.js";
 import { CreateCustomerPriceDto } from "./dto/create-customer-price.dto.js";
 import { CustomerPriceResponseDto } from "./dto/customer-price-response.dto.js";
@@ -115,13 +118,17 @@ export class CustomerPricesController {
     description: "Location does not exist or does not belong to this customer",
   })
   @ApiNotFoundResponse({ description: "Customer id does not exist" })
-  @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
-  @Roles(UserRole.ADMIN, UserRole.SELLER)
+  @ApiForbiddenResponse({
+    description:
+      "Missing a role, or a DRIVER asking for a customer that is on none of their routes",
+  })
+  @Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER)
   @Get("effective-prices")
   findEffectivePrices(
     @Param("customerId", ParseUUIDPipe) customerId: string,
     @Query() query: EffectivePricesQueryDto,
+    @Req() request: AuthenticatedRequest,
   ): Promise<EffectivePriceResponseDto[]> {
-    return this.customerPricesService.findEffectivePrices(customerId, query);
+    return this.customerPricesService.findEffectivePrices(customerId, query, viewerFrom(request));
   }
 }
