@@ -1488,6 +1488,40 @@ está en el commit nuevo. Cerrar siempre el rollback (`DEPLOY.md`).
 
 ---
 
+### D-024 — La sesión se puede cortar: una versión por usuario en cada refresh token
+
+**Contexto.** Hasta el 2026-09-24 un refresh token valía sus 30 días pasara lo
+que pasara: `refreshAccessToken` solo miraba la firma y que el usuario
+siguiera activo. Cambiar la contraseña no sacaba a nadie, y desactivar solo
+tapaba la puerta mientras duraba: al reactivar, el token viejo volvía a
+servir. Antes de cargar datos reales eso no alcanza (ítem 7b de
+`plan-cierre-piloto.md`).
+
+**Decisión.**
+
+- `users.token_version` (entero, 0 por defecto; migración
+  `20260924120000_user_token_version`, expand). El refresh token la lleva en
+  el claim `tv` al emitirse, y `/auth/refresh` la compara con la de la base:
+  distinta, 401.
+- **Sube** al cambiar la contraseña y al desactivar (`UsersService.update`).
+  Reactivar **no** la baja, así que un token de antes de desactivar no
+  revive. Renombrar o cambiar roles no la toca: los roles ya se releen de la
+  base en cada refresco.
+- Un token emitido antes de este cambio no trae `tv` y se lee como 0, que es
+  la versión de todas las filas existentes: nadie pierde la sesión por el
+  deploy.
+- El **access token** no consulta la versión: sigue hasta que vence (15
+  minutos). Cortarlo en el acto exigiría leer la base en cada petición;
+  para el piloto se aceptan esos minutos (supuesto 4).
+
+**Alternativa descartada.** _Una tabla de refresh tokens emitidos, revocables
+de a uno._ Permite cerrar una sola sesión (un celular perdido) sin tocar las
+demás, pero agrega una tabla, una escritura en cada login y una limpieza de
+vencidos. Hoy toda invalidación que hace falta es «todas las de esta
+persona», que es exactamente lo que un contador resuelve.
+
+---
+
 ## Preguntas abiertas de infraestructura
 
 Se cierran en la fase que indica cada una, y al cerrarse se convierten en una

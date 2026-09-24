@@ -154,6 +154,11 @@ model User {
   passwordHash String   @map("password_hash")
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Versión de la sesión: cada refresh token lleva la vigente al emitirse, y
+  // deja de valer cuando cambia. Sube al cambiar la contraseña y al desactivar
+  // (D-024). Un número y no una tabla de tokens: invalidar es «todos los de
+  // esta persona», nunca uno suelto.
+  tokenVersion Int      @default(0) @map("token_version")
 
   roles                         UserRoleAssignment[]
   productionBatches             ProductionBatch[]

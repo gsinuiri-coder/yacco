@@ -201,8 +201,12 @@ el dueño de la planta no vio. Están en
 
 ## No hay forma de invalidar un token ya emitido
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo, o el día que
-haya que sacar a alguien del sistema en el acto.
+**Estado:** RESUELTA el 2026-09-24 (ítem 7b de `plan-cierre-piloto.md`, D-024)
+para los refresh tokens: `users.token_version` va en cada refresh token y sube
+al cambiar la contraseña o al desactivar; reactivar no la baja, así que el
+token viejo no revive. El access token vigente sigue hasta su vencimiento (15
+minutos): el corte «en el acto» exigiría consultar la base en cada petición,
+y no se hizo. Registro original:
 
 El esquema no guarda nada por sesión: ni `tokenVersion` en `users`, ni `jti`,
 ni una tabla de refresh tokens. `AuthService.refreshAccessToken` solo chequea
@@ -1674,8 +1678,9 @@ con stock en orden FIFO en vez de desde el lote que acaba de crear.
 
 ## Cambiar la contraseña no invalida los refresh tokens
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo, o el día que un
-usuario pierda el celular o se vaya de la planta.
+**Estado:** RESUELTA el 2026-09-24 con la entrada «No hay forma de invalidar un
+token ya emitido» (arriba): el contador por usuario de la opción barata es
+`users.token_version` (D-024). Registro original:
 
 `AuthService.refreshAccessToken` verifica la firma y que el usuario exista y esté
 activo, pero no si la contraseña cambió después de emitir el token. Un refresh

@@ -22,13 +22,16 @@ const CONFIG_VALUES = {
 
 type ConfigKey = keyof typeof CONFIG_VALUES;
 
-function buildActiveUser(overrides: Partial<{ active: boolean; passwordHash: string }> = {}) {
+function buildActiveUser(
+  overrides: Partial<{ active: boolean; passwordHash: string; tokenVersion: number }> = {},
+) {
   return {
     id: "user-1",
     name: "Admin",
     username: "admin",
     active: overrides.active ?? true,
     passwordHash: overrides.passwordHash ?? "hashed-password",
+    tokenVersion: overrides.tokenVersion ?? 0,
     roles: [{ role: { name: UserRole.ADMIN } }],
   };
 }
@@ -130,6 +133,22 @@ describe("AuthService", () => {
         secret: CONFIG_VALUES.JWT_ACCESS_SECRET,
       });
       expect(accessPayload).toMatchObject({ sub: "user-1", type: "access" });
+    });
+
+    // D-024: la contraseña cambió (o lo desactivaron) después de emitir el
+    // token. Firma y vencimiento siguen valiendo; la versión no.
+    it("rejects a refresh token issued before the session version moved", async () => {
+      usersService.findByIdWithPassword.mockResolvedValue(buildActiveUser({ tokenVersion: 2 }));
+
+      await expect(
+        service.refreshAccessToken({
+          sub: "user-1",
+          username: "admin",
+          roles: [UserRole.ADMIN],
+          type: "refresh",
+          tv: 1,
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
     it("rejects the refresh when the user has since been deactivated", async () => {

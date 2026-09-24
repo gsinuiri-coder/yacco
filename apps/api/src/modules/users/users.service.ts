@@ -149,6 +149,12 @@ export class UsersService {
             ...(dto.name !== undefined ? { name: dto.name } : {}),
             ...(dto.active !== undefined ? { active: dto.active } : {}),
             ...(passwordHash !== undefined ? { passwordHash } : {}),
+            // Contraseña nueva o desactivación: las sesiones abiertas de esta
+            // persona dejan de poder renovarse (D-024). Reactivar NO la baja, así
+            // que un token de antes de desactivar no revive.
+            ...(passwordHash !== undefined || dto.active === false
+              ? { tokenVersion: { increment: 1 } }
+              : {}),
           },
         });
 
