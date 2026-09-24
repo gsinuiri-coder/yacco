@@ -2,5 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nuxtjs",
   "installCommand": "pnpm install --frozen-lockfile --ignore-scripts",
-  "buildCommand": "pnpm --filter @yacco/web-nuxt build"
+  "buildCommand": "pnpm --filter @yacco/web-nuxt build:vercel"
 }

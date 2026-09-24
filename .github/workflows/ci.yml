@@ -92,6 +92,15 @@ jobs:
         # and it's what `pnpm load:roster` and production both run.
         run: pnpm build
 
+      - name: Web build output for Vercel (D-023)
+        # Runs apps/web-nuxt/vercel.json's buildCommand the way `vercel build`
+        # does in deploy «5 · Web a Vercel», then the same Build Output guard
+        # deploy-web.mjs runs before publishing. No token needed. On this
+        # runner std-env detects github_actions ahead of vercel, so a build
+        # that leaves the Nitro preset to detection fails here, before merge,
+        # instead of in the deploy (2ed19f1).
+        run: node scripts/check-web-build.mjs
+
       - name: Unit tests
         # `pnpm -r test`: Jest en @yacco/api y Vitest en @yacco/web-nuxt y
         # @yacco/shared. Todos dejan su lcov en disco aquí, antes del scan de

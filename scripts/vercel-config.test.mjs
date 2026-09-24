@@ -21,6 +21,7 @@ import { describe, test } from "node:test";
 import { REPO_ROOT } from "./lib.mjs";
 
 const WEB_VERCEL_JSON = join(REPO_ROOT, "apps", "web-nuxt", "vercel.json");
+const WEB_PACKAGE_JSON = join(REPO_ROOT, "apps", "web-nuxt", "package.json");
 // El mismo archivo, en la raíz del repo: ahí vivía la config del web React.
 const ROOT_CONFIG = join(REPO_ROOT, basename(WEB_VERCEL_JSON));
 
@@ -37,6 +38,15 @@ describe("apps/web-nuxt/vercel.json", () => {
   test("construye el Nuxt, y sólo el Nuxt", () => {
     assert.equal(config.framework, "nuxtjs");
     assert.match(config.buildCommand, /--filter @yacco\/web-nuxt build/);
+  });
+
+  test("el build de Vercel fija el preset vercel de Nitro, sin depender de la detección", () => {
+    // En un runner de GitHub Actions std-env detecta `github_actions` antes que
+    // el `VERCEL` de `vercel build`: Nitro sale `node-server`, no hay
+    // `.vercel/output` y el job 5 falla («No Output Directory named "dist"»).
+    const script = config.buildCommand.trim().split(/\s+/).at(-1);
+    const { scripts } = JSON.parse(readFileSync(WEB_PACKAGE_JSON, "utf8"));
+    assert.match(scripts[script] ?? "", /(^|\s)--preset[= ]vercel(\s|$)/);
   });
 
   test("no reescribe nada a /index.html: el catch-all del web React taparía el SSR", () => {
