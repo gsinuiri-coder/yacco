@@ -67,10 +67,10 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        delegación», conservando su «Preguntar» para el piloto. Sin cambios de
        código.
 3. [ ] **Defectos del recorrido de paridad** (backlog, 2026-09-23):
-   - [ ] a) el primer clic después de cerrar un desplegable, o de cargar una
+   - [x] a) el primer clic después de cerrar un desplegable, o de cargar una
          página, a veces no toma. Reproducirlo con Playwright; si es real,
          arreglarlo con un test de navegador que falle sin el arreglo;
-   - [ ] b) «Hydration completed but contains mismatches»: encontrar el nodo y
+   - [x] b) «Hydration completed but contains mismatches»: encontrar el nodo y
          arreglarlo;
    - [x] c) el ejemplo «25.00» de «Monto cobrado» pasa a mostrar el total de
          la venta;
@@ -78,7 +78,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
          menos entregado menos vendido);
    - [x] e) la columna «Diferencia» del conteo lleva la palabra (faltan N /
          sobran N), y cierra la entrada de backlog que ya existe.
-4. [ ] **Llenos que vuelven al galpón** (backlog «Devolver llenos al galpón no
+4. [x] **Llenos que vuelven al galpón** (backlog «Devolver llenos al galpón no
        repone el lote»; fullReturned quedó afuera de la decisión del 29/08).
        Decisión de Claude: la liquidación emite el movimiento de retorno de llenos
        DESDE LO CONTADO, igual que los vacíos, y el lleno que vuelve repone el

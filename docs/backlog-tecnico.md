@@ -1268,9 +1268,8 @@ decisión de dominio.
 `plan-cierre-piloto.md`), con la regla de atribución decidida por delegación
 (supuesto 11 de `supuestos-por-validar.md`): la liquidación emite un
 `FULL_RETURN` por lote, desde lo contado, reponiendo primero el lote más
-antiguo que cargó la ruta. La pantalla de liquidación manda el conteo por tipo
-en el PR siguiente; mientras tanto, una ruta de un solo tipo de envase ya
-devuelve su total. Registro original:
+antiguo que cargó la ruta. La pantalla de liquidación cuenta los llenos por tipo de
+envase (`SettlementCountSheet.vue`), con lo que sigue arriba según el libro. Registro original:
 
 Al liquidar, `fullReturned` se guarda como número y **no emite ningún
 movimiento**: los llenos que vuelven sin entregar se quedan, para el libro, en
@@ -1821,8 +1820,17 @@ minutos de runner; la caché de BuildKit del job lo acota.
 
 ## Web: el primer clic después de cerrar un desplegable o cargar una página a veces no toma
 
-**Estado:** abierto, **a confirmar a mano**. **Registrado:** 2026-09-24, al
-cerrar la fase 7, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3a de `plan-cierre-piloto.md`).
+Reproducido con Playwright, eran dos causas: (1) con un `USelect` abierto,
+Reka UI deja el `body` en `pointer-events: none` y el clic sobre otro control
+solo cierra el desplegable (10 de 10 clics perdidos); se arregla con una
+regla en `app/assets/css/main.css` que anula ese estilo en línea para todos
+los desplegables. (2) Un
+clic en «Ingresar» antes de hidratar hacía el envío nativo del formulario:
+un GET que recargaba la página **con usuario y contraseña en la URL**; el
+botón espera a hidratar y el formulario es `method="post"`. Tests de
+navegador en `apps/web-nuxt/e2e/first-click.test.ts`. **Registrado:**
+2026-09-24, al cerrar la fase 7.
 
 Observado en el web Nuxt: el primer clic después de cerrar un desplegable, o
 recién cargada una página, a veces no hace nada y hay que repetirlo. Todavía
@@ -1833,7 +1841,11 @@ termine la hidratación.
 
 ## Web: «Hydration completed but contains mismatches» en la consola
 
-**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3b de `plan-cierre-piloto.md`). El
+nodo era «Cuadre de envases», el enlace solo ADMIN del menú: el servidor no
+conoce la sesión (D-022) y lo omitía, el cliente lo dibujaba. El layout arma
+el menú sin rol hasta montar. Test de navegador en
+`apps/web-nuxt/e2e/first-click.test.ts`. **Registrado:** 2026-09-24.
 
 La consola del navegador muestra ese aviso de Vue en el web Nuxt: el HTML del
 SSR no coincide con lo que renderiza el cliente. **Para cerrarla:** identificar

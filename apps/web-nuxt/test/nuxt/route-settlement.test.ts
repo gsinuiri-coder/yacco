@@ -6,6 +6,7 @@ import type {
   RouteSettlementExpected,
   RouteSettlementView,
   RouteStatus,
+  RouteTruckStockLine,
 } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
@@ -57,8 +58,17 @@ function settled(overrides: Partial<RouteSettlement> = {}): RouteSettlement {
   };
 }
 
+/** Lo que la ruta cargó y lo que sigue arriba, por tipo: arma la hoja de llenos. */
+const ONE_TYPE_ON_BOARD: RouteTruckStockLine[] = [
+  { containerType: { id: "ct-cano", name: "Con caño" }, loaded: 20, onBoard: 6 },
+];
+
 /** Cada lectura puede devolver otra versión: la segunda trae la fila tras liquidar. */
-function stubView(status: RouteStatus[], views: Array<Partial<RouteSettlementView>>) {
+function stubView(
+  status: RouteStatus[],
+  views: Array<Partial<RouteSettlementView>>,
+  truckStock: RouteTruckStockLine[] = ONE_TYPE_ON_BOARD,
+) {
   let routeCalls = 0;
   let viewCalls = 0;
   cleanups.push(
@@ -76,6 +86,7 @@ function stubView(status: RouteStatus[], views: Array<Partial<RouteSettlementVie
         ...views[Math.min(viewCalls++, views.length - 1)],
       }),
     }),
+    registerEndpoint("/api/v1/routes/r-1/truck-stock", () => truckStock),
     registerEndpoint("/api/v1/container-types", () => [
       { id: "ct-cano", name: "Con caño", active: true },
       { id: "ct-sin", name: "Sin caño", active: true },
@@ -89,7 +100,8 @@ async function renderSettlement() {
 }
 
 const user = () => userEvent.setup();
-const fullReturnedInput = () => screen.getByLabelText("Llenos que volvieron sin entregar");
+const fullReturnedInput = (type = "Con caño") =>
+  screen.getByLabelText(`Llenos que volvieron de ${type}`);
 const emptiesInput = (type: string) => screen.getByLabelText(`Vacíos contados de ${type}`);
 const settleButton = () =>
   screen.getByRole("button", { name: "Liquidar la ruta" }) as HTMLButtonElement;
@@ -114,7 +126,7 @@ describe("Liquidación de la ruta", () => {
     expect(within(libro).getByText("Deberían volver").nextElementSibling?.textContent).toBe("6");
     expect(within(libro).getByText("S/ 320.00")).toBeTruthy();
     expect(within(libro).getByText("S/ 40.30")).toBeTruthy();
-    expect(screen.getByText("Según el libro deberían volver 6.")).toBeTruthy();
+    expect(screen.getByText(/Según el libro deberían volver 6./)).toBeTruthy();
   });
 
   it("la hoja de vacíos va por tipo, con el libro al lado y la diferencia mientras se escribe", async () => {
@@ -208,8 +220,46 @@ describe("Liquidación de la ruta", () => {
     ).toBe("+3");
     expect(screen.queryByRole("form", { name: "Liquidar la ruta" })).toBeNull();
     expect(bodies).toEqual([
-      { fullReturned: 4, emptiesCollected: [{ containerTypeId: "ct-cano", quantity: 11 }] },
+      {
+        fullReturned: 4,
+        fullReturnedByType: [{ containerTypeId: "ct-cano", quantity: 4 }],
+        emptiesCollected: [{ containerTypeId: "ct-cano", quantity: 11 }],
+      },
     ]);
+  });
+
+  it("los llenos se cuentan por tipo cargado: cada uno viaja con su tipo y el total es la suma", async () => {
+    stubView(
+      ["FINISHED"],
+      [{}],
+      [
+        { containerType: { id: "ct-cano", name: "Con caño" }, loaded: 14, onBoard: 4 },
+        { containerType: { id: "ct-sin", name: "Sin caño" }, loaded: 6, onBoard: 2 },
+      ],
+    );
+    const bodies = stubWrite(cleanups, SETTLEMENT_PATH, "POST", failWith(409, "stop"));
+
+    await renderSettlement();
+    const sheet = screen.getByRole("table", { name: /Llenos que volvieron sin entregar/ });
+    const sin = within(sheet).getByText("Sin caño").closest("tr") as HTMLElement;
+    expect(within(sin).getByText("2")).toBeTruthy();
+    await user().type(fullReturnedInput("Con caño"), "3");
+    await user().type(fullReturnedInput("Sin caño"), "2");
+    await waitFor(() => expect(within(sin).getByText("Cuadra")).toBeTruthy());
+    await user().click(settleButton());
+
+    await waitFor(() =>
+      expect(bodies).toEqual([
+        {
+          fullReturned: 5,
+          fullReturnedByType: [
+            { containerTypeId: "ct-cano", quantity: 3 },
+            { containerTypeId: "ct-sin", quantity: 2 },
+          ],
+          emptiesCollected: [],
+        },
+      ]),
+    );
   });
 
   it("la nota viaja recortada cuando se escribe", async () => {
@@ -223,21 +273,28 @@ describe("Liquidación de la ruta", () => {
 
     await waitFor(() =>
       expect(bodies).toEqual([
-        { fullReturned: 6, emptiesCollected: [], notes: "Se rompió un bidón" },
+        {
+          fullReturned: 6,
+          fullReturnedByType: [{ containerTypeId: "ct-cano", quantity: 6 }],
+          emptiesCollected: [],
+          notes: "Se rompió un bidón",
+        },
       ]),
     );
   });
 
-  it("sin contar los llenos, o con un vacío mal escrito, no llama a la API y nombra el tipo", async () => {
+  it("con un lleno o un vacío mal escrito no llama a la API y nombra el tipo", async () => {
     stubView(["FINISHED"], [{}]);
     const bodies = stubWrite(cleanups, SETTLEMENT_PATH, "POST");
 
     await renderSettlement();
+    await user().type(fullReturnedInput(), "2.5");
     await user().click(settleButton());
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "Los llenos que volvieron deben ser un número entero, 0 o más",
+      "Los llenos que volvieron de Con caño deben ser un número entero, 0 o más",
     );
 
+    await user().clear(fullReturnedInput());
     await user().type(fullReturnedInput(), "6");
     await user().type(emptiesInput("Sin caño"), "1.5");
     await user().click(settleButton());
@@ -392,6 +449,7 @@ describe("Liquidación de la ruta", () => {
         },
       }),
       registerEndpoint(SETTLEMENT_PATH, { method: "GET", handler: () => ({}) }),
+      registerEndpoint("/api/v1/routes/r-1/truck-stock", () => []),
       registerEndpoint("/api/v1/container-types", () => []),
     );
 
