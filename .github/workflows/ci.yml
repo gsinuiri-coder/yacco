@@ -92,6 +92,14 @@ jobs:
         # and it's what `pnpm load:roster` and production both run.
         run: pnpm build
 
+      - name: API image (docker build, no push)
+        # El mismo build que corre «3 · Imagen» de deploy.yml, sin credenciales
+        # ni push: sólo prueba que el Dockerfile arma la imagen con el árbol de
+        # este PR. #171 borró apps/web y el Dockerfile seguía copiando su
+        # package.json: todos los checks en verde y main quedó 5 días sin poder
+        # desplegar, migrando las bases en cada intento antes de fallar.
+        run: docker build -f apps/api/Dockerfile -t yacco-api:ci .
+
       - name: Web build output for Vercel (D-023)
         # Runs apps/web-nuxt/vercel.json's buildCommand the way `vercel build`
         # does in deploy «5 · Web a Vercel», then the same Build Output guard
