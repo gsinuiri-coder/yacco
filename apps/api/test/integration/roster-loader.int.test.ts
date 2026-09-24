@@ -355,6 +355,61 @@ describe("RosterLoaderService — errores: nada se escribe si hay al menos uno",
 // the Testcontainers Postgres already started for `ctx` via the env vars
 // startTestApp() set; main() opens its own, separate application context
 // against that same database and closes it in its `finally`.
+// En main y en demo los tipos de envase NO se llaman como en seed.ts («Con caño»,
+// «Sin caño») sino «BIDON 20L CAÑO» y «BIDON 20L NORMAL». El cargador tiene que
+// encontrarlos igual: los resuelve por su recarga, que se llama igual en todas
+// las bases. Con los nombres de seed.ts este test pasaría aunque el cargador
+// siguiera buscando por nombre, así que los renombra primero.
+describe("RosterLoaderService — catálogo con los nombres reales de producción", () => {
+  const REAL_NAMES = { "Con caño": "BIDON 20L CAÑO", "Sin caño": "BIDON 20L NORMAL" } as const;
+
+  async function rename(from: "seed" | "real"): Promise<void> {
+    for (const [seedName, realName] of Object.entries(REAL_NAMES)) {
+      await prisma.containerType.update({
+        where: { name: from === "seed" ? seedName : realName },
+        data: { name: from === "seed" ? realName : seedName },
+      });
+    }
+  }
+
+  test("la validación encuentra los dos tipos por su recarga, sin errores de catálogo", async () => {
+    await rename("seed");
+    try {
+      const result = await loader.run({
+        dir: FIXTURES_DIR,
+        cutoverDate: CUTOVER_DATE,
+        commit: false,
+      });
+      expectOk(result);
+      expect(result.summary.customers.total).toBe(8);
+    } finally {
+      await rename("real");
+    }
+  });
+  test("si falta la recarga de un tipo, lo dice en la validación y no escribe nada", async () => {
+    const before = await countAll();
+    await prisma.product.updateMany({
+      where: { name: "Recarga 20L sin caño" },
+      data: { name: "Recarga 20L sin caño (renombrada)" },
+    });
+    try {
+      const result = await loader.run({
+        dir: FIXTURES_DIR,
+        cutoverDate: CUTOVER_DATE,
+        commit: true,
+      });
+      expect(result.ok).toBe(false);
+      expect(JSON.stringify(result)).toContain("Falta la recarga");
+      expect(await countAll()).toEqual(before);
+    } finally {
+      await prisma.product.updateMany({
+        where: { name: "Recarga 20L sin caño (renombrada)" },
+        data: { name: "Recarga 20L sin caño" },
+      });
+    }
+  });
+});
+
 describe("CLI: load-roster main()", () => {
   let logSpy: jest.SpiedFunction<typeof console.log>;
   let errorSpy: jest.SpiedFunction<typeof console.error>;

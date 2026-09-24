@@ -6,7 +6,7 @@ import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerCountsService } from "../container-counts/container-counts.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
 import { SalesService } from "../sales/sales.service.js";
-import { CONTAINER_TYPE_COLUMNS } from "./container-type-columns.js";
+import { CONTAINER_TYPE_COLUMNS, CONTAINER_TYPE_REFILL } from "./container-type-columns.js";
 import type { ContainerTypeColumn } from "./container-type-columns.js";
 import { parseAndValidateRoster } from "./parse-and-validate-roster.js";
 import type { RosterSourceFiles } from "./parse-and-validate-roster.js";
@@ -184,18 +184,19 @@ export class RosterLoaderService {
     const containerTypeIdByColumn = new Map<ContainerTypeColumn, string>();
 
     for (const [column, typeName] of CONTAINER_TYPE_COLUMN_ENTRIES) {
-      const containerType = await this.prisma.containerType.findUnique({
-        where: { name: typeName },
-        select: { id: true },
+      const refillName = CONTAINER_TYPE_REFILL[column];
+      const refill = await this.prisma.product.findFirst({
+        where: { name: refillName },
+        select: { containerTypeId: true },
       });
-      if (containerType === null) {
+      if (refill === null) {
         issues.push({
           file: "(config)",
           line: 0,
-          message: `El tipo de envase "${typeName}" (columna ${column}) no existe en el catálogo`,
+          message: `Falta la recarga "${refillName}" en el catálogo: de ahí sale el tipo de envase "${typeName}" (columna ${column})`,
         });
       } else {
-        containerTypeIdByColumn.set(column, containerType.id);
+        containerTypeIdByColumn.set(column, refill.containerTypeId);
       }
     }
 

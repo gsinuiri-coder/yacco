@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import {
-  CONTAINER_TYPE_NAMES,
   DEMO_CONTAINER_COUNTS,
   DEMO_CUSTOMERS,
   DEMO_DELIVERIES,
@@ -18,7 +17,11 @@ import {
   deliveriesByDay,
   findProductPriceMismatches,
   loadsNeededByDay,
+  planFifoLoads,
+  resolveContainerTypeIds,
+  withRunTag,
   type ContainerTypeKey,
+  type FifoBatch,
   type DemoDeliveryPlan,
   type PaymentMethodKey,
   type ProductKey,
@@ -79,6 +82,24 @@ const baseUrl = assertSafeBaseUrl(process.env.DEMO_API_BASE_URL ?? DEFAULT_BASE_
 const adminUsername = process.env.DEMO_ADMIN_USERNAME ?? "admin";
 const adminPassword = process.env.DEMO_ADMIN_PASSWORD ?? "admin123";
 
+/**
+ * Para volver a sembrar una base que ya tiene una demo (la de Cloud Run tiene
+ * la de la fase 6): distingue el usuario del chofer, el código del lote y los
+ * nombres de los clientes. Vacía, todo queda como siempre.
+ */
+const RUN_TAG_PATTERN = /^[a-z0-9-]{0,20}$/;
+const runTag = (process.env.DEMO_RUN_TAG ?? "").trim();
+if (!RUN_TAG_PATTERN.test(runTag)) {
+  throw new Error("DEMO_RUN_TAG solo admite minúsculas, dígitos y guiones (hasta 20).");
+}
+
+/**
+ * La contraseña del chofer de demo, para que pueda entrar a «Mi ruta» en el
+ * entorno de revisión. Llega por el entorno (en la demo, desde Secret Manager)
+ * y nunca se imprime. Sin ella, se genera una al azar que nadie conoce.
+ */
+const driverPassword = process.env.DEMO_DRIVER_PASSWORD;
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -127,6 +148,7 @@ interface CatalogEntry {
 }
 interface ProductCatalogResponse extends CatalogEntry {
   listPrice: string;
+  containerType: { id: string; name: string };
 }
 interface UserResponse {
   id: string;
@@ -250,17 +272,13 @@ interface Catalog {
 
 /** Everything down to (not including) driver creation is a READ, on purpose — see run(). */
 async function resolveCatalog(token: string): Promise<Catalog> {
-  const [containerTypes, products, paymentMethods] = await Promise.all([
-    apiFetch<CatalogEntry[]>("/container-types", token),
+  const [products, paymentMethods] = await Promise.all([
     apiFetch<ProductCatalogResponse[]>("/products", token),
     apiFetch<CatalogEntry[]>("/payment-methods", token),
   ]);
   return {
-    containerTypeIdByKey: resolveCatalogIds(
-      containerTypes,
-      CONTAINER_TYPE_NAMES,
-      "el tipo de envase",
-    ),
+    // Por el producto, no por el nombre del tipo (ver resolveContainerTypeIds).
+    containerTypeIdByKey: resolveContainerTypeIds(products),
     productIdByKey: resolveCatalogIds(products, PRODUCT_NAMES, "el producto"),
     paymentMethodIdByKey: resolveCatalogIds(
       paymentMethods,
@@ -295,27 +313,31 @@ function assertPricesMatchCatalog(products: ProductCatalogResponse[]): void {
 
 /** Idempotency guard — see the file-level comment: this is the FIRST write, deliberately. */
 async function createDriver(token: string): Promise<UserResponse> {
+  const username = withRunTag(DEMO_DRIVER_USERNAME, runTag, ".");
   try {
     const driver = await apiFetch<UserResponse>("/users", token, {
       method: "POST",
       body: {
-        name: DEMO_DRIVER_NAME,
-        username: DEMO_DRIVER_USERNAME,
-        password: randomDriverPassword(),
+        name: withRunTag(DEMO_DRIVER_NAME, runTag, " · "),
+        username,
+        password: driverPassword ?? randomDriverPassword(),
         roles: ["DRIVER"],
       },
     });
     console.log(
-      `Chofer creado: ${sanitizeForLog(driver.username)} (contraseña generada al azar; no se ` +
-        "imprime y no hace falta dársela — el chofer nunca inicia sesión en este seed, ver CLAUDE.md).",
+      `Chofer creado: ${sanitizeForLog(driver.username)} ` +
+        (driverPassword === undefined
+          ? "(contraseña al azar, no se imprime: nadie puede entrar con él)."
+          : "(con la contraseña de DEMO_DRIVER_PASSWORD, que no se imprime)."),
     );
     return driver;
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       throw new Error(
-        `El seed de demo ya corrió antes: el usuario "${DEMO_DRIVER_USERNAME}" ya existe. ` +
-          "Este script no se limpia solo — reseteá la base local de Docker " +
-          "(cd apps/api && npx prisma migrate reset) y volvé a correr pnpm demo:data.",
+        `El seed de demo ya corrió antes: el usuario "${username}" ya existe. ` +
+          "Este script no se limpia solo: en local, reseteá la base de Docker " +
+          "(cd apps/api && npx prisma migrate reset); contra una base que no se resetea, " +
+          "volvé a correrlo con otra DEMO_RUN_TAG.",
         { cause: error },
       );
     }
@@ -329,7 +351,7 @@ async function createCustomers(token: string): Promise<Map<string, string>> {
     const created = await apiFetch<CustomerResponse>("/customers", token, {
       method: "POST",
       body: {
-        name: customer.name,
+        name: withRunTag(customer.name, runTag, " · "),
         phone: customer.phone,
         address: customer.address,
         addressReference: customer.addressReference,
@@ -357,11 +379,11 @@ async function createProductionBatch(
   token: string,
   date: string,
   containerTypeIdByKey: Record<ContainerTypeKey, string>,
-): Promise<Map<ContainerTypeKey, string>> {
+): Promise<void> {
   const batch = await apiFetch<ProductionBatchResponse>("/production-batches", token, {
     method: "POST",
     body: {
-      code: PRODUCTION_BATCH_CODE,
+      code: withRunTag(PRODUCTION_BATCH_CODE, runTag, "-"),
       date,
       notes: "Lote de arranque para el seed de demo.",
       items: PRODUCTION_PLAN.map((line) => ({
@@ -370,36 +392,32 @@ async function createProductionBatch(
       })),
     },
   });
-
-  const batchItemIdByContainerType = new Map<ContainerTypeKey, string>();
-  for (const item of batch.items) {
-    const key = (Object.keys(containerTypeIdByKey) as ContainerTypeKey[]).find(
-      (candidate) => containerTypeIdByKey[candidate] === item.containerTypeId,
-    );
-    if (key !== undefined) batchItemIdByContainerType.set(key, item.id);
-  }
   console.log(`Lote de producción "${sanitizeForLog(batch.code)}" creado.`);
-  return batchItemIdByContainerType;
 }
 
+/**
+ * Carga como la pantalla: del lote más antiguo con stock (FIFO), no del que
+ * este script acaba de crear. Contra una base con historia, ese no es el más
+ * antiguo y la API rechazaría la carga.
+ */
 async function loadRouteContainers(
   token: string,
   routeId: string,
   loadsNeeded: Partial<Record<ContainerTypeKey, number>>,
-  batchItemIdByContainerType: Map<ContainerTypeKey, string>,
+  containerTypeIdByKey: Record<ContainerTypeKey, string>,
 ): Promise<void> {
   const safeRouteId = assertUuid(routeId, "id de ruta");
   for (const containerTypeKey of Object.keys(loadsNeeded) as ContainerTypeKey[]) {
     const quantity = loadsNeeded[containerTypeKey];
     if (quantity === undefined || quantity <= 0) continue;
-    const batchItemId = batchItemIdByContainerType.get(containerTypeKey);
-    if (batchItemId === undefined) {
-      throw new Error(`No hay ítem de lote para "${CONTAINER_TYPE_NAMES[containerTypeKey]}".`);
+    const withStock = await apiFetch<PaginatedResponse<FifoBatch>>(
+      "/production-batches?withStock=true&limit=100",
+      token,
+    );
+    const lines = planFifoLoads(withStock.data, containerTypeIdByKey[containerTypeKey], quantity);
+    for (const line of lines) {
+      await apiFetch(`/routes/${safeRouteId}/loads`, token, { method: "POST", body: line });
     }
-    await apiFetch(`/routes/${safeRouteId}/loads`, token, {
-      method: "POST",
-      body: { batchItemId, quantity },
-    });
   }
 }
 
@@ -497,7 +515,6 @@ async function runRouteForDay(
   date: string,
   dayDeliveries: DemoDeliveryPlan[],
   loadsNeeded: Partial<Record<ContainerTypeKey, number>>,
-  batchItemIdByContainerType: Map<ContainerTypeKey, string>,
   locationIdByKey: Map<string, string>,
   productIdByKey: Record<ProductKey, string>,
   paymentMethodIdByKey: Record<PaymentMethodKey, string>,
@@ -508,7 +525,7 @@ async function runRouteForDay(
     body: { driverId, date },
   });
 
-  await loadRouteContainers(token, route.id, loadsNeeded, batchItemIdByContainerType);
+  await loadRouteContainers(token, route.id, loadsNeeded, containerTypeIdByKey);
   const stopIdByCustomerKey = await addRouteStops(token, route.id, dayDeliveries, locationIdByKey);
 
   await apiFetch(`/routes/${assertUuid(route.id, "id de ruta")}/start`, token, { method: "PATCH" });
@@ -664,11 +681,7 @@ export async function run(): Promise<void> {
   const locationIdByKey = await createCustomers(token);
 
   const dates = businessDatesGoingBack(DEMO_HISTORY_DAYS, new Date());
-  const batchItemIdByContainerType = await createProductionBatch(
-    token,
-    dates[0] as string,
-    containerTypeIdByKey,
-  );
+  await createProductionBatch(token, dates[0] as string, containerTypeIdByKey);
 
   const deliveriesGroupedByDay = deliveriesByDay(DEMO_DELIVERIES);
   const loadsGroupedByDay = loadsNeededByDay(DEMO_DELIVERIES);
@@ -687,7 +700,6 @@ export async function run(): Promise<void> {
       date,
       dayDeliveries,
       loadsGroupedByDay.get(dayIndex) ?? {},
-      batchItemIdByContainerType,
       locationIdByKey,
       productIdByKey,
       paymentMethodIdByKey,
