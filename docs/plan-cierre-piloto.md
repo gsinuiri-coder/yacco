@@ -23,7 +23,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
   antes de tocar ninguna base, así que los merges se acumulan sin riesgo y
   salen todos en el primer deploy verde.
 - [x] #174 (Dependabot, minor-and-patch).
-- [ ] #180 (backlog: validar `secrets:gcp` antes de rotar Neon; respaldo de
+- [x] #180 (backlog: validar `secrets:gcp` antes de rotar Neon; respaldo de
       `main` antes del piloto).
 - [x] Este archivo, en un PR propio.
 
@@ -59,7 +59,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 
 ## Cola (en este orden)
 
-1. [ ] **Docs al día con el código:** regenerar estado-por-modulo.md
+1. [x] **Docs al día con el código:** regenerar estado-por-modulo.md
        recorriendo apps/web-nuxt (hoy nombra archivos .tsx del React), y
        actualizar en supuestos-por-validar.md las rutas del React a las del Nuxt.
 2. [ ] **Decisiones de Claude sobre los 10 supuestos pendientes:** se mantiene

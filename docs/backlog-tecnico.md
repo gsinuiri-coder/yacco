@@ -1904,3 +1904,23 @@ respaldo de `main` con el procedimiento de D-006 (hija de `main`, sin compute,
 «Credenciales y recursos con fecha» de PROGRESO.md con quién la borra y
 cuándo. Es el estado de la base justo antes de que empiece a tener datos que
 no se pueden regenerar con el seed.
+
+## La corrección de una parada no tiene pantalla
+
+**Estado:** abierto. **Disparador:** antes del piloto de campo — desde el
+primer día real, la oficina anota paradas dictadas y el error de anotación es
+el caso normal (spec §4.3).
+
+`PATCH /api/v1/routes/:id/stops/:stopId/correction` (HU-24, solo ADMIN) existe
+y está probado, pero ninguna pantalla lo llama. `RouteStopsSection.vue`
+muestra una parada ya corregida —quién, cuándo y por qué—, pero no ofrece
+corregirla. Hoy una corrección exige llamar a la API a mano. El React retirado
+tampoco lo tenía: no es una regresión del paso a Nuxt.
+
+Apareció al regenerar `estado-por-modulo.md` contra `apps/web-nuxt` el
+2026-09-24; la fila `routes` quedó en `Parcial` por esto.
+
+**Para cerrarla:** una acción «Corregir» en cada parada resuelta, solo para
+ADMIN, que abra el mismo formulario de `RouteStopMarkForm.vue` precargado con
+lo anotado y un motivo obligatorio, y que muestre el `stockShortfall` que la
+API devuelve (supuesto 10). Al cerrarla, `routes` vuelve a `Completo`.
