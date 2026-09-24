@@ -1785,3 +1785,27 @@ máquina, vale la pena investigar la causa raíz (candidatos: resolución de
 reloj del filesystem, antivirus/sync tocando mtimes, o una interacción con
 `core.ignorecase`/rutas de Windows) en vez de repetir el diagnóstico cada
 vez.
+
+## CI no construye la imagen de la API: un Dockerfile roto se descubre recién en deploy (#171 dejó main sin desplegar 5 días)
+
+**Estado:** abierto. Sólo el registro: nada implementado. **Disparador:** el
+próximo cambio que toque `apps/api/Dockerfile`, la forma del workspace
+(`pnpm-workspace.yaml`, un paquete nuevo o borrado) o `.dockerignore`; en
+cualquier caso, antes del piloto de campo.
+
+`ci.yml` compila la API con `pnpm build`, pero nunca corre
+`docker build -f apps/api/Dockerfile .`. El Dockerfile sólo se ejercita en
+«3 · Imagen» de `deploy.yml`, DESPUÉS del merge y después de migrar las dos
+bases. #171 borró `apps/web` y el Dockerfile seguía copiando
+`apps/web/package.json`: todos los checks del PR en verde, y `main` quedó sin
+poder desplegarse hasta D-023 (2026-09-23), con las APIs en `19a3553`. Nada
+avisó salvo el propio deploy fallido.
+
+Con usuarios reales, ese estado significa que ningún arreglo llega a
+producción hasta que alguien note el job rojo, y que cada intento migra las
+bases antes de fallar.
+
+**Para cerrarla** (no decidido): un job en `ci.yml` que construya la imagen
+sin publicarla (`docker build`, sin credenciales ni `id-token`), que corra en
+cada PR o al menos en los que tocan las rutas del disparador. Tiene costo de
+minutos de runner; la caché de BuildKit del job lo acota.

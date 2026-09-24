@@ -32,10 +32,13 @@ projects get-iam-policy`. Flag any `roles/owner`, `roles/editor` or
    repository: a provider that trusts any GitHub repo lets anyone's workflow
    mint tokens into this project.
 
-3. **Secrets.** No secret value in the repo, in a workflow file, in
-   `vercel.json`, in a Dockerfile `ENV`, or in a `VITE_*` variable — Vite
-   inlines those into a bundle the browser downloads, so a secret there is
-   published, not configured. Cloud Run must take secrets by reference
+3. **Secrets.** No secret value in the repo, in a workflow file, in the web's
+   build config (`apps/web-nuxt/nuxt.config.ts`, `apps/web-nuxt/vercel.json`),
+   in a Dockerfile `ENV`, or in Nuxt's public runtime config
+   (`runtimeConfig.public`, `NUXT_PUBLIC_*`) — Nuxt serializes that into the
+   HTML the browser downloads, so a secret there is published, not
+   configured. The web has no env variables today (D-021, D-023); flag any
+   that appear. Cloud Run must take secrets by reference
    (`--set-secrets`), not baked into the image. Confirm `.env.setup` is
    ignored by git (`git check-ignore`) and never appears in `git log
 --all --name-only`.
@@ -55,8 +58,17 @@ projects get-iam-policy`. Flag any `roles/owner`, `roles/editor` or
    touches the database; flag it if it is reachable unauthenticated and
    returns anything beyond ok/unavailable.
 
-6. **Headers and cookies.** Report which security headers Vercel serves for
-   the web (`vercel.json`) and what the API sets. Note whether auth tokens
+6. **Headers and cookies.** The web is `apps/web-nuxt` (D-023). Its A6
+   headers (`X-Frame-Options: DENY`, `frame-ancestors 'none'`) come from
+   `routeRules` in `apps/web-nuxt/nuxt.config.ts`, and the `/api/*` and
+   `/health` proxy is the Build Output routes of
+   `apps/web-nuxt/config/api-proxy.ts` (D-021). Read both, but report what is
+   SERVED, not only what is configured: `curl -sI` against
+   `https://yacco-web.vercel.app/`, `/login` and a deep page such as
+   `/customers/new`, and list the security headers each response carries.
+   Static assets under `/_nuxt/` don't carry the A6 pair (D-023); that alone is
+   not a finding, but an HTML response without it is. Also report what the API
+   sets. Note whether auth tokens
    live in `localStorage` or in cookies, and if in cookies, whether they are
    `HttpOnly`, `Secure` and `SameSite`. Report what is true — do not propose
    a redesign of auth, which is explicitly out of scope for this migration.

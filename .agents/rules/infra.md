@@ -33,8 +33,9 @@ access`, `vercel env pull`).
   por Workload Identity Federation, y el proveedor tiene que estar restringido
   a **este** repositorio: uno que confíe en cualquier repo de GitHub deja que
   el workflow de un tercero emita tokens contra el proyecto.
-- Las `VITE_*` **se hornean en el bundle** que descarga el navegador. Lo que se
-  ponga ahí queda publicado, no configurado: nunca un secreto.
+- Lo que vaya a `runtimeConfig.public` de Nuxt (o a una `NUXT_PUBLIC_*`) **viaja
+  en el HTML** que descarga el navegador. Lo que se ponga ahí queda publicado,
+  no configurado: nunca un secreto. Hoy el web no tiene ninguna variable.
 
 ## Autonomía
 

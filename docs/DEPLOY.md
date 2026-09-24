@@ -136,17 +136,17 @@ Mergear a `main` despliega. `.github/workflows/deploy.yml` arranca cuando CI
 termina bien sobre `main`, espera a que CodeQL también pase para ese commit, y
 corre en este orden (D-014):
 
-| Paso          | Qué hace                                                                             | Si falla, qué queda en pie                           |
-| ------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main`                    | Nada cambió                                          |
-| preflight     | Comprueba que existen los secretos, y que el token de Vercel sirve (`vercel whoami`) | Nada cambió                                          |
-| 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit                             | Nada cambió                                          |
-| 2 migraciones | `prisma migrate deploy` contra la URL **directa**: demo, después main                | Una o las dos bases migradas; código viejo sirviendo |
-| 3 imagen      | `deploy-api.mjs build`: una imagen, etiquetada con el sha                            | **Bases migradas, código viejo sirviendo**           |
-| 4a demo       | `deploy-api.mjs deploy --env=demo` + smoke de esa API                                | Producción en el código viejo                        |
-| 4b producción | La MISMA imagen + smoke de esa API                                                   | Demo en el nuevo; web sin publicar                   |
-| 5 web         | `deploy-web.mjs`: `vercel build` + `deploy --prebuilt --prod`                        | APIs en el nuevo; web en su versión anterior         |
-| 6 smoke       | `pnpm smoke:prod`, solo lectura                                                      | Todo desplegado; el smoke dice qué no está sano      |
+| Paso          | Qué hace                                                                                      | Si falla, qué queda en pie                           |
+| ------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main`                             | Nada cambió                                          |
+| preflight     | Comprueba que existen los secretos, y que el token de Vercel sirve (`vercel whoami`)          | Nada cambió                                          |
+| 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit                                      | Nada cambió                                          |
+| 2 migraciones | `prisma migrate deploy` contra la URL **directa**: demo, después main                         | Una o las dos bases migradas; código viejo sirviendo |
+| 3 imagen      | `deploy-api.mjs build`: una imagen, etiquetada con el sha                                     | **Bases migradas, código viejo sirviendo**           |
+| 4a demo       | `deploy-api.mjs deploy --env=demo` + smoke de esa API                                         | Producción en el código viejo                        |
+| 4b producción | La MISMA imagen + smoke de esa API                                                            | Demo en el nuevo; web sin publicar                   |
+| 5 web         | `deploy-web.mjs`: `vercel build --prod`, guardia del Build Output, `deploy --prebuilt --prod` | APIs en el nuevo; web en su versión anterior         |
+| 6 smoke       | `pnpm smoke:prod`, solo lectura                                                               | Todo desplegado; el smoke dice qué no está sano      |
 
 La fila del paso 3 es la que justifica una regla: **si las migraciones pasan y
 la imagen falla, la base quedó migrada y el código viejo sigue sirviendo.** Por
@@ -185,10 +185,14 @@ tiene que escribirse: sin flag, el script cae en `demo` — a propósito, así e
 despliegue a producción es algo que alguien escribió, no algo que se le
 escapó.
 
-`vercel.json` tiene las reglas de rewrite (D-011, D-012 en `ARQUITECTURA.md`):
-el dominio de producción de `yacco-web` va a `yacco-api`, cualquier otro host
-—incluido cada preview— va a `yacco-api-demo`, y todo lo demás cae en
-`/index.html` para el router.
+El web es `apps/web-nuxt` (D-023): el proyecto `yacco-web` tiene
+`rootDirectory: apps/web-nuxt` y construye con el `vercel.json` de esa
+carpeta. El proxy por host son rutas del Build Output (D-011, D-021): el
+dominio de producción de `yacco-web` va a `yacco-api`, cualquier otro host
+—incluido cada preview— va a `yacco-api-demo`, y todo lo demás lo renderiza
+la función SSR de Nuxt. `deploy:web` revisa esas rutas en
+`.vercel/output/config.json` y no publica si falta la de producción o si va
+después del default a demo.
 
 ### Verificar P-05: que cada host cae en la API correcta
 
@@ -253,7 +257,8 @@ pnpm smoke:prod
 **solo lectura** y sin ninguna credencial: `/health` de las dos APIs
 (FALLA si `environment` vuelve `null`), `/health` por el dominio de producción
 de Vercel, un login con un usuario inexistente que tiene que dar 401, y la
-carga de las pantallas principales.
+carga de las pantallas principales servidas por el Nuxt (`<div id="__nuxt">`,
+su módulo `/_nuxt/*.js` y los headers anti-enmarcado): un web React falla.
 **Nunca corre nada que escriba contra producción**, y no lleva ninguna
 credencial. Con `EXPECTED_COMMIT=<sha>` además exige que las dos APIs estén en
 ese commit; CI la pone.

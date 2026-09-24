@@ -33,8 +33,9 @@
 # Neon y el token de Vercel — sale de Secret Manager en el momento, y sólo en
 # el job que lo usa (D-014, D-015).
 #
-# FUERA DE ALCANCE: el corte de tráfico. Render sigue sirviendo a los usuarios
-# hasta la fase 7; este workflow no lo toca.
+# El web que publica «5 · Web a Vercel» es apps/web-nuxt, en el proyecto
+# yacco-web (D-023). deploy-web.mjs revisa el Build Output antes de publicarlo
+# y aborta si falta la ruta de producción por host.
 
 name: Deploy
 
@@ -395,7 +396,8 @@ jobs:
       contents: read
       id-token: write
     # Si falla: las dos APIs están en el código nuevo y el web sigue en su
-    # versión anterior (o en ninguna, antes del primer deploy).
+    # versión anterior. Si falla en la guardia del Build Output (D-023), no
+    # llegó a publicarse nada: el build existe sólo en el runner.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

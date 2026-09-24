@@ -5,9 +5,20 @@
  * raros — y el que más importa es `environment: null`.
  */
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 
-import { checkHealth, checkRejectedLogin, checkSpaShell } from "./smoke.mjs";
+import { REPO_ROOT } from "./lib.mjs";
+import {
+  WEB_SCREENS,
+  checkFrameHeaders,
+  checkHealth,
+  checkNuxtShell,
+  checkRejectedLogin,
+} from "./smoke.mjs";
+
+const PAGES_DIR = join(REPO_ROOT, "apps", "web-nuxt", "app", "pages");
 
 const SHA = "6a7e33e1acd8b7655b07b64f2d6881d59cfa5106";
 
@@ -83,21 +94,68 @@ describe("checkRejectedLogin", () => {
   });
 });
 
-describe("checkSpaShell", () => {
-  const html =
-    '<!doctype html><html><head><script type="module" crossorigin ' +
-    'src="/assets/index-Cduw-oyP.js"></script></head><body><div id="root"></div></body></html>';
+describe("checkNuxtShell", () => {
+  // Recortado del HTML que sirve el SSR de apps/web-nuxt en Vercel.
+  const nuxtHtml =
+    '<!DOCTYPE html><html lang="es-PE"><head><link rel="modulepreload" as="script" ' +
+    'crossorigin href="/_nuxt/CIFJyZrO.js"><script type="module" src="/_nuxt/CTtSYJIt.js" ' +
+    'crossorigin></script></head><body><div id="__nuxt"><div class="isolate"></div></div>' +
+    '<div id="teleports"></div></body></html>';
 
-  test("el HTML construido por Vite: raíz y bundle", () => {
-    assert.deepEqual(checkSpaShell(html), {
+  // El index.html del web React, tal cual lo servía yacco-web.vercel.app hasta
+  // el corte (commit 19a3553): lo que tiene que FALLAR.
+  const reactHtml =
+    '<!doctype html><html lang="es"><head><script type="module" crossorigin ' +
+    'src="/assets/index-Ba1lrbxK.js"></script></head><body><div id="root"></div></body></html>';
+
+  test("el HTML del Nuxt: raíz y módulo de entrada", () => {
+    assert.deepEqual(checkNuxtShell(nuxtHtml), {
       problems: [],
-      bundlePath: "/assets/index-Cduw-oyP.js",
+      entryPath: "/_nuxt/CTtSYJIt.js",
     });
   });
 
-  test("una página que no es la SPA falla", () => {
-    const result = checkSpaShell("<html><body>404</body></html>");
-    assert.equal(result.bundlePath, null);
-    assert.equal(result.problems.length, 2);
+  test("el HTML del web React falla: el corte no ocurrió", () => {
+    const result = checkNuxtShell(reactHtml);
+    assert.equal(result.entryPath, null);
+    assert.deepEqual(result.problems, [
+      'el HTML no tiene <div id="__nuxt">: no lo sirve el web Nuxt',
+      "el HTML no referencia ningún módulo en /_nuxt/*.js",
+    ]);
+  });
+});
+
+describe("checkFrameHeaders", () => {
+  test("con los dos headers de A6 no hay problemas", () => {
+    const headers = new Headers({
+      "X-Frame-Options": "DENY",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+    });
+    assert.deepEqual(checkFrameHeaders(headers), []);
+  });
+
+  test("sin ninguno, los dos faltan", () => {
+    assert.equal(checkFrameHeaders(new Headers({ "content-type": "text/html" })).length, 2);
+  });
+
+  test("un X-Frame-Options que no es DENY falla", () => {
+    const headers = new Headers({
+      "X-Frame-Options": "SAMEORIGIN",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+    });
+    assert.deepEqual(checkFrameHeaders(headers), ["falta X-Frame-Options: DENY"]);
+  });
+});
+
+describe("WEB_SCREENS", () => {
+  test("cada pantalla existe en apps/web-nuxt/app/pages", () => {
+    // Nuxt no tiene fallback a index.html: una ruta que no exista da 404 en el
+    // smoke. Esto lo ve antes del deploy.
+    for (const screen of WEB_SCREENS) {
+      const segments = screen === "/" ? ["index"] : screen.slice(1).split("/");
+      const asPage = join(PAGES_DIR, `${segments.join("/")}.vue`);
+      const asIndex = join(PAGES_DIR, ...segments, "index.vue");
+      assert.ok(existsSync(asPage) || existsSync(asIndex), `${screen} no es una página del Nuxt`);
+    }
   });
 });
