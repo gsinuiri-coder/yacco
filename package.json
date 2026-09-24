@@ -30,7 +30,8 @@
     "deploy:api": "node scripts/deploy-api.mjs",
     "deploy:web": "node scripts/deploy-web.mjs",
     "smoke:prod": "node scripts/smoke.mjs",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:e2e": "pnpm --filter @yacco/web-nuxt test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
