@@ -423,9 +423,28 @@ decidió no pedirla): la rotación de `main` le cortó la base.
 (`yacco-api` y `yacco-web`) desde su dashboard. No sirven nada útil: la API
 no llega a la base y el web es el React viejo.
 
-**En curso en esta misma fase:** los PR de Dependabot, la rotación del token
-de Vercel y el borrado de las ramas de respaldo de Neon. Los registra el PR
-que los cierra.
+**Dependabot (B6), uno por uno, con el deploy verde entre medio:**
+
+| PR                          | Resultado                                                                                                                                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #14 `@eslint/js` 9 → 10     | **Cerrado sin mergear:** no pasó `ci`. `preserve-caught-error`, nueva en `eslint:recommended`, marcó 2 errores en `seed-demo.ts`. Arreglado aparte en #178; después se retoma la subida |
+| #15 `lint-staged` 15 → 17   | Dependabot lo reemplazó por **#154** el 2026-09-17. #154 mergeado con OK (salto mayor), después de probar el hook con un commit local; deploy 9/9                                       |
+| #17 `@jest/globals` 29 → 30 | Dependabot lo reemplazó por **#152** el 2026-09-17. #152 mergeado con OK (salto mayor); deploy 9/9                                                                                      |
+| #126 `vitest` 3 → 4         | Dependabot lo cerró el 2026-09-18 porque vitest ya está al día (hoy en 5.0.1). Nada que hacer                                                                                           |
+
+**Ramas de respaldo de Neon, borradas el 2026-09-24 a las 04:59 UTC por el
+agente, por la API de Neon** (`DELETE /projects/late-union-50177487/branches/{id}`),
+con autorización explícita de Giancarlo para esos dos ids y ninguno más.
+Antes se verificó que cada id coincidía con su nombre y que ninguna era madre
+de `demo`, de `main` ni de otra rama. La regla `deny` de
+`neonctl branches delete` en `.claude/settings.json` no se tocó. Quedan
+`main` y `demo`.
+
+**Rotación del token de Vercel (B8): bloqueada.** La API rechazó crear el token
+con la sesión de la CLI: `POST /v3/user/tokens` → `Cannot create tokens for
+this app. (403)`. No se creó nada ni cambió ningún secreto: CI sigue con el
+token de siempre (versión 1 de `yacco-ci-vercel-token`). Queda para Giancarlo
+antes del 2026-10-16 (ver «Credenciales y recursos con fecha»).
 
 ## Antes del corte: los arreglos que lo bloquean
 
@@ -572,12 +591,12 @@ ninguna base.
 
 ## Credenciales y recursos con fecha
 
-| Qué                                           | Fecha                                                     | Qué hacer                                                                                                                            |
-| --------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Token de Vercel (`yacco-ci-vercel-token`)     | creado 2026-09-16, **vence 2026-10-16**                   | Rotarlo antes: token nuevo en `.env.setup`, `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015                  |
-| Rama de Neon `backup-pre-ci-deploy-20260916`  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)  | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                 |
-| Rama de Neon `backup-pre-seed-creds-20260917` | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`) | **La borra el dueño DESPUÉS de la fase 7, no antes**                                                                                 |
-| Secreto `yacco-admin-initial-password`        | 2026-09-17                                                | **No se cambia hasta el final del proyecto** (Giancarlo, 2026-09-24). Entonces: la lee, la cambia desde la app y destruye la versión |
+| Qué                                               | Fecha                                                     | Qué hacer                                                                                                                                                                                                     |
+| ------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Token de Vercel (`yacco-ci-vercel-token`)         | creado 2026-09-16, **vence 2026-10-16**                   | **Giancarlo, antes del vencimiento.** La API no deja crearlo con la sesión de la CLI (403, 2026-09-24). Token nuevo en el dashboard, `pnpm secrets:gcp --upload=VERCEL_TOKEN`, y actualizar esta fila y D-015 |
+| ~~Rama de Neon `backup-pre-ci-deploy-20260916`~~  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)  | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                |
+| ~~Rama de Neon `backup-pre-seed-creds-20260917`~~ | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`) | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                |
+| Secreto `yacco-admin-initial-password`            | 2026-09-17                                                | **No se cambia hasta el final del proyecto** (Giancarlo, 2026-09-24). Entonces: la lee, la cambia desde la app y destruye la versión                                                                          |
 
 **Un token de Vercel vencido frena el deploy en el preflight**, antes de tocar
 ninguna base: `scripts/check-vercel-token.mjs` lo valida con `vercel whoami`.
@@ -604,10 +623,11 @@ desde CI. Es el estado de la base real antes de estrenar el workflow.
 Esa hora es también la del plan B por historia (`^self@2026-09-16T16:04:01Z`),
 vigente sólo durante las 6 horas de retención del proyecto.
 
-- **Se conserva hasta DESPUÉS de la fase 7.** Mientras Render siga vivo, la base
-  tiene dos escritores y la vuelta atrás puede necesitarla. Recién con el corte
-  cerrado y sin incidentes se borra, y la borra una persona: los agentes tienen
-  denegado borrar ramas de Neon.
+- **Borrada el 2026-09-24**, con la fase 7 cerrada sin incidentes, junto con
+  `backup-pre-seed-creds-20260917` (ver «Cierre», en la fase 7). **Desde
+  entonces no hay rama de respaldo de `main`:** el único punto de retorno es
+  el historial de Neon, con las 6 horas de retención del proyecto. Antes de
+  un cambio riesgoso sobre `main`, crear una rama nueva como en D-006.
 - **Cómo se usa:** «Procedimiento: restaurar `main` desde una rama de
   respaldo», junto a D-006 en `ARQUITECTURA.md`. Incluye el paso que se olvida:
   después de restaurar, `demo` queda colgando de la rama preservada y hay que
@@ -873,10 +893,12 @@ de rotarlo (D-015)—, y
 `GH_TOKEN` / `NEON_API_KEY` si se llegaron a usar. `RENDER_API_KEY` no se
 llegó a usar.
 
-Borrar la rama de respaldo `backup-pre-ci-deploy-20260916` (ver «Punto de
-retorno»), sólo cuando la fase 7 haya cerrado sin incidentes. Si hubo que
-restaurar en algún momento, borrar también `main_before_restore_*` y
-`demo_orphan_*`, una vez que no haga falta recuperar nada de ahí.
+~~Borrar las ramas de respaldo~~ — **borradas el 2026-09-24** (ver «Punto de
+retorno»). No hubo que restaurar: no existen `main_before_restore_*` ni
+`demo_orphan_*`.
+
+**Rotar el token de Vercel: pendiente de Giancarlo** (ver «Credenciales y
+recursos con fecha»).
 
 ~~Rotar la contraseña de `main`~~ — **hecho el 2026-09-24** (D-017), sin
 suspender Render: la contraseña vieja de demo ya no abre `main`.
