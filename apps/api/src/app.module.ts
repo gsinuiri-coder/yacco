@@ -15,6 +15,7 @@ import { CustomersModule } from "./modules/customers/customers.module.js";
 import { OrdersModule } from "./modules/orders/orders.module.js";
 import { ProductsModule } from "./modules/products/products.module.js";
 import { ProductionBatchesModule } from "./modules/production-batches/production-batches.module.js";
+import { ReportsModule } from "./modules/reports/reports.module.js";
 import { RosterLoaderModule } from "./modules/roster-loader/roster-loader.module.js";
 import { PaymentMethodsModule } from "./modules/payment-methods/payment-methods.module.js";
 import { PaymentsModule } from "./modules/payments/payments.module.js";
@@ -41,6 +42,7 @@ import { ZonesModule } from "./modules/zones/zones.module.js";
     ContainerCountsModule,
     ContainerReconciliationModule,
     ProductionBatchesModule,
+    ReportsModule,
     RosterLoaderModule,
     RoutesModule,
     RouteSettlementModule,
