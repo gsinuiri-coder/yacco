@@ -1740,6 +1740,19 @@ el digest en el Dockerfile y habilitar `containerscanning.googleapis.com`.
 
 ### Prioridad 3 — CSP completa en el web
 
+**Estado:** RESUELTA el 2026-09-24 (ítem 7c de `plan-cierre-piloto.md`). Un
+plugin de Nitro (`apps/web-nuxt/server/plugins/csp.ts`) escribe en cada página
+la política de `config/csp.ts`, con un nonce nuevo por respuesta: todo desde el
+propio origen, scripts solo con el nonce, `frame-ancestors 'none'`. En vez del
+Report-Only en un preview, que el deploy bloqueado no permitía, se probó así: un
+build de producción servido por Nitro recorrido con Playwright, sin ninguna
+violación (`e2e-prod/csp.test.ts`, también en CI); y las 16 pantallas
+autenticadas recorridas contra la API local con la política encendida en
+desarrollo, sin ninguna violación. **Falta ver la cabecera en Vercel**: si ahí
+la estática de `routeRules` le gana a la del plugin, llega solo
+`frame-ancestors` (no rompe nada, protege menos). Se comprueba en el preview
+del ítem 9. Registro original:
+
 **Por qué no entró:** una CSP que restrinja `script-src` y `connect-src` se
 prueba contra el web real antes de publicarla —un origen olvidado deja la app en
 blanco— y un web roto durante el corte se confunde con un corte fallido. Hoy el
