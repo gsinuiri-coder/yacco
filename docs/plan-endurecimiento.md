@@ -56,8 +56,8 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        accesos a Secret Manager y una alerta ante una lectura de una identidad
        que no sea las esperadas.
    - Aplicado con `pnpm gcp:audit` antes del merge (no toca el deploy). El
-     canal de email es la cuenta dueña del proyecto. Falta que Giancarlo
-     confirme que le llegó el aviso de las lecturas de prueba (20:20, 20:26 y
+     canal de email es la cuenta dueña del proyecto. Giancarlo
+     confirmó (2026-09-24) que le llegó el email de las lecturas de prueba (20:20, 20:26 y
      21:03 UTC).
 6. [ ] **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
        vulnerabilidades en Artifact Registry.
