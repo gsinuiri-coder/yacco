@@ -75,3 +75,18 @@ describe("visibleNavigation", () => {
     }
   });
 });
+
+describe("el menú del chofer", () => {
+  const links = (roles: Parameters<typeof visibleNavigation>[0]) =>
+    visibleNavigation(roles).flatMap((section) => section.links.map((link) => link.label));
+
+  it("quien solo es chofer ve «Mi ruta» y nada más", () => {
+    expect(links(["DRIVER"])).toEqual(["Mi ruta"]);
+  });
+
+  it("la oficina ve su menú; si además reparte, también «Mi ruta»", () => {
+    expect(links(["SELLER"])).toContain("Clientes");
+    expect(links(["SELLER"])).not.toContain("Mi ruta");
+    expect(links(["SELLER", "DRIVER"])).toEqual(expect.arrayContaining(["Clientes", "Mi ruta"]));
+  });
+});

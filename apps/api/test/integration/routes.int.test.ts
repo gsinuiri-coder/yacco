@@ -464,6 +464,22 @@ describe("GET /api/v1/routes", () => {
 });
 
 describe("GET /api/v1/routes/:id", () => {
+  // «Mi ruta»: en la calle el chofer necesita cómo encontrar el lugar y a quién
+  // llamar, no solo la dirección.
+  test("each stop carries the address reference and the phone of its location", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addVanSaleStop(adminToken, routeId);
+
+    const response = await request(server())
+      .get(`/api/v1/routes/${routeId}`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .expect(200);
+
+    expect(response.body.stops[0].location).toEqual(
+      expect.objectContaining({ addressReference: "Frente al parque", phone: "987000000" }),
+    );
+  });
+
   test("returns the route with its stops ordered by position", async () => {
     const routeId = await createRoute(adminToken, { date: "2026-09-15" });
     await addVanSaleStop(adminToken, routeId);

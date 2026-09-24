@@ -58,6 +58,31 @@ export const NAVIGATION: NavigationSection[] = [
     ],
   },
   {
+    // HU-19, HU-20, HU-21: la spec los pide para el administrador, y la API
+    // los reserva a ese rol.
+    label: "Reportes",
+    links: [
+      {
+        label: "Deuda por cliente",
+        icon: "i-lucide-hand-coins",
+        to: "/reports/debt",
+        onlyFor: "ADMIN",
+      },
+      {
+        label: "Envases prestados",
+        icon: "i-lucide-container",
+        to: "/reports/loaned-containers",
+        onlyFor: "ADMIN",
+      },
+      {
+        label: "Producción por período",
+        icon: "i-lucide-chart-no-axes-column",
+        to: "/reports/production",
+        onlyFor: "ADMIN",
+      },
+    ],
+  },
+  {
     label: "Administración",
     links: [
       { label: "Zonas", icon: "i-lucide-map-pin", to: "/zones" },
@@ -66,9 +91,27 @@ export const NAVIGATION: NavigationSection[] = [
   },
 ];
 
+/** La pantalla del chofer en la calle: sus rutas del día, en el celular. */
+export const MY_ROUTE_PATH = "/my-route";
+const MY_ROUTE: NavigationLink = { label: "Mi ruta", icon: "i-lucide-map", to: MY_ROUTE_PATH };
+
+/**
+ * Quien reparte y no es de la oficina. Para esa persona la app es «Mi ruta» y
+ * nada más: el resto del menú son pantallas de la oficina que la API igual le
+ * negaría (supuesto 12 de docs/supuestos-por-validar.md).
+ */
+export function isDriverOnly(roles: readonly UserRole[]): boolean {
+  return roles.includes("DRIVER") && !roles.includes("ADMIN") && !roles.includes("SELLER");
+}
+
 export function visibleNavigation(roles: readonly UserRole[]): NavigationSection[] {
-  return NAVIGATION.map((section) => ({
+  if (isDriverOnly(roles)) return [{ label: "Reparto", links: [MY_ROUTE] }];
+  return NAVIGATION.map((section, index) => ({
     ...section,
-    links: section.links.filter((link) => !link.onlyFor || roles.includes(link.onlyFor)),
+    links: [
+      ...section.links.filter((link) => !link.onlyFor || roles.includes(link.onlyFor)),
+      // Alguien de la oficina que además reparte también tiene su ruta a mano.
+      ...(index === 0 && roles.includes("DRIVER") ? [MY_ROUTE] : []),
+    ],
   })).filter((section) => section.links.length > 0);
 }

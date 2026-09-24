@@ -41,6 +41,12 @@ export class RouteStopLocationDto {
   @ApiProperty()
   address!: string;
 
+  @ApiProperty({ example: "Portón verde, al lado de la bodega" })
+  addressReference!: string;
+
+  @ApiProperty({ example: "987654321" })
+  phone!: string;
+
   @ApiProperty({ type: RouteStopCustomerDto })
   customer!: RouteStopCustomerDto;
 }
