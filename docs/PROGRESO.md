@@ -591,13 +591,14 @@ ninguna base.
 
 ## Credenciales y recursos con fecha
 
-| Qué                                               | Fecha                                                                                                                                   | Qué hacer                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Token de Vercel (`yacco-ci-vercel-token`)         | versión 2 creada 2026-09-24, **sin vencimiento** (la 1, del 2026-09-16, destruida el 2026-09-24 después de que el deploy pasó el job 5) | Validado con `check-vercel-token` el 2026-09-24. Sin vencimiento no hay fecha que vigilar, pero tampoco un corte automático si se filtra: **rotarlo al cerrar el piloto** con uno de 30–90 días y alcance solo al proyecto (A1). Al rotar: `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015 |
-| ~~Rama de Neon `backup-pre-ci-deploy-20260916`~~  | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)                                                                                | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                                                                                                                     |
-| ~~Rama de Neon `backup-pre-seed-creds-20260917`~~ | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`)                                                                               | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                                                                                                                     |
-| Secreto `yacco-demo-driver-password`              | creado 2026-09-24                                                                                                                       | La contraseña de `chofer.demo.piloto` en la demo, para revisar «Mi ruta». Se lee con `gcloud secrets versions access latest --secret yacco-demo-driver-password`, nunca se pega en un chat. Se destruye cuando termine la revisión del piloto                                                                      |
-| Secreto `yacco-admin-initial-password`            | 2026-09-17                                                                                                                              | **No se cambia hasta el final del proyecto** (Giancarlo, 2026-09-24). Entonces: la lee, la cambia desde la app y destruye la versión                                                                                                                                                                               |
+| Qué                                                                   | Fecha                                                                                                                                   | Qué hacer                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Token de Vercel (`yacco-ci-vercel-token`)                             | versión 2 creada 2026-09-24, **sin vencimiento** (la 1, del 2026-09-16, destruida el 2026-09-24 después de que el deploy pasó el job 5) | Validado con `check-vercel-token` el 2026-09-24. Sin vencimiento no hay fecha que vigilar, pero tampoco un corte automático si se filtra: **rotarlo al cerrar el piloto** con uno de 30–90 días y alcance solo al proyecto (A1). Al rotar: `pnpm secrets:gcp --upload=VERCEL_TOKEN` y actualizar esta fila y D-015 |
+| ~~Rama de Neon `backup-pre-ci-deploy-20260916`~~                      | creada 2026-09-16 16:04:01 UTC (`br-damp-leaf-aujnr4gs`)                                                                                | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                                                                                                                     |
+| ~~Rama de Neon `backup-pre-seed-creds-20260917`~~                     | creada 2026-09-17 04:34:20 UTC (`br-empty-king-au95xarv`)                                                                               | **Borrada el 2026-09-24**, por la API de Neon con autorización de Giancarlo (fase 7, «Cierre»)                                                                                                                                                                                                                     |
+| Rama de Neon `backup-pre-roster-20260924` (`br-square-rice-au1lk6lw`) | creada 2026-09-24 16:13:40 UTC, datos de `main` a las 16:13:02, sin compute                                                             | El estado de `main` justo antes de la primera carga real. **No se borra** (deny sin excepción): si alguna vez sobra, lo decide Giancarlo a mano                                                                                                                                                                    |
+| Secreto `yacco-demo-driver-password`                                  | creado 2026-09-24                                                                                                                       | La contraseña de `chofer.demo.piloto` en la demo, para revisar «Mi ruta». Se lee con `gcloud secrets versions access latest --secret yacco-demo-driver-password`, nunca se pega en un chat. Se destruye cuando termine la revisión del piloto                                                                      |
+| Secreto `yacco-admin-initial-password`                                | 2026-09-17                                                                                                                              | **No se cambia hasta el final del proyecto** (Giancarlo, 2026-09-24). Entonces: la lee, la cambia desde la app y destruye la versión                                                                                                                                                                               |
 
 **Un token de Vercel vencido frena el deploy en el preflight**, antes de tocar
 ninguna base: `scripts/check-vercel-token.mjs` lo valida con `vercel whoami`.
@@ -910,27 +911,57 @@ ninguna etiqueta `demo`).
 
 ## Cierre para el piloto — 2026-09-24
 
-La cola de `docs/plan-cierre-piloto.md`, en 18 PRs (#181–#198, más #174 y
-#180). Todos con los cinco checks en verde, squash sin `--admin` y con la
-salida en rojo de sus tests en el cuerpo.
+La cola de `docs/plan-cierre-piloto.md` terminó el mismo día, en 24 PRs
+(#180–#204). Todos pasaron los cinco checks y se mergearon con squash, sin
+`--admin`, con la salida en rojo de sus tests en el cuerpo.
 
-| Ítem                                                           | Estado                                                                               | PRs                 |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------- |
-| 1 · Docs al día con el Nuxt                                    | ✅ (apareció un Parcial real: corregir una parada no tiene pantalla)                 | #182                |
-| 2 · Los 10 supuestos, decididos por delegación                 | ✅                                                                                   | #183                |
-| 3 · Defectos del recorrido de paridad                          | ✅ (clic perdido: 10/10 → 0/10; contraseña en la URL antes de hidratar; hidratación) | #184 #185 #186 #187 |
-| 4 · Llenos que vuelven reponen su lote                         | ✅                                                                                   | #188 #189           |
-| 5 · Reportes HU-19/20/21                                       | ✅                                                                                   | #191                |
-| 6 · «Mi ruta» del chofer en el celular                         | ✅                                                                                   | #190 #192           |
-| 7 · Sesión revocable, refresh en cookie httpOnly, CSP completa | ✅ (D-024)                                                                           | #193 #194 #195      |
-| 8 · Padrón del Yacco viejo                                     | ✅ cargado en DEMO: 604 entran, 0 descartados                                        | #197 #198           |
-| 9 · Entorno de revisión                                        | 🟨 demo sembrada; preview y e2e esperan el deploy                                    | #196                |
-| 10 · Carga real en main                                        | ⏸ espera el [OK] del dueño y el deploy                                               | —                   |
-| 11 · Cierre                                                    | 🟨 este registro; sprint-close espera el deploy                                      | —                   |
+| Ítem                                               | Estado                                               | PRs            |
+| -------------------------------------------------- | ---------------------------------------------------- | -------------- |
+| 0 · Token de Vercel de CI                          | ✅ rotado (sin vencimiento), versión vieja destruida | #200           |
+| 1 · Docs al día con el Nuxt                        | ✅                                                   | #182           |
+| 2 · Los 10 supuestos, decididos por delegación     | ✅                                                   | #183           |
+| 3 · Defectos del recorrido de paridad              | ✅                                                   | #184–#187      |
+| 4 · Llenos que vuelven reponen su lote             | ✅                                                   | #188 #189      |
+| 5 · Reportes HU-19/20/21                           | ✅                                                   | #191           |
+| 6 · «Mi ruta» del chofer                           | ✅                                                   | #190 #192      |
+| 7 · Sesión revocable, cookie httpOnly, CSP         | ✅ (D-024; CSP verificada en Vercel)                 | #193–#195      |
+| 8 · Padrón del Yacco viejo                         | ✅                                                   | #197 #198      |
+| 9 · Entorno de revisión                            | ✅ preview + ciclo e2e en verde                      | #196 #201 #203 |
+| C · Corregir una parada (HU-24)                    | ✅                                                   | #202           |
+| 10 · Carga real en main                            | ✅ 604 clientes, S/ 113 329,82                       | —              |
+| E · Demo sin datos reales, restricciones de vuelta | ✅                                                   | #204           |
+| F · Rotar la contraseña del admin de producción    | ⏳ cuando Giancarlo diga «cerramos»                  | —              |
 
-**Bloqueo que arrastra todo lo que falta:** el token de Vercel de CI. Detalle y
-comando en el plan, «Estado al 2026-09-24».
+**La carga real.** Primero el respaldo `backup-pre-roster-20260924` (D-006).
+Después un export fresco de Firestore, solo lectura: 604 clientes y
+S/ 113 329,82, los mismos ids que en la corrida de demo y CSV idénticos. Por
+último la carga, entre las 16:17 y las 16:24 UTC. Verificado en `main`: 604
+clientes del padrón (605 contando el de prueba) y 604 ubicaciones, y la deuda
+materializada es igual a la reconstruida desde el libro y a la de la fuente.
+102 cargos de apertura, 0 envases (se cuentan en planta).
 
-Decisiones delegadas nuevas en `supuestos-por-validar.md`: 11 (llenos al
-lote más antiguo), 12 (chofer en línea y sin cambiar precios), 13 («debe
-desde» del reporte de deuda), 14 (padrón sin zona y sin envases).
+**Después.** De demo se borraron los 604 clientes reales y sus 102 cargos en
+una sola transacción, y ninguno de los teléfonos que quedaron en demo es del
+padrón. El export y los CSV se borraron, y no quedó copia fuera del
+scratchpad. Desde la carga vuelven la ventana de migraciones de Lima y el deny
+estricto de ramas de Neon.
+
+**Pendiente F.** Hasta #187, un clic en «Ingresar» antes de que la página
+hidratara hacía el envío nativo del formulario, un GET con la contraseña en la
+URL. Si pasó con la cuenta de admin de producción, esa contraseña pudo quedar
+en historiales o logs. Es lo primero que se rota cuando Giancarlo diga
+«cerramos» (`yacco-admin-initial-password`, fila de arriba).
+
+### Lección de proceso
+
+**Con el deploy bloqueado, no se mergea más de un PR: se para la cola hasta
+que el deploy vuelva.** El 2026-09-24 el preflight rechazaba el token de
+Vercel y se siguieron mergeando PRs, hasta 21 sin desplegar. Cuando el token
+volvió, salieron todos juntos en un solo deploy, y cualquier problema habría
+sido difícil de atribuir a un PR. Se vigiló 4a (demo) antes de dejar pasar
+producción y salió bien, pero fue suerte más que método.
+
+Otra, menor: GitHub a veces no dispara el CI de push de un merge (le pasó a
+#202). El deploy sale con el merge siguiente. Si no hay un merge siguiente,
+alcanza un `workflow_dispatch` de `ci.yml`… pero el gate del deploy exige un
+CI de **push**, así que hay que mergear algo.
