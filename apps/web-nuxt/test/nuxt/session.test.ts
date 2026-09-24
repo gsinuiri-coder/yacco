@@ -28,8 +28,8 @@ describe("sesión en el cliente", () => {
     expect(screen.queryByText("Tu sesión venció. Vuelve a ingresar.")).toBeNull();
   });
 
-  it("al recargar, canjea el refresh token guardado y deja pasar", async () => {
-    localStorage.setItem("yacco.refreshToken", "refresh-valido");
+  it("al recargar, canjea la cookie del refresh y deja pasar", async () => {
+    localStorage.setItem("yacco.session", "1");
     const bearers = recordBearers("/auth/refresh");
     cleanups.push(
       registerEndpoint("/api/v1/auth/refresh", {
@@ -42,12 +42,13 @@ describe("sesión en el cliente", () => {
 
     expect(await screen.findByRole("heading", { name: "Panel" })).toBeTruthy();
     expect(await screen.findByText("vendedor1")).toBeTruthy();
-    // El refresh token viaja en Authorization, no en el cuerpo.
-    expect(bearers()).toEqual(["Bearer refresh-valido"]);
+    // El refresh va en la cookie httpOnly: nada en Authorization, porque
+    // este código ni siquiera lo conoce.
+    expect(bearers()).toEqual([undefined]);
   });
 
-  it("si el refresh guardado ya no vale, lo borra y avisa en el login que la sesión venció", async () => {
-    localStorage.setItem("yacco.refreshToken", "refresh-vencido");
+  it("si el refresh ya no vale, borra la marca y avisa en el login que la sesión venció", async () => {
+    localStorage.setItem("yacco.session", "1");
     cleanups.push(
       registerEndpoint("/api/v1/auth/refresh", {
         method: "POST",
@@ -62,11 +63,22 @@ describe("sesión en el cliente", () => {
 
     expect(await screen.findByRole("heading", { name: "Ingresar" })).toBeTruthy();
     expect(await screen.findByText("Tu sesión venció. Vuelve a ingresar.")).toBeTruthy();
-    expect(localStorage.getItem("yacco.refreshToken")).toBeNull();
+    expect(localStorage.getItem("yacco.session")).toBeNull();
   });
 
-  it("cerrar sesión vuelve al login SIN el aviso de sesión vencida", async () => {
+  it("cerrar sesión le pide a la API que borre la cookie y vuelve al login SIN aviso", async () => {
     cleanups.push(signIn(["ADMIN"], "giancarlo"));
+    let logouts = 0;
+    cleanups.push(
+      registerEndpoint("/api/v1/auth/logout", {
+        method: "POST",
+        handler: (event) => {
+          logouts++;
+          setResponseStatus(event, 204);
+          return null;
+        },
+      }),
+    );
 
     await renderSuspended(App, { route: "/" });
     await screen.findByText("giancarlo");
@@ -74,7 +86,8 @@ describe("sesión en el cliente", () => {
 
     expect(await screen.findByRole("heading", { name: "Ingresar" })).toBeTruthy();
     expect(screen.queryByText("Tu sesión venció. Vuelve a ingresar.")).toBeNull();
-    expect(localStorage.getItem("yacco.refreshToken")).toBeNull();
+    expect(localStorage.getItem("yacco.session")).toBeNull();
+    await waitFor(() => expect(logouts).toBe(1));
   });
 
   it("con sesión, entrar al login devuelve a la pantalla de antes", async () => {

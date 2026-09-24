@@ -11,7 +11,11 @@ y cuál es el disparador que obliga a resolverla.
 
 ## Refresh token en localStorage
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA el 2026-09-24 (ítem 7a de `plan-cierre-piloto.md`, D-024):
+la API escribe el refresh en una cookie `httpOnly; Secure; SameSite=Lax`, lo
+lee de ahí en `/auth/refresh`, y `POST /auth/logout` la borra. El web ya no
+guarda ningún token en disco. Queda el paso contract en la entrada «Retirar el
+refresh token del cuerpo del login». Registro original:
 
 El refresh token se guarda en `localStorage` (`apps/web/src/auth/token-storage.ts`)
 y el access token vive solo en memoria, en el estado de React.
@@ -1957,3 +1961,18 @@ Apareció al regenerar `estado-por-modulo.md` contra `apps/web-nuxt` el
 ADMIN, que abra el mismo formulario de `RouteStopMarkForm.vue` precargado con
 lo anotado y un motivo obligatorio, y que muestre el `stockShortfall` que la
 API devuelve (supuesto 10). Al cerrarla, `routes` vuelve a `Completo`.
+
+## Retirar el refresh token del cuerpo del login
+
+**Estado:** abierto. **Disparador:** cuando el web con la cookie httpOnly
+(D-024) esté desplegado en producción y en demo.
+
+Es el paso contract de D-024. Mientras un web anterior pudiera estar sirviendo,
+`POST /auth/login` sigue devolviendo `refreshToken` en el cuerpo y
+`JwtRefreshStrategy` sigue aceptando el header `Authorization`. Con el web
+nuevo desplegado, ninguno de los dos tiene quien lo use, y el del cuerpo le
+devuelve al JavaScript de la página justo lo que la cookie esconde.
+
+**Para cerrarla:** sacar `refreshToken` de `AuthTokensDto` (y del contrato
+compartido), dejar solo la cookie en `JwtRefreshStrategy`, y ajustar los tests
+de integración que todavía usan el header.
