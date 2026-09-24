@@ -116,7 +116,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
          refresh tokens ya emitidos (backlog «No hay forma de invalidar un token
          ya emitido» y «Cambiar la contraseña no invalida los refresh tokens»). Al
          supuesto 4 se le agrega que ahora sí se corta la sesión;
-   - [ ] c) CSP completa en el web, verificada en la respuesta servida, sin
+   - [x] c) CSP completa en el web, verificada en la respuesta servida, sin
          romper Nuxt UI ni los íconos.
 
    Una decisión nueva en D-024 si cambia cómo emite la sesión la API.
