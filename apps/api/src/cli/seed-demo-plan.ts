@@ -23,6 +23,74 @@ export const PRODUCT_NAMES: Record<ProductKey, string> = {
   R_SC: "Recarga 20L sin caño",
 };
 
+/**
+ * De qué recarga sale cada tipo de envase. Los tipos se resuelven por el
+ * producto y no por su nombre: la demo de Cloud Run nació de main, cuyo
+ * catálogo real los llama «BIDON 20L CAÑO» y «BIDON 20L NORMAL», mientras que
+ * los productos se llaman igual en todas las bases.
+ */
+export const CONTAINER_TYPE_PRODUCT: Record<ContainerTypeKey, ProductKey> = {
+  CON_CANO: "R_CC",
+  SIN_CANO: "R_SC",
+};
+
+export function resolveContainerTypeIds(
+  products: ReadonlyArray<{ name: string; containerType: { id: string } }>,
+): Record<ContainerTypeKey, string> {
+  const result = {} as Record<ContainerTypeKey, string>;
+  for (const key of Object.keys(CONTAINER_TYPE_PRODUCT) as ContainerTypeKey[]) {
+    const productName = PRODUCT_NAMES[CONTAINER_TYPE_PRODUCT[key]];
+    const product = products.find((candidate) => candidate.name === productName);
+    if (product === undefined) {
+      throw new Error(
+        `Falta el producto "${productName}" en el catálogo: de ahí sale su tipo de envase.`,
+      );
+    }
+    result[key] = product.containerType.id;
+  }
+  return result;
+}
+
+export interface FifoBatch {
+  items: ReadonlyArray<{ id: string; containerTypeId: string; availableQty: number }>;
+}
+
+/**
+ * Cómo cargar `quantity` llenos de un tipo, como exige la API: del lote más
+ * antiguo con stock primero. `batches` viene ya en orden FIFO (GET
+ * /production-batches?withStock=true lista del más viejo al más nuevo).
+ */
+export function planFifoLoads(
+  batches: ReadonlyArray<FifoBatch>,
+  containerTypeId: string,
+  quantity: number,
+): { batchItemId: string; quantity: number }[] {
+  const lines: { batchItemId: string; quantity: number }[] = [];
+  let pending = quantity;
+  let available = 0;
+  for (const item of batches.flatMap((batch) => batch.items)) {
+    if (item.containerTypeId !== containerTypeId || item.availableQty <= 0) continue;
+    available += item.availableQty;
+    if (pending === 0) continue;
+    const take = Math.min(pending, item.availableQty);
+    lines.push({ batchItemId: item.id, quantity: take });
+    pending -= take;
+  }
+  if (pending > 0) {
+    throw new Error(`No alcanzan los llenos en planta para cargar ${quantity}: hay ${available}.`);
+  }
+  return lines;
+}
+
+/**
+ * Una etiqueta de corrida (DEMO_RUN_TAG) para volver a sembrar una base que ya
+ * tiene una demo: distingue lo que tiene que ser único (el usuario del chofer,
+ * el código del lote) y los nombres de los clientes.
+ */
+export function withRunTag(value: string, tag: string, separator: string): string {
+  return tag === "" ? value : `${value}${separator}${tag}`;
+}
+
 export const PAYMENT_METHOD_NAMES: Record<PaymentMethodKey, string> = {
   EFECTIVO: "Efectivo",
   YAPE: "Yape",
