@@ -124,11 +124,15 @@ describe("Liquidación de la ruta", () => {
     const sheet = screen.getByRole("table", { name: /Vacíos contados al descargar/ });
     const cano = within(sheet).getByText("Con caño").closest("tr") as HTMLElement;
     expect(within(cano).getByText("11")).toBeTruthy();
-    // Vacío vale cero: la diferencia se ve desde el arranque en la tabla...
-    expect(within(cano).getByText("+11")).toBeTruthy();
+    // Vacío vale cero: la diferencia se ve desde el arranque en la tabla, con
+    // la palabra al lado del signo: «+11» solo se lee al revés («once de más»).
+    expect(within(cano).getByText("+11: faltan 11")).toBeTruthy();
     // ...pero el aviso agregado espera a que alguien escriba.
     expect(screen.queryByText(/Con estos números/)).toBeNull();
 
+    await user().type(emptiesInput("Con caño"), "12");
+    await waitFor(() => expect(within(cano).getByText("-1: sobra 1")).toBeTruthy());
+    await user().clear(emptiesInput("Con caño"));
     await user().type(emptiesInput("Con caño"), "11");
     await waitFor(() => expect(within(cano).getByText("Cuadra")).toBeTruthy());
   });
