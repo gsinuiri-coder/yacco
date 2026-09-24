@@ -48,6 +48,13 @@ on:
   # secreto que faltaba). Pasa por el mismo gate: CI y CodeQL tienen que haber
   # pasado para ese commit.
   workflow_dispatch:
+    inputs:
+      web_preview:
+        description: >-
+          Solo un preview del web (apunta a demo, D-011): no migra, no toca las
+          APIs ni producción. Para revisar antes de un corte.
+        type: boolean
+        default: false
 
 # Un solo deploy a la vez, y nunca se cancela uno en curso: cortar un job a
 # mitad de una migración o de un `gcloud run deploy` deja un estado que nadie
@@ -76,7 +83,7 @@ jobs:
     name: Esperar CI y CodeQL
     # Un CI fallido, o uno disparado por un PR, no despliega nada.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && !inputs.web_preview) ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
@@ -419,6 +426,40 @@ jobs:
       # 59.11.2 no declara scripts de instalación, así que no pierde nada.
       - run: npm install --global --ignore-scripts vercel@59.11.2
       - run: node scripts/deploy-web.mjs
+        env:
+          VERCEL_TOKEN: ${{ steps.secrets.outputs.vercel_token }}
+
+  # Un preview del web, a mano, desde main. Vive en este archivo y no en uno
+  # propio porque la identidad de GCP solo se le da a deploy.yml en main (A3,
+  # scripts/wif-condition.mjs). Construye en Linux, como el job 5: en Windows,
+  # `vercel build` deja las funciones como enlaces absolutos que no se suben.
+  web-preview:
+    name: Preview del web (a mano)
+    if: github.event_name == 'workflow_dispatch' && inputs.web_preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      - id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            vercel_token:${{ env.GCP_PROJECT_ID }}/yacco-ci-vercel-token
+      - run: npm install --global --ignore-scripts vercel@59.11.2
+      # deploy-web.mjs imprime SOLO la URL; queda en el resumen de la corrida.
+      - run: node scripts/deploy-web.mjs --preview | tee -a "$GITHUB_STEP_SUMMARY"
         env:
           VERCEL_TOKEN: ${{ steps.secrets.outputs.vercel_token }}
 
