@@ -15,6 +15,7 @@ import {
   checkCanRun,
   checkUploadsHaveValue,
   parseArgs,
+  runtimeAccessBindings,
 } from "./secrets-gcp.mjs";
 
 const FULL_CONFIG = {
@@ -172,5 +173,45 @@ describe("checkCanRun (--check)", () => {
     });
     assert.match(problems[0], /VERCEL_TOKEN/);
     assert.deepEqual(calls, []);
+  });
+});
+
+// A4: con una sola identidad de runtime y `secretAccessor` de proyecto, un
+// fallo explotable en demo leía los JWT y la base de producción.
+describe("runtimeAccessBindings", () => {
+  const bindings = runtimeAccessBindings("yacco-v2-prod");
+  const memberOf = (args) => args.find((arg) => arg.startsWith("--member="));
+  const demoMember =
+    "--member=serviceAccount:yacco-api-demo-run@yacco-v2-prod.iam.gserviceaccount.com";
+  const productionMember =
+    "--member=serviceAccount:yacco-api-run@yacco-v2-prod.iam.gserviceaccount.com";
+
+  test("son por secreto, nunca de proyecto", () => {
+    for (const args of bindings) {
+      assert.deepEqual(args.slice(0, 2), ["secrets", "add-iam-policy-binding"]);
+      assert.ok(args.includes("--role=roles/secretmanager.secretAccessor"));
+    }
+  });
+
+  test("la identidad de demo lee sus cuatro secretos y NINGUNO de producción", () => {
+    const demo = bindings.filter((args) => memberOf(args) === demoMember);
+    assert.deepEqual(demo.map((args) => args[2]).sort(), [
+      "yacco-demo-database-url",
+      "yacco-demo-direct-url",
+      "yacco-demo-jwt-access-secret",
+      "yacco-demo-jwt-refresh-secret",
+    ]);
+  });
+
+  test("la de producción lee los suyos y ninguno de demo", () => {
+    const production = bindings.filter((args) => memberOf(args) === productionMember);
+    assert.equal(production.length, 4);
+    for (const args of production) assert.match(args[2], /^yacco-production-/);
+  });
+
+  test("no hay una tercera identidad colada", () => {
+    for (const args of bindings) {
+      assert.ok([demoMember, productionMember].includes(memberOf(args)), memberOf(args));
+    }
   });
 });

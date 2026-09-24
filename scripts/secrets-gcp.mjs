@@ -30,7 +30,13 @@
  */
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { ENV_SETUP_PATH, loadConfig, registerSecret, run } from "./lib.mjs";
+import {
+  ENV_SETUP_PATH,
+  RUNTIME_SERVICE_ACCOUNTS,
+  loadConfig,
+  registerSecret,
+  run,
+} from "./lib.mjs";
 
 // Mismo tamaño que `pnpm secrets:generate`: 48 bytes, holgadamente por encima
 // de los 256 bits que pide HS256, que es lo que firma @nestjs/jwt acá.
@@ -159,18 +165,40 @@ function secretName(environment, key) {
   return `yacco-${environment}-${key}`;
 }
 
-/** Deja que el deployer lea ESTE secreto, y nada más. Idempotente. */
-function grantDeployerAccess(projectId, name, report) {
-  run("gcloud", [
+/** Los argumentos de gcloud para que `account` lea ESTE secreto. Idempotente. */
+function accessorBinding(projectId, name, account) {
+  return [
     "secrets",
     "add-iam-policy-binding",
     name,
     `--project=${projectId}`,
-    `--member=serviceAccount:${DEPLOYER_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`,
+    `--member=serviceAccount:${account}@${projectId}.iam.gserviceaccount.com`,
     "--role=roles/secretmanager.secretAccessor",
     "--condition=None",
-  ]);
+  ];
+}
+
+/** Deja que el deployer lea ESTE secreto, y nada más. */
+function grantDeployerAccess(projectId, name, report) {
+  run("gcloud", accessorBinding(projectId, name, DEPLOYER_SERVICE_ACCOUNT));
   report.push(`  ${name.padEnd(38)} legible por el deployer de CI`);
+}
+
+/**
+ * A4: cada identidad de runtime lee los secretos de SU entorno y ninguno
+ * más, uno por uno. Antes, `yacco-api-run` tenía `secretAccessor` sobre todo
+ * el proyecto y la usaban los dos servicios.
+ */
+export function runtimeAccessBindings(projectId) {
+  return ENVIRONMENTS.flatMap((environment) =>
+    RUNTIME_KEYS.map((key) =>
+      accessorBinding(
+        projectId,
+        secretName(environment.name, key),
+        RUNTIME_SERVICE_ACCOUNTS[environment.name],
+      ),
+    ),
+  );
 }
 
 /** Devuelve el valor actual del secreto, o null si no existe todavía. */
@@ -407,6 +435,10 @@ function main() {
     report.push(`    jwt access: ${access.origin} | jwt refresh: ${refresh.origin}`);
     report.push("");
   }
+
+  for (const args of runtimeAccessBindings(projectId)) run("gcloud", args);
+  report.push("  runtime: cada servicio lee sólo los secretos de su entorno (A4)");
+  report.push("");
 
   // Lo que viene de la configuración: SÓLO lo pedido con --upload, ya validado
   // contra UPLOADABLE_FROM_CONFIG. El token de Vercel es una credencial de larga

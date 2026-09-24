@@ -50,7 +50,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
    - Va en **dos PRs**, porque la cuenta sólo puede existir en producción
      después de que el deploy aplique la migración, y el smoke corre en ese
      mismo deploy:
-     - [ ] **3a** — rol, `/auth/me`, web, `smoke.mjs` con el login válido
+     - [x] (#208) **3a** — rol, `/auth/me`, web, `smoke.mjs` con el login válido
            cuando recibe `SMOKE_VIEWER_PASSWORD`, y `pnpm smoke:viewer`. Tras
            su deploy verde: `pnpm smoke:viewer` contra producción.
      - [ ] **3b** — el job 6 de `deploy.yml` lee
@@ -58,9 +58,13 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
            a obligatorio. Sin migración.
    - Mientras 3a espera la ventana de las 20:00, se adelanta el ítem 4 si no
      depende de él (no depende).
-4. [ ] **A4:** identidades de runtime separadas para `yacco-api` y
+4. [x] (#209) **A4:** identidades de runtime separadas para `yacco-api` y
        `yacco-api-demo`; cada una lee SOLO sus secretos. Verificar que demo no
        puede leer un secreto de producción.
+   - Adelantado al 3a, que espera la ventana de migraciones (no depende de él).
+   - **Hecho** tras el deploy verde de `b4e8a6d`: quitado el `secretAccessor` de proyecto a
+     `yacco-api-run`. Troubleshooter: demo → producción `CANNOT_ACCESS`, producción → demo
+     `CANNOT_ACCESS`, cada una → lo suyo `CAN_ACCESS`; `/health/db` 200 en las dos.
 5. [ ] **A5 / D-016:** bucket de logs con retención de 400 días para los
        accesos a Secret Manager y una alerta ante una lectura de una identidad
        que no sea las esperadas.

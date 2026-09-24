@@ -1158,8 +1158,8 @@ workflow de `main` del repo, identificado sólo por nombre.
 **Lo que no cubre.** El código de las dependencias sigue corriendo cuando se lo
 IMPORTA (Prisma en el job de migraciones, Vite y sus plugins en el web): sin
 scripts de instalación se corta el vector más barato, no todos. Y el deployer
-sigue pudiendo leer todos los secretos a través de la identidad de runtime (A4,
-en el backlog).
+podía leer todos los secretos a través de la identidad de runtime (A4); desde
+D-025, sólo los cuatro que monta cada servicio.
 
 **Alternativa descartada.** _Mantener tags mayores y confiar en Dependabot._ Un
 tag movido por un compromiso del mantenedor se ejecuta en la corrida siguiente,
@@ -1551,6 +1551,43 @@ de a uno._ Permite cerrar una sola sesión (un celular perdido) sin tocar las
 demás, pero agrega una tabla, una escritura en cada login y una limpieza de
 vencidos. Hoy toda invalidación que hace falta es «todas las de esta
 persona», que es exactamente lo que un contador resuelve.
+
+---
+
+### D-025 — Una identidad de runtime por servicio, que lee sólo los secretos de su entorno
+
+**Contexto.** Hallazgo A4 de la fase 6: `yacco-api` y `yacco-api-demo` corrían
+con la misma service account, `yacco-api-run`, y esa cuenta tenía
+`secretmanager.secretAccessor` sobre **todo el proyecto**. Un fallo explotable
+en demo, que no tiene usuarios ni cuidado, leía los JWT y la URL de la base de
+producción. Y como el deployer tiene `serviceAccountUser` sobre esa identidad,
+también podía leer cualquier secreto a través de ella (D-018, «Lo que no
+cubre»).
+
+**Decisión.** Cada servicio corre con su propia identidad, definida en
+`RUNTIME_SERVICE_ACCOUNTS` (`scripts/lib.mjs`):
+
+| Servicio         | Identidad            | Lee                                       |
+| ---------------- | -------------------- | ----------------------------------------- |
+| `yacco-api`      | `yacco-api-run`      | los cuatro `yacco-production-*` que monta |
+| `yacco-api-demo` | `yacco-api-demo-run` | los cuatro `yacco-demo-*` que monta       |
+
+Los permisos van **secreto por secreto** (`runtimeAccessBindings` en
+`secrets-gcp.mjs`), nunca de proyecto; `gcp:bootstrap` crea las dos cuentas y
+QUITA el `secretAccessor` de proyecto si lo encuentra. Producción conserva
+`yacco-api-run` para no cambiarle la identidad a un servicio con datos reales.
+
+**Orden de aplicación (2026-09-24), sin cortar nada:** (1) crear
+`yacco-api-demo-run`, `serviceAccountUser` del deployer sobre ella y los ocho
+permisos por secreto — aditivo, lo que corre no cambia; (2) el deploy despliega
+demo con su identidad nueva; (3) recién con el deploy verde, quitar el
+`secretAccessor` de proyecto a `yacco-api-run`.
+
+**Lo que sigue sin cubrir.** El deployer todavía puede leer, vía
+`serviceAccountUser`, los secretos de la identidad que asigna. Ahora son los
+cuatro de cada entorno y no el proyecto entero: `yacco-admin-initial-password`,
+el token de Vercel y cualquier secreto futuro quedan fuera de su alcance salvo
+concesión explícita.
 
 ---
 

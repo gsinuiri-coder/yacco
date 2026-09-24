@@ -15,7 +15,7 @@
  * Cada paso comprueba antes de crear, con `describe ... --allowFailure`: es lo
  * que lo hace corrible dos veces. Nada de lo que imprime es un secreto.
  */
-import { loadConfig, run } from "./lib.mjs";
+import { RUNTIME_SERVICE_ACCOUNTS, loadConfig, run } from "./lib.mjs";
 import { WIF_ATTRIBUTE_MAPPING, wifAttributeCondition } from "./wif-condition.mjs";
 
 const REQUIRED_SERVICES = [
@@ -28,7 +28,6 @@ const REQUIRED_SERVICES = [
 ];
 
 export const ARTIFACT_REPOSITORY = "yacco";
-export const RUNTIME_SERVICE_ACCOUNT = "yacco-api-run";
 export const DEPLOYER_SERVICE_ACCOUNT = "yacco-deployer";
 export const WIF_POOL = "github";
 export const WIF_PROVIDER = "github-oidc";
@@ -206,6 +205,31 @@ function ensureProjectRole(projectId, memberEmail, role) {
   log("iam", `${role} concedido`);
 }
 
+/** Quita un rol de proyecto si está. El inverso de ensureProjectRole. */
+function ensureNoProjectRole(projectId, memberEmail, role) {
+  const bindings = run("gcloud", [
+    "projects",
+    "get-iam-policy",
+    projectId,
+    "--flatten=bindings[].members",
+    `--filter=bindings.role=${role} AND bindings.members=serviceAccount:${memberEmail}`,
+    "--format=value(bindings.role)",
+  ]);
+  if (bindings.length === 0) {
+    log("iam", `${memberEmail} sin ${role} de proyecto`);
+    return;
+  }
+  run("gcloud", [
+    "projects",
+    "remove-iam-policy-binding",
+    projectId,
+    `--member=serviceAccount:${memberEmail}`,
+    `--role=${role}`,
+    "--condition=None",
+  ]);
+  log("iam", `${role} de proyecto quitado a ${memberEmail}`);
+}
+
 function ensureWorkloadIdentity(projectId, projectNumber, repository, deployerEmail) {
   const poolExists = run(
     "gcloud",
@@ -336,15 +360,19 @@ function main() {
   ensureServices(projectId);
   ensureArtifactRegistry(projectId, region);
 
-  const runtimeEmail = ensureServiceAccount(
-    RUNTIME_SERVICE_ACCOUNT,
-    "Cloud Run runtime de la API de Yacco",
-    projectId,
+  // Una identidad por servicio (A4): lee los secretos de SU entorno y nada
+  // más. Esos permisos van secreto por secreto y los da `pnpm secrets:gcp`
+  // (runtimeAccessBindings); acá NO se concede nada de proyecto. NO se usa la
+  // service account por defecto de Compute Engine, que es Editor sobre todo
+  // el proyecto.
+  const runtimeEmails = Object.entries(RUNTIME_SERVICE_ACCOUNTS).map(([envName, name]) =>
+    ensureServiceAccount(name, `Cloud Run runtime de la API de Yacco (${envName})`, projectId),
   );
-  // La identidad con la que corre el servicio: lee secretos y nada más. NO se
-  // usa la service account por defecto de Compute Engine, que es Editor sobre
-  // todo el proyecto.
-  ensureProjectRole(projectId, runtimeEmail, "roles/secretmanager.secretAccessor");
+  // Hasta A4, yacco-api-run tenía secretAccessor sobre TODO el proyecto y la
+  // usaban los dos servicios. Se quita si sigue ahí.
+  for (const email of runtimeEmails) {
+    ensureNoProjectRole(projectId, email, "roles/secretmanager.secretAccessor");
+  }
 
   const deployerEmail = ensureServiceAccount(
     DEPLOYER_SERVICE_ACCOUNT,
@@ -355,19 +383,21 @@ function main() {
     ensureProjectRole(projectId, deployerEmail, role);
   }
 
-  // serviceAccountUser va SOBRE la service account de runtime, no sobre el
-  // proyecto: el que despliega puede asignar esa identidad concreta a una
+  // serviceAccountUser va SOBRE cada service account de runtime, no sobre el
+  // proyecto: el que despliega puede asignar esas identidades concretas a una
   // revisión, y ninguna otra.
-  run("gcloud", [
-    "iam",
-    "service-accounts",
-    "add-iam-policy-binding",
-    runtimeEmail,
-    `--project=${projectId}`,
-    `--member=serviceAccount:${deployerEmail}`,
-    "--role=roles/iam.serviceAccountUser",
-  ]);
-  log("iam", "deployer habilitado a usar la identidad de runtime");
+  for (const runtimeEmail of runtimeEmails) {
+    run("gcloud", [
+      "iam",
+      "service-accounts",
+      "add-iam-policy-binding",
+      runtimeEmail,
+      `--project=${projectId}`,
+      `--member=serviceAccount:${deployerEmail}`,
+      "--role=roles/iam.serviceAccountUser",
+    ]);
+    log("iam", `deployer habilitado a usar ${runtimeEmail}`);
+  }
 
   const projectNumber = run("gcloud", [
     "projects",

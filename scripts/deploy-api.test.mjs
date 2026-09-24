@@ -104,6 +104,21 @@ describe("deployCommands", () => {
     assert.ok(deploy.includes(`--image=${REPO}:${imageTagFor(SHA)}`));
   });
 
+  // A4: con una sola identidad para los dos, un fallo explotable en demo leía
+  // los JWT y la base de producción.
+  test("demo y producción corren con identidades distintas, la de su entorno", () => {
+    const identity = (envName) =>
+      deployCommands(params(envName))[0].find((arg) => arg.startsWith("--service-account="));
+    assert.equal(
+      identity("demo"),
+      "--service-account=yacco-api-demo-run@yacco-v2-prod.iam.gserviceaccount.com",
+    );
+    assert.equal(
+      identity("production"),
+      "--service-account=yacco-api-run@yacco-v2-prod.iam.gserviceaccount.com",
+    );
+  });
+
   test("el deploy pasa el commit y el APP_ENV del entorno", () => {
     const [deploy] = deployCommands(params("demo"));
     const envVars = deploy.find((arg) => arg.startsWith("--set-env-vars="));
