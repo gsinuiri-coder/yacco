@@ -1099,6 +1099,13 @@ Durante unos 2,5 minutos (03:11:15 → 03:13:56 UTC) producción no pudo abrir
 conexiones nuevas a la base. **La lección:** antes de un paso irreversible,
 correr en seco lo que depende de él (`secrets:gcp` sin cambios).
 
+**Procedimiento de rotación desde el 2026-09-24.** El paso 0 de toda rotación
+de una credencial de Neon es `pnpm secrets:gcp --check` (con los ids por el
+entorno si `.env.setup` no los tiene). Valida la config, el proyecto de GCP,
+las dos ramas de Neon y que los ocho secretos de runtime tengan una versión
+legible, **sin escribir nada** (ni versiones ni permisos) y sin leer el valor
+de ningún secreto. Si sale distinto de 0, no se resetea nada.
+
 **Render, sin base.** Después de la rotación, `yacco-api.onrender.com/health/db`
 siguió en 200: una conexión que Render tenía abierta sobrevive a un cambio de
 contraseña. Se reinició el compute de `main` (`ep-damp-scene-aurftg1h`) para

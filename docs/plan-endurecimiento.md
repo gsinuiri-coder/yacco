@@ -30,11 +30,22 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 1. [x] (#206) **Imagen de la API en CI:** `ci.yml` construye la imagen de la API
        (`docker build`, sin push) en cada PR. Rojo: reintroducir un `COPY` a
        un path inexistente.
-2. [ ] **`secrets:gcp --check`:** valida config e ids sin escribir nada. La
+2. [x] (#207) **`secrets:gcp --check`:** valida config e ids sin escribir nada. La
        rotación de D-017 lo exige antes del reset.
 3. [ ] **Rol de solo lectura** (backlog «Falta un rol de solo lectura»). El
        smoke lo usa para un login real y un GET autenticado. Credencial en
        Secret Manager.
+   - **Decidido por Giancarlo (2026-09-24):** `VIEWER` lee SOLO catálogos
+     sin datos personales (productos, tipos de envase, métodos de pago) y
+     `/auth/me`. Es una cuenta técnica para el smoke, no un rol para
+     personas: no aparece en el selector de roles de Usuarios ni en el menú
+     del web.
+   - Test: un `VIEWER` recibe 403 en `GET /customers`, `/orders`, `/routes`
+     y en los reportes, y 200 en los catálogos y en `/auth/me`.
+   - Un rol para que alguien de la planta mire sin tocar es OTRO rol, que se
+     decide en el piloto: pregunta abierta en `supuestos-por-validar.md`.
+   - Lleva migración (valor nuevo de `user_role`): el merge va fuera de
+     08:00–20:00 de Lima.
 4. [ ] **A4:** identidades de runtime separadas para `yacco-api` y
        `yacco-api-demo`; cada una lee SOLO sus secretos. Verificar que demo no
        puede leer un secreto de producción.

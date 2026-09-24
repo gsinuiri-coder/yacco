@@ -126,6 +126,11 @@ permitida es `VERCEL_TOKEN`: hay que correr
 `JWT_*` de `.env.setup` son los de local y el script se niega a subirlos
 (D-007): los de producción viven sólo en Secret Manager.
 
+`pnpm secrets:gcp --check` no escribe nada: valida la config, el proyecto de
+GCP, las ramas de Neon y que cada secreto de runtime tenga una versión
+legible (sólo metadatos, nunca el valor). Es el paso 0 de toda rotación de una
+credencial de Neon (D-017): si falla, no se resetea nada.
+
 Si `gcp:bootstrap` falla con `PERMISSION_DENIED` en Artifact Registry justo
 después de crear el proyecto, es propagación de IAM tras habilitar la API:
 esperá un minuto y volvé a correrlo.
