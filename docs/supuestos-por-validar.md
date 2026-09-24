@@ -352,6 +352,30 @@ línea de delegación con la fecha, más las cuatro de siempre.
 
 ## Validados
 
+### 13. «Debe desde» es el cargo que abrió la deuda actual
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** en el
+  reporte de deuda por cliente (HU-19), la «fecha del cargo más antiguo» es la
+  del primer cargo después de la última vez que el cliente estuvo al día (saldo
+  en cero o a favor). Se reproduce su libro en orden: ventas no anuladas suman,
+  cobros confirmados no anulados restan; un cobro pendiente o rechazado no
+  cuenta, igual que en `debt_balance` y el estado de cuenta.
+- **Asumimos:** que al dueño le sirve saber desde cuándo un cliente no está al
+  día, y no cuál venta puntual sigue impaga. El sistema no reparte cobros entre
+  ventas (ver «Reparto de un pago global entre deudas del cliente» en
+  `backlog-tecnico.md`), así que esta es la fecha más antigua que se puede
+  defender sin inventar ese reparto. Si el cliente paga algo pero nunca llega a
+  cero, la fecha no se mueve.
+- **Construido encima:** `replayDebt` en
+  `apps/api/src/modules/reports/reports.service.ts` y la columna «Debe desde»
+  de `apps/web-nuxt/app/pages/reports/debt.vue`. El día es el de Lima.
+- **Preguntar:** cuando un cliente le va pagando de a poco, ¿quiere ver desde
+  cuándo no está al día, o la fecha de la venta más vieja que todavía no pagó?
+- **Si dice que no:** medio. «La venta más vieja impaga» exige decidir primero
+  cómo se reparte un cobro entre ventas (la más antigua primero es lo usual) y
+  aplicarlo igual en todas partes; el cálculo del reporte cambia, la pantalla
+  no.
+
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026
 
 - **Qué se decidió:** una ruta no puede terminarse mientras le quede una parada

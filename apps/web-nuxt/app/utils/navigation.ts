@@ -58,6 +58,31 @@ export const NAVIGATION: NavigationSection[] = [
     ],
   },
   {
+    // HU-19, HU-20, HU-21: la spec los pide para el administrador, y la API
+    // los reserva a ese rol.
+    label: "Reportes",
+    links: [
+      {
+        label: "Deuda por cliente",
+        icon: "i-lucide-hand-coins",
+        to: "/reports/debt",
+        onlyFor: "ADMIN",
+      },
+      {
+        label: "Envases prestados",
+        icon: "i-lucide-container",
+        to: "/reports/loaned-containers",
+        onlyFor: "ADMIN",
+      },
+      {
+        label: "Producción por período",
+        icon: "i-lucide-chart-no-axes-column",
+        to: "/reports/production",
+        onlyFor: "ADMIN",
+      },
+    ],
+  },
+  {
     label: "Administración",
     links: [
       { label: "Zonas", icon: "i-lucide-map-pin", to: "/zones" },
