@@ -241,6 +241,7 @@ function clearHistoryFilters(): void {
             <div class="grid gap-4 sm:grid-cols-3">
               <UFormField label="Operación" :error="typeError">
                 <USelect
+                  :content="NON_BLOCKING_SELECT"
                   :model-value="type === '' ? undefined : type"
                   :items="
                     (Object.keys(MANUAL_MOVEMENTS) as ManualMovementType[]).map((value) => ({
@@ -256,6 +257,7 @@ function clearHistoryFilters(): void {
               </UFormField>
               <UFormField label="Tipo de envase" :error="containerTypeError">
                 <USelect
+                  :content="NON_BLOCKING_SELECT"
                   :model-value="containerTypeId === '' ? undefined : containerTypeId"
                   :items="catalog.items.value.map((item) => ({ label: item.name, value: item.id }))"
                   :placeholder="
@@ -289,6 +291,7 @@ function clearHistoryFilters(): void {
               </UFormField>
               <UFormField v-if="requiresOriginChoice" label="¿De dónde sale?" :error="originError">
                 <USelect
+                  :content="NON_BLOCKING_SELECT"
                   :model-value="originChoice === '' ? undefined : originChoice"
                   :items="
                     origins
@@ -337,6 +340,7 @@ function clearHistoryFilters(): void {
                   </p>
                   <UFormField v-else label="Ubicación" :error="locationError">
                     <USelect
+                      :content="NON_BLOCKING_SELECT"
                       :model-value="locationId === '' ? undefined : locationId"
                       :items="
                         locations.map((location) => ({
@@ -389,6 +393,7 @@ function clearHistoryFilters(): void {
             <UFormField label="Operación" class="w-52">
               <USelect
                 v-model="historyType"
+                :content="NON_BLOCKING_SELECT"
                 :items="[
                   { label: 'Todas', value: ALL },
                   ...CONTAINER_MOVEMENT_TYPE_VALUES.map((value) => ({
@@ -402,6 +407,7 @@ function clearHistoryFilters(): void {
             <UFormField label="Tipo de envase" class="w-44">
               <USelect
                 v-model="historyContainerTypeId"
+                :content="NON_BLOCKING_SELECT"
                 :items="[
                   { label: 'Todos', value: ALL },
                   ...catalog.items.value.map((item) => ({ label: item.name, value: item.id })),

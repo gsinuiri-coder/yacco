@@ -130,6 +130,7 @@ async function submit(): Promise<void> {
     <UFormField v-if="source === 'ORDER'" label="Pedido pendiente">
       <USelect
         v-model="orderId"
+        :content="NON_BLOCKING_SELECT"
         :items="orderItems"
         :placeholder="orderPlaceholder"
         :disabled="submitting || loadingOrders || noPendingOrders"
@@ -155,6 +156,7 @@ async function submit(): Promise<void> {
       <UFormField label="Dirección de entrega">
         <USelect
           v-model="locationId"
+          :content="NON_BLOCKING_SELECT"
           :items="locationItems"
           :placeholder="customer === null ? 'Elige un cliente primero' : 'Elige una dirección'"
           :disabled="submitting || customer === null || locations.length === 0"

@@ -193,6 +193,7 @@ async function confirmDelete(priceId: string): Promise<void> {
         <UFormField label="Producto" name="newPriceProduct">
           <USelect
             v-model="newProductId"
+            :content="NON_BLOCKING_SELECT"
             :items="productItems"
             placeholder="Selecciona un producto"
             :disabled="creating"

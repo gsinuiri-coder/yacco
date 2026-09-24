@@ -130,6 +130,7 @@ async function submit(): Promise<void> {
           >
             <USelect
               v-model="driverId"
+              :content="NON_BLOCKING_SELECT"
               :items="driverItems"
               placeholder="Elige un chofer"
               :disabled="submitting || noDrivers || drivers.failed.value"
@@ -144,6 +145,7 @@ async function submit(): Promise<void> {
           >
             <USelect
               v-model="zoneId"
+              :content="NON_BLOCKING_SELECT"
               :items="zoneItems"
               :disabled="submitting"
               class="w-full sm:w-1/2"

@@ -194,6 +194,7 @@ function handleSubmit(): void {
         <div class="flex gap-2">
           <USelect
             v-model="extraTypeId"
+            :content="NON_BLOCKING_SELECT"
             :items="availableExtraTypes.map((type) => ({ label: type.name, value: type.id }))"
             placeholder="Selecciona un tipo"
             :disabled="submitting"

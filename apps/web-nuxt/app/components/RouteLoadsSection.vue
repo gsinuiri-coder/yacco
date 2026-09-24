@@ -184,6 +184,7 @@ async function remove(load: RouteLoad): Promise<void> {
         >
           <USelect
             v-model="containerTypeId"
+            :content="NON_BLOCKING_SELECT"
             :items="typeItems"
             placeholder="Elige un tipo de envase"
             :disabled="submitting"

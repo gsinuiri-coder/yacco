@@ -67,10 +67,10 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        delegación», conservando su «Preguntar» para el piloto. Sin cambios de
        código.
 3. [ ] **Defectos del recorrido de paridad** (backlog, 2026-09-23):
-   - [ ] a) el primer clic después de cerrar un desplegable, o de cargar una
+   - [x] a) el primer clic después de cerrar un desplegable, o de cargar una
          página, a veces no toma. Reproducirlo con Playwright; si es real,
          arreglarlo con un test de navegador que falle sin el arreglo;
-   - [ ] b) «Hydration completed but contains mismatches»: encontrar el nodo y
+   - [x] b) «Hydration completed but contains mismatches»: encontrar el nodo y
          arreglarlo;
    - [ ] c) el ejemplo «25.00» de «Monto cobrado» pasa a mostrar el total de
          la venta;

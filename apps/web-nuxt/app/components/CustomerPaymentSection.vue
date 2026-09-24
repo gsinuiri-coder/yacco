@@ -135,6 +135,7 @@ async function submit(): Promise<void> {
         <UFormField label="Método de pago" name="paymentMethod">
           <USelect
             v-model="methodId"
+            :content="NON_BLOCKING_SELECT"
             :items="methodItems"
             placeholder="Selecciona un método"
             :disabled="submitting"

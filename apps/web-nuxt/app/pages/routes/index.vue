@@ -82,13 +82,28 @@ function openRoute(_event: Event, row: { original: Route }): void {
           <UInput v-model="date" type="date" />
         </UFormField>
         <UFormField label="Chofer" class="w-48">
-          <USelect v-model="driverId" :items="driverItems" class="w-full" />
+          <USelect
+            v-model="driverId"
+            :content="NON_BLOCKING_SELECT"
+            :items="driverItems"
+            class="w-full"
+          />
         </UFormField>
         <UFormField label="Zona" class="w-44">
-          <USelect v-model="zoneId" :items="zoneItems" class="w-full" />
+          <USelect
+            v-model="zoneId"
+            :content="NON_BLOCKING_SELECT"
+            :items="zoneItems"
+            class="w-full"
+          />
         </UFormField>
         <UFormField label="Estado" class="w-44">
-          <USelect v-model="status" :items="statusItems" class="w-full" />
+          <USelect
+            v-model="status"
+            :content="NON_BLOCKING_SELECT"
+            :items="statusItems"
+            class="w-full"
+          />
         </UFormField>
         <UButton
           v-if="list.hasFilters.value"
