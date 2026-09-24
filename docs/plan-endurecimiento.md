@@ -61,7 +61,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      21:03 UTC).
 6. [ ] **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
        vulnerabilidades en Artifact Registry.
-7. [ ] **Ramas:** rescatar de `chore/dependency-hygiene` el typecheck del
+7. [x] (#212) **Ramas:** rescatar de `chore/dependency-hygiene` el typecheck del
        tsconfig de `prisma/` y las entradas de backlog que sigan vigentes (PR
        propio). Después [OK] para borrar esa rama, `feat/firestore-export` y
        `docs/backlog-stat-cache`.
