@@ -76,6 +76,8 @@ export function buildStop(overrides: Partial<RouteStop> = {}): RouteStop {
       id: "loc-1",
       name: "Principal",
       address: "Av. Siempre Viva 123",
+      addressReference: "Portón verde",
+      phone: "987000111",
       customer: { id: "c-central", name: "Bodega Central" },
     },
     orderId: null,

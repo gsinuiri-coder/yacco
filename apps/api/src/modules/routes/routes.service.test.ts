@@ -579,6 +579,8 @@ describe("RoutesService", () => {
                     id: true,
                     name: true,
                     address: true,
+                    addressReference: true,
+                    phone: true,
                     customer: { select: { id: true, name: true } },
                   },
                 },
