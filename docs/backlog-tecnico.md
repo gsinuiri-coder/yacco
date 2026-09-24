@@ -1721,6 +1721,12 @@ con fecha».
 
 ### Prioridad 1 — A5 / D-016: retención de 400 días y alerta sobre Secret Manager
 
+**Estado:** RESUELTA el 2026-09-24 (ítem 5 de `plan-endurecimiento.md`),
+con `pnpm gcp:audit`. Verificado: una lectura manual del dueño (21:03 UTC)
+quedó en el bucket `secret-manager-audit` con su principal y sumó 1 en la
+métrica `unexpected-secret-access`; las lecturas del deployer en el deploy de
+las 20:41 están en el bucket y NO movieron la métrica. Registro original:
+
 **Por qué:** una filtración de estas credenciales se descubre semanas después,
 y a los 30 días del bucket `_Default` la lectura original ya no está. Sin la
 alerta, nadie se entera en el momento. **Para cerrarla:** lo escrito en D-016
@@ -2032,3 +2038,21 @@ devuelve al JavaScript de la página justo lo que la cookie esconde.
 **Para cerrarla:** sacar `refreshToken` de `AuthTokensDto` (y del contrato
 compartido), dejar solo la cookie en `JwtRefreshStrategy`, y ajustar los tests
 de integración que todavía usan el header.
+
+## La imagen de la API trae `npm` con dependencias vulnerables que el runtime no usa
+
+**Estado:** abierto. **Registrado:** 2026-09-24, con el primer escaneo de
+Artifact Registry (ítem 6 de `plan-endurecimiento.md`). **Disparador:** el
+próximo cambio al Dockerfile, o un hallazgo CRITICAL.
+
+El escaneo de `api:fd0bd204bd39` dio 15 hallazgos (8 HIGH, 6 MEDIUM, 1 LOW).
+Salvo `qs` (A7, ya corregido) y `deepmerge-ts` (de Prisma, ver «Migración a
+Prisma 7»), todos están en `/usr/local/lib/node_modules/npm`: `sigstore`,
+`pacote`, `ip-address`, `brace-expansion`, `picomatch`, `@sigstore/core`. Los
+trae la imagen `node:22-alpine`. La API corre `node dist/main.js` y nunca llama
+a `npm` en runtime: es superficie sin uso.
+
+**Para cerrarla:** en la etapa `runtime` del Dockerfile, borrar `npm`, `npx` y
+`corepack` (`/usr/local/lib/node_modules/{npm,corepack}` y sus binarios en
+`/usr/local/bin`). La etapa `base` los sigue necesitando para `pnpm`. Probarlo
+con el paso «API image» de CI y comparar el escaneo antes y después.

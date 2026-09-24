@@ -52,14 +52,18 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
    - Adelantado al 3a, que espera la ventana de migraciones (no depende de él).
    - Después del deploy verde: quitar el `secretAccessor` de proyecto a
      `yacco-api-run` y repetir el Policy Troubleshooter (DEPLOY.md).
-5. [ ] **A5 / D-016:** bucket de logs con retención de 400 días para los
+5. [x] (#210) **A5 / D-016:** bucket de logs con retención de 400 días para los
        accesos a Secret Manager y una alerta ante una lectura de una identidad
        que no sea las esperadas.
+   - Aplicado con `pnpm gcp:audit` antes del merge (no toca el deploy). El
+     canal de email es la cuenta dueña del proyecto. Falta que Giancarlo
+     confirme que le llegó el aviso de las lecturas de prueba (20:20, 20:26 y
+     21:03 UTC).
 6. [x] (#211) **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
        vulnerabilidades en Artifact Registry.
    - El escaneo se verifica sobre la primera imagen que suba un deploy
      después de habilitarlo (hallazgos con `gcloud artifacts docker images
-describe … --show-package-vulnerability`).
+  describe … --show-package-vulnerability`).
 7. [ ] **Ramas:** rescatar de `chore/dependency-hygiene` el typecheck del
        tsconfig de `prisma/` y las entradas de backlog que sigan vigentes (PR
        propio). Después [OK] para borrar esa rama, `feat/firestore-export` y
