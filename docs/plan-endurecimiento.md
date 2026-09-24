@@ -27,7 +27,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 
 ## Cola (en este orden)
 
-1. [ ] **Imagen de la API en CI:** `ci.yml` construye la imagen de la API
+1. [x] (#206) **Imagen de la API en CI:** `ci.yml` construye la imagen de la API
        (`docker build`, sin push) en cada PR. Rojo: reintroducir un `COPY` a
        un path inexistente.
 2. [ ] **`secrets:gcp --check`:** valida config e ids sin escribir nada. La

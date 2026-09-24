@@ -1822,7 +1822,14 @@ vez.
 
 ## CI no construye la imagen de la API: un Dockerfile roto se descubre recién en deploy (#171 dejó main sin desplegar 5 días)
 
-**Estado:** abierto. Sólo el registro: nada implementado. **Disparador:** el
+**Estado:** RESUELTA el 2026-09-24 (#206, ítem 1 de `plan-endurecimiento.md`).
+El job `ci` corre `docker build -f apps/api/Dockerfile .` (sin push ni
+credenciales) en cada PR, dentro del check requerido. Probado reintroduciendo
+el `COPY apps/web/package.json` de #171: el paso falla con
+`"/apps/web/package.json": not found`. Sin caché de BuildKit entre corridas:
+se agrega si el tiempo del job molesta. Lo que sigue es el registro original.
+
+**Disparador (original):** el
 próximo cambio que toque `apps/api/Dockerfile`, la forma del workspace
 (`pnpm-workspace.yaml`, un paquete nuevo o borrado) o `.dockerignore`; en
 cualquier caso, antes del piloto de campo.
