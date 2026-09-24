@@ -19,6 +19,18 @@ import { fileURLToPath } from "node:url";
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const ENV_SETUP_PATH = join(REPO_ROOT, ".env.setup");
 
+/**
+ * La identidad con la que corre cada servicio de Cloud Run (A4, D-025). Una por
+ * entorno, y cada una con `secretAccessor` SOLO sobre los secretos
+ * `yacco-<entorno>-*` que monta: un fallo explotable en demo no lee nada de
+ * producción. Producción conserva `yacco-api-run`, la de siempre, para no
+ * cambiar de identidad a un servicio con datos reales.
+ */
+export const RUNTIME_SERVICE_ACCOUNTS = {
+  production: "yacco-api-run",
+  demo: "yacco-api-demo-run",
+};
+
 const IS_WINDOWS = process.platform === "win32";
 
 /**

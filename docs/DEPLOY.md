@@ -131,6 +131,21 @@ GCP, las ramas de Neon y que cada secreto de runtime tenga una versión
 legible (sólo metadatos, nunca el valor). Es el paso 0 de toda rotación de una
 credencial de Neon (D-017): si falla, no se resetea nada.
 
+**Quién lee qué (D-025).** Cada servicio corre con su identidad
+(`yacco-api-run` producción, `yacco-api-demo-run` demo) y lee sólo sus cuatro
+secretos. Para comprobarlo sin leer ningún valor, con el Policy Troubleshooter
+(el nombre del recurso lleva el NÚMERO de proyecto, y `--billing-project`
+evita que la llamada se cobre al proyecto por defecto de gcloud):
+
+```bash
+gcloud policy-intelligence troubleshoot-policy iam \
+  //secretmanager.googleapis.com/projects/297699663114/secrets/yacco-production-jwt-access-secret \
+  --principal-email=yacco-api-demo-run@yacco-v2-prod.iam.gserviceaccount.com \
+  --permission=secretmanager.versions.access \
+  --billing-project=yacco-v2-prod --format="value(overallAccessState)"
+# → CANNOT_ACCESS
+```
+
 Si `gcp:bootstrap` falla con `PERMISSION_DENIED` en Artifact Registry justo
 después de crear el proyecto, es propagación de IAM tras habilitar la API:
 esperá un minuto y volvé a correrlo.

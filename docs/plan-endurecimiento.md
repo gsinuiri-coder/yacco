@@ -46,9 +46,12 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      decide en el piloto: pregunta abierta en `supuestos-por-validar.md`.
    - Lleva migración (valor nuevo de `user_role`): el merge va fuera de
      08:00–20:00 de Lima.
-4. [ ] **A4:** identidades de runtime separadas para `yacco-api` y
+4. [x] (#209) **A4:** identidades de runtime separadas para `yacco-api` y
        `yacco-api-demo`; cada una lee SOLO sus secretos. Verificar que demo no
        puede leer un secreto de producción.
+   - Adelantado al 3a, que espera la ventana de migraciones (no depende de él).
+   - Después del deploy verde: quitar el `secretAccessor` de proyecto a
+     `yacco-api-run` y repetir el Policy Troubleshooter (DEPLOY.md).
 5. [ ] **A5 / D-016:** bucket de logs con retención de 400 días para los
        accesos a Secret Manager y una alerta ante una lectura de una identidad
        que no sea las esperadas.

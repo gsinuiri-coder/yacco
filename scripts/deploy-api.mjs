@@ -26,7 +26,7 @@
  * correrían a la vez contra la misma base.
  */
 import { pathToFileURL } from "node:url";
-import { loadConfig, run } from "./lib.mjs";
+import { RUNTIME_SERVICE_ACCOUNTS, loadConfig, run } from "./lib.mjs";
 
 export const ENVIRONMENTS = {
   demo: {
@@ -56,7 +56,6 @@ export const ENVIRONMENTS = {
 };
 
 const ARTIFACT_REPOSITORY = "yacco";
-const RUNTIME_SERVICE_ACCOUNT = "yacco-api-run";
 const IMAGE_NAME = "api";
 
 // Largo del sha en la etiqueta de la imagen: el mismo que ya tienen las
@@ -256,7 +255,8 @@ export function deployCommands({ projectId, region, config, envName, imageRef, c
       `--image=${imageRef}`,
       `--region=${region}`,
       `--project=${projectId}`,
-      `--service-account=${RUNTIME_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`,
+      // Una identidad por entorno (A4): la de demo no lee secretos de producción.
+      `--service-account=${RUNTIME_SERVICE_ACCOUNTS[envName]}@${projectId}.iam.gserviceaccount.com`,
       `--set-secrets=${secrets}`,
       `--set-env-vars=${environmentVariables}`,
       `--min-instances=${environment.minInstances}`,
