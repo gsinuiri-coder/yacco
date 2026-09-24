@@ -130,6 +130,13 @@ jobs:
           pnpm --filter @yacco/web-nuxt exec playwright install --with-deps chromium
           pnpm test:e2e
 
+      - name: CSP of the production build (Playwright)
+        # La CSP (apps/web-nuxt/config/csp.ts) está apagada en nuxt dev: se
+        # prueba contra el build que sirve Nitro, el mismo que corre en Vercel.
+        run: |
+          pnpm --filter @yacco/web-nuxt build
+          pnpm --filter @yacco/web-nuxt exec playwright test -c playwright.prod.config.ts
+
       - name: Keep the Playwright report
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -11,7 +11,11 @@ y cuál es el disparador que obliga a resolverla.
 
 ## Refresh token en localStorage
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA el 2026-09-24 (ítem 7a de `plan-cierre-piloto.md`, D-024):
+la API escribe el refresh en una cookie `httpOnly; Secure; SameSite=Lax`, lo
+lee de ahí en `/auth/refresh`, y `POST /auth/logout` la borra. El web ya no
+guarda ningún token en disco. Queda el paso contract en la entrada «Retirar el
+refresh token del cuerpo del login». Registro original:
 
 El refresh token se guarda en `localStorage` (`apps/web/src/auth/token-storage.ts`)
 y el access token vive solo en memoria, en el estado de React.
@@ -1741,6 +1745,19 @@ el digest en el Dockerfile y habilitar `containerscanning.googleapis.com`.
 
 ### Prioridad 3 — CSP completa en el web
 
+**Estado:** RESUELTA el 2026-09-24 (ítem 7c de `plan-cierre-piloto.md`). Un
+plugin de Nitro (`apps/web-nuxt/server/plugins/csp.ts`) escribe en cada página
+la política de `config/csp.ts`, con un nonce nuevo por respuesta: todo desde el
+propio origen, scripts solo con el nonce, `frame-ancestors 'none'`. En vez del
+Report-Only en un preview, que el deploy bloqueado no permitía, se probó así: un
+build de producción servido por Nitro recorrido con Playwright, sin ninguna
+violación (`e2e-prod/csp.test.ts`, también en CI); y las 16 pantallas
+autenticadas recorridas contra la API local con la política encendida en
+desarrollo, sin ninguna violación. **Falta ver la cabecera en Vercel**: si ahí
+la estática de `routeRules` le gana a la del plugin, llega solo
+`frame-ancestors` (no rompe nada, protege menos). Se comprueba en el preview
+del ítem 9. Registro original:
+
 **Por qué no entró:** una CSP que restrinja `script-src` y `connect-src` se
 prueba contra el web real antes de publicarla —un origen olvidado deja la app en
 blanco— y un web roto durante el corte se confunde con un corte fallido. Hoy el
@@ -1962,3 +1979,18 @@ Apareció al regenerar `estado-por-modulo.md` contra `apps/web-nuxt` el
 ADMIN, que abra el mismo formulario de `RouteStopMarkForm.vue` precargado con
 lo anotado y un motivo obligatorio, y que muestre el `stockShortfall` que la
 API devuelve (supuesto 10). Al cerrarla, `routes` vuelve a `Completo`.
+
+## Retirar el refresh token del cuerpo del login
+
+**Estado:** abierto. **Disparador:** cuando el web con la cookie httpOnly
+(D-024) esté desplegado en producción y en demo.
+
+Es el paso contract de D-024. Mientras un web anterior pudiera estar sirviendo,
+`POST /auth/login` sigue devolviendo `refreshToken` en el cuerpo y
+`JwtRefreshStrategy` sigue aceptando el header `Authorization`. Con el web
+nuevo desplegado, ninguno de los dos tiene quien lo use, y el del cuerpo le
+devuelve al JavaScript de la página justo lo que la cookie esconde.
+
+**Para cerrarla:** sacar `refreshToken` de `AuthTokensDto` (y del contrato
+compartido), dejar solo la cookie en `JwtRefreshStrategy`, y ajustar los tests
+de integración que todavía usan el header.
