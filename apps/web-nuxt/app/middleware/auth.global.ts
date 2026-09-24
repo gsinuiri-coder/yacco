@@ -23,4 +23,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (session.user.value === null) {
     return navigateTo({ path: "/login", query: { from: to.fullPath } }, { replace: true });
   }
+
+  // Quien solo reparte trabaja en «Mi ruta»: cualquier otra pantalla es de la
+  // oficina, y la API igual le negaría sus datos.
+  if (isDriverOnly(session.user.value.roles) && to.path !== MY_ROUTE_PATH) {
+    return navigateTo(MY_ROUTE_PATH, { replace: true });
+  }
 });

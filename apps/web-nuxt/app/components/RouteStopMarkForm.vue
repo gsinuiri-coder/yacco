@@ -17,7 +17,20 @@ import type {
 } from "../utils/stop-mark";
 
 /** Registrar lo que pasó en una parada. Las reglas viven en utils/stop-mark.ts. */
-const props = defineProps<{ routeId: string; stop: RouteStop }>();
+const props = withDefaults(
+  defineProps<{
+    routeId: string;
+    stop: RouteStop;
+    /**
+     * La oficina puede cobrar un precio distinto del pactado, diciendo quién
+     * lo autorizó. El chofer en «Mi ruta» no: cobra el pactado, y un precio
+     * distinto lo corrige la oficina (supuesto 12). Sin esto tampoco se pide
+     * la lista de usuarios, que es de la oficina.
+     */
+    canChangePrice?: boolean;
+  }>(),
+  { canChangePrice: true },
+);
 const emit = defineEmits<{ cancel: []; marked: [result: RouteStop] }>();
 
 const api = useApi();
@@ -28,7 +41,7 @@ const products = useCatalog<Product>("/products");
 const containerTypes = useCatalog<ContainerType>("/container-types");
 const paymentMethods = useCatalog<PaymentMethod>("/payment-methods");
 // Cualquier usuario activo pudo autorizar un precio distinto; sale de su endpoint.
-const authorizers = useCatalog<User>("/users");
+const authorizers = props.canChangePrice ? useCatalog<User>("/users") : { items: ref<User[]>([]) };
 // Los precios pactados del cliente: para mostrar qué se cobra y saber cuándo un
 // precio escrito es de verdad distinto.
 const effective = useCatalog<EffectivePrice>(
@@ -186,7 +199,9 @@ async function submit(): Promise<void> {
               <tr>
                 <th scope="col" class="px-3 py-2 font-medium">Producto</th>
                 <th scope="col" class="w-24 px-3 py-2 font-medium">Cantidad</th>
-                <th scope="col" class="w-52 px-3 py-2 font-medium">Precio cobrado</th>
+                <th scope="col" class="w-52 px-3 py-2 font-medium">
+                  {{ canChangePrice ? "Precio cobrado" : "Precio pactado" }}
+                </th>
                 <th scope="col" class="w-28 px-3 py-2 text-right font-medium">Subtotal</th>
                 <th scope="col" class="w-12 px-3 py-2"><span class="sr-only">Quitar</span></th>
               </tr>
@@ -215,6 +230,7 @@ async function submit(): Promise<void> {
                 </td>
                 <td class="px-3 py-2">
                   <UInput
+                    v-if="canChangePrice"
                     v-model="line.unitPrice"
                     inputmode="decimal"
                     :placeholder="agreedOf(line) ?? 'Precio pactado'"

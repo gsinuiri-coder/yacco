@@ -87,7 +87,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        se guarda (expand). Test de liquidación con 6 cargados, 5 entregados y 1
        contado de vuelta: el inventario y el lote cierran. Registrarlo como
        decisión delegada.
-5. [ ] **Reportes post-MVP de la spec:**
+5. [x] **Reportes post-MVP de la spec:**
    - HU-19, deuda por cliente con total y fecha del cargo más antiguo;
    - HU-20, el total prestado cuadra con «en poder del cliente» del parque
      (que el test lo compare);
@@ -96,7 +96,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
    Pantallas nuevas en el menú, sin librería de gráficos nueva. Tablas y
    totales alcanzan.
 
-6. [ ] **Vista «Mi ruta» para el chofer** (HU-11 y HU-12 a HU-14 en el
+6. [x] **Vista «Mi ruta» para el chofer** (HU-11 y HU-12 a HU-14 en el
        celular, en línea). Decisión de Claude: no hay app nativa ni offline para
        el piloto. Un usuario con rol DRIVER entra al mismo web y ve solo sus rutas
        del día, en un diseño para pantalla de celular (360 px), y registra cada

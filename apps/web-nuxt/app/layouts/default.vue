@@ -3,17 +3,18 @@ import type { NavigationMenuItem } from "@nuxt/ui";
 
 const session = useSession();
 
-// El servidor no conoce la sesión (D-022), así que dibuja el menú sin rol. El
+// El servidor no conoce la sesión (D-022), así que no dibuja el menú. El
 // primer render del cliente tiene que ser IDÉNTICO o Vue avisa «Hydration
 // completed but contains mismatches» (el nodo era «Cuadre de envases», solo
-// ADMIN). Los enlaces que dependen del rol aparecen recién después de montar.
+// ADMIN). El menú, que depende del rol, aparece recién después de montar: así
+// tampoco se le muestra un instante el menú de la oficina a un chofer.
 const mounted = ref(false);
 onMounted(() => {
   mounted.value = true;
 });
 
 const menus = computed(() =>
-  visibleNavigation(mounted.value ? (session.user.value?.roles ?? []) : []).map((section) => [
+  (mounted.value ? visibleNavigation(session.user.value?.roles ?? []) : []).map((section) => [
     { label: section.label, type: "label" as const },
     ...section.links.map<NavigationMenuItem>((link) => ({
       label: link.label,
