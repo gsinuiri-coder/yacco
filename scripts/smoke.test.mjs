@@ -17,6 +17,7 @@ import {
   checkNuxtShell,
   checkRejectedLogin,
   checkViewerSession,
+  missingViewerProblem,
 } from "./smoke.mjs";
 
 const PAGES_DIR = join(REPO_ROOT, "apps", "web-nuxt", "app", "pages");
@@ -207,5 +208,23 @@ describe("checkViewerSession", () => {
     const checks = healthy();
     checks.me = { status: 404, body: null };
     assert.match(checkViewerSession(checks)[0], /GET \/auth\/me devolvió 404/);
+  });
+});
+
+describe("missingViewerProblem", () => {
+  // En CI el login válido es obligatorio: un secreto que no llega (borrado, sin
+  // permiso) no puede convertir el smoke en uno que pasa sin probarlo.
+  test("con --require-viewer y sin contraseña, es un problema que nombra el secreto", () => {
+    const problem = missingViewerProblem(["--require-viewer"], undefined);
+    assert.match(problem, /SMOKE_VIEWER_PASSWORD/);
+    assert.match(problem, /yacco-production-smoke-viewer-password/);
+  });
+
+  test("con --require-viewer y con contraseña, nada", () => {
+    assert.equal(missingViewerProblem(["--require-viewer"], "una-clave"), null);
+  });
+
+  test("a mano, sin el flag, la falta de contraseña no falla", () => {
+    assert.equal(missingViewerProblem([], undefined), null);
   });
 });
