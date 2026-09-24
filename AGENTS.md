@@ -162,9 +162,12 @@ extraé lo compartido. Si dispara cobertura, escribí el test que falta.
   analyze, CodeQL, gitleaks, SonarCloud), squash-merge SIN `--admin`, borrar la
   rama. Nunca `--admin`, nunca force-push, nunca merge con un check en rojo.
 - Migrations are expand/contract. Merges containing migrations happen outside
-  08:00–20:00 America/Lima WHILE THERE ARE REAL USERS in production. Today the
-  only user is Giancarlo, so the window does not apply and is not re-decided
-  on every PR; it applies again from the start of the field pilot.
+  08:00–20:00 America/Lima. **In force since 2026-09-24**, when the real
+  customer roster was loaded into `main`: production now holds data that
+  cannot be regenerated. No exceptions per PR.
+- Neon branches: never delete, reset or restore one (denied in
+  `.claude/settings.json`, CLI and MCP alike), without exceptions. Creating a
+  backup branch (D-006) is still allowed.
 - Don't add dependencies without asking. Don't read or write `.env*` files.
 - Don't edit applied migrations.
 - Ante una ambigüedad de dominio —qué debería pasar, no cómo implementarlo—

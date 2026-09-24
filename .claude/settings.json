@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": ["Bash(gcloud:*)", "Bash(vercel:*)", "Bash(neonctl:*)", "Bash(gh:*)"],
-    "deny": ["Bash(neonctl branches delete:*)", "Bash(gcloud projects delete:*)"]
+    "deny": [
+      "Bash(neonctl branches delete:*)",
+      "Bash(neonctl branches reset:*)",
+      "Bash(neonctl branches restore:*)",
+      "mcp__neon__delete_branch",
+      "mcp__neon__reset_from_parent",
+      "mcp__neon__finalize_branch_restore",
+      "mcp__neon__restore_snapshot",
+      "mcp__neon__delete_project",
+      "Bash(gcloud projects delete:*)"
+    ]
   },
   "hooks": {
     "PostToolUse": [
