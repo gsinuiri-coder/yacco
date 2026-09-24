@@ -1268,9 +1268,8 @@ decisión de dominio.
 `plan-cierre-piloto.md`), con la regla de atribución decidida por delegación
 (supuesto 11 de `supuestos-por-validar.md`): la liquidación emite un
 `FULL_RETURN` por lote, desde lo contado, reponiendo primero el lote más
-antiguo que cargó la ruta. La pantalla de liquidación manda el conteo por tipo
-en el PR siguiente; mientras tanto, una ruta de un solo tipo de envase ya
-devuelve su total. Registro original:
+antiguo que cargó la ruta. La pantalla de liquidación cuenta los llenos por tipo de
+envase (`SettlementCountSheet.vue`), con lo que sigue arriba según el libro. Registro original:
 
 Al liquidar, `fullReturned` se guarda como número y **no emite ningún
 movimiento**: los llenos que vuelven sin entregar se quedan, para el libro, en

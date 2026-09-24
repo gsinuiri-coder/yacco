@@ -78,7 +78,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
          menos entregado menos vendido);
    - [x] e) la columna «Diferencia» del conteo lleva la palabra (faltan N /
          sobran N), y cierra la entrada de backlog que ya existe.
-4. [ ] **Llenos que vuelven al galpón** (backlog «Devolver llenos al galpón no
+4. [x] **Llenos que vuelven al galpón** (backlog «Devolver llenos al galpón no
        repone el lote»; fullReturned quedó afuera de la decisión del 29/08).
        Decisión de Claude: la liquidación emite el movimiento de retorno de llenos
        DESDE LO CONTADO, igual que los vacíos, y el lleno que vuelve repone el
