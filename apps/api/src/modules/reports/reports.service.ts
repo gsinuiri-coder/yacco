@@ -31,7 +31,7 @@ interface DebtEvent {
  * la última vez que el saldo quedó en cero o a favor. NO reparte cobros entre
  * ventas (el sistema no lo hace: ver «Reparto de un pago global entre deudas
  * del cliente» en backlog-tecnico.md), así que da la fecha más antigua
- * defendible — decisión delegada, supuesto 12 de supuestos-por-validar.md.
+ * defendible — decisión delegada, supuesto 13 de supuestos-por-validar.md.
  *
  * A la misma hora, el cargo va antes que el cobro: si no, un cobro exacto
  * registrado en el mismo instante dejaría abierta una deuda que no existe.

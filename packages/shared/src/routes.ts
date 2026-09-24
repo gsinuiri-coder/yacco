@@ -180,6 +180,16 @@ export interface RouteLoad {
   quantity: number;
 }
 
+/**
+ * RouteTruckStockLineDto: per container type, what went up on the truck and
+ * what is still on it (loaded minus delivered minus sold, from the ledger).
+ */
+export interface RouteTruckStockLine {
+  containerType: Named;
+  loaded: number;
+  onBoard: number;
+}
+
 /** CreateRouteLoadDto. `batchItemId` is resolved FIFO by the screen, never asked. */
 export interface CreateRouteLoadBody {
   batchItemId: string;

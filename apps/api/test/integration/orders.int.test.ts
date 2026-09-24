@@ -690,7 +690,7 @@ describe("PATCH /api/v1/orders/:id/cancel", () => {
 });
 
 describe("role guard", () => {
-  test("DRIVER is refused on every orders route", async () => {
+  test("DRIVER is refused on every orders route but the detail", async () => {
     const list = await request(server())
       .get("/api/v1/orders")
       .set("Authorization", `Bearer ${driverToken}`);
@@ -702,10 +702,12 @@ describe("role guard", () => {
       .send(validOrder());
     expect(create.status).toBe(403);
 
+    // El detalle se abrió al chofer para los pedidos de SUS rutas (ver
+    // driver-scope.int.test.ts); cualquier otro, para él, no existe.
     const detail = await request(server())
       .get(`/api/v1/orders/${MISSING_UUID}`)
       .set("Authorization", `Bearer ${driverToken}`);
-    expect(detail.status).toBe(403);
+    expect(detail.status).toBe(404);
 
     const cancel = await request(server())
       .patch(`/api/v1/orders/${MISSING_UUID}/cancel`)

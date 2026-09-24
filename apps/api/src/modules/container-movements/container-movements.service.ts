@@ -279,6 +279,34 @@ export class ContainerMovementsService {
   }
 
   /**
+   * `getRouteFullStock` for every container type at once: what is still on
+   * this route's truck, full, keyed by container type. Reads by STATE like
+   * its single-type sibling, so voids and returns correct it on their own.
+   */
+  async getRouteFullStockByType(routeId: string): Promise<Map<string, number>> {
+    const [into, outOf] = await Promise.all([
+      this.prisma.containerMovement.groupBy({
+        by: ["containerTypeId"],
+        where: { routeId, toState: ContainerState.FULL_ON_ROUTE },
+        _sum: { quantity: true },
+      }),
+      this.prisma.containerMovement.groupBy({
+        by: ["containerTypeId"],
+        where: { routeId, fromState: ContainerState.FULL_ON_ROUTE },
+        _sum: { quantity: true },
+      }),
+    ]);
+    const net = new Map<string, number>();
+    for (const row of into) {
+      net.set(row.containerTypeId, (net.get(row.containerTypeId) ?? 0) + (row._sum.quantity ?? 0));
+    }
+    for (const row of outOf) {
+      net.set(row.containerTypeId, (net.get(row.containerTypeId) ?? 0) - (row._sum.quantity ?? 0));
+    }
+    return net;
+  }
+
+  /**
    * Quantity by container type and by state, derived from the ledger itself
    * — never a separately maintained counter. For each state, the net
    * quantity is every movement that landed there minus every movement that

@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { OrderStatus, Prisma } from "@prisma/client";
+import { isOffice } from "../../common/viewer.js";
+import type { Viewer } from "../../common/viewer.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateOrderDto } from "./dto/create-order.dto.js";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto.js";
@@ -217,8 +219,20 @@ export class OrdersService {
     };
   }
 
-  async findOne(id: string): Promise<OrderResponseDto> {
-    const order = await this.prisma.order.findUnique({ where: { id }, include: ORDER_INCLUDE });
+  /**
+   * Un chofer ve un pedido solo si es la parada de una ruta suya. Si no, para
+   * él no existe: 404 igual que un id que no está, sin confirmar que haya un
+   * pedido con ese id de otro chofer.
+   */
+  async findOne(id: string, viewer?: Viewer): Promise<OrderResponseDto> {
+    const onlyOwnRoutes =
+      viewer !== undefined && !isOffice(viewer)
+        ? { routeStop: { route: { driverId: viewer.id } } }
+        : {};
+    const order = await this.prisma.order.findFirst({
+      where: { id, ...onlyOwnRoutes },
+      include: ORDER_INCLUDE,
+    });
     if (order === null) {
       throw new NotFoundException(`El pedido "${id}" no existe`);
     }

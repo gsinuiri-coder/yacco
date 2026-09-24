@@ -1,10 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { isOffice } from "../../common/viewer.js";
+import type { Viewer } from "../../common/viewer.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateCustomerPriceDto } from "./dto/create-customer-price.dto.js";
 import type { CustomerPriceResponseDto } from "./dto/customer-price-response.dto.js";
@@ -39,6 +42,23 @@ function toCustomerPriceResponse(price: CustomerPriceWithRelations): CustomerPri
 @Injectable()
 export class CustomerPricesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Un chofer ve los precios pactados de un cliente solo si ese cliente tiene
+   * una parada en alguna ruta suya: es lo que su formulario de parada necesita,
+   * y nada más.
+   */
+  private async assertCustomerOnDriverRoutes(customerId: string, driverId: string): Promise<void> {
+    const onRoute = await this.prisma.customer.count({
+      where: {
+        id: customerId,
+        locations: { some: { routeStops: { some: { route: { driverId } } } } },
+      },
+    });
+    if (onRoute === 0) {
+      throw new ForbiddenException("Ese cliente no está en ninguna de tus rutas");
+    }
+  }
 
   /** ADMIN-only management: this is a commercial decision, not office capture. */
   async findAll(customerId: string): Promise<CustomerPriceResponseDto[]> {
@@ -128,8 +148,12 @@ export class CustomerPricesService {
   async findEffectivePrices(
     customerId: string,
     query: EffectivePricesQueryDto,
+    viewer?: Viewer,
   ): Promise<EffectivePriceResponseDto[]> {
     await this.assertCustomerExists(customerId);
+    if (viewer !== undefined && !isOffice(viewer)) {
+      await this.assertCustomerOnDriverRoutes(customerId, viewer.id);
+    }
     if (query.locationId !== undefined) {
       await this.assertLocationBelongsToCustomer(query.locationId, customerId);
     }

@@ -1264,9 +1264,12 @@ decisión de dominio.
 
 ## Devolver llenos al galpón no repone el lote del que salieron
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo, o cuando el
-conteo físico de llenos en planta no cierre contra la suma de
-`batch_items.available_qty`.
+**Estado:** RESUELTA en la API el 2026-09-24 (ítem 4 de
+`plan-cierre-piloto.md`), con la regla de atribución decidida por delegación
+(supuesto 11 de `supuestos-por-validar.md`): la liquidación emite un
+`FULL_RETURN` por lote, desde lo contado, reponiendo primero el lote más
+antiguo que cargó la ruta. La pantalla de liquidación cuenta los llenos por tipo de
+envase (`SettlementCountSheet.vue`), con lo que sigue arriba según el libro. Registro original:
 
 Al liquidar, `fullReturned` se guarda como número y **no emite ningún
 movimiento**: los llenos que vuelven sin entregar se quedan, para el libro, en
@@ -1817,8 +1820,17 @@ minutos de runner; la caché de BuildKit del job lo acota.
 
 ## Web: el primer clic después de cerrar un desplegable o cargar una página a veces no toma
 
-**Estado:** abierto, **a confirmar a mano**. **Registrado:** 2026-09-24, al
-cerrar la fase 7, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3a de `plan-cierre-piloto.md`).
+Reproducido con Playwright, eran dos causas: (1) con un `USelect` abierto,
+Reka UI deja el `body` en `pointer-events: none` y el clic sobre otro control
+solo cierra el desplegable (10 de 10 clics perdidos); se arregla con una
+regla en `app/assets/css/main.css` que anula ese estilo en línea para todos
+los desplegables. (2) Un
+clic en «Ingresar» antes de hidratar hacía el envío nativo del formulario:
+un GET que recargaba la página **con usuario y contraseña en la URL**; el
+botón espera a hidratar y el formulario es `method="post"`. Tests de
+navegador en `apps/web-nuxt/e2e/first-click.test.ts`. **Registrado:**
+2026-09-24, al cerrar la fase 7.
 
 Observado en el web Nuxt: el primer clic después de cerrar un desplegable, o
 recién cargada una página, a veces no hace nada y hay que repetirlo. Todavía
@@ -1829,7 +1841,11 @@ termine la hidratación.
 
 ## Web: «Hydration completed but contains mismatches» en la consola
 
-**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3b de `plan-cierre-piloto.md`). El
+nodo era «Cuadre de envases», el enlace solo ADMIN del menú: el servidor no
+conoce la sesión (D-022) y lo omitía, el cliente lo dibujaba. El layout arma
+el menú sin rol hasta montar. Test de navegador en
+`apps/web-nuxt/e2e/first-click.test.ts`. **Registrado:** 2026-09-24.
 
 La consola del navegador muestra ese aviso de Vue en el web Nuxt: el HTML del
 SSR no coincide con lo que renderiza el cliente. **Para cerrarla:** identificar
@@ -1849,7 +1865,12 @@ ejemplo numérico.
 
 ## Web: «Arriba del camión» muestra lo cargado, no lo que queda
 
-**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3d de `plan-cierre-piloto.md`). La
+pregunta al dueño la resolvió la delegación: se muestran los dos números.
+«Cargado» sale de `route_loads`; «Queda arriba» de `GET
+/routes/:id/truck-stock`, que lo lee del libro por estado (cargado menos
+entregado menos vendido, neto de anulaciones). Con la ruta planificada solo
+se muestra lo cargado. **Registrado:** 2026-09-24.
 
 «Arriba del camión» muestra lo que se cargó en la ruta, no lo que queda
 después de las entregas. **Para cerrarla:** decidir con el dueño qué número

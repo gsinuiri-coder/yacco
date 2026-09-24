@@ -112,12 +112,14 @@ describe("GET /api/v1/products", () => {
 });
 
 describe("role guard", () => {
-  test("DRIVER is refused on the products route", async () => {
+  // Desde «Mi ruta» (2026-09-24) el chofer lee el catálogo: su formulario de
+  // parada lo necesita. Ver driver-scope.int.test.ts.
+  test("DRIVER reads the products catalog", async () => {
     const response = await request(server())
       .get("/api/v1/products")
       .set("Authorization", `Bearer ${driverToken}`);
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 
   test("an unauthenticated request is refused with 401", async () => {

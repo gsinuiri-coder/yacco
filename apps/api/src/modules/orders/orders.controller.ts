@@ -23,6 +23,7 @@ import {
 import { UserRole } from "@prisma/client";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
+import { viewerFrom } from "../../common/viewer.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
@@ -69,10 +70,18 @@ export class OrdersController {
 
   @ApiOperation({ summary: "Pedido con sus ítems" })
   @ApiResponse({ status: 200, type: OrderResponseDto })
-  @ApiNotFoundResponse({ description: "Order id does not exist" })
+  @ApiNotFoundResponse({
+    description: "Order id does not exist, or (DRIVER) is on none of their routes",
+  })
+  // DRIVER también: el formulario de parada de «Mi ruta» precarga lo pedido.
+  // Solo ve un pedido que es parada de una ruta suya (OrdersService.findOne).
+  @Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER)
   @Get(":id")
-  findOne(@Param("id", ParseUUIDPipe) id: string): Promise<OrderResponseDto> {
-    return this.ordersService.findOne(id);
+  findOne(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<OrderResponseDto> {
+    return this.ordersService.findOne(id, viewerFrom(request));
   }
 
   // A dedicated sub-resource rather than a general PATCH body: the only
