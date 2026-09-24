@@ -87,7 +87,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        se guarda (expand). Test de liquidación con 6 cargados, 5 entregados y 1
        contado de vuelta: el inventario y el lote cierran. Registrarlo como
        decisión delegada.
-5. [ ] **Reportes post-MVP de la spec:**
+5. [x] **Reportes post-MVP de la spec:**
    - HU-19, deuda por cliente con total y fecha del cargo más antiguo;
    - HU-20, el total prestado cuadra con «en poder del cliente» del parque
      (que el test lo compare);
