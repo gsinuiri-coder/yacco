@@ -11,6 +11,9 @@ import {
   deliveriesByDay,
   findProductPriceMismatches,
   loadsNeededByDay,
+  planFifoLoads,
+  resolveContainerTypeIds,
+  withRunTag,
 } from "./seed-demo-plan.js";
 
 describe("businessDatesGoingBack", () => {
@@ -260,5 +263,64 @@ describe("plan de envases de la demo", () => {
       expect(balances.get(count.customerKey)?.[count.containerTypeKey]).toBeDefined();
       expect(count.countedQuantity).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+// La demo de Cloud Run nació de main, con el catálogo real: sus tipos de envase
+// no se llaman como en seed.ts. Se resuelven por el producto, que sí coincide.
+describe("resolveContainerTypeIds", () => {
+  test("toma el tipo de envase de cada recarga, sin mirar cómo se llama el tipo", () => {
+    const products = [
+      {
+        name: "Recarga 20L con caño",
+        containerType: { id: "ct-real-cano", name: "BIDON 20L CAÑO" },
+      },
+      {
+        name: "Recarga 20L sin caño",
+        containerType: { id: "ct-real-sin", name: "BIDON 20L NORMAL" },
+      },
+    ];
+
+    expect(resolveContainerTypeIds(products)).toEqual({
+      CON_CANO: "ct-real-cano",
+      SIN_CANO: "ct-real-sin",
+    });
+  });
+
+  test("si falta la recarga, lo dice antes de escribir nada", () => {
+    expect(() => resolveContainerTypeIds([])).toThrow(/Recarga 20L con caño/);
+  });
+});
+
+// Contra una base con historia, cargar del lote recién creado choca con FIFO:
+// hay que cargar del más antiguo con stock, como la pantalla.
+describe("planFifoLoads", () => {
+  const batches = [
+    { items: [{ id: "viejo-cano", containerTypeId: "cano", availableQty: 3 }] },
+    {
+      items: [
+        { id: "nuevo-cano", containerTypeId: "cano", availableQty: 10 },
+        { id: "nuevo-sin", containerTypeId: "sin", availableQty: 5 },
+      ],
+    },
+  ];
+
+  test("consume primero el lote más antiguo con stock de ese tipo y sigue con el siguiente", () => {
+    expect(planFifoLoads(batches, "cano", 5)).toEqual([
+      { batchItemId: "viejo-cano", quantity: 3 },
+      { batchItemId: "nuevo-cano", quantity: 2 },
+    ]);
+  });
+
+  test("si no alcanza, falla con cuántos hay", () => {
+    expect(() => planFifoLoads(batches, "sin", 6)).toThrow(/hay 5/);
+  });
+});
+
+describe("withRunTag", () => {
+  test("sin etiqueta deja el valor como está; con etiqueta, lo distingue", () => {
+    expect(withRunTag("chofer.demo", "", ".")).toBe("chofer.demo");
+    expect(withRunTag("chofer.demo", "r2", ".")).toBe("chofer.demo.r2");
+    expect(withRunTag("LOTE-DEMO-01", "r2", "-")).toBe("LOTE-DEMO-01-r2");
   });
 });
