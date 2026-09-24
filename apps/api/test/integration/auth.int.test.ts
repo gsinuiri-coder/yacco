@@ -281,6 +281,56 @@ test("refresh: renaming a user keeps their session", async () => {
   await refreshWith(refreshToken).expect(200);
 });
 
+// D-024, segunda parte (ítem 7a del plan): el refresh token viaja en una cookie
+// httpOnly que el JavaScript de la página no puede leer. Un XSS ya no se lleva
+// una sesión renovable del localStorage.
+describe("refresh token en cookie httpOnly", () => {
+  function cookieFrom(response: request.Response): string {
+    const raw = response.headers["set-cookie"] as unknown as string[] | undefined;
+    const cookie = (raw ?? []).find((value) => value.startsWith("yacco_refresh="));
+    expect(cookie).toBeDefined();
+    return cookie!;
+  }
+
+  test("el login deja el refresh en una cookie httpOnly, Secure, SameSite=Lax y solo para /api/v1/auth", async () => {
+    const response = await request(server())
+      .post("/api/v1/auth/login")
+      .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
+      .expect(200);
+
+    const cookie = cookieFrom(response);
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/Secure/i);
+    expect(cookie).toMatch(/SameSite=Lax/i);
+    expect(cookie).toMatch(/Path=\/api\/v1\/auth/i);
+    expect(cookie).toMatch(/Expires=/i);
+  });
+
+  test("el refresh funciona solo con la cookie, sin nada en Authorization", async () => {
+    const login = await request(server())
+      .post("/api/v1/auth/login")
+      .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
+      .expect(200);
+    const cookie = cookieFrom(login).split(";")[0]!;
+
+    const response = await request(server())
+      .post("/api/v1/auth/refresh")
+      .set("Cookie", cookie)
+      .expect(200);
+
+    expect(typeof response.body.accessToken).toBe("string");
+  });
+
+  test("cerrar sesión borra la cookie, y sin cookie no hay refresh", async () => {
+    const response = await request(server()).post("/api/v1/auth/logout").expect(204);
+
+    const cookie = cookieFrom(response);
+    expect(cookie).toMatch(/^yacco_refresh=;/);
+    expect(cookie).toMatch(/Expires=Thu, 01 Jan 1970/i);
+    await request(server()).post("/api/v1/auth/refresh").expect(401);
+  });
+});
+
 // The strategies' `type` claim check is defense-in-depth beyond secret
 // separation: forge a token with the RIGHT secret for its guard but the
 // WRONG `type`, so the request only fails at the strategy's own check.

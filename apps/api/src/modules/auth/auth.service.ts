@@ -53,6 +53,12 @@ export class AuthService {
     return { accessToken: this.signAccessToken(user.id, user.username, roles) };
   }
 
+  /** Cuándo vence un refresh token recién firmado: la cookie vence con él. */
+  refreshTokenExpiry(refreshToken: string): Date {
+    const { exp } = this.jwtService.decode<{ exp: number }>(refreshToken);
+    return new Date(exp * 1000);
+  }
+
   private signAccessToken(sub: string, username: string, roles: UserRole[]): string {
     const payload: JwtPayload = { sub, username, roles, type: "access" };
     return this.jwtService.sign(payload, {

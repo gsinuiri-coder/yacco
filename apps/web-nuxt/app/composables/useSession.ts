@@ -7,12 +7,10 @@ import type {
 } from "@yacco/shared";
 
 /**
- * La sesión vive en el CLIENTE, como en el web React: access token en
- * memoria, refresh token en localStorage (D-022). Por eso el servidor nunca
- * sabe quién está conectado y los datos autenticados se piden desde el
- * navegador; el SSR sirve el shell, el login y lo público. No es un descuido:
- * mover la sesión a una cookie httpOnly es la fase que habilita SSR de datos
- * autenticados, y queda fuera de esta migración porque toca auth de producción.
+ * La sesión: access token en memoria del navegador, refresh token en una
+ * cookie httpOnly que la API escribe y este código no ve (D-024). Los datos
+ * autenticados se siguen pidiendo desde el cliente (D-022); el SSR sirve el
+ * shell, el login y lo público.
  */
 
 interface SessionInternals {
@@ -48,18 +46,16 @@ export function useSession() {
   }
 
   function end(reason: "expired" | "manual"): void {
-    refreshTokenStore.clear();
+    sessionMarker.clear();
     applyAccessToken(null);
     expired.value = reason === "expired";
   }
 
-  /** Canjea el refresh token guardado por un access token nuevo. Lanza SessionExpiredError si ya no vale. */
+  /** Canjea la cookie del refresh por un access token nuevo. Lanza SessionExpiredError si ya no vale. */
   function refreshAccessToken(): Promise<string> {
     internals.refreshing ??= (async () => {
-      const refreshToken = refreshTokenStore.read();
-      if (refreshToken === null) throw new SessionExpiredError();
-      // El refresh token viaja en Authorization: JwtRefreshStrategy lo lee de ahí.
-      const response = await sendToApi("/auth/refresh", { method: "POST", bearer: refreshToken });
+      // La cookie viaja sola: misma origen, por el proxy de D-021.
+      const response = await sendToApi("/auth/refresh", { method: "POST" });
       if (!isSuccess(response)) throw new SessionExpiredError();
       const { accessToken } = response.data as RefreshResponse;
       applyAccessToken(accessToken);
@@ -71,13 +67,13 @@ export function useSession() {
   }
 
   /**
-   * Al recargar, el access token en memoria se perdió: si hay refresh token en
-   * disco se canjea antes de decidir si hay sesión. Con sesión, o sin nada que
-   * canjear, no hace nada; si falla, borra el refresh token, así que el
-   * middleware puede llamarla en cada navegación sin repetir un canje perdido.
+   * Al recargar, el access token en memoria se perdió: si este navegador tuvo
+   * sesión, se canjea la cookie antes de decidir. Con sesión, o sin marca, no
+   * hace nada; si falla, borra la marca, así que el middleware puede llamarla
+   * en cada navegación sin repetir un canje perdido.
    */
   function restore(): Promise<void> {
-    if (user.value !== null || refreshTokenStore.read() === null) {
+    if (user.value !== null || !sessionMarker.present()) {
       return Promise.resolve();
     }
     internals.restoring ??= refreshAccessToken()
@@ -95,14 +91,18 @@ export function useSession() {
   async function login(credentials: LoginRequest): Promise<void> {
     const response = await sendToApi("/auth/login", { method: "POST", body: credentials });
     if (!isSuccess(response)) throw errorFromResponse(response);
+    // El refresh quedó en la cookie: del cuerpo solo se usa el access token.
     const tokens = response.data as AuthTokens;
-    refreshTokenStore.write(tokens.refreshToken);
+    sessionMarker.set();
     applyAccessToken(tokens.accessToken);
     expired.value = false;
   }
 
   async function logout(): Promise<void> {
     end("manual");
+    // Que la API borre la cookie: sin esto, el próximo restore volvería a
+    // entrar. Si falla (sin red), la marca ya no está y no se intenta.
+    await sendToApi("/auth/logout", { method: "POST" }).catch(() => undefined);
     await nuxtApp.runWithContext(() => navigateTo("/login"));
   }
 
