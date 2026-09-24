@@ -55,8 +55,11 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 5. [ ] **A5 / D-016:** bucket de logs con retención de 400 días para los
        accesos a Secret Manager y una alerta ante una lectura de una identidad
        que no sea las esperadas.
-6. [ ] **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
+6. [x] (#211) **A7:** digest fijo de la imagen base, `qs` al día y escaneo de
        vulnerabilidades en Artifact Registry.
+   - El escaneo se verifica sobre la primera imagen que suba un deploy
+     después de habilitarlo (hallazgos con `gcloud artifacts docker images
+describe … --show-package-vulnerability`).
 7. [ ] **Ramas:** rescatar de `chore/dependency-hygiene` el typecheck del
        tsconfig de `prisma/` y las entradas de backlog que sigan vigentes (PR
        propio). Después [OK] para borrar esa rama, `feat/firestore-export` y

@@ -1746,6 +1746,16 @@ una service account por entorno, con `secretAccessor` secreto por secreto.
 
 ### Prioridad 3 — A7: `qs`, digest de la imagen base, escaneo de Artifact Registry
 
+**Estado:** RESUELTA el 2026-09-24 (ítem 6 de `plan-endurecimiento.md`).
+Override `"qs@6": "^6.16.0"` (el lockfile resuelve 6.16.0); `FROM
+node:22-alpine@sha256:0a71…e402` (índice multi-arquitectura) con Dependabot
+para el ecosistema docker; `containerscanning.googleapis.com` habilitada, así
+que cada imagen que sube el deploy se escanea. `scripts/supply-chain.test.mjs`
+lee el Dockerfile y el lockfile reales. `pnpm audit` pasó de 5 a 3 hallazgos;
+los que quedan no entran a la imagen de la API: `uuid` 9 (moderado, vía
+`firebase-admin` en `tools/firestore-export`) y `esbuild` 0.27 (bajo, build del
+web vía `@nuxt/fonts`). Registro original:
+
 Advisories moderados de DoS en `qs@6.15.3` (vía express), `FROM
 node:22-alpine` sin digest y el escaneo de vulnerabilidades apagado. Ninguno da
 acceso; el primero es disponibilidad. **Para cerrarla:** override de `qs`, fijar
