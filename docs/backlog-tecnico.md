@@ -1833,7 +1833,9 @@ servidor y el cliente rendericen lo mismo.
 
 ## Web: el ejemplo «25.00» en «Monto cobrado» no tiene nada que ver con el total
 
-**Estado:** abierto. **Registrado:** 2026-09-24, sin investigar.
+**Estado:** RESUELTA el 2026-09-24 (ítem 3c de `plan-cierre-piloto.md`): el
+ejemplo del campo es el total de la venta que se está registrando, el mismo
+número de «Total de la venta». **Registrado:** 2026-09-24.
 
 El campo «Monto cobrado» muestra «25.00» de ejemplo, un monto fijo que no sale
 del total que se está cobrando. A quien lo ve, puede parecerle un valor

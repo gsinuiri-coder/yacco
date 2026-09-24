@@ -333,7 +333,7 @@ async function submit(): Promise<void> {
             <UInput
               v-model="draft.amount"
               inputmode="decimal"
-              placeholder="25.00"
+              :placeholder="total"
               :disabled="submitting"
               class="w-full"
             />
