@@ -1752,6 +1752,16 @@ una service account por entorno, con `secretAccessor` secreto por secreto.
 
 ### Prioridad 3 — A7: `qs`, digest de la imagen base, escaneo de Artifact Registry
 
+**Estado:** RESUELTA el 2026-09-24 (ítem 6 de `plan-endurecimiento.md`).
+Override `"qs@6": "^6.16.0"` (el lockfile resuelve 6.16.0); `FROM
+node:22-alpine@sha256:0a71…e402` (índice multi-arquitectura) con Dependabot
+para el ecosistema docker; `containerscanning.googleapis.com` habilitada, así
+que cada imagen que sube el deploy se escanea. `scripts/supply-chain.test.mjs`
+lee el Dockerfile y el lockfile reales. `pnpm audit` pasó de 5 a 3 hallazgos;
+los que quedan no entran a la imagen de la API: `uuid` 9 (moderado, vía
+`firebase-admin` en `tools/firestore-export`) y `esbuild` 0.27 (bajo, build del
+web vía `@nuxt/fonts`). Registro original:
+
 Advisories moderados de DoS en `qs@6.15.3` (vía express), `FROM
 node:22-alpine` sin digest y el escaneo de vulnerabilidades apagado. Ninguno da
 acceso; el primero es disponibilidad. **Para cerrarla:** override de `qs`, fijar
@@ -2058,3 +2068,21 @@ cambios que rompan el repo; se pospuso por calendario, no por un problema
 técnico. El motivo de entonces («después de la Demo 1») ya venció. No hay
 regla de `ignore` en Dependabot, así que el PR vuelve solo. ESLint 10, que
 estaba en la misma entrada, ya está (hoy `^10.11.0`).
+
+## La imagen de la API trae `npm` con dependencias vulnerables que el runtime no usa
+
+**Estado:** abierto. **Registrado:** 2026-09-24, con el primer escaneo de
+Artifact Registry (ítem 6 de `plan-endurecimiento.md`). **Disparador:** el
+próximo cambio al Dockerfile, o un hallazgo CRITICAL.
+
+El escaneo de `api:fd0bd204bd39` dio 15 hallazgos (8 HIGH, 6 MEDIUM, 1 LOW).
+Salvo `qs` (A7, ya corregido) y `deepmerge-ts` (de Prisma, ver «Migración a
+Prisma 7»), todos están en `/usr/local/lib/node_modules/npm`: `sigstore`,
+`pacote`, `ip-address`, `brace-expansion`, `picomatch`, `@sigstore/core`. Los
+trae la imagen `node:22-alpine`. La API corre `node dist/main.js` y nunca llama
+a `npm` en runtime: es superficie sin uso.
+
+**Para cerrarla:** en la etapa `runtime` del Dockerfile, borrar `npm`, `npx` y
+`corepack` (`/usr/local/lib/node_modules/{npm,corepack}` y sus binarios en
+`/usr/local/bin`). La etapa `base` los sigue necesitando para `pnpm`. Probarlo
+con el paso «API image» de CI y comparar el escaneo antes y después.
