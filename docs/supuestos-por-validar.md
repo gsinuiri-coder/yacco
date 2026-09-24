@@ -358,6 +358,33 @@ línea de delegación con la fecha, más las cuatro de siempre.
   de precio y resolver quién autoriza (hoy la lista de usuarios es solo de la
   oficina).
 
+### 14. El padrón del sistema viejo entra entero, sin zona y sin envases
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** los 604
+  clientes del Yacco viejo (Firestore `yacco-2026`, solo lectura) entran
+  todos. Se descarta únicamente lo que no se puede cargar sin inventar (sin
+  nombre, duplicado exacto por nombre y teléfono, sin locación): hoy, ninguno.
+  Los teléfonos compartidos o con formato raro y las direcciones vacías
+  entran con aviso. **Sin zona**: las etiquetas del sistema viejo mezclan
+  zonas (PARQUE, SURCO) con categorías (EMPRESAS, DISTRIBUIDOR) y quedan en
+  las notas del cliente. **Sin envases**: el sistema viejo no tiene saldos de
+  envases cargados, así que salen del conteo físico. La deuda entra tal cual,
+  al centavo, como cargo de apertura con fecha de corte.
+- **Asumimos:** que `debtAmount` del sistema viejo es la deuda vigente de cada
+  cliente, y que los 192 clientes que comparten 25 teléfonos son clientes
+  distintos con un teléfono de relleno, no duplicados.
+- **Construido encima:** `tools/firestore-export/src/to-roster.ts` (del
+  export a los 4 CSV de `pnpm load:roster`) y la corrida en DEMO descrita en
+  `docs/padron-corrida-demo.md`.
+- **Preguntar:** ¿la deuda que muestra el sistema viejo es la que usted cobra
+  hoy? ¿Esos teléfonos repetidos son de relleno? ¿Qué etiquetas son zonas de
+  reparto y cuáles no? ¿Cuántos bidones tiene cada cliente, o hay que
+  contarlos?
+- **Si dice que no:** barato si es la zona (se asigna desde la ficha del
+  cliente o se recarga con zonas: el cargador es idempotente). Caro si la
+  deuda no es la vigente: se corrige con movimientos inversos, cliente por
+  cliente, nunca editando la carga.
+
 ## Validados
 
 ### 13. «Debe desde» es el cargo que abrió la deuda actual

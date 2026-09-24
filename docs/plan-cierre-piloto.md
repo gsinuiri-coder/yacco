@@ -121,7 +121,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 
    Una decisión nueva en D-024 si cambia cómo emite la sesión la API.
 
-8. [ ] **Padrón de clientes** (#59, rama feat/firestore-export, 112 commits
+8. [x] **Padrón de clientes** (#59, rama feat/firestore-export, 112 commits
        atrás):
    - rebase, revisión y merge de la herramienta de export del Yacco viejo en
      Firestore (proyecto yacco-2026, SOLO lectura: no se escribe nada ahí);

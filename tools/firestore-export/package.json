@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run --coverage"
+    "test": "vitest run --coverage",
+    "to-roster": "tsx src/roster-cli.ts"
   },
   "dependencies": {
     "firebase-admin": "^14.3.0"
