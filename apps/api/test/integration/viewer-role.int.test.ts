@@ -41,7 +41,7 @@ beforeAll(async () => {
     .post("/api/v1/users")
     .set("Authorization", `Bearer ${adminToken}`)
     .send({
-      name: "Verificación del deploy",
+      name: "Verificación automática del sistema",
       username: VIEWER_USERNAME,
       password: VIEWER_PASSWORD,
       roles: ["VIEWER"],
@@ -63,6 +63,12 @@ describe("lo que VIEWER NO lee", () => {
     "/reports/loaned-containers",
     "/reports/production?dateFrom=2026-07-01&dateTo=2026-07-31",
     "/users",
+    "/zones",
+    "/payments",
+    "/production-batches",
+    "/container-movements",
+    "/container-balances",
+    "/container-reconciliation",
   ])("GET %s: 403 para VIEWER, 200 para ADMIN", async (path) => {
     expect((await get(path, viewerToken)).status).toBe(403);
     expect((await get(path, adminToken)).status).toBe(200);

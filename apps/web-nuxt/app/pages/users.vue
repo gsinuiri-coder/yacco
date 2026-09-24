@@ -710,6 +710,12 @@ const rolesSubmitLabel = computed(() => {
                       @click="setActive(row.id, false)"
                     />
                   </div>
+                  <!-- La cuenta del smoke del deploy: su contraseña vive en Secret
+                       Manager y el deploy la lee. Cambiarla, sus roles o
+                       desactivarla desde acá rompe la verificación. -->
+                  <p v-else-if="row.roles.includes('VIEWER')" class="text-right text-muted">
+                    La usa el sistema: no se cambia desde acá
+                  </p>
                   <div v-else class="flex flex-wrap justify-end gap-1">
                     <UButton
                       color="neutral"

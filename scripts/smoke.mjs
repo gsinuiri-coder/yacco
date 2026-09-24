@@ -321,6 +321,9 @@ async function main() {
     }
     problems = await smokeApi(envName, expectedCommit);
   } else {
+    // Sin registerSecret a propósito: smoke.mjs no importa lib.mjs (corre en el
+    // job 6 sin instalar nada), y la contraseña sólo viaja en el cuerpo del
+    // login: ningún mensaje de este archivo la incluye.
     const viewerPassword = (process.env.SMOKE_VIEWER_PASSWORD ?? "").trim() || undefined;
     if (viewerPassword === undefined) {
       console.log(

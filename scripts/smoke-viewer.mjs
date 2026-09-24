@@ -6,10 +6,14 @@
  *   GCP_PROJECT_ID=yacco-v2-prod pnpm smoke:viewer
  *
  * Pasos, y por qué en este orden:
- *   1. La contraseña: la que ya esté en SMOKE_VIEWER_SECRET o, si no hay, una
- *      nueva al azar que va PRIMERO al secreto (por stdin). Si la subida falla,
- *      no se crea ningún usuario con una contraseña que nadie tiene.
- *   2. Login como admin con `yacco-admin-initial-password`.
+ *   1. Login como admin con `yacco-admin-initial-password`, y buscar
+ *      `smoke-viewer` entre las cuentas en uso Y las desactivadas.
+ *   2. La contraseña (viewerPlan): la que ya esté en SMOKE_VIEWER_SECRET o,
+ *      SÓLO si el secreto no existe (NOT_FOUND) y la cuenta tampoco, una nueva
+ *      al azar que va PRIMERO al secreto (por stdin). Si la subida falla, no se
+ *      crea ningún usuario con una contraseña que nadie tiene. Cualquier otra
+ *      combinación (secreto ilegible, cuenta desactivada, cuenta sin secreto)
+ *      aborta sin escribir nada.
  *   3. Si `smoke-viewer` no existe, `POST /users` con roles ["VIEWER"]: el
  *      mismo camino que usa la oficina, con su validación y su hash.
  *   4. Login como la cuenta nueva y el mismo chequeo que corre el smoke
@@ -39,25 +43,66 @@ const PASSWORD_BYTES = 24;
 /** Lo que se le manda a POST /users. El nombre dice qué es a quien lo vea en Usuarios. */
 export function viewerUserBody(password) {
   return {
-    name: "Verificación del deploy",
+    name: "Verificación automática del sistema",
     username: SMOKE_VIEWER_USERNAME,
     password,
     roles: ["VIEWER"],
   };
 }
 
-/** La cuenta existe si GET /users la trae, con cualquier rol y en uso o no. */
+/** La cuenta del smoke dentro de una lista de GET /users, o null. */
 export function findViewer(users) {
   return users.find((user) => user.username === SMOKE_VIEWER_USERNAME) ?? null;
 }
 
+/**
+ * Qué devolvió `gcloud secrets versions access`. "missing" SÓLO si gcloud dice
+ * NOT_FOUND: un permiso denegado, una sesión vencida o una versión
+ * deshabilitada son "error", y nunca disparan una contraseña nueva encima de
+ * un secreto que quizá está bien.
+ */
+export function classifySecretRead(result) {
+  if (result.ok && result.stdout.length > 0) return { state: "found", value: result.stdout };
+  if (!result.ok && /NOT_FOUND/.test(result.stderr)) return { state: "missing" };
+  return { state: "error", detail: result.stderr.trim() || "respuesta vacía" };
+}
+
+/**
+ * Qué hacer según si la cuenta y su secreto existen. Devuelve la acción, o
+ * `{ error }` para los dos casos que no se arreglan solos.
+ */
+export function viewerPlan({ account, secret }) {
+  if (secret.state === "error") {
+    return { error: `No pude leer ${SMOKE_VIEWER_SECRET}: ${secret.detail}` };
+  }
+  if (account !== null && !account.active) {
+    return {
+      error: `${SMOKE_VIEWER_USERNAME} existe pero está desactivada. Reactivarla desde Usuarios.`,
+    };
+  }
+  if (account !== null && secret.state === "missing") {
+    return {
+      error:
+        `${SMOKE_VIEWER_USERNAME} existe pero ${SMOKE_VIEWER_SECRET} no: nadie tiene su ` +
+        "contraseña. Cambiársela desde Usuarios no sirve (tiene que quedar en el secreto).",
+    };
+  }
+  return {
+    storeNewPassword: secret.state === "missing",
+    createAccount: account === null,
+  };
+}
+
 function readSecret(projectId, name) {
-  const result = run(
-    "gcloud",
-    ["secrets", "versions", "access", "latest", `--secret=${name}`, `--project=${projectId}`],
-    { quiet: true, allowFailure: true },
+  const read = classifySecretRead(
+    run(
+      "gcloud",
+      ["secrets", "versions", "access", "latest", `--secret=${name}`, `--project=${projectId}`],
+      { quiet: true, allowFailure: true },
+    ),
   );
-  return result.ok && result.stdout.length > 0 ? result.stdout : null;
+  if (read.state === "found") registerSecret(read.value);
+  return read;
 }
 
 function storeNewPassword(projectId) {
@@ -85,7 +130,7 @@ function storeNewPassword(projectId) {
   // Leída de vuelta: lo que se usa para crear el usuario es lo que quedó
   // guardado, no lo que se creyó mandar.
   const stored = readSecret(projectId, SMOKE_VIEWER_SECRET);
-  if (stored !== password) {
+  if (stored.value !== password) {
     throw new Error(
       `${SMOKE_VIEWER_SECRET} no devolvió lo que se subió. No se creó ningún usuario.`,
     );
@@ -129,21 +174,27 @@ async function main() {
   }
   const baseUrl = TARGETS.apis.production;
 
-  const existing = readSecret(projectId, SMOKE_VIEWER_SECRET);
-  if (existing !== null) registerSecret(existing);
-  const password = existing ?? storeNewPassword(projectId);
-  console.log(`${SMOKE_VIEWER_SECRET}: ${existing === null ? "creado" : "ya existía"}`);
-
   const adminPassword = readSecret(projectId, ADMIN_PASSWORD_SECRET);
-  if (adminPassword === null) throw new Error(`No pude leer ${ADMIN_PASSWORD_SECRET}.`);
-  registerSecret(adminPassword);
-  const admin = await login(baseUrl, ADMIN_USERNAME, adminPassword);
+  if (adminPassword.state !== "found") throw new Error(`No pude leer ${ADMIN_PASSWORD_SECRET}.`);
+  const admin = await login(baseUrl, ADMIN_USERNAME, adminPassword.value);
   if (admin.status !== 200) throw new Error(`El login de admin devolvió ${admin.status}.`);
   const adminToken = admin.body.accessToken;
 
-  const users = await api(baseUrl, "/users?role=VIEWER", { token: adminToken });
-  if (users.status !== 200) throw new Error(`GET /users devolvió ${users.status}.`);
-  if (findViewer(users.body) === null) {
+  // En uso Y desactivadas: GET /users trae sólo las activas si no se le dice.
+  let account = null;
+  for (const active of ["true", "false"]) {
+    const users = await api(baseUrl, `/users?role=VIEWER&active=${active}`, { token: adminToken });
+    if (users.status !== 200) throw new Error(`GET /users devolvió ${users.status}.`);
+    account ??= findViewer(users.body);
+  }
+
+  const secret = readSecret(projectId, SMOKE_VIEWER_SECRET);
+  const plan = viewerPlan({ account, secret });
+  if (plan.error !== undefined) throw new Error(plan.error);
+  const password = plan.storeNewPassword ? storeNewPassword(projectId) : secret.value;
+  console.log(`${SMOKE_VIEWER_SECRET}: ${plan.storeNewPassword ? "creado" : "ya existía"}`);
+
+  if (plan.createAccount) {
     const created = await api(baseUrl, "/users", {
       token: adminToken,
       method: "POST",
