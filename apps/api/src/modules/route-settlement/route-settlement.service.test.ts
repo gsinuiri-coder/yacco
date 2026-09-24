@@ -160,6 +160,10 @@ function buildPrismaMock() {
     },
     routeLoad: {
       aggregate: jest.fn<() => Promise<unknown>>(),
+      // Las cargas con su lote, para devolver los llenos al galpón. Vacío por
+      // defecto: estos tests van sobre los números, y el retorno de llenos con
+      // su lote se prueba contra Postgres (route-settlement.int.test.ts).
+      findMany: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     },
     containerMovement: {
       aggregate: jest.fn<(args: AggregateArgs) => Promise<unknown>>(),
