@@ -28,7 +28,10 @@ import type { FindRouteQueryDto } from "./dto/find-route-query.dto.js";
 import type { ListRoutesQueryDto } from "./dto/list-routes-query.dto.js";
 import type { MarkRouteStopDto } from "./dto/mark-route-stop.dto.js";
 import type { ReorderRouteStopsDto } from "./dto/reorder-route-stops.dto.js";
-import type { RouteLoadResponseDto } from "./dto/route-load-response.dto.js";
+import type {
+  RouteLoadResponseDto,
+  RouteTruckStockLineDto,
+} from "./dto/route-load-response.dto.js";
 import type {
   PaginatedRoutesDto,
   RouteResponseDto,
@@ -1164,6 +1167,36 @@ export class RoutesService {
       include: LOAD_INCLUDE,
     });
     return loads.map(toLoadResponse);
+  }
+
+  /**
+   * Per container type, what went up on the truck and what is still on it.
+   * `loaded` comes from `route_loads` (same source as the settlement's
+   * `fullOut`); `onBoard` from the ledger by state, so it is loaded minus
+   * delivered minus sold, net of voids, and drops to what came back once the
+   * truck is unloaded. They differ on purpose: showing only the load made
+   * the office read a truck that had already delivered as still full.
+   */
+  async truckStock(routeId: string, actor: RouteActor): Promise<RouteTruckStockLineDto[]> {
+    await this.getOwnedRouteOrThrow(routeId, actor);
+    const [loads, onBoardByType] = await Promise.all([
+      this.prisma.routeLoad.findMany({ where: { routeId }, include: LOAD_INCLUDE }),
+      this.containerMovementsService.getRouteFullStockByType(routeId),
+    ]);
+
+    const lines = new Map<string, RouteTruckStockLineDto>();
+    for (const load of loads) {
+      const { containerType } = load.batchItem;
+      const current = lines.get(containerType.id);
+      lines.set(containerType.id, {
+        containerType,
+        loaded: (current?.loaded ?? 0) + load.quantity,
+        onBoard: onBoardByType.get(containerType.id) ?? 0,
+      });
+    }
+    return [...lines.values()].sort((a, b) =>
+      a.containerType.name.localeCompare(b.containerType.name),
+    );
   }
 
   /**

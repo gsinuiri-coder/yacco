@@ -74,7 +74,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
          arreglarlo;
    - [x] c) el ejemplo «25.00» de «Monto cobrado» pasa a mostrar el total de
          la venta;
-   - [ ] d) «Arriba del camión»: separar lo cargado de lo que queda (cargado
+   - [x] d) «Arriba del camión»: separar lo cargado de lo que queda (cargado
          menos entregado menos vendido);
    - [x] e) la columna «Diferencia» del conteo lleva la palabra (faltan N /
          sobran N), y cierra la entrada de backlog que ya existe.

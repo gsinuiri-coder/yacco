@@ -21,6 +21,7 @@ export function stubRouteDetail(
       handler: () => sequence[Math.min(gets++, sequence.length - 1)],
     }),
     registerEndpoint(`/api/v1/routes/${id}/loads`, { method: "GET", handler: () => [] }),
+    registerEndpoint(`/api/v1/routes/${id}/truck-stock`, { method: "GET", handler: () => [] }),
     registerEndpoint("/api/v1/production-batches", () => ({
       data: [],
       total: 0,
