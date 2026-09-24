@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MIN_PASSWORD_LENGTH } from "@yacco/shared";
 import type { Page, Route, User, UserRole } from "@yacco/shared";
+import type { AssignableRole } from "~/utils/user";
 
 /**
  * Gestión de usuarios: alta, renombrar, cambiar la contraseña, corregir
@@ -37,7 +38,7 @@ const session = useSession();
 const api = useApi();
 const isAdmin = computed(() => session.hasRole("ADMIN"));
 
-const roleFilter = ref<UserRole | typeof ALL>(ALL);
+const roleFilter = ref<AssignableRole | typeof ALL>(ALL);
 const statusFilter = ref<"active" | "inactive">("active");
 
 const users = ref<User[]>([]);

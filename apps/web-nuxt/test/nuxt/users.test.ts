@@ -159,6 +159,36 @@ describe("Usuarios", () => {
     expect(await screen.findByText("Ana Retirada")).toBeTruthy();
   });
 
+  it("el alta no ofrece la cuenta de verificación del deploy", async () => {
+    stubList([SELF]);
+    const user = userEvent.setup();
+
+    await renderPage();
+    await user.click(await screen.findByRole("button", { name: "Nuevo usuario" }));
+
+    // «Chofer» es el control: el selector está y ofrece los roles de personas.
+    expect(screen.getByLabelText("Chofer")).toBeTruthy();
+    expect(screen.queryByLabelText("Cuenta de verificación")).toBeNull();
+  });
+
+  it("si la cuenta de verificación existe, la lista dice qué es", async () => {
+    stubList([
+      SELF,
+      {
+        id: "smk-1",
+        name: "Verificación del deploy",
+        username: "smoke-viewer",
+        active: true,
+        roles: ["VIEWER"],
+      },
+    ]);
+
+    await renderPage();
+
+    const row = await rowOf("Verificación del deploy");
+    expect(within(row).getByText("Cuenta de verificación")).toBeTruthy();
+  });
+
   it("da de alta un usuario con sus roles", async () => {
     stubList([SELF]);
     const bodies = stubWrite(cleanups, "/api/v1/users", "POST", () => DRIVER);

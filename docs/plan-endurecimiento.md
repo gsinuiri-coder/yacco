@@ -46,6 +46,18 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      decide en el piloto: pregunta abierta en `supuestos-por-validar.md`.
    - Lleva migración (valor nuevo de `user_role`): el merge va fuera de
      08:00–20:00 de Lima.
+   - `GET /auth/me` no existía: se agrega (devuelve la identidad del token).
+   - Va en **dos PRs**, porque la cuenta sólo puede existir en producción
+     después de que el deploy aplique la migración, y el smoke corre en ese
+     mismo deploy:
+     - [ ] **3a** — rol, `/auth/me`, web, `smoke.mjs` con el login válido
+           cuando recibe `SMOKE_VIEWER_PASSWORD`, y `pnpm smoke:viewer`. Tras
+           su deploy verde: `pnpm smoke:viewer` contra producción.
+     - [ ] **3b** — el job 6 de `deploy.yml` lee
+           `yacco-production-smoke-viewer-password` por WIF y el chequeo pasa
+           a obligatorio. Sin migración.
+   - Mientras 3a espera la ventana de las 20:00, se adelanta el ítem 4 si no
+     depende de él (no depende).
 4. [ ] **A4:** identidades de runtime separadas para `yacco-api` y
        `yacco-api-demo`; cada una lee SOLO sus secretos. Verificar que demo no
        puede leer un secreto de producción.

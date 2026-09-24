@@ -24,6 +24,9 @@ enum UserRole {
   ADMIN
   SELLER
   DRIVER
+  // Cuenta técnica del smoke del deploy: lee sólo catálogos y /auth/me. No es un
+  // rol para personas (el web no lo ofrece ni le arma menú).
+  VIEWER
 
   @@map("user_role")
 }

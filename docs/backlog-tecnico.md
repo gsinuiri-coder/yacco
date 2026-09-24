@@ -1554,7 +1554,19 @@ permite cerrar P-05 con evidencia (ver `ARQUITECTURA.md`).
 
 ## Falta un rol de solo lectura
 
-**Estado:** abierto. **Disparador:** el piloto de campo.
+**Estado:** RESUELTA en dos pasos (ítem 3 de `plan-endurecimiento.md`). El
+rol `VIEWER` existe y es una cuenta técnica para el smoke, **no un rol para
+personas** (supuesto 15): lee sólo productos, tipos de envase, métodos de pago
+y `GET /auth/me` (nuevo); 403 en todo lo demás
+(`test/integration/viewer-role.int.test.ts`). `pnpm smoke:viewer` crea la
+cuenta `smoke-viewer` en producción con la contraseña en
+`yacco-production-smoke-viewer-password`, y `smoke.mjs` hace el login válido
+cuando recibe `SMOKE_VIEWER_PASSWORD`. **Paso 2 (3b):** que el job 6 de
+`deploy.yml` lea ese secreto por WIF y el chequeo pase a obligatorio; va en un
+PR aparte porque la cuenta sólo puede existir después de que el deploy del
+paso 1 aplique la migración. Lo que sigue es el registro original.
+
+**Disparador (original):** el piloto de campo.
 
 Los roles son `ADMIN`, `SELLER` y `DRIVER`, y los tres escriben algo: hasta
 `DRIVER` registra paradas. No existe un usuario que pueda entrar al sistema sin

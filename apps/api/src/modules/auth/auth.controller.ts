@@ -1,10 +1,22 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiResponse, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import type { Response } from "express";
 import { AuthService } from "./auth.service.js";
 import { AuthTokensDto } from "./dto/auth-tokens.dto.js";
 import { LoginDto } from "./dto/login.dto.js";
 import { RefreshResponseDto } from "./dto/refresh-response.dto.js";
+import { SessionUserDto } from "./dto/session-user.dto.js";
+import { JwtAccessGuard } from "./guards/jwt-access.guard.js";
 import { JwtRefreshGuard } from "./guards/jwt-refresh.guard.js";
 import {
   REFRESH_COOKIE,
@@ -45,6 +57,19 @@ export class AuthController {
   @Post("refresh")
   refresh(@Req() request: AuthenticatedRequest): Promise<RefreshResponseDto> {
     return this.authService.refreshAccessToken(request.user);
+  }
+
+  // Sin @Roles: cualquier token de acceso válido, de cualquier rol. Es el GET
+  // autenticado más chico que hay, y el que usa el smoke del deploy con la
+  // cuenta VIEWER. No toca la base: devuelve lo que el token ya dice.
+  @ApiBearerAuth()
+  @ApiResponse({ status: HttpStatus.OK, type: SessionUserDto })
+  @ApiUnauthorizedResponse({ description: "Missing, invalid or expired access token" })
+  @UseGuards(JwtAccessGuard)
+  @Get("me")
+  me(@Req() request: AuthenticatedRequest): SessionUserDto {
+    const { sub, username, roles } = request.user;
+    return { id: sub, username, roles };
   }
 
   @ApiResponse({ status: HttpStatus.NO_CONTENT, description: "La cookie del refresh se borró" })

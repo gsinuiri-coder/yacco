@@ -3,8 +3,11 @@
  * invented: when the API changes, this file changes against the real DTOs.
  */
 
-/** Roles issued by the API (Prisma enum UserRole). */
-export type UserRole = "ADMIN" | "SELLER" | "DRIVER";
+/**
+ * Roles issued by the API (Prisma enum UserRole). VIEWER is the deploy smoke's
+ * technical account: it reads catalogs only and is never offered to people.
+ */
+export type UserRole = "ADMIN" | "SELLER" | "DRIVER" | "VIEWER";
 
 /** Body of POST /auth/login (LoginDto). The API identifies by username, not email. */
 export interface LoginRequest {
