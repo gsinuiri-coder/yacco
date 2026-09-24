@@ -42,7 +42,9 @@ export interface RenderedHtml {
   bodyAppend: string[];
 }
 
-const SCRIPT_WITHOUT_NONCE = /<script\b(?![^>]*\bnonce=)/g;
+// Sin distinguir mayúsculas: `<SCRIPT>` también ejecuta, y sin nonce quedaría
+// bloqueado (o, peor, pasaría desapercibido en el test que lo cuenta).
+const SCRIPT_WITHOUT_NONCE = /<script\b(?![^>]*\bnonce=)/gi;
 
 /** Le pone el nonce a cada `<script>` que todavía no lo tenga. */
 export function stampNonce(html: RenderedHtml, nonce: string): void {

@@ -12,7 +12,7 @@ test("la página llega con la CSP completa y un nonce que cada script trae", asy
   expect(policy).toContain("frame-ancestors 'none'");
   expect(nonce).toBeDefined();
   const html = await response.text();
-  const scripts = html.match(/<script\b[^>]*>/g) ?? [];
+  const scripts = html.match(/<script\b[^>]*>/gi) ?? [];
   expect(scripts.length).toBeGreaterThan(0);
   for (const tag of scripts) expect(tag).toContain(`nonce="${nonce}"`);
 });

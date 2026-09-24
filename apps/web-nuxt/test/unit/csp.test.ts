@@ -21,7 +21,9 @@ describe("stampNonce", () => {
       head: ['<script type="module" src="/_nuxt/entry.js"></script>'],
       bodyPrepend: ["<script>window.x=1</script>"],
       body: ['<div id="__nuxt"></div><script type="application/json">{}</script>'],
-      bodyAppend: ['<script nonce="ya">window.y=2</script><scriptish></scriptish>'],
+      bodyAppend: [
+        '<script nonce="ya">window.y=2</script><scriptish></scriptish><SCRIPT>window.z=3</SCRIPT>',
+      ],
     };
 
     stampNonce(html, "n1");
@@ -30,7 +32,7 @@ describe("stampNonce", () => {
     expect(html.bodyPrepend[0]).toBe('<script nonce="n1">window.x=1</script>');
     expect(html.body[0]).toContain('<script nonce="n1" type="application/json">');
     expect(html.bodyAppend[0]).toBe(
-      '<script nonce="ya">window.y=2</script><scriptish></scriptish>',
+      '<script nonce="ya">window.y=2</script><scriptish></scriptish><script nonce="n1">window.z=3</SCRIPT>',
     );
   });
 });
