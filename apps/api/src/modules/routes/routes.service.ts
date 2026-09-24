@@ -86,6 +86,10 @@ const STOP_INCLUDE = {
       id: true,
       name: true,
       address: true,
+      // Lo que el chofer necesita en la calle para encontrar el lugar y
+      // avisar que llega («Mi ruta»).
+      addressReference: true,
+      phone: true,
       customer: { select: { id: true, name: true } },
     },
   },

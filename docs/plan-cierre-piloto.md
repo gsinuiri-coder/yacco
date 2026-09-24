@@ -96,7 +96,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
    Pantallas nuevas en el menú, sin librería de gráficos nueva. Tablas y
    totales alcanzan.
 
-6. [ ] **Vista «Mi ruta» para el chofer** (HU-11 y HU-12 a HU-14 en el
+6. [x] **Vista «Mi ruta» para el chofer** (HU-11 y HU-12 a HU-14 en el
        celular, en línea). Decisión de Claude: no hay app nativa ni offline para
        el piloto. Un usuario con rol DRIVER entra al mismo web y ve solo sus rutas
        del día, en un diseño para pantalla de celular (360 px), y registra cada

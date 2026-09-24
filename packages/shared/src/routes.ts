@@ -24,6 +24,8 @@ export interface RouteStopLocation {
   id: string;
   name: string;
   address: string;
+  addressReference: string;
+  phone: string;
   customer: Named;
 }
 
