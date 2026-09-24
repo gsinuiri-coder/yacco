@@ -1,3 +1,6 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # Herramientas de operación de un solo uso (p. ej. el export de Firestore del
+  # sistema viejo). No se despliegan; comparten lint, typecheck y tests.
+  - "tools/*"
