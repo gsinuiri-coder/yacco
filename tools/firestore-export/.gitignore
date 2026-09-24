@@ -1,0 +1,13 @@
+# La foto exportada contiene nombres, teléfonos y deudas de clientes reales.
+# NUNCA se versiona.
+output/
+
+# Credenciales del service account de Firebase, en cualquiera de sus
+# nombres habituales. gitleaks corre en CI, pero la primera línea de defensa
+# es que no se puedan cometer.
+credentials/
+serviceAccount*.json
+service-account*.json
+*-firebase-adminsdk-*.json
+*.serviceaccount.json
+firebase-key*.json

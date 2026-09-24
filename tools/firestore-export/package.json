@@ -1,0 +1,24 @@
+{
+  "name": "@yacco/firestore-export",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Herramienta de un solo uso: saca una foto del sistema viejo (Firestore) a archivos JSON. No forma parte de la API ni del frontend.",
+  "scripts": {
+    "export:customers": "tsx src/cli.ts customers",
+    "export:vouchers": "tsx src/cli.ts vouchers",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --coverage",
+    "to-roster": "tsx src/roster-cli.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.3.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "5.0.1",
+    "tsx": "^4.23.15",
+    "vitest": "5.0.1"
+  }
+}
