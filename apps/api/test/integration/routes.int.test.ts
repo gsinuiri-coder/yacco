@@ -1434,6 +1434,41 @@ describe("GET /api/v1/routes/:id/loads", () => {
   });
 });
 
+describe("GET /api/v1/routes/:id/truck-stock", () => {
+  // Lo cargado y lo que queda son números DISTINTOS a propósito: con una sola
+  // cifra, un endpoint que devolviera lo cargado en los dos campos pasaría.
+  test("separa lo cargado de lo que queda arriba después de entregar", async () => {
+    const { locationId: stopLocation } = await createFreshLocation();
+    const { routeId, stopId } = await routeInProgressWithStock(6, stopLocation);
+    await deliverStop(adminToken, routeId, stopId, {
+      items: [{ productId: refillProductId, quantity: 2 }],
+    }).then((r) => expect(r.status).toBe(200));
+
+    const response = await request(server())
+      .get(`/api/v1/routes/${routeId}/truck-stock`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      {
+        containerType: { id: containerTypeId, name: expect.any(String) },
+        loaded: 6,
+        onBoard: 4,
+      },
+    ]);
+  });
+
+  test("a driver cannot read another driver's truck", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+
+    const response = await request(server())
+      .get(`/api/v1/routes/${routeId}/truck-stock`)
+      .set("Authorization", `Bearer ${otherDriverToken}`);
+
+    expect(response.status).toBe(403);
+  });
+});
+
 describe("DELETE /api/v1/routes/:id/loads/:loadId", () => {
   test("deletes the load, returns the stock, and records the inverse FULL_RETURN movement", async () => {
     const batchItemId = await createBatchItem(100);
