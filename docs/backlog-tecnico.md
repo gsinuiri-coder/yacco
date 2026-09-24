@@ -53,8 +53,14 @@ manipulado en el navegador solo consigue un 401— pero el payload es una foto
 del momento del login: si a un usuario le cambian los roles o lo desactivan, la
 UI sigue mostrando lo viejo hasta el próximo refresh.
 
-**Para cerrarla:** agregar `GET /api/v1/auth/me` protegido con `JwtAccessGuard`
-que devuelva el usuario desde la base, y usarlo como fuente de verdad en la UI.
+**Actualización 2026-09-24 (#208):** `GET /api/v1/auth/me` existe, con
+`JwtAccessGuard` y sin `@Roles`, pero devuelve lo que dice el TOKEN (`id`,
+`username`, `roles`), no la base: se hizo para el smoke de la cuenta VIEWER, y
+el web no lo usa. Un usuario desactivado sigue recibiendo 200 hasta que el
+token vence, igual que en cualquier otro endpoint.
+
+**Para cerrarla:** que `/auth/me` lea el usuario desde la base (nombre,
+`active`, roles vigentes) y usarlo como fuente de verdad en la UI.
 
 ## Password del admin de producción
 
