@@ -50,7 +50,7 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
 
 ## Cola (en este orden)
 
-- [x] **D · Docs** (este PR; un PR, docs-only: no redespliega).
+- [x] **D · Docs** (#240; un PR, docs-only: no redespliega).
   - D1: `PROGRESO.md` y `plan-piloto.md`: el ítem 2 ya está hecho. Cifras de
     `main` verificadas por SQL de solo lectura (clientes por zona y sin zona;
     3 zonas sin días de reparto).
