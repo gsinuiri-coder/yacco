@@ -32,12 +32,20 @@ export const LABELS_FILE = join(REPO_ROOT, "scripts", "roster-zones-labels.json"
 
 /** Clave de comparación de una etiqueta: sin tildes, en mayúsculas, sin espacios de más. */
 export function labelKey(label) {
-  return label.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+  return label.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().replace(/\s+/g, " ").trim();
 }
 
 /** `{ zones: {etiqueta: zona}, notZones: [...] }` → un clasificador de etiquetas. */
 export function labelClassifier(labelMap) {
   const zones = new Map(Object.entries(labelMap.zones).map(([key, zone]) => [labelKey(key), zone]));
+  // Dos zonas que solo difieren en mayúsculas o tildes serían dos POST /zones
+  // del mismo nombre: el segundo lo rechaza la API a mitad de la corrida.
+  const zoneNames = new Set([...zones.values()].map(labelKey));
+  if (zoneNames.size !== new Set(zones.values()).size) {
+    throw new Error(
+      "roster-zones-labels.json tiene dos zonas que solo difieren en mayúsculas o tildes.",
+    );
+  }
   const notZones = new Set(labelMap.notZones.map(labelKey));
   return (label) => {
     const key = labelKey(label);
@@ -72,6 +80,7 @@ function increment(record, key) {
  * que ya existen (activas o retiradas: un nombre repetido lo rechaza la API).
  */
 export function planZones({ customers, customerTags, classify, existingZones }) {
+  // existingZones: [{ name, active }], activas y retiradas.
   const tagsByCode = new Map(customerTags.map(({ externalCode, tags }) => [externalCode, tags]));
   const plan = {
     assignments: [],
@@ -107,10 +116,12 @@ export function planZones({ customers, customerTags, classify, existingZones }) 
     plan.assignments.push({ customerId: customer.id, zoneName: places[0] });
     increment(plan.byZone, places[0]);
   }
-  const existing = new Set(existingZones.map(labelKey));
-  plan.zonesToCreate = Object.keys(plan.byZone)
-    .filter((name) => !existing.has(labelKey(name)))
-    .sort((a, b) => a.localeCompare(b));
+  const existing = new Map(existingZones.map((zone) => [labelKey(zone.name), zone.active]));
+  const targets = Object.keys(plan.byZone).sort((a, b) => a.localeCompare(b));
+  plan.zonesToCreate = targets.filter((name) => !existing.has(labelKey(name)));
+  // Una zona que el dueño retiró no se revive por un script: se reactiva a
+  // mano en Zonas, o se saca del mapeo.
+  plan.withdrawnTargets = targets.filter((name) => existing.get(labelKey(name)) === false);
   return plan;
 }
 
@@ -130,6 +141,10 @@ export function formatReport(plan, census) {
   lines.push(`Sin etiqueta de lugar (quedan sin zona): ${plan.withoutPlaceLabel}`);
   lines.push(`Ya tenían zona (no se tocan): ${plan.alreadyZoned}`);
   lines.push(`No están en el export (creados desde la app): ${plan.notInExport}`);
+  if (plan.withdrawnTargets.length > 0) {
+    lines.push(`Zonas RETIRADAS que recibirían clientes: ${plan.withdrawnTargets.length}`);
+    for (const name of plan.withdrawnTargets) lines.push(`  ${name}`);
+  }
   const unknown = Object.entries(plan.unknownLabels);
   if (unknown.length > 0) {
     lines.push(`Etiquetas SIN CLASIFICAR en roster-zones-labels.json: ${unknown.length}`);
@@ -167,15 +182,26 @@ export function compareFingerprints(before, after) {
   return { changed, missing };
 }
 
+/**
+ * El listado se pagina ordenado por nombre, que no es único: entre una página
+ * y otra un cliente podría repetirse y otro faltar. Se juntan por id y, si no
+ * da el total que la API dice, se corta antes de escribir nada.
+ */
 async function fetchAllCustomers(api, token) {
-  const customers = [];
+  const byId = new Map();
+  let total = 0;
   for (let page = 1; ; page += 1) {
     // Sin filtro `active`: entran los activos y los desactivados.
     const response = await api(`/customers?page=${page}&limit=${PAGE_SIZE}`, { token });
     if (response.status !== 200) throw new Error(`GET /customers devolvió ${response.status}.`);
-    customers.push(...response.body.data);
-    if (page >= response.body.totalPages) return customers;
+    for (const customer of response.body.data) byId.set(customer.id, customer);
+    total = response.body.total;
+    if (page >= response.body.totalPages) break;
   }
+  if (byId.size !== total) {
+    throw new Error(`Se leyeron ${byId.size} clientes distintos de ${total}: volver a correr.`);
+  }
+  return [...byId.values()];
 }
 
 async function fetchAllZones(api, token) {
@@ -242,13 +268,18 @@ export async function rosterZones({
     customers,
     customerTags,
     classify: labelClassifier(labelMap),
-    existingZones: zones.map((zone) => zone.name),
+    existingZones: zones,
   });
   for (const line of formatReport(plan, labelCensus(customerTags))) log(line);
 
   if (!commit) {
     log("Dry-run: no se escribió nada. Con --commit se aplica.");
     return { plan };
+  }
+  if (plan.withdrawnTargets.length > 0) {
+    throw new Error(
+      "Hay zonas retiradas que recibirían clientes: reactivarlas en Zonas o sacarlas del mapeo.",
+    );
   }
   if (Object.keys(plan.unknownLabels).length > 0) {
     throw new Error(
@@ -277,7 +308,10 @@ export async function rosterZones({
   );
   const expected = zonedBefore + assigned + zonedMeanwhile;
   if (changed > 0 || missing > 0 || zonedAfter !== expected) {
-    throw new Error(`La verificación NO cierra (se esperaban ${expected} clientes con zona).`);
+    throw new Error(
+      `La verificación NO cierra (se esperaban ${expected} clientes con zona). ` +
+        "Si la oficina estaba trabajando, un cobro o una edición también cambian la huella.",
+    );
   }
   log("Verificación OK. Ningún valor personal se imprimió.");
   return { plan, assigned };

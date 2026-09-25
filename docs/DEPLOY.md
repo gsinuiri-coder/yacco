@@ -347,7 +347,13 @@ tiene zona: una puesta a mano desde la ficha del cliente no se pisa.
    (sin días de reparto: los pone el dueño en Zonas), asigna, y verifica de
    solo lectura que la cantidad de clientes con zona cierra y que ningún
    cliente cambió en otra cosa que la zona (huella por cliente, sin imprimir
-   el contenido).
+   el contenido). Correrlo con la oficina sin trabajar: un cobro o una
+   edición durante la corrida también cambian la huella, y la verificación
+   falla (después de escribir, pero sin haber pisado nada).
+
+   Frena ANTES de escribir si hay etiquetas sin clasificar, si una zona
+   retirada recibiría clientes (se reactiva en Zonas o se saca del mapeo), o
+   si la lista de clientes no se pudo leer completa.
 
 **No uses `pnpm load:roster` para esto.** Su `upsert` vuelve a escribir el
 nombre y el teléfono de cada cliente desde el CSV, y pisaría lo que la

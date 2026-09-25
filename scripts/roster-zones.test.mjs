@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import { URLSearchParams } from "node:url";
 
 import {
   LABELS_FILE,
@@ -51,6 +52,16 @@ describe("labelClassifier", () => {
   });
 });
 
+describe("labelClassifier, mapeo inválido", () => {
+  test("dos zonas que solo difieren en mayúsculas o tildes se rechazan al cargar", () => {
+    assert.throws(
+      () =>
+        labelClassifier({ zones: { SURCO: "Surco", "SANTIAGO DE SURCO": "SURCO" }, notZones: [] }),
+      /solo difieren/,
+    );
+  });
+});
+
 describe("labelCensus", () => {
   test("cuenta clientes por etiqueta, una vez por cliente, y los de más de una", () => {
     const census = labelCensus([
@@ -86,7 +97,10 @@ describe("planZones", () => {
       { externalCode: "e", tags: ["VIP", "PARQUE"] },
     ],
     classify,
-    existingZones: ["surco"],
+    existingZones: [
+      { name: "surco", active: true },
+      { name: "Vieja", active: false },
+    ],
   });
 
   test("toma la etiqueta de lugar aunque venga después de un tipo de cliente", () => {
@@ -115,6 +129,18 @@ describe("planZones", () => {
   test("crea solo las zonas que no existen, comparando sin mayúsculas", () => {
     assert.deepEqual(plan.zonesToCreate, ["Parque"]);
     assert.deepEqual(plan.byZone, { Surco: 1, Parque: 2 });
+  });
+
+  test("una zona retirada que recibiría clientes queda marcada", () => {
+    const withdrawn = planZones({
+      customers: [customer("1", "a")],
+      customerTags: [{ externalCode: "a", tags: ["VIEJA"] }],
+      classify: labelClassifier({ zones: { VIEJA: "Vieja" }, notZones: [] }),
+      existingZones: [{ name: "Vieja", active: false }],
+    });
+    assert.deepEqual(withdrawn.withdrawnTargets, ["Vieja"]);
+    assert.deepEqual(withdrawn.zonesToCreate, []);
+    assert.deepEqual(plan.withdrawnTargets, []);
   });
 
   test("junta las etiquetas sin clasificar", () => {
@@ -178,9 +204,9 @@ describe("parseArgs", () => {
  * existente, y un registro de cada escritura. `mutate` deja cambiar un dato
  * a mitad de camino para probar la verificación.
  */
-function fakeApi({ mutate } = {}) {
+function fakeApi({ mutate, beforeRead, shufflePages = false, zones: extraZones = [] } = {}) {
   const writes = [];
-  const zones = [{ id: "z-surco", name: "Surco", active: true }];
+  const zones = [{ id: "z-surco", name: "Surco", active: true }, ...extraZones];
   const customers = [
     { ...baseCustomer("1", "a"), zoneId: null },
     { ...baseCustomer("2", "b"), zoneId: null },
@@ -192,14 +218,30 @@ function fakeApi({ mutate } = {}) {
     const reply = (status, json) => ({ status, text: async () => JSON.stringify(json) });
     if (init.method === "POST" && path === "/auth/login")
       return body.password === "clave" ? reply(200, { accessToken: "t" }) : reply(401, {});
-    if (init.method === "GET" && path.startsWith("/customers?"))
-      return reply(200, { data: customers, totalPages: 1 });
+    if (init.method === "GET" && path.startsWith("/customers?")) {
+      const query = new URLSearchParams(path.slice(path.indexOf("?") + 1));
+      const page = Number(query.get("page"));
+      const limit = 2;
+      assert.equal(query.get("limit"), "100");
+      // shufflePages: el orden cambia entre páginas (nombres empatados), así
+      // que la página 2 repite a uno de la 1 y otro no aparece nunca.
+      const order = shufflePages && page > 1 ? [...customers].reverse() : customers;
+      return reply(200, {
+        data: order.slice((page - 1) * limit, page * limit),
+        total: customers.length,
+        totalPages: Math.ceil(customers.length / limit),
+      });
+    }
     if (init.method === "GET" && path.startsWith("/zones?active=true"))
       return reply(
         200,
         zones.filter((zone) => zone.active),
       );
-    if (init.method === "GET" && path.startsWith("/zones?active=false")) return reply(200, []);
+    if (init.method === "GET" && path.startsWith("/zones?active=false"))
+      return reply(
+        200,
+        zones.filter((zone) => !zone.active),
+      );
     if (init.method === "POST" && path === "/zones") {
       writes.push(`POST /zones ${body.name}`);
       const zone = { id: `z-${body.name.toLowerCase()}`, name: body.name, active: true };
@@ -208,7 +250,10 @@ function fakeApi({ mutate } = {}) {
     }
     const id = path.split("/")[2];
     const row = customers.find((c) => c.id === id);
-    if (init.method === "GET") return reply(200, row);
+    if (init.method === "GET") {
+      beforeRead?.(row);
+      return reply(200, row);
+    }
     if (init.method === "PATCH") {
       writes.push(`PATCH /customers/${id} ${JSON.stringify(body)}`);
       row.zoneId = body.zoneId;
@@ -290,7 +335,33 @@ describe("rosterZones", () => {
     await assert.rejects(run(api, { commit: true }), /verificación NO cierra/);
   });
 
-  test("con la contraseña equivocada no lee ni escribe nada", async () => {
+  test("una zona puesta desde la app durante la corrida no se pisa, y la verificación la cuenta", async () => {
+    const api = fakeApi({
+      beforeRead: (row) => {
+        if (row.id === "2") row.zoneId = "z-surco";
+      },
+    });
+    const logs = [];
+    const { assigned } = await run(api, { commit: true, log: (line) => logs.push(line) });
+    assert.equal(assigned, 1);
+    assert.ok(!api.writes.some((write) => write.startsWith("PATCH /customers/2")));
+    assert.ok(logs.includes("Con zona puesta desde la app mientras corría: 1."));
+    assert.ok(logs.includes("Verificación OK. Ningún valor personal se imprimió."));
+  });
+
+  test("si las páginas repiten a un cliente y saltean a otro, corta antes de escribir", async () => {
+    const api = fakeApi({ shufflePages: true });
+    await assert.rejects(run(api, { commit: true }), /clientes distintos de 3/);
+    assert.deepEqual(api.writes, []);
+  });
+
+  test("una zona retirada que recibiría clientes frena el --commit", async () => {
+    const api = fakeApi({ zones: [{ id: "z-parque", name: "Parque", active: false }] });
+    await assert.rejects(run(api, { commit: true }), /zonas retiradas/);
+    assert.deepEqual(api.writes, []);
+  });
+
+  test("con la contraseña equivocada no escribe nada", async () => {
     const api = fakeApi();
     await assert.rejects(run(api, { adminPassword: "otra" }), /401/);
     assert.deepEqual(api.writes, []);
