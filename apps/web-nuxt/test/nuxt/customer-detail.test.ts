@@ -75,6 +75,7 @@ interface Setup {
   methods?: PaymentMethod[];
   prices?: CustomerPrice[];
   effective?: EffectivePrice[];
+  debtBalance?: string;
 }
 
 /** Todo lo que la ficha pide al montar, con valores de una ficha típica. */
@@ -82,7 +83,8 @@ function stubFicha(setup: Setup = {}) {
   cleanups.push(signIn(setup.roles ?? ["ADMIN"]));
   endpoint(BASE, {
     method: "GET",
-    handler: () => buildCustomer({ id: ID, debtBalance: "98.00", creditLimit: "150.00" }),
+    handler: () =>
+      buildCustomer({ id: ID, debtBalance: setup.debtBalance ?? "98.00", creditLimit: "150.00" }),
   });
   endpoint("/api/v1/payment-methods", () => setup.methods ?? [CASH, YAPE]);
   endpoint("/api/v1/products", () => [BIDON]);
@@ -93,7 +95,7 @@ function stubFicha(setup: Setup = {}) {
     // Distinto de todo a propósito: si alguna vez se pinta, el test lo ve.
     openingBalance: "999.00",
     entries: setup.entries ?? [],
-    closingBalance: "98.00",
+    closingBalance: setup.debtBalance ?? "98.00",
   }));
 }
 
@@ -135,6 +137,22 @@ describe("Ficha del cliente", () => {
       expect(screen.getByRole("link", { name: "Editar" }).getAttribute("href")).toBe(
         `/customers/${ID}/edit`,
       );
+    });
+
+    it("un saldo negativo es plata a favor del cliente: «A favor S/ x.xx», no «-S/ x.xx»", async () => {
+      stubFicha({
+        debtBalance: "-15.00",
+        entries: [entry({ amount: "20.00", runningBalance: "-15.00" })],
+      });
+      await renderFicha();
+
+      const datos = screen.getByRole("region", { name: "Datos del cliente" });
+      expect(within(datos).getByText("A favor S/ 15.00")).toBeTruthy();
+      // El estado de cuenta muestra el mismo saldo: arriba y en su fila.
+      const tabla = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
+      expect(within(tabla).getByText("A favor S/ 15.00")).toBeTruthy();
+      expect(screen.getAllByText("A favor S/ 15.00")).toHaveLength(3);
+      expect(screen.queryByText("-S/ 15.00")).toBeNull();
     });
 
     it("un id inexistente dice que ese cliente no existe, no un error genérico", async () => {
@@ -244,9 +262,7 @@ describe("Ficha del cliente", () => {
       await pay("Efectivo", "108.00");
 
       expect(
-        await screen.findByText(
-          "Cobro registrado. El cliente queda con saldo a favor de S/ 10.00.",
-        ),
+        await screen.findByText("Cobro registrado. Deuda actual: A favor S/ 10.00."),
       ).toBeTruthy();
       expect(screen.queryByRole("alert")).toBeNull();
     });

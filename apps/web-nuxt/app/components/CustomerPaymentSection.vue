@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatSoles, isAboveZero, isMoneyInput } from "@yacco/shared";
+import { formatDebtBalance, isAboveZero, isMoneyInput } from "@yacco/shared";
 import type { CreateOfficePaymentResult, PaymentMethod } from "@yacco/shared";
 
 /**
@@ -124,11 +124,7 @@ async function submit(): Promise<void> {
         color="success"
         variant="subtle"
         icon="i-lucide-circle-check"
-        :title="
-          result.exceedsDebt
-            ? `Cobro registrado. El cliente queda con saldo a favor de ${formatSoles(result.debtBalance.replace(/^-/, ''))}.`
-            : `Cobro registrado. Deuda actual: ${formatSoles(result.debtBalance)}.`
-        "
+        :title="`Cobro registrado. Deuda actual: ${formatDebtBalance(result.debtBalance)}.`"
       />
 
       <div class="grid gap-4 sm:grid-cols-[1fr_12rem_auto] sm:items-end">
