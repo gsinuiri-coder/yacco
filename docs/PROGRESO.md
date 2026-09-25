@@ -984,7 +984,7 @@ se hizo a las 20:02 de Lima.
 | 5 · A5, 400 días y alerta (D-016)            | ✅ bucket, métrica y email; Giancarlo confirmó el aviso                   | #210      |
 | 6 · A7, digest, `qs`, escaneo                | ✅ `qs` 6.16; escaneo activo: 13 hallazgos, del `npm` de la base y Prisma | #211      |
 | 7 · Ramas                                    | ✅ rescatado lo vigente; 3 ramas borradas con [OK]                        | #212      |
-| 8 · Cierre                                   | ✅ este documento                                                         | este PR   |
+| 8 · Cierre                                   | ✅ este documento                                                         | #219      |
 
 **Lo que cambió en la nube, fuera de los PRs** (todo reproducible con los
 scripts: `pnpm gcp:bootstrap`, `pnpm secrets:gcp`, `pnpm gcp:audit`,
