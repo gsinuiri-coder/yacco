@@ -283,6 +283,35 @@ Para una sola API (es el gate de CI después de cada deploy de Cloud Run):
 node scripts/smoke.mjs api --env=demo
 ```
 
+**La única credencial de un smoke es la de VIEWER.** El job 6 de
+`deploy.yml` corre `smoke.mjs --require-viewer`: lee por WIF
+`yacco-production-smoke-viewer-password` (el único secreto que el deployer
+puede leer además de los del deploy) y hace un login válido de `smoke-viewer`,
+rol VIEWER, que sólo ve catálogos y `/auth/me`. Si falta, el smoke FALLA. A
+mano, sin `SMOKE_VIEWER_PASSWORD`, ese paso se saltea y lo avisa. Ningún smoke,
+workflow ni script lee la contraseña del admin (lo verifica
+`scripts/viewer-bootstrap.test.mjs`), así que rotarla (F) no rompe ninguno.
+
+### Cuenta del smoke: bootstrap manual
+
+Crear o reparar `smoke-viewer` pide un admin, y es el ÚNICO paso que lo usa.
+No corre en CI ni en el deploy: lo corre una persona, en una terminal, y sólo
+cuando hace falta (la primera vez, o si el smoke dice que el login de
+`smoke-viewer` falla):
+
+```bash
+GCP_PROJECT_ID=yacco-v2-prod pnpm viewer:bootstrap
+# Contraseña ACTUAL del usuario admin de producción (no se muestra):
+```
+
+La contraseña del admin se escribe a mano, sin eco. El script no la lee de
+Secret Manager ni del entorno, y sin una terminal interactiva no corre. Es
+idempotente: si la cuenta y su secreto ya existen, no escribe nada. Después
+hace el mismo chequeo que el smoke del deploy y le da al deployer
+`secretAccessor` sobre ese secreto y sobre ningún otro. Los casos que no se
+arreglan solos (cuenta desactivada, cuenta sin secreto, secreto ilegible)
+abortan sin escribir nada y dicen qué hacer.
+
 ## Vuelta atrás
 
 **El web** (D-023): promover en Vercel un deploy anterior de `yacco-web`, con
