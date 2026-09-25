@@ -77,6 +77,7 @@ interface Setup {
   prices?: CustomerPrice[];
   effective?: EffectivePrice[];
   debtBalance?: string;
+  addressReference?: string;
   balances?: ContainerBalanceRow[];
 }
 
@@ -89,7 +90,14 @@ function stubCustomerPage(setup: Setup = {}) {
   endpoint(BASE, {
     method: "GET",
     handler: () =>
-      buildCustomer({ id: ID, debtBalance: setup.debtBalance ?? "98.00", creditLimit: "150.00" }),
+      buildCustomer({
+        id: ID,
+        debtBalance: setup.debtBalance ?? "98.00",
+        creditLimit: "150.00",
+        ...(setup.addressReference === undefined
+          ? {}
+          : { addressReference: setup.addressReference }),
+      }),
   });
   endpoint("/api/v1/payment-methods", () => setup.methods ?? [CASH, YAPE]);
   endpoint("/api/v1/products", () => [BIDON]);
@@ -148,6 +156,20 @@ describe("Ficha del cliente", () => {
       expect(screen.getByRole("link", { name: "Editar" }).getAttribute("href")).toBe(
         `/customers/${ID}/edit`,
       );
+    });
+
+    it("un enlace de Google Maps en la referencia se abre aparte; un intento de HTML se ve como texto", async () => {
+      const maps = "https://maps.app.goo.gl/AbC123xYz";
+      stubCustomerPage({ addressReference: `Portón azul <img src=x onerror=alert(1)> ${maps}` });
+      await renderCustomerPage();
+
+      const details = screen.getByRole("region", { name: "Datos del cliente" });
+      const link = within(details).getByRole("link", { name: maps });
+      expect(link.getAttribute("href")).toBe(maps);
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+      expect(within(details).getByText(/Portón azul <img src=x onerror=alert\(1\)>/)).toBeTruthy();
+      expect(details.querySelector("img")).toBeNull();
     });
 
     it("un saldo negativo es plata a favor del cliente: «A favor S/ x.xx», no «-S/ x.xx»", async () => {

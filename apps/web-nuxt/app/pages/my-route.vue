@@ -158,8 +158,10 @@ async function marked(): Promise<void> {
               <h3 class="text-base font-semibold text-highlighted">
                 {{ stop.location.customer.name }}
               </h3>
-              <p class="text-sm">{{ stop.location.address }}</p>
-              <p class="text-sm text-muted">{{ stop.location.addressReference }}</p>
+              <p class="text-sm"><LinkedText :text="stop.location.address" /></p>
+              <p class="text-sm text-muted">
+                <LinkedText :text="stop.location.addressReference" />
+              </p>
             </div>
             <UBadge
               :color="STOP_STATUS[stop.status].color"

@@ -97,8 +97,10 @@ function paymentRegistered(debtBalance: string): void {
               </div>
               <div class="sm:col-span-2">
                 <dt class="text-muted">Dirección</dt>
-                <dd class="font-medium text-highlighted">{{ customer.address }}</dd>
-                <dd class="text-muted">{{ customer.addressReference }}</dd>
+                <dd class="font-medium text-highlighted">
+                  <LinkedText :text="customer.address" />
+                </dd>
+                <dd class="text-muted"><LinkedText :text="customer.addressReference" /></dd>
               </div>
             </dl>
           </section>
