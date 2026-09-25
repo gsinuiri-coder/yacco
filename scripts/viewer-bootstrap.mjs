@@ -35,6 +35,7 @@
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
+import { apiClient, loginAdmin, promptHidden } from "./admin-api.mjs";
 import { registerSecret, resolveGcpProject, run } from "./lib.mjs";
 import {
   SMOKE_VIEWER_SECRET,
@@ -101,42 +102,6 @@ export function viewerPlan({ account, secret }) {
   };
 }
 
-/**
- * Pide una contraseña en la terminal sin mostrarla. Sin TTY rechaza: este
- * paso lo corre una persona, y un stdin redirigido querría decir que alguien
- * lo está automatizando con la contraseña del admin en un archivo o un pipe.
- */
-export function promptHidden(question, { input = process.stdin, output = process.stderr } = {}) {
-  return new Promise((resolve, reject) => {
-    if (!input.isTTY) {
-      reject(
-        new Error("viewer:bootstrap pide la contraseña del admin en una terminal interactiva."),
-      );
-      return;
-    }
-    let value = "";
-    const finish = (settle) => {
-      input.off("data", onData);
-      input.setRawMode(false);
-      input.pause();
-      output.write("\n");
-      settle();
-    };
-    const onData = (chunk) => {
-      for (const char of String(chunk)) {
-        if (char === "\r" || char === "\n") return finish(() => resolve(value));
-        if (char === "\u0003") return finish(() => reject(new Error("Cancelado.")));
-        value = char === "\u007f" || char === "\b" ? value.slice(0, -1) : value + char;
-      }
-    };
-    output.write(question);
-    input.setRawMode(true);
-    input.setEncoding("utf8");
-    input.on("data", onData);
-    input.resume();
-  });
-}
-
 function readSecret(runCommand, projectId, name) {
   const read = classifySecretRead(
     runCommand(
@@ -182,28 +147,6 @@ function storeNewPassword(runCommand, projectId) {
   return password;
 }
 
-function apiClient(baseUrl, fetchImpl) {
-  return async (path, { token, method = "GET", body } = {}) => {
-    const response = await fetchImpl(`${baseUrl}/api/v1${path}`, {
-      method,
-      headers: {
-        ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
-    });
-    const text = await response.text();
-    let json = null;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      // El status alcanza para decidir.
-    }
-    return { status: response.status, body: json };
-  };
-}
-
 /**
  * El bootstrap entero, con sus dependencias inyectables para el test. La
  * contraseña del admin llega como argumento: de dónde sale es cosa de `main`
@@ -222,9 +165,7 @@ export async function bootstrapViewer({
   const login = (username, password) =>
     api("/auth/login", { method: "POST", body: { username, password } });
 
-  const admin = await login(ADMIN_USERNAME, adminPassword);
-  if (admin.status !== 200) throw new Error(`El login de admin devolvió ${admin.status}.`);
-  const adminToken = admin.body.accessToken;
+  const adminToken = await loginAdmin(api, adminPassword, ADMIN_USERNAME);
 
   // En uso Y desactivadas: GET /users trae sólo las activas si no se le dice.
   let account = null;

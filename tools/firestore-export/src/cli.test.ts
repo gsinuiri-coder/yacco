@@ -67,6 +67,25 @@ describe("run", () => {
     expect(deps.logs.join("\n")).not.toContain("Bodega Real");
   });
 
+  it("tags: escribe solo id y etiquetas, y la consola muestra solo cuentas", async () => {
+    const deps = recordingDeps(
+      firestoreWith({
+        customers: [{ name: "Bodega Real", tags: ["SURCO"] }, { name: "Otra" }],
+      }),
+    );
+
+    const code = await run(["tags", "--out", "foto"], deps);
+
+    expect(code).toBe(0);
+    const file = join("foto", "tags.json");
+    expect(JSON.parse(deps.files.get(file)!)).toEqual([
+      { externalCode: "d0", tags: ["SURCO"] },
+      { externalCode: "d1", tags: [] },
+    ]);
+    expect(deps.files.get(file)).not.toContain("Bodega Real");
+    expect(deps.logs).toEqual([`tags: 2 clientes, 1 con etiquetas -> ${file}`]);
+  });
+
   it("vouchers: por defecto solo los pendientes, y dice cuántos leyó", async () => {
     const deps = recordingDeps(
       firestoreWith({

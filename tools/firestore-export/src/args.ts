@@ -1,4 +1,4 @@
-export type Command = "customers" | "vouchers";
+export type Command = "customers" | "tags" | "vouchers";
 
 export interface CliArgs {
   command: Command;
@@ -14,6 +14,7 @@ export const DEFAULT_OUT_DIR = "output";
 const USAGE = [
   "Uso:",
   "  pnpm export:customers            -> output/customers.json",
+  "  pnpm export:tags                 -> output/tags.json (solo id y etiquetas)",
   "  pnpm export:vouchers             -> output/vouchers.json (solo con deuda pendiente)",
   "  pnpm export:vouchers -- --all    -> todos los vouchers",
   "  pnpm export:vouchers -- --pending-only",
@@ -31,7 +32,7 @@ export class UsageError extends Error {
 /** Parses `process.argv.slice(2)`. Pure, so it is tested without running anything. */
 export function parseArgs(argv: string[]): CliArgs {
   const [command, ...rest] = argv;
-  if (command !== "customers" && command !== "vouchers") {
+  if (command !== "customers" && command !== "tags" && command !== "vouchers") {
     throw new UsageError(`Comando desconocido: "${command ?? ""}"`);
   }
 

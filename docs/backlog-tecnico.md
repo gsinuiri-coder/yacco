@@ -89,7 +89,17 @@ credenciales, nunca en el repositorio ni en un `.env` versionado.
 
 ## Precios de lista del catálogo de productos
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA la parte del sistema el 2026-09-25 (ítem 4a de
+`plan-piloto.md`): no había forma de cambiar un precio de lista sin un
+`UPDATE` a mano. Ahora `PATCH /api/v1/products/:id` (solo ADMIN, solo
+`listPrice`) y la pantalla «Productos» (Administración) lo cambian; vale para
+lo que se entregue desde ese momento —también pedidos ya tomados, que se
+cobran al entregar (supuesto 17)—, y el precio pactado con un cliente sigue
+mandando. Un precio de 0 se rechaza. **Los precios siguen siendo los provisionales** hasta que el dueño
+diga los reales: es una pregunta del guion de la reunión
+(`docs/guion-piloto.md`), y los carga él o la oficina desde esa pantalla.
+
+**Estado original:** abierto. **Disparador:** antes del piloto de campo.
 
 Precios de lista del catálogo son placeholder; confirmar con el cliente antes
 del piloto de campo. Los cuatro productos sembrados en
@@ -652,7 +662,21 @@ depender de que el commit traiga migración. Es su propio PR.
 
 ## Producción puede tener catálogos desincronizados del seed y nada lo detecta
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA el 2026-09-25 (ítem 4b de `plan-piloto.md`), por el
+lado de «algún otro mecanismo que detecte»: el smoke de cada deploy, con la
+sesión VIEWER, compara los catálogos de producción contra
+`apps/api/prisma/seed-catalog.json`, que es de donde siembra `seed.ts`
+(`checkCatalogs` en `scripts/smoke.mjs`). Falla si falta un método de pago o un
+producto del seed, si un método pide (o no) confirmación distinto del seed, o
+si un producto cambió de tipo. No compara precios (los pone el dueño en
+«Productos») ni tipos de envase: en `main` la planta ya los renombró
+(«BIDON 20L CAÑO», «BIDON 20L NORMAL»), y los productos los referencian por
+id. El chequeo de productos además cuida a `pnpm load:roster`, que encuentra
+los tipos de envase por el nombre de las recargas (`container-type-columns.ts`,
+copia a mano de esos nombres). No se corre el seed en el deploy. El `create` de productos que señalaba
+abajo ya era idempotente (`findFirst` antes de crear). Registro original:
+
+**Estado original:** abierto. **Disparador:** antes del piloto de campo.
 
 `payment_methods` en Neon quedó con `requires_confirmation = false` en
 Transferencia, Yape y Plin — el seed (`apps/api/prisma/seed.ts`, líneas
@@ -2156,3 +2180,20 @@ migración expand): una columna de notas en `customers` que el cargador llene,
 o que el cargador rechace (o al menos avise en el resumen) una columna `notes`
 no vacía que no va a guardar. Mientras tanto, las zonas del padrón salen de
 `pnpm roster:zones`, que lee las etiquetas de un export aparte.
+
+## Cambiar un precio de lista no deja rastro
+
+**Estado:** abierto. **Registrado:** 2026-09-25, con la pantalla «Productos»
+(ítem 4a de `plan-piloto.md`). **Disparador:** que el dueño pregunte quién
+cambió un precio o cuánto valía antes, o una diferencia de cobro que dependa
+de eso.
+
+`PATCH /products/:id` pisa `list_price` en su lugar. `products` no tiene
+`updated_at` ni `updated_by`, así que después de un cambio no se sabe el
+valor anterior, ni quién lo cambió, ni cuándo. No rompe ningún invariante (un
+catálogo no es una fila operativa, y cada venta guarda su `unit_price`),
+pero es el precio que paga por defecto todo el padrón.
+
+**Para cerrarla:** toca esquema, así que se pregunta antes. O dos columnas
+(`updated_at`, `updated_by`), que dicen quién tocó último pero no el valor
+anterior; o una tabla de historial de precios de lista, de solo agregar.

@@ -32,6 +32,7 @@
     "deploy:web": "node scripts/deploy-web.mjs",
     "smoke:prod": "node scripts/smoke.mjs",
     "viewer:bootstrap": "node scripts/viewer-bootstrap.mjs",
+    "roster:zones": "node scripts/roster-zones.mjs",
     "prepare": "husky",
     "test:e2e": "pnpm --filter @yacco/web-nuxt test:e2e"
   },
