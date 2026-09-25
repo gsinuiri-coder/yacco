@@ -77,7 +77,7 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
 - **4 · Backlog con disparador «antes del piloto de campo»**, un PR cada una:
   - [ ] 4a · «Precios de lista del catálogo de productos»: el `PATCH` de productos (ADMIN) y pantalla «Productos». Sin columna nueva. Los
         precios los pone el dueño. Supuesto 17.
-  - [ ] 4b · «Producción puede tener catálogos desincronizados del seed»: el
+  - [x] 4b (#231) · «Producción puede tener catálogos desincronizados del seed»: el
         smoke compara métodos de pago y productos contra `seed-catalog.json`.
   - [ ] 4c · «Una liquidación puede quedar desactualizada»: la mitad del
         pago rechazado, sin columna. Supuesto 18.
