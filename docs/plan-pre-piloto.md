@@ -47,7 +47,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        sin romper Prisma; si no, se registra con el motivo.
    - Evidencia: el escaneo antes y después, con 0 HIGH como meta, y el smoke
      OK.
-4. [ ] **Dependabot:** los menores primero (uno por uno) y después las subidas
+4. [x] (#213, #223) **Dependabot:** los menores primero (uno por uno) y después las subidas
        mayores de Nest 12 (#214, #215, #216, #217) juntas en un solo PR si
        dependen entre sí. Leer las notas de migración de Nest 12.
    - Los 1059 tests de la API y los de integración en verde, el ciclo e2e de
