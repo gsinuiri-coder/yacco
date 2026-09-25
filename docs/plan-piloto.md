@@ -63,7 +63,7 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
   denegó el control de permisos (datos personales). **Pendiente de
   Giancarlo:** correr `export:tags` (comando en `docs/DEPLOY.md`, «Zonas del padrón»). Después: dry-run → informe → `[OK]` →
   `--commit` → verificación.
-- [ ] **3a · Defecto del recorrido (nuevo).** «Envases en poder de
+- [x] **3a · Defecto del recorrido (nuevo)** (#228). «Envases en poder de
       clientes» no dejaba encontrar a un cliente entre ~600 ubicaciones sin pasar
       ~30 páginas, y no filtraba por zona aunque la API lo admite y `/zones`
       existe. Búsqueda por nombre o teléfono (`search` en
