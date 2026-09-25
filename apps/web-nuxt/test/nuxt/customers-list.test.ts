@@ -131,6 +131,16 @@ describe("Clientes", () => {
     expect(seen.at(-1)).not.toHaveProperty("zoneId");
   });
 
+  it("un saldo negativo en la columna Deuda se lee como plata a favor, no como deuda con signo", async () => {
+    stubCustomers(() => pageOf([buildCustomer({ debtBalance: "-15.00" })]));
+
+    await renderCustomers();
+
+    const row = (await screen.findByText("Bodega Santa Rosa")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("A favor S/ 15.00")).toBeTruthy();
+    expect(within(row).queryByText("-S/ 15.00")).toBeNull();
+  });
+
   it("pide la primera página con el límite de la API, no la lista entera", async () => {
     const seen = stubCustomers(() => pageOf([buildCustomer()]));
 

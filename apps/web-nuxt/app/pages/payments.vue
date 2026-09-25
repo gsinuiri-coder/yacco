@@ -2,6 +2,7 @@
 import {
   PAYMENTS_PAGE_SIZE,
   formatInstantInLima,
+  formatDebtBalance,
   formatSoles,
   limaDayEnd,
   limaDayStart,
@@ -111,7 +112,7 @@ async function confirm(payment: PaymentRow): Promise<void> {
     const result = await api.request<PaymentActionResult>(`/payments/${payment.id}/confirm`, {
       method: "POST",
     });
-    notice.value = `Pago de ${payment.customer.name} confirmado. Deuda actual: ${formatSoles(result.debtBalance)}.`;
+    notice.value = `Pago de ${payment.customer.name} confirmado. Deuda actual: ${formatDebtBalance(result.debtBalance)}.`;
     list.retry();
   } catch (error) {
     const stale = paymentStaleMessage(error);
@@ -130,7 +131,7 @@ function startReject(payment: PaymentRow): void {
 
 function rejected(payment: PaymentRow, result: PaymentActionResult): void {
   rejectingId.value = null;
-  notice.value = `Pago de ${payment.customer.name} rechazado. Deuda actual: ${formatSoles(result.debtBalance)}.`;
+  notice.value = `Pago de ${payment.customer.name} rechazado. Deuda actual: ${formatDebtBalance(result.debtBalance)}.`;
   list.retry();
 }
 

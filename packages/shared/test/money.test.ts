@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addAmounts,
+  formatDebtBalance,
   formatSoles,
   isAboveZero,
   isMoneyInput,
@@ -37,6 +38,22 @@ describe("formatSoles", () => {
 
   it("deja el signo negativo adelante", () => {
     expect(formatSoles("-12.50")).toBe("-S/ 12.50");
+  });
+});
+
+describe("formatDebtBalance", () => {
+  it("una deuda o un cero se ven como plata, sin cambios", () => {
+    expect(formatDebtBalance("1234.50")).toBe("S/ 1,234.50");
+    expect(formatDebtBalance("0.00")).toBe("S/ 0.00");
+  });
+
+  it("un saldo negativo es plata a favor del cliente, sin el signo", () => {
+    expect(formatDebtBalance("-15.00")).toBe("A favor S/ 15.00");
+    expect(formatDebtBalance("-1234.5")).toBe("A favor S/ 1,234.50");
+  });
+
+  it("un cero con signo no es plata a favor", () => {
+    expect(formatDebtBalance("-0.00")).toBe("S/ 0.00");
   });
 });
 

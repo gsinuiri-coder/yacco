@@ -70,7 +70,7 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
       deuda actual es el saldo inicial del padrón, la columna muestra «Saldo
       inicial» y no la fecha de corte como si fuera una venta. `replayDebt` no
       cambia su regla; supuesto 13, una línea.
-- [ ] **L5 · Saldo a favor.** Un saldo negativo se muestra «A favor S/ x.xx»
+- [x] **L5 · Saldo a favor** (#242). Un saldo negativo se muestra «A favor S/ x.xx»
       en la lista de Clientes y en la ficha. Un solo lugar.
 - [x] **L1 · Filtro de zona en «Clientes»** (#243). «Todas», cada zona en uso y «Sin
       zona»; `withoutZone` en `ListCustomersQueryDto`, excluyente con

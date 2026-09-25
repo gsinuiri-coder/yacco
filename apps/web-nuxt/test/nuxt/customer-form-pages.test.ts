@@ -252,6 +252,16 @@ describe("Editar cliente", () => {
     expect(screen.queryByLabelText(/deuda/i)).toBeNull();
   });
 
+  it("un saldo negativo se ve como plata a favor, no como deuda con signo", async () => {
+    stubZones([]);
+    stubCustomer({ ...baseCustomer(), debtBalance: "-15.00" });
+
+    await renderSuspended(App, { route: editRoute });
+
+    expect(await screen.findByText("A favor S/ 15.00")).toBeTruthy();
+    expect(screen.queryByText("-S/ 15.00")).toBeNull();
+  });
+
   it("guarda los cambios y nunca manda debtBalance", async () => {
     stubZones([]);
     stubCustomer(baseCustomer());
