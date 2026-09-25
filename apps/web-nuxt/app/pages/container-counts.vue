@@ -14,14 +14,26 @@ import type { ContainerBalanceRow, ContainerType, Page } from "@yacco/shared";
  * misma página del reporte, así que el saldo y la fecha en pantalla
  * siempre vienen de la API.
  *
- * Sin filtro de zona aunque la API lo admite: el front no tiene un
- * endpoint de catálogo de zonas para ofrecer las opciones acá, y un
- * catálogo nunca se escribe a mano ni se deriva de otro recurso.
+ * Se recorre por zona (el catálogo sale de GET /zones) y se busca a UN
+ * cliente por nombre o teléfono: con ~600 ubicaciones, contar lo que un
+ * chofer anotó de un cliente no puede exigir pasar treinta páginas.
  */
 useHead({ title: "Envases en poder de clientes · Yacco" });
 
 const api = useApi();
 
+const searchInput = ref("");
+const search = useDebounced(
+  computed(() => searchInput.value.trim()),
+  300,
+);
+const ALL_ZONES = "all";
+const zoneFilter = ref(ALL_ZONES);
+const zones = useActiveZones();
+const zoneItems = computed(() => [
+  { label: "Todas las zonas", value: ALL_ZONES },
+  ...zones.value.map((zone) => ({ label: zone.name, value: zone.id })),
+]);
 const uncountedOnly = ref(false);
 const withDiscrepancies = ref(false);
 const countedBeforeDay = ref("");
@@ -30,12 +42,16 @@ const list = usePagedList<ContainerBalanceRow>(
   "/container-balances",
   CONTAINER_BALANCES_PAGE_SIZE,
   computed(() => ({
+    search: search.value,
+    zoneId: zoneFilter.value === ALL_ZONES ? undefined : zoneFilter.value,
     uncountedOnly: uncountedOnly.value ? true : undefined,
     withDiscrepancies: withDiscrepancies.value ? true : undefined,
     countedBefore: limaDayStart(countedBeforeDay.value),
   })),
 );
 function clearFilters(): void {
+  searchInput.value = "";
+  zoneFilter.value = ALL_ZONES;
   uncountedOnly.value = false;
   withDiscrepancies.value = false;
   countedBeforeDay.value = "";
@@ -98,6 +114,18 @@ function registered(row: ContainerBalanceRow): void {
     <div class="mt-6 space-y-6">
       <UCard :ui="{ body: 'p-0 sm:p-0' }">
         <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
+          <UFormField label="Buscar" class="min-w-56 flex-1">
+            <UInput
+              v-model="searchInput"
+              type="search"
+              icon="i-lucide-search"
+              placeholder="Nombre o teléfono"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField label="Zona">
+            <USelect v-model="zoneFilter" :items="zoneItems" class="w-48" />
+          </UFormField>
           <UCheckbox v-model="uncountedOnly" label="Solo sin contar" />
           <UCheckbox v-model="withDiscrepancies" label="Solo con entregas sin registrar" />
           <UFormField label="Contadas antes del">

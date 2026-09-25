@@ -26,12 +26,15 @@
  *      lo que distingue si el corte ocurrió.
  *   5. Con SMOKE_VIEWER_PASSWORD: un login VÁLIDO de `smoke-viewer` por el
  *      dominio de producción, GET /auth/me y /products, y 403 en /customers.
- *      Ver checkViewerSession.
+ *      Ver checkViewerSession. Con esa misma sesión, los catálogos de
+ *      producción contra el del seed (métodos de pago y productos). Ver
+ *      checkCatalogs.
  *
  * Si EXPECTED_COMMIT está en el entorno (CI la pone), el commit de cada API
  * tiene que coincidir. Sin ella (a mano) se comprueba todo lo demás.
  */
-import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // URLs deterministas de Cloud Run (formato SERVICE-PROJECT_NUMBER.REGION), las
 // mismas que usa apps/web-nuxt/config/api-proxy.ts: ver D-012 y D-021 en
@@ -160,6 +163,59 @@ export function checkViewerSession({ login, me, catalog, customers }) {
   return problems;
 }
 
+/** El catálogo que siembra apps/api/prisma/seed.ts: la misma lista, no una copia. */
+export const SEED_CATALOG_PATH = fileURLToPath(
+  new URL("../apps/api/prisma/seed-catalog.json", import.meta.url),
+);
+
+/**
+ * Los catálogos de producción contra el del seed. Existe porque esas filas
+ * solo las escribe el seed, que en producción corrió una vez: un cambio
+ * posterior al seed (como `requires_confirmation` en los métodos de pago, que
+ * hubo que corregir con una migración de datos) no llega solo, y nada lo veía.
+ * Backlog: «Producción puede tener catálogos desincronizados del seed».
+ *
+ * Qué se compara, y qué no:
+ *   - Métodos de pago: que cada uno del seed exista, esté en uso y pida (o no)
+ *     confirmación como dice el seed. Decide si un cobro baja la deuda en el
+ *     acto o espera a la oficina: es plata.
+ *   - Productos: que cada uno del seed exista, en venta, con su tipo (recarga
+ *     o venta de bidón). NO el precio: lo pone el dueño en «Productos».
+ *   - Tipos de envase: nada. La planta los renombra (en main ya no se llaman
+ *     como en el seed), y los productos los referencian por id.
+ * Un producto o método de más en producción no es un problema.
+ */
+export function checkCatalogs({ products, paymentMethods }, seed) {
+  const problems = [];
+  if (!Array.isArray(paymentMethods)) {
+    problems.push("GET /payment-methods no devolvió una lista");
+  } else {
+    for (const expected of seed.paymentMethods) {
+      const found = paymentMethods.find((method) => method.name === expected.name);
+      if (found === undefined || found.active === false) {
+        problems.push(`falta el método de pago «${expected.name}» del seed (o está retirado)`);
+      } else if (found.requiresConfirmation !== expected.requiresConfirmation) {
+        problems.push(
+          `«${expected.name}»: requiresConfirmation es ${found.requiresConfirmation}, el seed dice ${expected.requiresConfirmation}`,
+        );
+      }
+    }
+  }
+  if (!Array.isArray(products)) {
+    problems.push("GET /products no devolvió una lista");
+  } else {
+    for (const expected of seed.products) {
+      const found = products.find((product) => product.name === expected.name);
+      if (found === undefined || found.active === false) {
+        problems.push(`falta el producto «${expected.name}» del seed (o no está en venta)`);
+      } else if (found.type !== expected.type) {
+        problems.push(`«${expected.name}»: es ${found.type}, el seed dice ${expected.type}`);
+      }
+    }
+  }
+  return problems;
+}
+
 /**
  * El HTML del web Nuxt. Devuelve los problemas y la ruta del módulo de
  * entrada, para comprobar que el JavaScript también se sirve (un HTML sin su
@@ -250,7 +306,21 @@ async function smokeViewerSession(label, baseUrl, password) {
     checks.catalog = await authorized("/products");
     checks.customers = await authorized("/customers");
   }
-  return checkViewerSession(checks).map((problem) => `${label}: ${problem}`);
+  const problems = checkViewerSession(checks);
+  if (checks.catalog?.status === 200) {
+    const paymentMethods = await authorized("/payment-methods");
+    const seed = JSON.parse(readFileSync(SEED_CATALOG_PATH, "utf8"));
+    problems.push(
+      ...checkCatalogs(
+        {
+          products: parseJson(checks.catalog.text),
+          paymentMethods: parseJson(paymentMethods.text),
+        },
+        seed,
+      ).map((problem) => `catálogo: ${problem}`),
+    );
+  }
+  return problems.map((problem) => `${label}: ${problem}`);
 }
 
 export async function smokeWebScreens(baseUrl) {

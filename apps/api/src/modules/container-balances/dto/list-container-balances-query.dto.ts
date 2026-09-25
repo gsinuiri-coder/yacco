@@ -1,6 +1,16 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
-import { IsBoolean, IsDateString, IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
+import {
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from "class-validator";
 import {
   DEFAULT_LIMIT,
   DEFAULT_PAGE,
@@ -20,7 +30,7 @@ function toOptionalBoolean({ value }: { value: unknown }): unknown {
 
 /**
  * Same page/limit contract as the customer roster (~500 locations; never
- * the whole list in one call). The filters are the four ways the owner
+ * the whole list in one call). The filters are the ways the owner
  * slices the audit work list — see ContainerBalancesService for each.
  */
 export class ListContainerBalancesQueryDto {
@@ -43,6 +53,15 @@ export class ListContainerBalancesQueryDto {
   @IsOptional()
   @IsUUID("4", { message: "La zona debe ser un identificador válido" })
   zoneId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Busca coincidencias parciales en el nombre del cliente o el teléfono de la ubicación",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160, { message: "La búsqueda no puede superar los 160 caracteres" })
+  search?: string;
 
   @ApiPropertyOptional({ description: "Solo ubicaciones que nunca se han contado" })
   @IsOptional()

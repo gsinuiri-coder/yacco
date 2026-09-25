@@ -309,11 +309,36 @@ mano, sin `SMOKE_VIEWER_PASSWORD`, ese paso se saltea y lo avisa. Ningún smoke,
 workflow ni script lee la contraseña del admin (lo verifica
 `scripts/viewer-bootstrap.test.mjs`), así que rotarla (F) no rompe ninguno.
 
+### El ciclo entero contra un preview
+
+Un preview del web apunta a la API de **demo** (D-011) y escribe ahí: un
+chofer, un pedido, una ruta y un cliente nuevos por corrida. Nunca toca
+producción. Es la prueba de punta a punta de lo que hace la planta: pedido →
+ruta → «Mi ruta» del chofer en el celular → conteo de envases de un cliente
+desde 0 → liquidación → reportes (`apps/web-nuxt/e2e-preview/review-cycle.test.ts`).
+
+1. Publicar el preview desde `main` y copiar la URL del resumen de la corrida:
+   `gh workflow run deploy.yml --ref main -f web_preview=true`.
+2. Correrlo. El preview está protegido: el token OIDC de desarrollo de Vercel
+   lo atraviesa (`vercel env run` lo pone en el entorno, sin escribir ningún
+   `.env`), y la contraseña del admin de demo sale de Secret Manager directo a
+   la variable. Ninguno de los dos se imprime. Leer ese secreto dispara el
+   email de auditoría de D-016, como corresponde. En Windows, `gcloud.cmd`
+   (el `gcloud` de Git Bash busca Python y falla).
+
+   ```bash
+   npx -y vercel@59.11.2 env run -- bash -c '
+     export DEMO_ADMIN_PASSWORD="$(gcloud.cmd secrets versions access latest \
+       --secret=yacco-demo-admin-password --project=yacco-v2-prod --configuration=yacco)"
+     cd apps/web-nuxt && PREVIEW_URL=<url del preview> \
+       pnpm exec playwright test -c playwright.preview.config.ts'
+   ```
+
 ### Cuenta del smoke: bootstrap manual
 
-Crear o reparar `smoke-viewer` pide un admin, y es el ÚNICO paso que lo usa.
-No corre en CI ni en el deploy: lo corre una persona, en una terminal, y sólo
-cuando hace falta (la primera vez, o si el smoke dice que el login de
+Crear o reparar `smoke-viewer` pide un admin (igual que «Zonas del padrón»,
+abajo; ningún otro paso lo usa). No corre en CI ni en el deploy: lo corre
+una persona, en una terminal, y sólo cuando hace falta (la primera vez, o si el smoke dice que el login de
 `smoke-viewer` falla):
 
 ```bash
@@ -328,6 +353,98 @@ hace el mismo chequeo que el smoke del deploy y le da al deployer
 `secretAccessor` sobre ese secreto y sobre ningún otro. Los casos que no se
 arreglan solos (cuenta desactivada, cuenta sin secreto, secreto ilegible)
 abortan sin escribir nada y dicen qué hacer.
+
+### Zonas del padrón: `pnpm roster:zones`
+
+Les pone zona a los clientes del padrón a partir de sus etiquetas del sistema
+viejo. Es un paso manual, como el de arriba, y entra por la API como admin
+con la contraseña tecleada sin eco. Solo toca `zoneId`, y solo a quien no
+tiene zona: una puesta a mano desde la ficha del cliente no se pisa.
+
+1. Las etiquetas no están en `main` (el cargador no guarda las notas), así
+   que salen del Firestore del sistema viejo, de solo lectura. En la máquina
+   de Giancarlo:
+
+   ```bash
+   pnpm --filter @yacco/firestore-export export:tags -- --out <carpeta fuera del repo>
+   # tags: N clientes, M con etiquetas -> <carpeta>/tags.json
+   ```
+
+   `tags.json` lleva solo el id de cada cliente y sus etiquetas: ni nombre, ni
+   teléfono, ni deuda.
+
+2. Dry-run (por defecto): imprime las etiquetas con cuántos clientes tiene
+   cada una, las zonas a crear, cuántos clientes van a cada zona, los códigos
+   de los que tienen dos etiquetas de lugar y cuántos quedan sin zona. No
+   escribe nada.
+
+   ```bash
+   pnpm roster:zones -- --tags <carpeta>/tags.json
+   ```
+
+3. Si hay «etiquetas SIN CLASIFICAR», se agregan a
+   `scripts/roster-zones-labels.json` (zona o no-zona, regla del supuesto 16)
+   en un PR, y se vuelve al paso 2.
+4. Con el informe aprobado (`[OK]`): `--commit`. Crea las zonas que falten
+   (sin días de reparto: los pone el dueño en Zonas), asigna, y verifica de
+   solo lectura que la cantidad de clientes con zona cierra y que ningún
+   cliente cambió en otra cosa que la zona (huella por cliente, sin imprimir
+   el contenido). Correrlo con la oficina sin trabajar: un cobro o una
+   edición durante la corrida también cambian la huella, y la verificación
+   falla (después de escribir, pero sin haber pisado nada).
+
+   Frena ANTES de escribir si hay etiquetas sin clasificar, si una zona
+   retirada recibiría clientes (se reactiva en Zonas o se saca del mapeo), o
+   si la lista de clientes no se pudo leer completa.
+
+**No uses `pnpm load:roster` para esto.** Su `upsert` vuelve a escribir el
+nombre y el teléfono de cada cliente desde el CSV, y pisaría lo que la
+oficina haya corregido en la app desde la carga (ver abajo, «El peligro de
+recargar el padrón»).
+
+### Saldos de envases de los clientes: saberlos o contarlos
+
+Los 604 clientes del padrón entraron **sin envases**: el sistema viejo no
+tenía saldos (supuesto 14). Cada ubicación figura «Sin contar» en «Envases en
+poder de clientes» con 0 según el sistema. Hay dos caminos, y cuál sirve
+depende de una sola pregunta al dueño: _¿usted sabe cuántos bidones tiene
+cada cliente, o hay que ir a contarlos?_
+
+**Si hay que contarlos (el camino de hoy).** Visita a visita, el chofer cuenta
+lo que el cliente tiene y la oficina lo registra en «Envases en poder de
+clientes»: se busca al cliente por nombre o teléfono (o se recorre por zona),
+«Contar», se agrega el tipo de envase encontrado y se escribe lo contado.
+Como el sistema dice 0, la pantalla muestra la diferencia («según el sistema
+0, contado 3 (diferencia +3)») y pide confirmar; al confirmar queda un conteo
+y un movimiento `COUNT_ADJUSTMENT` que lleva el saldo a lo contado. La fila
+deja de decir «Sin contar». No hace falta ninguna herramienta ni tocar la API.
+El avance de arriba («N de M ubicaciones contadas») dice cuánto falta.
+
+**Si el dueño los sabe de antemano (una planilla por cliente).** El camino
+pensado para eso es el CSV `opening_containers.csv` de `pnpm load:roster`:
+una fila por ubicación con `qty_spout`, `qty_no_spout` y `confidence`. Cada
+cantidad entra como `OPENING_BALANCE` a la fecha de corte, y:
+
+- con `confidence = HIGH` (el dueño está seguro) el cargador además registra
+  un conteo de confirmación con esa misma cantidad, así que la ubicación
+  queda como **contada**: no hace falta ir a contarla;
+- con `confidence = ESTIMATED` queda el saldo pero la ubicación sigue «Sin
+  contar», para verificarla en la próxima visita.
+
+**El peligro de recargar el padrón.** `load:roster` no carga solo envases:
+lee los cuatro CSV y hace `upsert` de cada cliente y cada ubicación que
+nombran. Sobre un padrón que ya está en `main`, eso **vuelve a escribir desde
+el CSV el nombre del cliente, su zona (la deja vacía si la columna `zone` no
+la trae, borrando lo que asignó `roster:zones` o la oficina), y el nombre, la
+dirección, la referencia y el teléfono de cada ubicación**. Todo lo corregido
+en la app desde el 2026-09-24 se pierde sin aviso. No hay hoy una
+herramienta que arme los CSV desde `main`, y el export y los CSV originales
+se borraron. Así que, con el padrón ya cargado, **los saldos que el dueño
+sepa se registran igual que un conteo, desde la pantalla**, con la cantidad
+que él da: el resultado es el mismo (ubicación contada, saldo correcto), solo
+que el movimiento es `COUNT_ADJUSTMENT` y no `OPENING_BALANCE`. Si alguna vez
+se quisiera cargar por CSV, primero hace falta un cargador que solo agregue
+saldos y no toque clientes, y eso es trabajo nuevo, no una corrida.
 
 ## Vuelta atrás
 
