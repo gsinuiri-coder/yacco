@@ -50,3 +50,12 @@ export interface UpdateCustomerBody extends Partial<CreateCustomerBody> {
 
 /** MAX_LIMIT in the API's list-customers-query.dto.ts. */
 export const CUSTOMERS_PAGE_SIZE = 20;
+
+/**
+ * ZoneCustomerCountsDto (GET /customers/zone-counts). Active customers only;
+ * a zone with none is absent from `zones`, so a missing zone reads as 0.
+ */
+export interface ZoneCustomerCounts {
+  zones: Array<{ zoneId: string; activeCustomers: number }>;
+  withoutZone: number;
+}
