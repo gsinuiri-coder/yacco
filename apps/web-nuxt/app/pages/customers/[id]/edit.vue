@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatSoles } from "@yacco/shared";
+import { formatDebtBalance, formatSoles } from "@yacco/shared";
 import type { Customer } from "@yacco/shared";
 import type { CustomerFormValues } from "../../../utils/customer-form";
 
@@ -72,7 +72,7 @@ async function save(values: CustomerFormValues): Promise<void> {
             <div class="rounded-md bg-elevated p-4">
               <p class="text-xs font-medium tracking-wide text-muted uppercase">Deuda actual</p>
               <p class="mt-1 text-2xl font-semibold text-highlighted tabular-nums">
-                {{ formatSoles(customer.debtBalance) }}
+                {{ formatDebtBalance(customer.debtBalance) }}
               </p>
               <p class="mt-1 text-sm text-muted">
                 Sólo lectura: se mueve con las ventas y los pagos, no desde esta pantalla. Límite de

@@ -50,6 +50,18 @@ export function formatSoles(value: string): string {
   return `${negative ? "-" : ""}S/ ${withThousands(whole)}.${cents}`;
 }
 
+/**
+ * A customer's debt balance as the plant reads it: a negative balance is
+ * money in the customer's favour — "-15.00" -> "A favor S/ 15.00" — not a
+ * debt with a sign. The one place that wording lives: every screen showing
+ * `debtBalance` goes through here (MoneyAmount with `debt` included).
+ */
+export function formatDebtBalance(value: string): string {
+  const { negative, whole, cents } = splitMoney(value);
+  const unsigned = `S/ ${withThousands(whole)}.${cents}`;
+  return negative && /[1-9]/.test(whole + cents) ? `A favor ${unsigned}` : unsigned;
+}
+
 /** True when the amount is above zero — a real debt, a real payment — read from the digits. */
 export function isAboveZero(value: string): boolean {
   const { negative, whole, cents } = splitMoney(value);
