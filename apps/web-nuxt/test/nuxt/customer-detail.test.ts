@@ -1,10 +1,11 @@
 import { registerEndpoint, renderSuspended } from "@nuxt/test-utils/runtime";
 import { screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
-import { readBody, setResponseStatus } from "h3";
+import { getQuery, readBody, setResponseStatus } from "h3";
 import type { H3Event } from "h3";
 import type {
   AccountStatementEntry,
+  ContainerBalanceRow,
   CustomerPrice,
   EffectivePrice,
   PaymentMethod,
@@ -76,10 +77,14 @@ interface Setup {
   prices?: CustomerPrice[];
   effective?: EffectivePrice[];
   debtBalance?: string;
+  balances?: ContainerBalanceRow[];
 }
 
+/** Lo que la ficha le pidió a /container-balances, en orden. */
+let balanceQueries: Array<Record<string, unknown>> = [];
+
 /** Todo lo que la ficha pide al montar, con valores de una ficha típica. */
-function stubFicha(setup: Setup = {}) {
+function stubCustomerPage(setup: Setup = {}) {
   cleanups.push(signIn(setup.roles ?? ["ADMIN"]));
   endpoint(BASE, {
     method: "GET",
@@ -97,9 +102,15 @@ function stubFicha(setup: Setup = {}) {
     entries: setup.entries ?? [],
     closingBalance: setup.debtBalance ?? "98.00",
   }));
+  balanceQueries = [];
+  endpoint("/api/v1/container-balances", (event: H3Event) => {
+    balanceQueries.push(getQuery(event));
+    const data = setup.balances ?? [];
+    return { data, total: data.length, page: 1, limit: 100, totalPages: 1 };
+  });
 }
 
-async function renderFicha() {
+async function renderCustomerPage() {
   await renderSuspended(App, { route: `/customers/${ID}` });
   await screen.findByRole("heading", { name: "Bodega Santa Rosa", level: 1 });
 }
@@ -124,33 +135,33 @@ describe("Ficha del cliente", () => {
 
   describe("datos y carga", () => {
     it("muestra deuda, límite, estado, teléfono, zona y dirección", async () => {
-      stubFicha();
-      await renderFicha();
+      stubCustomerPage();
+      await renderCustomerPage();
 
-      const datos = screen.getByRole("region", { name: "Datos del cliente" });
-      expect(within(datos).getByText("S/ 98.00")).toBeTruthy();
-      expect(within(datos).getByText("Límite de crédito: S/ 150.00")).toBeTruthy();
-      expect(within(datos).getByText("Activo")).toBeTruthy();
-      expect(within(datos).getByText("987654321")).toBeTruthy();
-      expect(within(datos).getByText("Sin zona")).toBeTruthy();
-      expect(within(datos).getByText("Portón azul")).toBeTruthy();
+      const details = screen.getByRole("region", { name: "Datos del cliente" });
+      expect(within(details).getByText("S/ 98.00")).toBeTruthy();
+      expect(within(details).getByText("Límite de crédito: S/ 150.00")).toBeTruthy();
+      expect(within(details).getByText("Activo")).toBeTruthy();
+      expect(within(details).getByText("987654321")).toBeTruthy();
+      expect(within(details).getByText("Sin zona")).toBeTruthy();
+      expect(within(details).getByText("Portón azul")).toBeTruthy();
       expect(screen.getByRole("link", { name: "Editar" }).getAttribute("href")).toBe(
         `/customers/${ID}/edit`,
       );
     });
 
     it("un saldo negativo es plata a favor del cliente: «A favor S/ x.xx», no «-S/ x.xx»", async () => {
-      stubFicha({
+      stubCustomerPage({
         debtBalance: "-15.00",
         entries: [entry({ amount: "20.00", runningBalance: "-15.00" })],
       });
-      await renderFicha();
+      await renderCustomerPage();
 
-      const datos = screen.getByRole("region", { name: "Datos del cliente" });
-      expect(within(datos).getByText("A favor S/ 15.00")).toBeTruthy();
+      const details = screen.getByRole("region", { name: "Datos del cliente" });
+      expect(within(details).getByText("A favor S/ 15.00")).toBeTruthy();
       // El estado de cuenta muestra el mismo saldo: arriba y en su fila.
-      const tabla = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
-      expect(within(tabla).getByText("A favor S/ 15.00")).toBeTruthy();
+      const table = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
+      expect(within(table).getByText("A favor S/ 15.00")).toBeTruthy();
       expect(screen.getAllByText("A favor S/ 15.00")).toHaveLength(3);
       expect(screen.queryByText("-S/ 15.00")).toBeNull();
     });
@@ -217,7 +228,7 @@ describe("Ficha del cliente", () => {
 
     it("un cobro baja la deuda que ya se ve y recarga el estado de cuenta", async () => {
       let statementCalls = 0;
-      stubFicha();
+      stubCustomerPage();
       endpoint(`${BASE}/account-statement`, () => {
         statementCalls++;
         return { entries: [], closingBalance: statementCalls > 1 ? "78.00" : "98.00" };
@@ -227,13 +238,13 @@ describe("Ficha del cliente", () => {
         debtBalance: "78.00",
         exceedsDebt: false,
       }));
-      await renderFicha();
+      await renderCustomerPage();
 
       await pay("Efectivo", "20.00");
 
       expect(await screen.findByText("Cobro registrado. Deuda actual: S/ 78.00.")).toBeTruthy();
-      const datos = screen.getByRole("region", { name: "Datos del cliente" });
-      await waitFor(() => expect(within(datos).getByText("S/ 78.00")).toBeTruthy());
+      const details = screen.getByRole("region", { name: "Datos del cliente" });
+      await waitFor(() => expect(within(details).getByText("S/ 78.00")).toBeTruthy());
       await waitFor(() => expect(statementCalls).toBe(2));
       expect(bodies[0]).toMatchObject({
         customerId: ID,
@@ -244,9 +255,9 @@ describe("Ficha del cliente", () => {
     });
 
     it("con Yape (requiere confirmación en ruta) no avisa nada de pendiente: en oficina se confirma al registrar", async () => {
-      stubFicha();
+      stubCustomerPage();
       stubPayment(() => ({ payment: {}, debtBalance: "78.00", exceedsDebt: false }));
-      await renderFicha();
+      await renderCustomerPage();
 
       await pay("Yape", "20.00");
 
@@ -255,9 +266,9 @@ describe("Ficha del cliente", () => {
     });
 
     it("pagar de más se muestra como saldo a favor, nunca como error", async () => {
-      stubFicha();
+      stubCustomerPage();
       stubPayment(() => ({ payment: {}, debtBalance: "-10.00", exceedsDebt: true }));
-      await renderFicha();
+      await renderCustomerPage();
 
       await pay("Efectivo", "108.00");
 
@@ -268,9 +279,9 @@ describe("Ficha del cliente", () => {
     });
 
     it("sin método elegido no envía y lo pide", async () => {
-      stubFicha();
+      stubCustomerPage();
       const bodies = stubPayment(() => ({}));
-      await renderFicha();
+      await renderCustomerPage();
 
       await user().type(await screen.findByLabelText("Monto"), "10.00");
       await user().click(screen.getByRole("button", { name: "Registrar cobro" }));
@@ -282,9 +293,9 @@ describe("Ficha del cliente", () => {
     it.each(["0.00", "abc", "-5.00", "10.005"])(
       "un monto inválido (%s) no se envía",
       async (amount) => {
-        stubFicha();
+        stubCustomerPage();
         const bodies = stubPayment(() => ({}));
-        await renderFicha();
+        await renderCustomerPage();
 
         await pay("Efectivo", amount);
 
@@ -294,14 +305,14 @@ describe("Ficha del cliente", () => {
     );
 
     it("reintentar tras un fallo reusa la MISMA clave; cambiar el monto genera una NUEVA", async () => {
-      stubFicha();
+      stubCustomerPage();
       let calls = 0;
       const bodies = stubPayment((_body, event) => {
         calls++;
         if (calls <= 2) return fails(500, "Falla simulada")(event);
         return { payment: {}, debtBalance: "70.00", exceedsDebt: false };
       });
-      await renderFicha();
+      await renderCustomerPage();
 
       await pay("Efectivo", "20.00");
       await screen.findByRole("alert");
@@ -317,9 +328,9 @@ describe("Ficha del cliente", () => {
     });
 
     it("un 409 de idempotencia se explica sin jerga", async () => {
-      stubFicha();
+      stubCustomerPage();
       stubPayment((_body, event) => fails(409, "Conflict")(event));
-      await renderFicha();
+      await renderCustomerPage();
 
       await pay("Efectivo", "20.00");
 
@@ -329,7 +340,7 @@ describe("Ficha del cliente", () => {
     });
 
     it("el botón se deshabilita mientras el cobro viaja", async () => {
-      stubFicha();
+      stubCustomerPage();
       let release: (() => void) | undefined;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
@@ -338,7 +349,7 @@ describe("Ficha del cliente", () => {
         await gate;
         return { payment: {}, debtBalance: "78.00", exceedsDebt: false };
       });
-      await renderFicha();
+      await renderCustomerPage();
 
       await pay("Efectivo", "20.00");
 
@@ -349,8 +360,8 @@ describe("Ficha del cliente", () => {
     });
 
     it("sin métodos de pago activos lo dice y no ofrece el formulario", async () => {
-      stubFicha({ methods: [] });
-      await renderFicha();
+      stubCustomerPage({ methods: [] });
+      await renderCustomerPage();
 
       expect(await screen.findByText("No hay métodos de pago activos")).toBeTruthy();
       expect(screen.queryByLabelText("Monto")).toBeNull();
@@ -366,7 +377,7 @@ describe("Ficha del cliente", () => {
     };
 
     it("ADMIN pacta un precio: el POST manda el precio como string, sin prellenar el de lista", async () => {
-      stubFicha();
+      stubCustomerPage();
       const bodies: unknown[] = [];
       endpoint(`${BASE}/prices`, {
         method: "POST",
@@ -375,7 +386,7 @@ describe("Ficha del cliente", () => {
           return { ...pactado, price: "7.00" };
         },
       });
-      await renderFicha();
+      await renderCustomerPage();
 
       await user().click(await screen.findByRole("button", { name: "Agregar precio" }));
       await choose("Producto", "Recarga bidón 20 L");
@@ -385,18 +396,18 @@ describe("Ficha del cliente", () => {
       await user().type(precio, "7.00");
       await user().click(screen.getByRole("button", { name: "Guardar precio" }));
 
-      const tabla = await screen.findByRole("table", { name: "Precios pactados del cliente" });
-      expect(within(tabla).getByText("S/ 7.00")).toBeTruthy();
+      const table = await screen.findByRole("table", { name: "Precios pactados del cliente" });
+      expect(within(table).getByText("S/ 7.00")).toBeTruthy();
       expect(bodies).toEqual([{ productId: "p-bidon", price: "7.00" }]);
     });
 
     it("el duplicado de la API se muestra con su mensaje tal cual", async () => {
-      stubFicha();
+      stubCustomerPage();
       endpoint(`${BASE}/prices`, {
         method: "POST",
         handler: fails(409, 'Ya existe un precio para "Recarga bidón 20 L"'),
       });
-      await renderFicha();
+      await renderCustomerPage();
 
       await user().click(await screen.findByRole("button", { name: "Agregar precio" }));
       await choose("Producto", "Recarga bidón 20 L");
@@ -409,7 +420,7 @@ describe("Ficha del cliente", () => {
     });
 
     it("editar guarda el precio nuevo; un fallo se muestra pegado a su fila sin perderla", async () => {
-      stubFicha({ prices: [pactado] });
+      stubCustomerPage({ prices: [pactado] });
       let attempt = 0;
       endpoint(`${BASE}/prices/cp-1`, {
         method: "PATCH",
@@ -420,7 +431,7 @@ describe("Ficha del cliente", () => {
           return { ...pactado, price: body.price };
         },
       });
-      await renderFicha();
+      await renderCustomerPage();
 
       await user().click(
         await screen.findByRole("button", { name: "Editar precio de Recarga bidón 20 L" }),
@@ -435,12 +446,12 @@ describe("Ficha del cliente", () => {
       expect(screen.getByText("Recarga bidón 20 L")).toBeTruthy();
 
       await user().click(screen.getByRole("button", { name: "Guardar" }));
-      const tabla = await screen.findByRole("table", { name: "Precios pactados del cliente" });
-      await waitFor(() => expect(within(tabla).getByText("S/ 6.90")).toBeTruthy());
+      const table = await screen.findByRole("table", { name: "Precios pactados del cliente" });
+      await waitFor(() => expect(within(table).getByText("S/ 6.90")).toBeTruthy());
     });
 
     it("eliminar pide confirmación y recién entonces manda el DELETE", async () => {
-      stubFicha({ prices: [pactado] });
+      stubCustomerPage({ prices: [pactado] });
       let deletes = 0;
       endpoint(`${BASE}/prices/cp-1`, {
         method: "DELETE",
@@ -450,7 +461,7 @@ describe("Ficha del cliente", () => {
           return null;
         },
       });
-      await renderFicha();
+      await renderCustomerPage();
 
       await user().click(
         await screen.findByRole("button", { name: "Eliminar precio de Recarga bidón 20 L" }),
@@ -469,7 +480,7 @@ describe("Ficha del cliente", () => {
     });
 
     it("un vendedor ve los precios efectivos en sólo lectura, sin gestión", async () => {
-      stubFicha({
+      stubCustomerPage({
         roles: ["SELLER"],
         effective: [
           {
@@ -480,19 +491,112 @@ describe("Ficha del cliente", () => {
           { product: { id: "p-caja", name: "Caja de botellas" }, price: "12.00", source: "LIST" },
         ],
       });
-      await renderFicha();
+      await renderCustomerPage();
 
-      const tabla = await screen.findByRole("table", { name: "Precios efectivos del cliente" });
-      expect(within(tabla).getByText("Pactado")).toBeTruthy();
-      expect(within(tabla).getByText("Precio de lista")).toBeTruthy();
+      const table = await screen.findByRole("table", { name: "Precios efectivos del cliente" });
+      expect(within(table).getByText("Pactado")).toBeTruthy();
+      expect(within(table).getByText("Precio de lista")).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Agregar precio" })).toBeNull();
       expect(screen.queryByRole("button", { name: /Editar precio/ })).toBeNull();
     });
   });
 
+  describe("envases", () => {
+    const WITH_SPOUT = { id: "ct-cano", name: "Con caño" };
+    const WITHOUT_SPOUT = { id: "ct-normal", name: "Sin caño" };
+    const COUNTED = "2026-09-20T15:30:00.000Z";
+
+    function locationRow(overrides: Partial<ContainerBalanceRow>): ContainerBalanceRow {
+      return {
+        customer: { id: ID, name: "Bodega Santa Rosa", active: true },
+        location: { id: "loc-1", name: "Local Centro", active: true },
+        zone: null,
+        totalQuantity: 0,
+        lastCountedAt: null,
+        containers: [],
+        ...overrides,
+      };
+    }
+
+    it("muestra el saldo por tipo y ubicación, cuándo se contó o «Sin contar», y el enlace al conteo filtrado", async () => {
+      stubCustomerPage({
+        balances: [
+          locationRow({
+            totalQuantity: 8,
+            lastCountedAt: COUNTED,
+            containers: [
+              { containerType: WITH_SPOUT, quantity: 6, lastCountedAt: COUNTED },
+              { containerType: WITHOUT_SPOUT, quantity: 2, lastCountedAt: COUNTED },
+            ],
+          }),
+          locationRow({ location: { id: "loc-2", name: "Sucursal Playa", active: true } }),
+        ],
+      });
+      await renderCustomerPage();
+
+      const section = await screen.findByRole("region", { name: "Envases" });
+      const downtown = (await within(section).findByText("Local Centro")).closest(
+        "li",
+      ) as HTMLElement;
+      expect(within(downtown).getByText("6 Con caño · 2 Sin caño")).toBeTruthy();
+      expect(within(downtown).getByText("Contado el 20/09/2026 10:30")).toBeTruthy();
+      const beach = within(section).getByText("Sucursal Playa").closest("li") as HTMLElement;
+      expect(within(beach).getByText("Sin envases registrados")).toBeTruthy();
+      expect(within(beach).getByText("Sin contar")).toBeTruthy();
+      expect(
+        within(section).getByRole("link", { name: "Contarlo en Envases en poder de clientes" }),
+      ).toHaveProperty("href", expect.stringContaining(`/container-counts?customerId=${ID}`));
+      expect(balanceQueries[0]).toMatchObject({ customerId: ID });
+    });
+
+    it("un saldo negativo se muestra como está, con su explicación", async () => {
+      stubCustomerPage({
+        balances: [
+          locationRow({
+            totalQuantity: -1,
+            containers: [{ containerType: WITH_SPOUT, quantity: -1, lastCountedAt: null }],
+          }),
+        ],
+      });
+      await renderCustomerPage();
+
+      const section = await screen.findByRole("region", { name: "Envases" });
+      expect(await within(section).findByText("-1 Con caño")).toBeTruthy();
+      expect(within(section).getByText("Entrega sin registrar")).toBeTruthy();
+    });
+
+    it("una ubicación retirada con envases se ve marcada, como en el conteo", async () => {
+      stubCustomerPage({
+        balances: [
+          locationRow({
+            location: { id: "loc-9", name: "Sucursal Cerrada", active: false },
+            totalQuantity: 3,
+            containers: [{ containerType: WITH_SPOUT, quantity: 3, lastCountedAt: null }],
+          }),
+        ],
+      });
+      await renderCustomerPage();
+
+      const section = await screen.findByRole("region", { name: "Envases" });
+      const closed = (await within(section).findByText("Sucursal Cerrada")).closest(
+        "li",
+      ) as HTMLElement;
+      expect(within(closed).getByText("Ubicación retirada")).toBeTruthy();
+      expect(within(closed).getByText("3 Con caño")).toBeTruthy();
+    });
+
+    it("un vendedor no la ve, y la ficha no la pide: el conteo es trabajo del administrador", async () => {
+      stubCustomerPage({ roles: ["SELLER"] });
+      await renderCustomerPage();
+
+      expect(screen.queryByRole("region", { name: "Envases" })).toBeNull();
+      expect(balanceQueries).toHaveLength(0);
+    });
+  });
+
   describe("estado de cuenta", () => {
     it("muestra cargos y abonos con su saldo corriente y estado, y nunca el openingBalance", async () => {
-      stubFicha({
+      stubCustomerPage({
         entries: [
           entry({
             isOpeningBalance: true,
@@ -512,17 +616,17 @@ describe("Ficha del cliente", () => {
           }),
         ],
       });
-      await renderFicha();
+      await renderCustomerPage();
 
-      const tabla = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
-      expect(within(tabla).getByText("Saldo inicial")).toBeTruthy();
-      expect(within(tabla).getByText("Pendiente")).toBeTruthy();
-      expect(within(tabla).getByText("Yape")).toBeTruthy();
+      const table = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
+      expect(within(table).getByText("Saldo inicial")).toBeTruthy();
+      expect(within(table).getByText("Pendiente")).toBeTruthy();
+      expect(within(table).getByText("Yape")).toBeTruthy();
       expect(screen.queryByText("S/ 999.00")).toBeNull();
     });
 
     it("una fila anulada se marca, y la viva del mismo monto no", async () => {
-      stubFicha({
+      stubCustomerPage({
         entries: [
           entry({
             saleId: "s-viva",
@@ -539,26 +643,26 @@ describe("Ficha del cliente", () => {
           }),
         ],
       });
-      await renderFicha();
+      await renderCustomerPage();
 
-      const tabla = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
-      expect(within(tabla).getAllByText("S/ 60.00")).toHaveLength(4);
-      const marks = within(tabla).getAllByText("Anulado");
+      const table = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
+      expect(within(table).getAllByText("S/ 60.00")).toHaveLength(4);
+      const marks = within(table).getAllByText("Anulado");
       expect(marks).toHaveLength(1);
       expect(marks[0]?.closest("tr")?.textContent).toContain("11/08/2026");
     });
 
     it("las fechas son instantes en hora de Lima, no días de negocio", async () => {
-      stubFicha({ entries: [entry({ date: "2026-08-05T02:30:00.000Z" })] });
-      await renderFicha();
+      stubCustomerPage({ entries: [entry({ date: "2026-08-05T02:30:00.000Z" })] });
+      await renderCustomerPage();
 
-      const tabla = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
-      expect(within(tabla).getByText("04/08/2026 21:30")).toBeTruthy();
+      const table = await screen.findByRole("table", { name: "Estado de cuenta del cliente" });
+      expect(within(table).getByText("04/08/2026 21:30")).toBeTruthy();
     });
 
     it("sin movimientos lo dice", async () => {
-      stubFicha({ entries: [] });
-      await renderFicha();
+      stubCustomerPage({ entries: [] });
+      await renderCustomerPage();
 
       expect(await screen.findByText("Sin movimientos todavía")).toBeTruthy();
     });
