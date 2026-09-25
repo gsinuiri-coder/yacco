@@ -66,7 +66,7 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
     tiene hoy la planta (vacíos y llenos, por tipo)?
   - D6: supuesto 19, nuevo: «Registrar un lote sin vacíos suficientes avisa y
     no bloquea». Va al guion y a la hoja de cierre.
-- [ ] **L4 · «Debe desde» con saldo inicial.** Cuando el cargo que abre la
+- [x] **L4 · «Debe desde» con saldo inicial** (#241). Cuando el cargo que abre la
       deuda actual es el saldo inicial del padrón, la columna muestra «Saldo
       inicial» y no la fecha de corte como si fuera una venta. `replayDebt` no
       cambia su regla; supuesto 13, una línea.
