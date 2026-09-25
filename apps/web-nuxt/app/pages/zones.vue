@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Weekday, Zone } from "@yacco/shared";
+import type { Weekday, Zone, ZoneCustomerCounts } from "@yacco/shared";
 
 /**
  * El catálogo por el que el padrón y los reportes agrupan clientes. Mismos
@@ -45,6 +45,32 @@ async function loadZones(): Promise<void> {
   }
 }
 onMounted(loadZones);
+
+// Cuántos clientes activos tiene cada zona, y cuántos quedan sin zona. Aparte
+// del catálogo: si el conteo falla, las zonas se siguen viendo y editando.
+const counts = ref<ZoneCustomerCounts | null>(null);
+const countsFailed = ref(false);
+async function loadCounts(): Promise<void> {
+  countsFailed.value = false;
+  try {
+    counts.value = await api.request<ZoneCustomerCounts>("/customers/zone-counts");
+  } catch {
+    counts.value = null;
+    countsFailed.value = true;
+  }
+}
+onMounted(loadCounts);
+
+function activeCustomersOf(zoneId: string): string {
+  if (counts.value === null) return "—";
+  const line = counts.value.zones.find((count) => count.zoneId === zoneId);
+  return String(line?.activeCustomers ?? 0);
+}
+const withoutZoneLabel = computed(() => {
+  const n = counts.value?.withoutZone;
+  if (n === undefined) return null;
+  return `${n} ${n === 1 ? "cliente activo" : "clientes activos"} sin zona`;
+});
 
 const activeCount = computed(() => zones.value.filter((zone) => zone.active).length);
 const summary = computed(() => {
@@ -219,6 +245,13 @@ async function setActive(id: string, active: boolean): Promise<void> {
 
       <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
 
+      <p v-if="withoutZoneLabel" class="text-sm font-medium text-highlighted">
+        {{ withoutZoneLabel }}
+      </p>
+      <p v-else-if="countsFailed" role="status" class="text-sm text-muted">
+        No se pudo contar los clientes por zona.
+      </p>
+
       <UAlert
         v-if="slow && loading"
         role="status"
@@ -243,12 +276,13 @@ async function setActive(id: string, active: boolean): Promise<void> {
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <caption class="sr-only">
-              Zonas con sus días de reparto y estado
+              Zonas con sus días de reparto, sus clientes activos y estado
             </caption>
             <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
               <tr>
                 <th scope="col" class="px-4 py-2 font-medium">Zona</th>
                 <th scope="col" class="px-4 py-2 font-medium">Días de reparto</th>
+                <th scope="col" class="px-4 py-2 text-right font-medium">Clientes activos</th>
                 <th scope="col" class="px-4 py-2 font-medium">Estado</th>
                 <th v-if="isAdmin" scope="col" class="px-4 py-2">
                   <span class="sr-only">Acciones</span>
@@ -281,6 +315,7 @@ async function setActive(id: string, active: boolean): Promise<void> {
                   />
                   <span v-else class="text-muted">{{ formatDeliveryDays(zone.deliveryDays) }}</span>
                 </td>
+                <td class="px-4 py-3 text-right tabular-nums">{{ activeCustomersOf(zone.id) }}</td>
                 <td class="px-4 py-3">
                   <UBadge
                     :color="zone.active ? 'success' : 'neutral'"
