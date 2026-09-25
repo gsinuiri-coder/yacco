@@ -3,7 +3,7 @@
 -- location ordered by sold_at. Backlog «Falta índice en sales (location_id,
 -- sold_at)», item 4f of docs/plan-piloto.md.
 --
--- Plain CREATE INDEX, not CONCURRENTLY: Prisma runs each migration in a
--- transaction, where CONCURRENTLY is not allowed. On ~100 rows the write lock
--- lasts milliseconds.
+-- Plain CREATE INDEX, not CONCURRENTLY: it holds a SHARE lock on sales
+-- (reads go on, writes wait) only while it builds, which on ~100 rows is
+-- milliseconds, and it keeps the file a plain transactional migration.
 CREATE INDEX "sales_location_id_sold_at_idx" ON "sales"("location_id", "sold_at");
