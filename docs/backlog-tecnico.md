@@ -627,8 +627,18 @@ negativos como "entrega sin registrar". No es parte de este cierre.
 
 ## El auto-deploy de yacco-api puede no dispararse sin error visible
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo (a partir de
-ahí, `main` y producción desincronizados afectan a usuarios reales).
+**Estado:** RESUELTA el 2026-09-25 (ítem 4d de `plan-piloto.md`). Lo de abajo
+es de Render; en Cloud Run el riesgo es el mismo por otra puerta: si GitHub
+no dispara el CI de push de un merge (le pasó a #202), no hay deploy y
+producción sigue con el código anterior sin nada en rojo. El smoke con
+`EXPECTED_COMMIT` cubre un deploy que corrió; lo que no corrió lo cubre ahora
+`.github/workflows/drift.yml`: cada hora compara el `commit` de `/health` de
+producción con la punta de `main` y, si lo que falta desplegar cambia algo que
+corre (`scripts/deploy-scope.mjs`) y el merge tiene más de 90 minutos, la
+corrida falla y GitHub avisa por email. Registro original:
+
+**Estado original:** abierto. **Disparador:** antes del piloto de campo (a
+partir de ahí, `main` y producción desincronizados afectan a usuarios reales).
 
 El webhook de auto-deploy de `yacco-api` en Render puede no dispararse para
 un commit de `main` sin dejar error en ninguna parte: ni en GitHub, ni en la
