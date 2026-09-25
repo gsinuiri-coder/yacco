@@ -1567,10 +1567,10 @@ y `GET /auth/me` (nuevo); 403 en todo lo demás
 (`test/integration/viewer-role.int.test.ts`). `pnpm smoke:viewer` crea la
 cuenta `smoke-viewer` en producción con la contraseña en
 `yacco-production-smoke-viewer-password`, y `smoke.mjs` hace el login válido
-cuando recibe `SMOKE_VIEWER_PASSWORD`. **Paso 2 (3b):** que el job 6 de
-`deploy.yml` lea ese secreto por WIF y el chequeo pase a obligatorio; va en un
+cuando recibe `SMOKE_VIEWER_PASSWORD`. **Paso 2 (3b, #213):** el job 6 de
+`deploy.yml` lee ese secreto por WIF y corre `smoke.mjs --require-viewer`, que FALLA sin él. Fue en un
 PR aparte porque la cuenta sólo puede existir después de que el deploy del
-paso 1 aplique la migración. Lo que sigue es el registro original.
+paso 1 aplique la migración. La cuenta se creó el 2026-09-25 a las ~01:20 UTC con `pnpm smoke:viewer`. Lo que sigue es el registro original.
 
 **Disparador (original):** el piloto de campo.
 
