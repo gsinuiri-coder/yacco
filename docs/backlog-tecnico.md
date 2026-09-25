@@ -119,7 +119,8 @@ la pantalla.
 
 **Estado:** RESUELTA el 2026-09-17 (#158, pantallas de clientes de
 `apps/web-nuxt`): `CustomerForm.vue` ofrece «Zona (opcional)» como un
-`<select>` cargado de `GET /zones`, y las zonas se crean desde `zones.vue`.
+`<select>` cargado de `GET /zones`; las zonas se crean desde `zones.vue` (#169,
+2026-09-18).
 Lo de abajo describe el `apps/web` de React, ya retirado. Registro original:
 
 **Estado original:** abierto. **Disparador:** cuando exista un módulo Zones
@@ -2132,15 +2133,15 @@ padrón (ítem 2 de `plan-piloto.md`). **Disparador:** la próxima carga de un
 padrón que traiga notas.
 
 `customers.csv` tiene una columna `notes` (`parse-and-validate-roster.ts` la
-lee y la valida), pero `customers` no tiene dónde guardarla y
+exige en el encabezado pero nunca lee su valor); `customers` no tiene dónde guardarla y
 `RosterLoaderService` no la escribe en ningún lado. En la carga real del
 2026-09-24 esa columna llevaba las etiquetas del sistema viejo («Etiquetas del
 sistema anterior: …»), y el supuesto 14 decía que quedaban en las notas del
 cliente: no quedó ninguna. En `main` no hay rastro de ellas; la única fuente
 es el Firestore del Yacco viejo, de solo lectura.
 
-Nadie se enteró porque el cargador no avisa: acepta la columna, la valida y la
-tira sin decirlo.
+Nadie se enteró porque el cargador no avisa: exige la columna y tira su
+contenido sin decirlo.
 
 **Para cerrarla:** una de dos, y la primera toca esquema (pregunta al dueño y
 migración expand): una columna de notas en `customers` que el cargador llene,

@@ -393,7 +393,7 @@ línea de delegación con la fecha, más las cuatro de siempre.
   zonas (PARQUE, SURCO) con categorías (EMPRESAS, DISTRIBUIDOR). _Corrección
   del 2026-09-25:_ acá decía que las etiquetas «quedan en las notas del
   cliente». No quedaron: `customers` no tiene columna de notas y
-  `pnpm load:roster` lee la columna `notes` del CSV y la descarta. Las
+  `pnpm load:roster` exige la columna `notes` del CSV pero nunca lee su valor. Las
   etiquetas solo están en el Firestore del sistema viejo (ver «El cargador del
   padrón descarta las notas del cliente» en `backlog-tecnico.md`). **Sin envases**: el sistema viejo no tiene saldos de
   envases cargados, así que salen del conteo físico. La deuda entra tal cual,
