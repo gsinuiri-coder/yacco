@@ -10,6 +10,7 @@ import type { CreateCustomerDto } from "./dto/create-customer.dto.js";
 import type { CustomerResponseDto, PaginatedCustomersDto } from "./dto/customer-response.dto.js";
 import type { ListCustomersQueryDto } from "./dto/list-customers-query.dto.js";
 import type { UpdateCustomerDto } from "./dto/update-customer.dto.js";
+import type { ZoneCustomerCountsDto } from "./dto/zone-counts-response.dto.js";
 
 function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
@@ -328,6 +329,26 @@ export class CustomersService {
       entries: visibleEntries,
       closingBalance: runningTotal.toFixed(2),
     };
+  }
+
+  /**
+   * Active customers per zone and without a zone, for the «Zonas» screen. One
+   * groupBy over the roster: no zone row is read, so a withdrawn zone that
+   * still has customers is counted too.
+   */
+  async countActiveByZone(): Promise<ZoneCustomerCountsDto> {
+    const groups = await this.prisma.customer.groupBy({
+      by: ["zoneId"],
+      where: { active: true },
+      _count: { _all: true },
+    });
+    let withoutZone = 0;
+    const zones: ZoneCustomerCountsDto["zones"] = [];
+    for (const group of groups) {
+      if (group.zoneId === null) withoutZone = group._count._all;
+      else zones.push({ zoneId: group.zoneId, activeCustomers: group._count._all });
+    }
+    return { zones, withoutZone };
   }
 
   async findOne(id: string): Promise<CustomerResponseDto> {

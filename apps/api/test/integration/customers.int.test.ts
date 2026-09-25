@@ -452,3 +452,62 @@ describe("role guard", () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe("GET /api/v1/customers/zone-counts", () => {
+  interface ZoneCounts {
+    zones: Array<{ zoneId: string; activeCustomers: number }>;
+    withoutZone: number;
+  }
+  async function counts(token = adminToken): Promise<ZoneCounts> {
+    const response = await request(server())
+      .get("/api/v1/customers/zone-counts")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    return response.body as ZoneCounts;
+  }
+  async function customer(name: string, phone: string, zoneId?: string): Promise<string> {
+    const response = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validCustomer({ name, phone, ...(zoneId ? { zoneId } : {}) }))
+      .expect(201);
+    return response.body.id;
+  }
+  async function deactivate(id: string): Promise<void> {
+    await request(server())
+      .patch(`/api/v1/customers/${id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ active: false })
+      .expect(200);
+  }
+
+  test("cuenta los clientes ACTIVOS de cada zona y los activos que quedan sin zona", async () => {
+    const zone = await ctx.app
+      .get(PrismaService)
+      .zone.create({ data: { name: "Conteo", deliveryDays: [] } });
+    const before = await counts();
+
+    await customer("Conteo Uno", "922000001", zone.id);
+    await customer("Conteo Dos", "922000002", zone.id);
+    // Un desactivado en la zona y otro sin zona: existen y no cuentan.
+    await deactivate(await customer("Conteo Baja", "922000003", zone.id));
+    await customer("Sin Zona Activo", "922000004");
+    await deactivate(await customer("Sin Zona Baja", "922000005"));
+
+    const after = await counts(sellerToken);
+
+    expect(after.zones.find((line) => line.zoneId === zone.id)?.activeCustomers).toBe(2);
+    expect(after.withoutZone - before.withoutZone).toBe(1);
+    // Una zona con clientes que no se tocaron conserva su número.
+    const north = (body: ZoneCounts) =>
+      body.zones.find((line) => line.zoneId === northZoneId)?.activeCustomers ?? 0;
+    expect(north(after)).toBe(north(before));
+  });
+
+  test("un chofer no la ve", async () => {
+    await request(server())
+      .get("/api/v1/customers/zone-counts")
+      .set("Authorization", `Bearer ${driverToken}`)
+      .expect(403);
+  });
+});

@@ -29,6 +29,7 @@ import { CreateCustomerDto } from "./dto/create-customer.dto.js";
 import { CustomerResponseDto, PaginatedCustomersDto } from "./dto/customer-response.dto.js";
 import { ListCustomersQueryDto } from "./dto/list-customers-query.dto.js";
 import { UpdateCustomerDto } from "./dto/update-customer.dto.js";
+import { ZoneCustomerCountsDto } from "./dto/zone-counts-response.dto.js";
 
 /**
  * ADMIN and SELLER manage the customer roster (spec HU-05 is written for the
@@ -58,6 +59,14 @@ export class CustomersController {
   @Get()
   findAll(@Query() query: ListCustomersQueryDto): Promise<PaginatedCustomersDto> {
     return this.customersService.findAll(query);
+  }
+
+  // Before `:id`: otherwise "zone-counts" reaches ParseUUIDPipe as an id.
+  @ApiOperation({ summary: "Clientes activos por zona, y los activos sin zona" })
+  @ApiResponse({ status: 200, type: ZoneCustomerCountsDto })
+  @Get("zone-counts")
+  countByZone(): Promise<ZoneCustomerCountsDto> {
+    return this.customersService.countActiveByZone();
   }
 
   @ApiOperation({ summary: "Ficha de un cliente" })
