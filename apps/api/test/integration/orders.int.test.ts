@@ -466,6 +466,37 @@ describe("GET /api/v1/orders", () => {
   });
 });
 
+describe("GET /api/v1/orders?zoneId", () => {
+  test("trae solo los pedidos de clientes de esa zona", async () => {
+    const zone = await ctx.app
+      .get(PrismaService)
+      .zone.create({ data: { name: "Zona Pedidos", deliveryDays: [] } });
+    const zoned = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        name: "Cliente con zona",
+        phone: "933000001",
+        address: "Av. Zona 1",
+        addressReference: "Portón rojo",
+        zoneId: zone.id,
+      })
+      .expect(201);
+    const inZone = await createOrder(adminToken, { customerId: zoned.body.id });
+    // Del mismo día, de un cliente sin zona: existe y no viene.
+    const outside = await createOrder(adminToken);
+
+    const response = await request(server())
+      .get(`/api/v1/orders?zoneId=${zone.id}&limit=100`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const ids = response.body.data.map((order: { id: string }) => order.id);
+    expect(ids).toEqual([inZone]);
+    expect(ids).not.toContain(outside);
+  });
+});
+
 // El selector de paradas de una ruta ofrece exactamente lo que
 // `RoutesService.addStop` acepta: PENDING y sin parada asignada. Sin este
 // filtro, la lista mostraría opciones que fallan con 400 al hacer clic.

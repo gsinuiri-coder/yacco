@@ -28,6 +28,12 @@ const showActions = computed(() => editable.value || canCorrect.value);
 const correcting = ref<RouteStop | null>(null);
 
 const adding = ref(false);
+// Armar la hoja de una vez: solo con la ruta planificada, y solo la oficina
+// (la API lo limita a ADMIN y SELLER). En la calle se agrega de a una.
+const canBatch = computed(
+  () => props.route.status === "PLANNED" && (session.hasRole("ADMIN") || session.hasRole("SELLER")),
+);
+const batching = ref(false);
 const marking = ref<RouteStop | null>(null);
 const removingId = ref<string | null>(null);
 const busyId = ref<string | null>(null);
@@ -107,7 +113,18 @@ function markDone(result: RouteStop): void {
 
 <template>
   <SectionCard title="Paradas" description="En el orden en que el chofer las va a visitar.">
-    <template v-if="editable && !adding" #actions>
+    <template v-if="editable && !adding && !batching" #actions>
+      <UButton
+        v-if="canBatch"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-list-checks"
+        label="Agregar pedidos pendientes"
+        @click="
+          batching = true;
+          stopError = null;
+        "
+      />
       <UButton
         icon="i-lucide-map-pin-plus"
         label="Agregar parada"
@@ -119,6 +136,17 @@ function markDone(result: RouteStop): void {
     </template>
 
     <div class="space-y-4">
+      <div v-if="batching" class="rounded-md bg-elevated p-4">
+        <RouteBatchStopsForm
+          :route="route"
+          @cancel="batching = false"
+          @added="
+            batching = false;
+            emit('changed');
+          "
+        />
+      </div>
+
       <div v-if="adding" class="rounded-md bg-elevated p-4">
         <RouteStopAddForm
           :route-id="route.id"

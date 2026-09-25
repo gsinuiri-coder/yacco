@@ -30,6 +30,7 @@ import type { AuthenticatedRequest } from "../auth/types/authenticated-request.j
 import { CorrectRouteStopDto } from "./dto/correct-route-stop.dto.js";
 import { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import { CreateRouteStopDto } from "./dto/create-route-stop.dto.js";
+import { CreateRouteStopsBatchDto } from "./dto/create-route-stops-batch.dto.js";
 import { CreateRouteDto } from "./dto/create-route.dto.js";
 import { FindRouteQueryDto } from "./dto/find-route-query.dto.js";
 import { ListRoutesQueryDto } from "./dto/list-routes-query.dto.js";
@@ -154,6 +155,28 @@ export class RoutesController {
     @Req() request: AuthenticatedRequest,
   ): Promise<RouteStopResponseDto> {
     return this.routesService.addStop(id, dto, actorFrom(request));
+  }
+
+  // Solo la oficina arma la hoja de ruta de una vez: el chofer agrega de a una
+  // (autoventa) desde «Mi ruta», con la ruta ya en la calle.
+  @ApiOperation({
+    summary: "Agrega varias paradas de pedidos pendientes a una ruta planificada, todo o nada",
+  })
+  @ApiResponse({ status: 201, type: [RouteStopResponseDto] })
+  @ApiNotFoundResponse({ description: "Route id does not exist" })
+  @ApiBadRequestResponse({
+    description:
+      "Validation failed, or one order is missing, not pending or already assigned (named); nothing is added",
+  })
+  @ApiConflictResponse({ description: "Route is not PLANNED" })
+  @Roles(UserRole.ADMIN, UserRole.SELLER)
+  @Post(":id/stops/batch")
+  addOrderStops(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: CreateRouteStopsBatchDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RouteStopResponseDto[]> {
+    return this.routesService.addOrderStops(id, dto, actorFrom(request));
   }
 
   // Declared BEFORE ":id/stops/:stopId": Nest matches routes in registration

@@ -325,6 +325,167 @@ describe("Detalle de ruta", () => {
     });
   });
 
+  describe("agregar pedidos pendientes en lote", () => {
+    const early = buildOrder({ id: "o-1", deliveryDate: "2026-08-28" });
+    const late = buildOrder({
+      id: "o-2",
+      deliveryDate: "2026-08-28",
+      customerId: "c-aurora",
+      customer: { id: "c-aurora", name: "Panadería Aurora", phone: "987000111" },
+    });
+
+    function stubDayOrders(orders = [early, late]) {
+      const queries: Array<Record<string, unknown>> = [];
+      cleanups.push(
+        registerEndpoint("/api/v1/orders", (event: H3Event) => {
+          queries.push(getQuery(event));
+          return pageOf(orders);
+        }),
+      );
+      return queries;
+    }
+
+    async function openBatch() {
+      await userEvent
+        .setup()
+        .click(screen.getByRole("button", { name: "Agregar pedidos pendientes" }));
+      return screen.findByRole("form", { name: "Agregar pedidos pendientes" });
+    }
+
+    it("lista los pedidos pendientes sin parada del día y la zona de la ruta, y agrega los marcados en el orden de la lista", async () => {
+      const detail = stubRouteDetail(cleanups, [
+        buildRoute(),
+        buildRoute({ stops: [buildStop()] }),
+      ]);
+      const queries = stubDayOrders();
+      const bodies = stubWrite(cleanups, `${ROUTE}/stops/batch`, "POST", () => [buildStop()]);
+      const user = userEvent.setup();
+
+      await renderDetail();
+      const form = await openBatch();
+      await within(form).findByText(/Panadería Aurora/);
+      expect(queries[0]).toEqual({
+        status: "PENDING",
+        hasRouteStop: "false",
+        deliveryDateFrom: "2026-08-28",
+        deliveryDateTo: "2026-08-28",
+        zoneId: "z-norte",
+        limit: "100",
+      });
+      expect(within(form).getByRole("button", { name: "Agregar 0 paradas" })).toHaveProperty(
+        "disabled",
+        true,
+      );
+
+      // Se marcan al revés de como aparecen: el lote va en el orden de la lista.
+      await user.click(within(form).getByRole("checkbox", { name: /Panadería Aurora/ }));
+      await user.click(within(form).getByRole("checkbox", { name: /Bodega Santa Rosa/ }));
+      await user.click(within(form).getByRole("button", { name: "Agregar 2 paradas" }));
+
+      await waitFor(() => expect(detail.gets()).toBe(2));
+      expect(bodies).toEqual([{ orderIds: ["o-1", "o-2"] }]);
+    });
+
+    it("con «Ver pedidos de todas las zonas» vuelve a pedir sin zona", async () => {
+      stubRouteDetail(cleanups, buildRoute());
+      const queries = stubDayOrders();
+      const user = userEvent.setup();
+
+      await renderDetail();
+      const form = await openBatch();
+      await within(form).findByText(/Panadería Aurora/);
+      await user.click(
+        within(form).getByRole("checkbox", { name: "Ver pedidos de todas las zonas" }),
+      );
+
+      await waitFor(() => expect(queries.at(-1)).not.toHaveProperty("zoneId"));
+      expect(queries.at(-1)?.deliveryDateFrom).toBe("2026-08-28");
+    });
+
+    it("una ruta sin zona no filtra por zona ni ofrece la opción", async () => {
+      stubRouteDetail(cleanups, buildRoute({ zoneId: null, zone: null }));
+      const queries = stubDayOrders();
+
+      await renderDetail();
+      const form = await openBatch();
+      await within(form).findByText(/Panadería Aurora/);
+
+      expect(queries[0]).not.toHaveProperty("zoneId");
+      expect(
+        within(form).queryByRole("checkbox", { name: "Ver pedidos de todas las zonas" }),
+      ).toBeNull();
+    });
+
+    it("si la API rechaza el lote, dice por qué y no agrega nada", async () => {
+      const detail = stubRouteDetail(cleanups, buildRoute());
+      stubDayOrders();
+      stubWrite(
+        cleanups,
+        `${ROUTE}/stops/batch`,
+        "POST",
+        failWith(400, 'El pedido "o-2" ya está asignado a otra parada'),
+      );
+      const user = userEvent.setup();
+
+      await renderDetail();
+      const form = await openBatch();
+      await user.click(await within(form).findByRole("checkbox", { name: /Panadería Aurora/ }));
+      await user.click(within(form).getByRole("button", { name: "Agregar 1 parada" }));
+
+      expect((await within(form).findByRole("alert")).textContent).toContain(
+        'El pedido "o-2" ya está asignado a otra parada',
+      );
+      expect(detail.gets()).toBe(1);
+    });
+
+    it("sin pedidos pendientes para ese día lo dice", async () => {
+      stubRouteDetail(cleanups, buildRoute());
+      stubDayOrders([]);
+
+      await renderDetail();
+      const form = await openBatch();
+
+      expect(
+        await within(form).findByText(
+          "No hay pedidos pendientes sin parada para el 28/08/2026 en la zona Norte.",
+        ),
+      ).toBeTruthy();
+    });
+
+    it("si hay más pedidos de los que entran en la lista, lo dice", async () => {
+      stubRouteDetail(cleanups, buildRoute());
+      cleanups.push(registerEndpoint("/api/v1/orders", () => pageOf([early], { total: 130 })));
+
+      await renderDetail();
+      const form = await openBatch();
+
+      expect(
+        await within(form).findByText(
+          "Se muestran 1 de 130 pedidos: agrega estos y vuelve a abrir la lista para ver el resto.",
+        ),
+      ).toBeTruthy();
+    });
+
+    it("si la lista no carga, lo dice", async () => {
+      stubRouteDetail(cleanups, buildRoute());
+      cleanups.push(registerEndpoint("/api/v1/orders", failWith(500, "Base caída")));
+
+      await renderDetail();
+      const form = await openBatch();
+
+      expect((await within(form).findByRole("alert")).textContent).toContain("Base caída");
+    });
+
+    it("una ruta que ya salió no lo ofrece: ahí se agrega de a una", async () => {
+      stubRouteDetail(cleanups, buildRoute({ status: "IN_PROGRESS" }));
+
+      await renderDetail();
+
+      expect(screen.getByRole("button", { name: "Agregar parada" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Agregar pedidos pendientes" })).toBeNull();
+    });
+  });
+
   describe("armar las paradas", () => {
     const aurora = buildCustomer({ id: "c-aurora", name: "Panadería Aurora" });
     const location: CustomerLocation = {
