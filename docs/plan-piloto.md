@@ -68,7 +68,7 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
       ~30 páginas, y no filtraba por zona aunque la API lo admite y `/zones`
       existe. Búsqueda por nombre o teléfono (`search` en
       `GET /container-balances`, sin esquema) y filtro de zona.
-- [ ] **3 · Envases y choferes: el camino, no el dato.** Recorrido en
+- [x] **3 · Envases y choferes: el camino, no el dato** (#229). Recorrido en
       preview (chofer nuevo → ruta → «Mi ruta» en celular → conteo desde 0 →
       liquidar); un paso que exija tocar la API a mano es un ítem nuevo.
       `docs/DEPLOY.md`: saldos conocidos de antemano (CSV `containers` con

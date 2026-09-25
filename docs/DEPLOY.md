@@ -292,6 +292,31 @@ mano, sin `SMOKE_VIEWER_PASSWORD`, ese paso se saltea y lo avisa. Ningún smoke,
 workflow ni script lee la contraseña del admin (lo verifica
 `scripts/viewer-bootstrap.test.mjs`), así que rotarla (F) no rompe ninguno.
 
+### El ciclo entero contra un preview
+
+Un preview del web apunta a la API de **demo** (D-011) y escribe ahí: un
+chofer, un pedido, una ruta y un cliente nuevos por corrida. Nunca toca
+producción. Es la prueba de punta a punta de lo que hace la planta: pedido →
+ruta → «Mi ruta» del chofer en el celular → conteo de envases de un cliente
+desde 0 → liquidación → reportes (`apps/web-nuxt/e2e-preview/review-cycle.test.ts`).
+
+1. Publicar el preview desde `main` y copiar la URL del resumen de la corrida:
+   `gh workflow run deploy.yml --ref main -f web_preview=true`.
+2. Correrlo. El preview está protegido: el token OIDC de desarrollo de Vercel
+   lo atraviesa (`vercel env run` lo pone en el entorno, sin escribir ningún
+   `.env`), y la contraseña del admin de demo sale de Secret Manager directo a
+   la variable. Ninguno de los dos se imprime. Leer ese secreto dispara el
+   email de auditoría de D-016, como corresponde. En Windows, `gcloud.cmd`
+   (el `gcloud` de Git Bash busca Python y falla).
+
+   ```bash
+   npx -y vercel@59.11.2 env run -- bash -c '
+     export DEMO_ADMIN_PASSWORD="$(gcloud.cmd secrets versions access latest \
+       --secret=yacco-demo-admin-password --project=yacco-v2-prod --configuration=yacco)"
+     cd apps/web-nuxt && PREVIEW_URL=<url del preview> \
+       pnpm exec playwright test -c playwright.preview.config.ts'
+   ```
+
 ### Cuenta del smoke: bootstrap manual
 
 Crear o reparar `smoke-viewer` pide un admin (igual que «Zonas del padrón»,

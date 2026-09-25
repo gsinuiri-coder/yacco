@@ -142,7 +142,7 @@ test("pedido → ruta → Mi ruta → liquidación → reportes, en el preview",
   await countForm.getByLabel(/Contado de BIDON 20L CA/).fill("3");
   await countForm.getByRole("button", { name: "Registrar conteo" }).click();
   const review = office.getByRole("group", { name: "Revisar conteo de Principal" });
-  await expect(review).toContainText(/según el sistema 0, contado 3 \(diferencia \+3\)/);
+  await expect(review).toContainText(/según el sistema 0, contado 3\s+\(diferencia \+3\)/);
   await review.getByRole("button", { name: "Confirmar conteo" }).click();
   await expect(office.getByText(`Conteo registrado: ${newCustomer} — Principal.`)).toBeVisible();
   await expect(countRow.getByText("Sin contar")).toHaveCount(0);
