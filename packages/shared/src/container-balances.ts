@@ -39,6 +39,8 @@ export interface ContainerBalanceListQuery {
   page?: number;
   limit?: number;
   zoneId?: string;
+  /** Every location of one customer (their page's containers section). */
+  customerId?: string;
   search?: string;
   uncountedOnly?: boolean;
   countedBefore?: string;

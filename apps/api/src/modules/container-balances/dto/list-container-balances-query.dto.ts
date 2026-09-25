@@ -55,6 +55,14 @@ export class ListContainerBalancesQueryDto {
   zoneId?: string;
 
   @ApiPropertyOptional({
+    format: "uuid",
+    description: "Solo las ubicaciones de este cliente (la sección «Envases» de su ficha)",
+  })
+  @IsOptional()
+  @IsUUID("4", { message: "El cliente debe ser un identificador válido" })
+  customerId?: string;
+
+  @ApiPropertyOptional({
     description:
       "Busca coincidencias parciales en el nombre del cliente o el teléfono de la ubicación",
   })
