@@ -83,7 +83,7 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
         pago rechazado, sin columna. Supuesto 18.
   - [x] 4e (#233) · «Cada merge de documentación redespliega producción»: filtro en
         el gate (`scripts/deploy-scope.mjs`). Va antes que 4d porque 4d lo usa.
-  - [ ] 4d · «El auto-deploy puede no dispararse sin error visible»:
+  - [x] 4d (#234) · «El auto-deploy puede no dispararse sin error visible»:
         `drift.yml` cada hora.
   - [ ] 4f · «Falta índice en `sales (location_id, sold_at)`»: migración
         expand, sin columnas; `EXPLAIN` antes y después; merge fuera de
