@@ -419,9 +419,8 @@ decidió no pedirla): la rotación de `main` le cortó la base.
 | Secretos huérfanos de Render                  | Borrados `yacco-render-jwt-refresh-secret` y `yacco-tmp-render-refresh-probe` (no queda ningún secreto con «render» en el nombre)                                                                                                            |
 | Render fuera del repo                         | `render.yaml` borrado; fuera las menciones operativas y la reserva `RENDER_GIT_COMMIT` de `/health` (D-009, con test)                                                                                                                        |
 
-**Pendiente de Giancarlo, sin urgencia:** borrar los dos servicios de Render
-(`yacco-api` y `yacco-web`) desde su dashboard. No sirven nada útil: la API
-no llega a la base y el web es el React viejo.
+~~Pendiente de Giancarlo: borrar los dos servicios de Render~~ — **hecho el
+2026-09-25** (ver «Render, borrado» abajo).
 
 **Dependabot (B6), uno por uno, con el deploy verde entre medio:**
 
@@ -445,6 +444,31 @@ con la sesión de la CLI: `POST /v3/user/tokens` → `Cannot create tokens for
 this app. (403)`. No se creó nada ni cambió ningún secreto: CI sigue con el
 token de siempre (versión 1 de `yacco-ci-vercel-token`). Queda para Giancarlo
 antes del 2026-10-16 (ver «Credenciales y recursos con fecha»).
+
+### Render, borrado — 2026-09-25 (~02:00 Lima, ~07:00 UTC)
+
+Hasta ese día el web de Render seguía conectado al repo y fallaba en cada
+merge: 60 deployments de GitHub en el entorno «main - yacco-web», creados por
+la app `render`; el último, de las 05:48 UTC, en `failure`.
+
+**Camino.** No hay `RENDER_API_KEY`, y el token de `gh` (OAuth, no de GitHub
+App) no puede listar ni editar instalaciones de apps: `GET user/installations`
+→ 403. Así que lo hizo Giancarlo desde los dashboards:
+
+| Dónde              | Qué                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| Render, Blueprints | Desconectados `blue-yacco-main` y `blue-yacco-prod`                                   |
+| Render, servicios  | Borrados `yacco-web`, `yacco-api`, `yacco` y `Aid-Manager-General-BackEnd`            |
+| Render, proyectos  | Borrados «yacco» y «My project»                                                       |
+| GitHub             | Desinstalación de la app de Render **pedida, pendiente de que Giancarlo la confirme** |
+
+El web de Render **sí** era un Blueprint sincronizado: corrige la premisa de
+D-019.
+
+Además, fuera del repo: borrada la carpeta local `apps/web` del disco de
+Giancarlo (92 MB de `node_modules`, `dist` y `.impeccable`, ignorados por git
+desde #171; `git ls-files apps/web` vacío y ningún archivo de configuración la
+nombra).
 
 ## Antes del corte: los arreglos que lo bloquean
 
@@ -1106,7 +1130,8 @@ D-016, como corresponde.
   destruir la versión de `yacco-admin-initial-password`) y el token de
   Vercel de CI por uno con vencimiento (antes del 2026-10-16). Ya no rompe
   ningún smoke.
-- **Borrar Render** (los dos servicios, sin base desde la fase 7).
+- ~~Borrar Render~~ — hecho el 2026-09-25 (ver «Render, borrado», en la
+  fase 7). Queda confirmar la desinstalación de la app de Render en GitHub.
 - **A1:** decidir un team propio de Vercel para Yacco.
 
 ### Lecciones
