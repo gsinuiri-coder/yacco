@@ -42,7 +42,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        reparar la cuenta VIEWER, es un paso manual aparte (bootstrap),
        documentado, y el smoke usa SOLO la credencial de VIEWER. La rotación
        de F no puede romper ningún smoke.
-3. [ ] **Imagen de la API:** sacar npm/npx y todo lo que no se use de la etapa
+3. [x] (#222) **Imagen de la API:** sacar npm/npx y todo lo que no se use de la etapa
        final del Dockerfile. Quitar el hallazgo de `deepmerge-ts` si se puede
        sin romper Prisma; si no, se registra con el motivo.
    - Evidencia: el escaneo antes y después, con 0 HIGH como meta, y el smoke

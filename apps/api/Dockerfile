@@ -72,13 +72,30 @@ RUN find /app/node_modules -type f \( \
       -name "*query_engine*sqlite*" -o \
       -name "*query_engine*sqlserver*" \) -delete
 
-# TypeScript es peer opcional de @prisma/client y `pnpm deploy --prod` lo
-# arrastra: 23 MB de compilador dentro de una imagen que sólo ejecuta
-# JavaScript ya compilado.
-RUN rm -rf /app/node_modules/.pnpm/typescript@*
+# `pnpm deploy --prod` instala también los peers OPCIONALES que resolvió el
+# lockfile: `@prisma/client` arrastra así el CLI de Prisma (~40 paquetes,
+# entre ellos `deepmerge-ts`, con un HIGH del escaneo) y TypeScript (23 MB de
+# compilador). El runtime no usa ninguno: las migraciones corren en su paso de
+# CI. La poda borra de .pnpm todo lo que ninguna dependencia de runtime
+# alcanza, y lista lo que borró en el log del build.
+COPY scripts/prune-runtime-deps.mjs /repo/scripts/
+RUN node /repo/scripts/prune-runtime-deps.mjs /app
+
+# ------------------------------------------------------------- node, y nada más
+# La imagen de node trae npm, npx, corepack y yarn (y `base` suma los shims de
+# pnpm). El runtime no instala nada, y npm era la fuente de 8 de los 9 HIGH del
+# escaneo. Se borran acá y el runtime copia el sistema de archivos YA
+# borrado: un `rm` en una capa de arriba los deja en la de abajo, que es la
+# que se descarga y se escanea.
+FROM base AS node-only
+RUN rm -rf /usr/local/lib/node_modules /opt/yarn-v*       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack       /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
 
 # --------------------------------------------------------------------- runtime
-FROM base AS runtime
+# Desde scratch: una sola capa con el node de arriba. Las ENV de la imagen
+# base no viajan con el COPY; la única que el runtime necesita es PATH.
+FROM scratch AS runtime
+COPY --from=node-only / /
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WORKDIR /app
 
 # Usuario sin privilegios. La imagen de node ya trae `node` (uid 1000); se
