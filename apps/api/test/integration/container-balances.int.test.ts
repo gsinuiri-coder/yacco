@@ -318,6 +318,31 @@ describe("GET /api/v1/container-balances", () => {
       expect(data.map((row) => row.location.id)).toEqual([negative.locationId]);
     });
 
+    test("customerId returns every location of that customer, and nobody else's", async () => {
+      const prisma = ctx.app.get(PrismaService);
+      const primary = await prisma.customerLocation.findUniqueOrThrow({
+        where: { id: twoTypes.locationId },
+      });
+      // Una segunda ubicación del mismo cliente: la ficha tiene que ver las dos.
+      const branch = await prisma.customerLocation.create({
+        data: {
+          customerId: primary.customerId,
+          name: "Sucursal",
+          address: "Av. Auditoría 2",
+          addressReference: "Portón verde",
+          phone: "987100099",
+        },
+      });
+
+      const { data, total } = await fetchAll(`&customerId=${primary.customerId}`);
+
+      expect(data.map((row) => row.location.id).sort()).toEqual(
+        [twoTypes.locationId, branch.id].sort(),
+      );
+      expect(total).toBe(2);
+      for (const row of data) expect(row.customer.id).toBe(primary.customerId);
+    });
+
     test("rejects a non-boolean or non-date filter with 400", async () => {
       await request(server())
         .get("/api/v1/container-balances?uncountedOnly=quizas")
@@ -327,6 +352,13 @@ describe("GET /api/v1/container-balances", () => {
         .get("/api/v1/container-balances?countedBefore=ayer")
         .set("Authorization", `Bearer ${adminToken}`)
         .expect(400);
+      const badCustomer = await request(server())
+        .get("/api/v1/container-balances?customerId=no-es-un-id")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(400);
+      expect(JSON.stringify(badCustomer.body.message)).toContain(
+        "El cliente debe ser un identificador válido",
+      );
     });
   });
 

@@ -82,9 +82,9 @@ function stubTypes(types: ContainerType[] = [TYPE_V, TYPE_R]) {
   cleanups.push(registerEndpoint("/api/v1/container-types", () => types));
 }
 
-async function renderPage() {
+async function renderPage(route = "/container-counts") {
   cleanups.push(signIn());
-  await renderSuspended(App, { route: "/container-counts" });
+  await renderSuspended(App, { route });
   await screen.findByRole("heading", { name: "Envases en poder de clientes", level: 1 });
 }
 
@@ -170,6 +170,35 @@ describe("Envases en poder de clientes", () => {
 
     await waitFor(() => expect(seen.at(-1)).not.toHaveProperty("withDiscrepancies"));
     expect(seen.at(-1)).not.toHaveProperty("countedBefore");
+  });
+
+  it("abierta desde la ficha, muestra solo a ese cliente, lo dice, y «Ver todas» vuelve al padrón", async () => {
+    const seen = stubBalances(() => [buildRow()]);
+    const user = userEvent.setup();
+
+    await renderPage("/container-counts?customerId=c-1");
+
+    expect(
+      await screen.findByText("Solo las ubicaciones de Bodega Santa Rosa, abierto desde su ficha."),
+    ).toBeTruthy();
+    expect(seen.some((query) => query.customerId === "c-1" && query.limit !== "1")).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Ver todas" }));
+    await waitFor(() => expect(seen.at(-1)).not.toHaveProperty("customerId"));
+    expect(screen.queryByText(/Solo las ubicaciones de/)).toBeNull();
+  });
+
+  it("filtrada por un cliente sin filas, el aviso se ve igual (sin nombre) y «Ver todas» la libera", async () => {
+    const seen = stubBalances(() => []);
+    const user = userEvent.setup();
+
+    await renderPage("/container-counts?customerId=c-9");
+
+    expect(
+      await screen.findByText("Solo las ubicaciones de un cliente, abierto desde su ficha."),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Ver todas" }));
+    await waitFor(() => expect(seen.at(-1)).not.toHaveProperty("customerId"));
   });
 
   it("busca a un cliente por nombre y recorre por zona, con las zonas del catálogo", async () => {

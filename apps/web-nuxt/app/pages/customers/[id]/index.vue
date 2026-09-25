@@ -105,6 +105,7 @@ function paymentRegistered(debtBalance: string): void {
 
           <CustomerPaymentSection :customer-id="customer.id" @registered="paymentRegistered" />
           <CustomerPricesSection :customer-id="customer.id" :is-admin="session.hasRole('ADMIN')" />
+          <CustomerContainersSection v-if="session.hasRole('ADMIN')" :customer-id="customer.id" />
         </div>
 
         <CustomerAccountStatementSection
