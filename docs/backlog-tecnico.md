@@ -635,7 +635,13 @@ producción sigue con el código anterior sin nada en rojo. El smoke con
 `.github/workflows/drift.yml`: cada hora compara el `commit` de `/health` de
 producción con la punta de `main` y, si lo que falta desplegar cambia algo que
 corre (`scripts/deploy-scope.mjs`) y el merge tiene más de 90 minutos, la
-corrida falla y GitHub avisa por email. Registro original:
+corrida falla y GitHub avisa por email. Dos límites, a propósito: solo lee el
+`/health` de la API, así que **un verde no dice que el último deploy esté
+sano** (un web que falló en el paso 5, o un smoke en rojo, no lo mueven); y
+el email le llega a quien tocó último la línea `cron` de `drift.yml`, si tiene
+activos los avisos de fallas de Actions. Un deploy que falló antes de
+producción y nadie relanza hace fallar el chequeo cada hora hasta que se
+relance: es lo buscado. Registro original:
 
 **Estado original:** abierto. **Disparador:** antes del piloto de campo (a
 partir de ahí, `main` y producción desincronizados afectan a usuarios reales).
