@@ -1,6 +1,7 @@
 import request from "supertest";
 import { PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
+import { SalesService } from "../../src/modules/sales/sales.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
@@ -169,6 +170,52 @@ describe("GET /api/v1/reports/debt (HU-19)", () => {
       }),
     ]);
     expect(response.body.total).toBe("69.75");
+  });
+
+  test("cuando lo que abrió la deuda es el saldo inicial del padrón, la fila lo dice", async () => {
+    const sales = ctx.app.get(SalesService);
+    // Eva: saldo inicial el 31/8 y una venta posterior mientras sigue
+    // debiendo. Lo que abrió su deuda es el saldo inicial, no la venta.
+    const eva = await createCustomer("Eva Padrón");
+    await sales.createOpeningCharge(
+      { customerId: eva.id, amount: "80.00", soldAt: new Date("2026-08-31T17:00:00Z") },
+      adminId,
+    );
+    await payment(eva.id, "2026-09-02T15:00:00Z", "30.00");
+    await sale(eva.locationId, "2026-09-12T15:00:00Z", "20.00");
+
+    // Fede: también tiene saldo inicial, pero lo pagó entero; lo que debe hoy
+    // lo abrió una venta. Tener saldo inicial no alcanza para la marca.
+    const fede = await createCustomer("Fede Padrón");
+    await sales.createOpeningCharge(
+      { customerId: fede.id, amount: "40.00", soldAt: new Date("2026-08-31T17:00:00Z") },
+      adminId,
+    );
+    await payment(fede.id, "2026-09-03T15:00:00Z", "40.00");
+    await sale(fede.locationId, "2026-09-14T15:00:00Z", "9.00");
+
+    const response = await get("debt");
+
+    expect(response.status).toBe(200);
+    const rowOf = (id: string) =>
+      (
+        response.body.rows as Array<{
+          customer: { id: string };
+          debt: string;
+          oldestChargeDate: string;
+          openedByOpeningBalance: boolean;
+        }>
+      ).find((row) => row.customer.id === id);
+    expect(rowOf(eva.id)).toMatchObject({
+      debt: "70.00",
+      oldestChargeDate: "2026-08-31",
+      openedByOpeningBalance: true,
+    });
+    expect(rowOf(fede.id)).toMatchObject({
+      debt: "9.00",
+      oldestChargeDate: "2026-09-14",
+      openedByOpeningBalance: false,
+    });
   });
 
   test("solo ADMIN", async () => {
