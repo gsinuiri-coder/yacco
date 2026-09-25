@@ -276,6 +276,15 @@ describe("checkCatalogs", () => {
     ]);
   });
 
+  test("uno que llega retirado cuenta como faltante, sin depender del filtro de la API", () => {
+    const withdrawn = products.map((product) =>
+      product.name === "Recarga 20L con caño" ? { ...product, active: false } : product,
+    );
+    assert.deepEqual(checkCatalogs({ products: withdrawn, paymentMethods }, seed), [
+      "falta el producto «Recarga 20L con caño» del seed (o no está en venta)",
+    ]);
+  });
+
   test("un producto con el tipo cambiado", () => {
     const drifted = products.map((product) =>
       product.name === "Bidón 20L con caño" ? { ...product, type: "REFILL" } : product,

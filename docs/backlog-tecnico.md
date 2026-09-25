@@ -661,7 +661,9 @@ producto del seed, si un método pide (o no) confirmación distinto del seed, o
 si un producto cambió de tipo. No compara precios (los pone el dueño en
 «Productos») ni tipos de envase: en `main` la planta ya los renombró
 («BIDON 20L CAÑO», «BIDON 20L NORMAL»), y los productos los referencian por
-id. No se corre el seed en el deploy. El `create` de productos que señalaba
+id. El chequeo de productos además cuida a `pnpm load:roster`, que encuentra
+los tipos de envase por el nombre de las recargas (`container-type-columns.ts`,
+copia a mano de esos nombres). No se corre el seed en el deploy. El `create` de productos que señalaba
 abajo ya era idempotente (`findFirst` antes de crear). Registro original:
 
 **Estado original:** abierto. **Disparador:** antes del piloto de campo.

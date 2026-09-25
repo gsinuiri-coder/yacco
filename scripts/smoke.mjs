@@ -192,7 +192,7 @@ export function checkCatalogs({ products, paymentMethods }, seed) {
   } else {
     for (const expected of seed.paymentMethods) {
       const found = paymentMethods.find((method) => method.name === expected.name);
-      if (found === undefined) {
+      if (found === undefined || found.active === false) {
         problems.push(`falta el método de pago «${expected.name}» del seed (o está retirado)`);
       } else if (found.requiresConfirmation !== expected.requiresConfirmation) {
         problems.push(
@@ -206,7 +206,7 @@ export function checkCatalogs({ products, paymentMethods }, seed) {
   } else {
     for (const expected of seed.products) {
       const found = products.find((product) => product.name === expected.name);
-      if (found === undefined) {
+      if (found === undefined || found.active === false) {
         problems.push(`falta el producto «${expected.name}» del seed (o no está en venta)`);
       } else if (found.type !== expected.type) {
         problems.push(`«${expected.name}»: es ${found.type}, el seed dice ${expected.type}`);
