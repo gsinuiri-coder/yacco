@@ -55,6 +55,14 @@ export class ListCustomersQueryDto {
   @IsUUID("4", { message: "La zona debe ser un identificador válido" })
   zoneId?: string;
 
+  @ApiPropertyOptional({
+    description: "Solo los clientes sin zona. Excluyente con `zoneId`: los dos juntos son un 400",
+  })
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean({ message: "El filtro «Sin zona» debe ser verdadero o falso" })
+  withoutZone?: boolean;
+
   @ApiPropertyOptional({ description: "Filtra por clientes activos o desactivados" })
   @IsOptional()
   @Transform(toOptionalBoolean)

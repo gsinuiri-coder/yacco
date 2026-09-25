@@ -28,6 +28,8 @@ export interface CustomerListQuery {
   limit?: number;
   search?: string;
   zoneId?: string;
+  /** Only customers without a zone ("Sin zona"). Mutually exclusive with `zoneId`: both is a 400. */
+  withoutZone?: boolean;
   active?: boolean;
 }
 

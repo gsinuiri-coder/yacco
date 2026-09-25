@@ -27,6 +27,8 @@ type LocationWithBalances = Prisma.CustomerLocationGetPayload<{ include: typeof 
 /**
  * Each filter is a way the owner slices the audit work list:
  *   - zoneId: audit by zone, which is how routes are organized.
+ *   - customerId: every location of ONE customer, for the containers section
+ *     of their page.
  *   - search: find ONE customer among ~600 without paging, e.g. the office
  *     recording what a driver counted at a given customer. Same match as the
  *     roster search: the customer's name, or the location's phone.
@@ -47,6 +49,9 @@ function buildLocationFilter(
   const conditions: Prisma.CustomerLocationWhereInput[] = [];
   if (query.zoneId !== undefined) {
     conditions.push({ customer: { zoneId: query.zoneId } });
+  }
+  if (query.customerId !== undefined) {
+    conditions.push({ customerId: query.customerId });
   }
   if (query.search) {
     conditions.push({

@@ -70,14 +70,14 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
       deuda actual es el saldo inicial del padrón, la columna muestra «Saldo
       inicial» y no la fecha de corte como si fuera una venta. `replayDebt` no
       cambia su regla; supuesto 13, una línea.
-- [ ] **L5 · Saldo a favor.** Un saldo negativo se muestra «A favor S/ x.xx»
+- [x] **L5 · Saldo a favor** (#242). Un saldo negativo se muestra «A favor S/ x.xx»
       en la lista de Clientes y en la ficha. Un solo lugar.
-- [ ] **L1 · Filtro de zona en «Clientes».** «Todas», cada zona en uso y «Sin
+- [x] **L1 · Filtro de zona en «Clientes»** (#243). «Todas», cada zona en uso y «Sin
       zona»; `withoutZone` en `ListCustomersQueryDto`, excluyente con
       `zoneId` (400).
 - [x] **L2 · Clientes por zona en «Zonas»** (#244). Activos por zona y, arriba, los
       que quedan sin zona. Desde la API, sin esquema.
-- [ ] **L3 · Envases en la ficha del cliente.** Saldo por tipo y ubicación,
+- [x] **L3 · Envases en la ficha del cliente** (#245). Saldo por tipo y ubicación,
       último conteo (o «Sin contar») y enlace al conteo ya filtrado.
 - [ ] **L6 · Enlaces en direcciones y referencias.** URLs http(s) como
       enlace en la ficha y en «Mi ruta», sin `v-html`.

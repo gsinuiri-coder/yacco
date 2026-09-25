@@ -55,6 +55,7 @@ export class CustomersController {
 
   @ApiOperation({ summary: "Lista clientes paginados, con búsqueda y filtros" })
   @ApiResponse({ status: 200, type: PaginatedCustomersDto })
+  @ApiBadRequestResponse({ description: "Validation failed, or withoutZone together with zoneId" })
   @Get()
   findAll(@Query() query: ListCustomersQueryDto): Promise<PaginatedCustomersDto> {
     return this.customersService.findAll(query);

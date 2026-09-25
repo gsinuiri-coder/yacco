@@ -24,10 +24,28 @@ const search = useDebounced(
 );
 const status = ref<StatusFilter>("all");
 
+// «Sin zona» es una opción más del filtro, no una zona: la API la recibe como
+// `withoutZone`, excluyente con `zoneId`. Las zonas salen de su catálogo, solo
+// las que están en uso.
+const ALL_ZONES = "all";
+const WITHOUT_ZONE = "none";
+const zoneFilter = ref(ALL_ZONES);
+const zones = useActiveZones();
+const zoneItems = computed(() => [
+  { label: "Todas", value: ALL_ZONES },
+  ...zones.value.map((zone) => ({ label: zone.name, value: zone.id })),
+  { label: "Sin zona", value: WITHOUT_ZONE },
+]);
+
 const list = usePagedList<Customer>(
   "/customers",
   CUSTOMERS_PAGE_SIZE,
-  computed(() => ({ search: search.value, active: ACTIVE_BY_STATUS[status.value] })),
+  computed(() => ({
+    search: search.value,
+    active: ACTIVE_BY_STATUS[status.value],
+    zoneId: [ALL_ZONES, WITHOUT_ZONE].includes(zoneFilter.value) ? undefined : zoneFilter.value,
+    withoutZone: zoneFilter.value === WITHOUT_ZONE ? true : undefined,
+  })),
 );
 
 const summary = computed(() => {
@@ -71,6 +89,9 @@ function openCustomer(_event: Event, row: { original: Customer }): void {
             class="w-full"
           />
         </UFormField>
+        <UFormField label="Zona">
+          <USelect v-model="zoneFilter" :items="zoneItems" class="w-48" />
+        </UFormField>
         <SegmentedFilter v-model="status" label="Estado" :options="STATUS_OPTIONS" />
       </div>
 
@@ -97,7 +118,7 @@ function openCustomer(_event: Event, row: { original: Customer }): void {
         "
         :empty-description="
           list.hasFilters.value
-            ? 'Prueba con otro nombre o teléfono, o cambia el filtro de estado.'
+            ? 'Prueba con otro nombre o teléfono, o cambia el filtro de zona o de estado.'
             : 'Registra el primero para empezar a organizar el reparto.'
         "
         @retry="list.retry"

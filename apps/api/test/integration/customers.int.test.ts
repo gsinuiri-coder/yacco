@@ -260,6 +260,43 @@ describe("GET /api/v1/customers", () => {
     }
   });
 
+  test("withoutZone=true lists the customers without a zone, and only them", async () => {
+    const orphan = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validCustomer({ name: "Tienda Sin Zona", phone: "911000009" }))
+      .expect(201);
+
+    const response = await request(server())
+      .get("/api/v1/customers?withoutZone=true&limit=100")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const ids = response.body.data.map((customer: { id: string }) => customer.id);
+    expect(ids).toContain(orphan.body.id);
+    const phones = response.body.data.map((customer: { phone: string }) => customer.phone);
+    // Los de las zonas Norte y Sur existen y no vienen.
+    expect(phones).not.toContain(listedPhones[0]);
+    expect(phones).not.toContain(listedPhones[1]);
+    for (const customer of response.body.data) {
+      expect(customer.zoneId).toBeNull();
+    }
+    const everyone = await request(server())
+      .get("/api/v1/customers?limit=1")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(response.body.total).toBeLessThan(everyone.body.total);
+  });
+
+  test("withoutZone and zoneId together are a 400: they contradict each other", async () => {
+    const response = await request(server())
+      .get(`/api/v1/customers?withoutZone=true&zoneId=${northZoneId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("Sin zona");
+  });
+
   test("filters by active, and a deactivated customer is still there to be found", async () => {
     const inactiveList = await request(server())
       .get("/api/v1/customers?active=false&limit=100")

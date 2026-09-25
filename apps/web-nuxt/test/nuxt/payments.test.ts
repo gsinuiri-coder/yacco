@@ -227,6 +227,23 @@ describe("Pagos", () => {
       await waitFor(() => expect(seen).toHaveLength(2));
     });
 
+    it("si el cliente queda con plata a favor, el aviso lo dice así y no con signo", async () => {
+      stubPayments([[payment()], []]);
+      stubWrite(cleanups, "/api/v1/payments/pay-1/confirm", "POST", () => ({
+        payment: payment({ status: "CONFIRMED" }),
+        debtBalance: "-10.00",
+      }));
+
+      await renderPayments();
+      await userEvent.setup().click(await screen.findByRole("button", { name: "Confirmar" }));
+
+      expect(
+        await screen.findByText(
+          "Pago de Bodega Santa Rosa confirmado. Deuda actual: A favor S/ 10.00.",
+        ),
+      ).toBeTruthy();
+    });
+
     it("un 409 dice que alguien lo resolvió primero y recarga; un 404, que ya no existe", async () => {
       const seen = stubPayments([[payment()]]);
       let attempt = 0;
@@ -300,6 +317,26 @@ describe("Pagos", () => {
       ).toBeTruthy();
       expect(bodies).toEqual([{ reason: "El Yape no llegó" }]);
       await waitFor(() => expect(seen).toHaveLength(2));
+    });
+
+    it("rechazar a quien ya tenía plata a favor lo avisa como «A favor», no con signo", async () => {
+      stubPayments([[payment()], []]);
+      stubWrite(cleanups, "/api/v1/payments/pay-1/reject", "POST", () => ({
+        payment: payment({ status: "REJECTED" }),
+        debtBalance: "-5.00",
+      }));
+      const user = userEvent.setup();
+
+      await renderPayments();
+      const form = await openReject();
+      await user.type(screen.getByLabelText("Motivo del rechazo"), "No llegó");
+      await user.click(within(form).getByRole("button", { name: "Confirmar rechazo" }));
+
+      expect(
+        await screen.findByText(
+          "Pago de Bodega Santa Rosa rechazado. Deuda actual: A favor S/ 5.00.",
+        ),
+      ).toBeTruthy();
     });
 
     it("«Cancelar» cierra el formulario sin llamar a la API", async () => {
