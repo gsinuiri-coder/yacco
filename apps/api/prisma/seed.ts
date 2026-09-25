@@ -1,7 +1,22 @@
+import { readFileSync } from "node:fs";
 import { PrismaClient, ProductType, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
+
+/**
+ * The catalog lives in seed-catalog.json so the production smoke
+ * (scripts/smoke.mjs, checkCatalogs) compares main against the SAME list this
+ * seeds, instead of a copy that drifts.
+ */
+interface SeedCatalog {
+  containerTypes: string[];
+  products: { name: string; type: ProductType; containerTypeName: string; listPrice: string }[];
+  paymentMethods: { name: string; requiresConfirmation: boolean }[];
+}
+const catalog = JSON.parse(
+  readFileSync(new URL("./seed-catalog.json", import.meta.url), "utf8"),
+) as SeedCatalog;
 
 // Idempotent: every insert is an upsert on a unique key, safe to re-run.
 async function main() {
@@ -15,7 +30,7 @@ async function main() {
 
   // Catalog names are UI strings and stay in Spanish (es-PE).
   const containerTypesByName = new Map<string, { id: string }>();
-  for (const name of ["Con caño", "Sin caño"]) {
+  for (const name of catalog.containerTypes) {
     const containerType = await prisma.containerType.upsert({
       where: { name },
       update: {},
@@ -29,41 +44,10 @@ async function main() {
   // {where:{name}} — findFirst + create-if-missing is what makes it
   // idempotent instead.
   //
-  // listPrice values are provisional placeholders, pending confirmation with
-  // the plant owner — see docs/backlog-tecnico.md. The names are not
-  // placeholders: they get copied onto every OrderItem created against them.
-  const products: {
-    name: string;
-    type: ProductType;
-    containerTypeName: string;
-    listPrice: string;
-  }[] = [
-    {
-      name: "Recarga 20L con caño",
-      type: ProductType.REFILL,
-      containerTypeName: "Con caño",
-      listPrice: "8.00",
-    },
-    {
-      name: "Recarga 20L sin caño",
-      type: ProductType.REFILL,
-      containerTypeName: "Sin caño",
-      listPrice: "8.00",
-    },
-    {
-      name: "Bidón 20L con caño",
-      type: ProductType.CONTAINER_SALE,
-      containerTypeName: "Con caño",
-      listPrice: "30.00",
-    },
-    {
-      name: "Bidón 20L sin caño",
-      type: ProductType.CONTAINER_SALE,
-      containerTypeName: "Sin caño",
-      listPrice: "28.00",
-    },
-  ];
-  for (const product of products) {
+  // listPrice values are provisional placeholders: the owner sets the real
+  // ones in «Productos» (PATCH /products/:id). The names are not placeholders:
+  // they get copied onto every OrderItem created against them.
+  for (const product of catalog.products) {
     const existing = await prisma.product.findFirst({ where: { name: product.name } });
     if (existing !== null) continue;
 
@@ -83,13 +67,7 @@ async function main() {
 
   // Cash the driver counts himself is firm on the spot; anything that lands
   // on the owner's phone or bank app needs the office to confirm it saw it.
-  const paymentMethods: { name: string; requiresConfirmation: boolean }[] = [
-    { name: "Efectivo", requiresConfirmation: false },
-    { name: "Transferencia", requiresConfirmation: true },
-    { name: "Yape", requiresConfirmation: true },
-    { name: "Plin", requiresConfirmation: true },
-  ];
-  for (const { name, requiresConfirmation } of paymentMethods) {
+  for (const { name, requiresConfirmation } of catalog.paymentMethods) {
     await prisma.paymentMethod.upsert({
       where: { name },
       update: { requiresConfirmation },

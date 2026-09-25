@@ -662,7 +662,21 @@ depender de que el commit traiga migración. Es su propio PR.
 
 ## Producción puede tener catálogos desincronizados del seed y nada lo detecta
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA el 2026-09-25 (ítem 4b de `plan-piloto.md`), por el
+lado de «algún otro mecanismo que detecte»: el smoke de cada deploy, con la
+sesión VIEWER, compara los catálogos de producción contra
+`apps/api/prisma/seed-catalog.json`, que es de donde siembra `seed.ts`
+(`checkCatalogs` en `scripts/smoke.mjs`). Falla si falta un método de pago o un
+producto del seed, si un método pide (o no) confirmación distinto del seed, o
+si un producto cambió de tipo. No compara precios (los pone el dueño en
+«Productos») ni tipos de envase: en `main` la planta ya los renombró
+(«BIDON 20L CAÑO», «BIDON 20L NORMAL»), y los productos los referencian por
+id. El chequeo de productos además cuida a `pnpm load:roster`, que encuentra
+los tipos de envase por el nombre de las recargas (`container-type-columns.ts`,
+copia a mano de esos nombres). No se corre el seed en el deploy. El `create` de productos que señalaba
+abajo ya era idempotente (`findFirst` antes de crear). Registro original:
+
+**Estado original:** abierto. **Disparador:** antes del piloto de campo.
 
 `payment_methods` en Neon quedó con `requires_confirmation = false` en
 Transferencia, Yape y Plin — el seed (`apps/api/prisma/seed.ts`, líneas
