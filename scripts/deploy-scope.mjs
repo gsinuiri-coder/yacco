@@ -48,7 +48,10 @@ const COMPARE_FILE_LIMIT = 300;
  */
 export async function deployScope({ sha, deployedCommit, compare }) {
   if (!deployedCommit) return { scope: "runtime", reason: "no se sabe qué está desplegado" };
-  if (deployedCommit === sha) return { scope: "docs-only", reason: "ya está desplegado" };
+  // Sin atajo para «ya está desplegado»: el único camino por el que el gate ve
+  // producción en ESTE commit es relanzar la corrida después de que falló el
+  // web (5) o el smoke (6), y saltearla pintaría de verde un deploy roto. La
+  // comparación da «identical», que despliega.
   let comparison;
   try {
     comparison = await compare(deployedCommit, sha);
