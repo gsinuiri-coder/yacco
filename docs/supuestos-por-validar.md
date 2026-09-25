@@ -358,6 +358,30 @@ línea de delegación con la fecha, más las cuatro de siempre.
   de precio y resolver quién autoriza (hoy la lista de usuarios es solo de la
   oficina).
 
+### 13. «Debe desde» es el cargo que abrió la deuda actual
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** en el
+  reporte de deuda por cliente (HU-19), la «fecha del cargo más antiguo» es la
+  del primer cargo después de la última vez que el cliente estuvo al día (saldo
+  en cero o a favor). Se reproduce su libro en orden: ventas no anuladas suman,
+  cobros confirmados no anulados restan; un cobro pendiente o rechazado no
+  cuenta, igual que en `debt_balance` y el estado de cuenta.
+- **Asumimos:** que al dueño le sirve saber desde cuándo un cliente no está al
+  día, y no cuál venta puntual sigue impaga. El sistema no reparte cobros entre
+  ventas (ver «Reparto de un pago global entre deudas del cliente» en
+  `backlog-tecnico.md`), así que esta es la fecha más antigua que se puede
+  defender sin inventar ese reparto. Si el cliente paga algo pero nunca llega a
+  cero, la fecha no se mueve.
+- **Construido encima:** `replayDebt` en
+  `apps/api/src/modules/reports/reports.service.ts` y la columna «Debe desde»
+  de `apps/web-nuxt/app/pages/reports/debt.vue`. El día es el de Lima.
+- **Preguntar:** cuando un cliente le va pagando de a poco, ¿quiere ver desde
+  cuándo no está al día, o la fecha de la venta más vieja que todavía no pagó?
+- **Si dice que no:** medio. «La venta más vieja impaga» exige decidir primero
+  cómo se reparte un cobro entre ventas (la más antigua primero es lo usual) y
+  aplicarlo igual en todas partes; el cálculo del reporte cambia, la pantalla
+  no.
+
 ### 14. El padrón del sistema viejo entra entero, sin zona y sin envases
 
 - **Decidido por Claude por delegación de Giancarlo (2026-09-24):** los 604
@@ -366,8 +390,12 @@ línea de delegación con la fecha, más las cuatro de siempre.
   nombre, duplicado exacto por nombre y teléfono, sin locación): hoy, ninguno.
   Los teléfonos compartidos o con formato raro y las direcciones vacías
   entran con aviso. **Sin zona**: las etiquetas del sistema viejo mezclan
-  zonas (PARQUE, SURCO) con categorías (EMPRESAS, DISTRIBUIDOR) y quedan en
-  las notas del cliente. **Sin envases**: el sistema viejo no tiene saldos de
+  zonas (PARQUE, SURCO) con categorías (EMPRESAS, DISTRIBUIDOR). _Corrección
+  del 2026-09-25:_ acá decía que las etiquetas «quedan en las notas del
+  cliente». No quedaron: `customers` no tiene columna de notas y
+  `pnpm load:roster` lee la columna `notes` del CSV y la descarta. Las
+  etiquetas solo están en el Firestore del sistema viejo (ver «El cargador del
+  padrón descarta las notas del cliente» en `backlog-tecnico.md`). **Sin envases**: el sistema viejo no tiene saldos de
   envases cargados, así que salen del conteo físico. La deuda entra tal cual,
   al centavo, como cargo de apertura con fecha de corte.
 - **Asumimos:** que `debtAmount` del sistema viejo es la deuda vigente de cada
@@ -381,7 +409,9 @@ línea de delegación con la fecha, más las cuatro de siempre.
   reparto y cuáles no? ¿Cuántos bidones tiene cada cliente, o hay que
   contarlos?
 - **Si dice que no:** barato si es la zona (se asigna desde la ficha del
-  cliente o se recarga con zonas: el cargador es idempotente). Caro si la
+  cliente, o con `pnpm roster:zones`, que solo toca la zona). **No** se
+  recarga con `pnpm load:roster`: su `upsert` vuelve a escribir nombre y
+  teléfono desde el CSV y pisaría lo que se corrigió en la app. Caro si la
   deuda no es la vigente: se corrige con movimientos inversos, cliente por
   cliente, nunca editando la carga.
 
@@ -410,30 +440,6 @@ línea de delegación con la fecha, más las cuatro de siempre.
   endpoint por endpoint y su menú en el web.
 
 ## Validados
-
-### 13. «Debe desde» es el cargo que abrió la deuda actual
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** en el
-  reporte de deuda por cliente (HU-19), la «fecha del cargo más antiguo» es la
-  del primer cargo después de la última vez que el cliente estuvo al día (saldo
-  en cero o a favor). Se reproduce su libro en orden: ventas no anuladas suman,
-  cobros confirmados no anulados restan; un cobro pendiente o rechazado no
-  cuenta, igual que en `debt_balance` y el estado de cuenta.
-- **Asumimos:** que al dueño le sirve saber desde cuándo un cliente no está al
-  día, y no cuál venta puntual sigue impaga. El sistema no reparte cobros entre
-  ventas (ver «Reparto de un pago global entre deudas del cliente» en
-  `backlog-tecnico.md`), así que esta es la fecha más antigua que se puede
-  defender sin inventar ese reparto. Si el cliente paga algo pero nunca llega a
-  cero, la fecha no se mueve.
-- **Construido encima:** `replayDebt` en
-  `apps/api/src/modules/reports/reports.service.ts` y la columna «Debe desde»
-  de `apps/web-nuxt/app/pages/reports/debt.vue`. El día es el de Lima.
-- **Preguntar:** cuando un cliente le va pagando de a poco, ¿quiere ver desde
-  cuándo no está al día, o la fecha de la venta más vieja que todavía no pagó?
-- **Si dice que no:** medio. «La venta más vieja impaga» exige decidir primero
-  cómo se reparte un cobro entre ventas (la más antigua primero es lo usual) y
-  aplicarlo igual en todas partes; el cálculo del reporte cambia, la pantalla
-  no.
 
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026
 
