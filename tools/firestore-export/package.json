@@ -6,6 +6,7 @@
   "description": "Herramienta de un solo uso: saca una foto del sistema viejo (Firestore) a archivos JSON. No forma parte de la API ni del frontend.",
   "scripts": {
     "export:customers": "tsx src/cli.ts customers",
+    "export:tags": "tsx src/cli.ts tags",
     "export:vouchers": "tsx src/cli.ts vouchers",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

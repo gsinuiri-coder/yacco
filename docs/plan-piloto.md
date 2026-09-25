@@ -45,7 +45,7 @@ preguntar por dominio. Se para SOLO por, y espera un `[OK]` literal:
 
 ## Cola (en este orden)
 
-1. [ ] **Documentación que hoy miente.**
+1. [x] (#226) **Documentación que hoy miente.**
    - `PROGRESO.md`, «Render, borrado»: lo hizo Claude Code con `[OK]` de
      Giancarlo, no Giancarlo desde los dashboards. La fila de GitHub queda
      pendiente de confirmar.
