@@ -14,6 +14,10 @@ Al final está la hoja de cierre: una fila por pregunta para marcar qué pasó.
 
 ## 1. El padrón y la deuda
 
+_Del supuesto 14 se leen acá solo las dos primeras preguntas (la deuda y los
+teléfonos repetidos). Las etiquetas y los bidones se preguntan en las
+secciones 2 y 3._
+
 #### Supuesto 14. El padrón del sistema viejo entra entero, sin zona y sin envases
 
 - **Asumimos:** que `debtAmount` del sistema viejo es la deuda vigente de cada
@@ -127,7 +131,8 @@ Al final está la hoja de cierre: una fila por pregunta para marcar qué pasó.
 #### ¿Usted sabe cuántos bidones tiene cada cliente, o hay que ir a contarlos? (pregunta operativa)
 
 - **Hoy:** los 604 clientes entraron sin envases (el sistema viejo no tenía
-  saldos). Cada uno figura «Sin contar» en «Envases en poder de clientes».
+  saldos). Cada ubicación figura «Sin contar» en «Envases en poder de
+  clientes».
 - **Preguntar:** ¿usted sabe cuántos bidones tiene cada cliente, o hay que ir
   a contarlos?
 - **Si hay que contarlos:** el chofer cuenta en cada visita y la oficina lo
@@ -161,7 +166,8 @@ Al final está la hoja de cierre: una fila por pregunta para marcar qué pasó.
 #### Las etiquetas del sistema viejo y a qué zona van
 
 **Pendiente de completar antes de la reunión.** Las etiquetas no quedaron en
-el sistema nuevo; salen del export de solo lectura del sistema viejo
+el sistema nuevo (el cargador del padrón no guardó las notas); salen del
+export de solo lectura del sistema viejo, que tiene que correr Giancarlo
 (`pnpm roster:zones`, dry-run, ítem 2 de `plan-piloto.md`). Esta tabla se
 llena con ese informe: una fila por etiqueta, con cuántos clientes la tienen.
 
@@ -175,8 +181,8 @@ llena con ese informe: una fila por etiqueta, con cuántos clientes la tienen.
 Clientes con más de una etiqueta: (del informe). Con dos etiquetas de lugar,
 tomamos la primera.
 
-- **Preguntar:** estas son las etiquetas y la zona que le pusimos a cada una.
-  ¿Está bien así? ¿Juntaría alguna? ¿Falta alguna zona?
+Esta tabla es la que se le muestra al leer la pregunta del supuesto 16: no hay
+una pregunta aparte.
 
 #### Los días de reparto de cada zona (pregunta operativa)
 
@@ -317,7 +323,7 @@ tomamos la primera.
   correcciones, una migración que además tendría que reconstruir el historial
   de lo ya corregido desde las ventas anuladas, y una pantalla que hoy no
   existe. No es una columna más: es un modelo.
-- **Si pregunta qué haríamos nosotros:** recomendamos que la visita muestre solo la última corrección. Las anteriores no se pierden: quedan en las ventas anuladas y en el libro de envases, por si hay que auditar.
+- **Si pregunta qué haríamos nosotros:** recomendamos que la visita muestre solo la última corrección. Cuando la visita tenía una venta, la anterior queda anulada con su motivo y el libro de envases guarda todo; si la visita había quedado como no entregada, el motivo de la primera corrección se reemplaza con el de la segunda.
 
 #### Supuesto 10. Corregir hacia arriba deja el camión en negativo en vez de frenar
 
@@ -389,6 +395,14 @@ tomamos la primera.
 
 #### Supuesto 4. Decirle que la sesión abierta no se cierra alcanza
 
+- **Ahora sí se corta la sesión (2026-09-24, ítem 7b del plan, D-024):**
+  cambiar la contraseña o desactivar a alguien deja viejo su refresh token, y
+  el sistema le pide volver a ingresar en cuanto vence su acceso actual (a lo
+  sumo 15 minutos). La pantalla dice eso ahora. El supuesto de abajo queda
+  como registro de lo que se asumió mientras no era así; la pregunta sigue
+  valiendo para saber si esos 15 minutos le alcanzan o necesita el corte en
+  el acto. Vale también para el administrador que se cambia la suya
+  (supuesto 3): su propia sesión se corta igual.
 - **Asumimos:** que alcanza con **avisar** que cambiar la contraseña no cierra
   la sesión que esa persona tenga abierta, y que para cortarle el acceso hay
   que desactivarla.
@@ -404,7 +418,7 @@ tomamos la primera.
   invalidar tokens ya emitidos — ver «No hay forma de invalidar un token ya
   emitido» en `backlog-tecnico.md`, que además arrastra el caso de desactivar
   y reactivar.
-- **Si pregunta qué haríamos nosotros:** recomendamos que alcance con que la persona quede afuera en unos minutos (a lo sumo 15). Si alguna vez necesita sacar a alguien en el acto, lo desactiva y además le cambia la contraseña.
+- **Si pregunta qué haríamos nosotros:** recomendamos que alcance con que la persona quede afuera a lo sumo 15 minutos después de desactivarla (o de cambiarle la contraseña, que hace lo mismo). Hoy no hay forma de sacarla en el acto: si eso le hace falta, es trabajo nuevo.
 
 #### Supuesto 15. Nadie de la planta tiene una cuenta para mirar sin tocar
 
@@ -462,7 +476,6 @@ cuánto cuesta).
 | 11. Los llenos que vuelven reponen el lote más antiguo del que salieron          | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
 | ¿Sabe cuántos bidones tiene cada cliente? (operativa)                            | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
 | 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto            | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| Etiquetas → zonas (operativa)                                                    | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
 | Días de reparto (operativa)                                                      | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
 | 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
 | 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea                    | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
