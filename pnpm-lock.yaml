@@ -55,8 +55,8 @@ importers:
         specifier: ^11.2.1
         version: 11.2.1(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/jwt':
-        specifier: ^11.0.2
-        version: 11.0.2(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))
+        specifier: ^12.0.2
+        version: 12.0.2(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))
       '@nestjs/passport':
         specifier: ^11.0.5
         version: 11.0.5(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(passport@0.7.0)
@@ -1318,10 +1318,10 @@ packages:
       '@nestjs/websockets':
         optional: true
 
-  '@nestjs/jwt@11.0.2':
-    resolution: {integrity: sha512-rK8aE/3/Ma45gAWfCksAXUNbOoSOUudU0Kn3rT39htPF7wsYXtKfjALKeKKJbFrIWbLjsbqfXX5bIJNvgBugGA==}
+  '@nestjs/jwt@12.0.2':
+    resolution: {integrity: sha512-1crs22hB7pNf7FnfRRRXvFTo595Rgx+JLyIuWInsyd5Ov/z0N8CCJPqMlTy41D5XTWe8CVr9miwB+2OXxVX9RA==}
     peerDependencies:
-      '@nestjs/common': ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0
+      '@nestjs/common': ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0 || ^12.0.0
 
   '@nestjs/mapped-types@2.1.1':
     resolution: {integrity: sha512-SCCoMEJ6jdeI5h/N+KCVF1+pmg/hmEkNA5nHTS8Gvww7T/LCl4o1gFLinw2iQ60w7slFkszHcGLKGdazVI4F8A==}
@@ -8581,12 +8581,12 @@ snapshots:
 
   '@jest/pattern@30.4.0':
     dependencies:
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       jest-regex-util: 30.4.0
 
   '@jest/pattern@30.5.0':
     dependencies:
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       jest-regex-util: 30.5.0
 
   '@jest/reporters@30.5.2':
@@ -8678,7 +8678,7 @@ snapshots:
       '@jest/schemas': 30.4.1
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       '@types/yargs': 17.0.35
       chalk: 4.1.2
 
@@ -8809,7 +8809,7 @@ snapshots:
     optionalDependencies:
       '@nestjs/platform-express': 11.2.1(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.1)
 
-  '@nestjs/jwt@11.0.2(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))':
+  '@nestjs/jwt@12.0.2(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))':
     dependencies:
       '@nestjs/common': 11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@types/jsonwebtoken': 9.0.10
@@ -10306,13 +10306,13 @@ snapshots:
 
   '@types/docker-modem@3.0.6':
     dependencies:
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       '@types/ssh2': 1.15.5
 
   '@types/dockerode@4.0.1':
     dependencies:
       '@types/docker-modem': 3.0.6
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       '@types/ssh2': 1.15.5
 
   '@types/esrecurse@4.3.1': {}
@@ -10354,7 +10354,7 @@ snapshots:
   '@types/jsonwebtoken@9.0.10':
     dependencies:
       '@types/ms': 2.1.0
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
 
   '@types/methods@1.1.4': {}
 
@@ -10412,11 +10412,11 @@ snapshots:
 
   '@types/ssh2-streams@0.1.13':
     dependencies:
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
 
   '@types/ssh2@0.5.52':
     dependencies:
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       '@types/ssh2-streams': 0.1.13
 
   '@types/ssh2@1.15.5':
@@ -13195,7 +13195,7 @@ snapshots:
   jest-mock@30.4.1:
     dependencies:
       '@jest/types': 30.4.1
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       jest-util: 30.4.1
 
   jest-mock@30.5.2:
@@ -13310,7 +13310,7 @@ snapshots:
   jest-util@30.4.1:
     dependencies:
       '@jest/types': 30.4.1
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       chalk: 4.1.2
       ci-info: 4.4.0
       graceful-fs: 4.2.11
@@ -14743,7 +14743,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 22.20.4
+      '@types/node': 26.6.2
       long: 5.3.2
 
   proxy-addr@2.0.7:
