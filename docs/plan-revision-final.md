@@ -72,7 +72,7 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
       cambia su regla; supuesto 13, una línea.
 - [ ] **L5 · Saldo a favor.** Un saldo negativo se muestra «A favor S/ x.xx»
       en la lista de Clientes y en la ficha. Un solo lugar.
-- [ ] **L1 · Filtro de zona en «Clientes».** «Todas», cada zona en uso y «Sin
+- [x] **L1 · Filtro de zona en «Clientes»** (#243). «Todas», cada zona en uso y «Sin
       zona»; `withoutZone` en `ListCustomersQueryDto`, excluyente con
       `zoneId` (400).
 - [ ] **L2 · Clientes por zona en «Zonas».** Activos por zona y, arriba, los
