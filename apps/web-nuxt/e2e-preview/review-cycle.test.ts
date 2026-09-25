@@ -6,12 +6,17 @@ import type { Page } from "@playwright/test";
 // haría la planta: pedido → ruta → «Mi ruta» del chofer → liquidación →
 // reportes. Datos en demo; un chofer propio de esta corrida porque cada chofer
 // tiene una sola ruta por día.
+//
+// Ítem 3 de docs/plan-piloto.md le suma el conteo de envases de un cliente que
+// entra sin ninguno —como los 604 del padrón—: desde «Envases en poder de
+// clientes», con la ubicación en 0, lo contado entra como ajuste.
 
 const CUSTOMER = /Bodega Los Jazmines \(Demo\) · piloto/;
 const REFILL = "Recarga 20L con caño";
 // Por patrón: la «Ñ» del catálogo real puede venir en otra forma Unicode.
 const TYPE = /BIDON 20L CA/;
 const unique = Date.now().toString(36);
+const newCustomer = `Cliente Conteo ${unique}`;
 const driver = {
   name: `Chofer Revisión ${unique}`,
   username: `chofer.revision.${unique}`,
@@ -115,6 +120,33 @@ test("pedido → ruta → Mi ruta → liquidación → reportes, en el preview",
   ).toBeVisible();
   await phone.getByRole("button", { name: "Terminar ruta" }).click();
   await expect(phone.getByText("Terminada")).toBeVisible();
+
+  // Un cliente nuevo, sin envases en el sistema, como uno del padrón: la
+  // oficina cuenta lo que tiene en la mano desde «Envases en poder de clientes».
+  await office.goto("/customers/new");
+  await office.getByLabel("Nombre").fill(newCustomer);
+  await office.getByLabel("Teléfono").fill("999000111");
+  await office.getByLabel("Dirección").fill("Av. Revisión 1");
+  await office.getByLabel("Referencia").fill("Portón verde");
+  await office.getByRole("button", { name: "Registrar cliente" }).click();
+  await expect(office).toHaveURL(/\/customers$/);
+  await office.goto("/container-counts");
+  await office.getByLabel("Buscar").fill(newCustomer);
+  const countRow = office.getByRole("row", { name: new RegExp(newCustomer) });
+  await expect(countRow.getByText("Sin contar")).toBeVisible();
+  await countRow.getByRole("button", { name: "Contar" }).click();
+  const countForm = office.getByRole("form", { name: "Contar envases de Principal" });
+  await countForm.getByRole("combobox").click();
+  await office.getByRole("option", { name: TYPE }).first().click();
+  await countForm.getByRole("button", { name: "Agregar tipo" }).click();
+  await countForm.getByLabel(/Contado de BIDON 20L CA/).fill("3");
+  await countForm.getByRole("button", { name: "Registrar conteo" }).click();
+  const review = office.getByRole("group", { name: "Revisar conteo de Principal" });
+  await expect(review).toContainText(/según el sistema 0, contado 3 \(diferencia \+3\)/);
+  await review.getByRole("button", { name: "Confirmar conteo" }).click();
+  await expect(office.getByText(`Conteo registrado: ${newCustomer} — Principal.`)).toBeVisible();
+  await expect(countRow.getByText("Sin contar")).toHaveCount(0);
+  await expect(countRow).toContainText("3");
 
   // La oficina liquida: los 2 llenos se entregaron, no vuelve ninguno.
   await office.goto(`${routeUrl}/settlement`);
