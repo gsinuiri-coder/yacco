@@ -1167,7 +1167,7 @@ producción incluido) antes del siguiente merge.
 | 4a · Precios de lista                            | ✅ `PATCH /products/:id` y «Productos»; supuesto 17                                 | #230 |
 | 4b · Catálogos contra el seed                    | ✅ el smoke de producción los compara; primer deploy: «Smoke OK»                    | #231 |
 | 4c · Liquidación desactualizada                  | ✅ cobro rechazado después de liquidar: prueba de punta a punta; supuesto 18        | #232 |
-| 4e · Un merge de documentación no redespliega    | ✅ filtro en el gate contra lo que sirve producción                                 | #233 |
+| 4e · Un merge de documentación no redespliega    | ✅ probado con #235: su deploy terminó en el gate («docs-only»)                     | #233 |
 | 4d · Producción atrás de `main` sin error        | ✅ `drift.yml` cada hora                                                            | #234 |
 | 4f · Índice `sales (location_id, sold_at)`       | ⏳ listo; se mergea **después de las 20:00 de Lima y con `[OK]`** (lleva migración) | —    |
 | 5 · Guion de la reunión                          | ✅ `docs/guion-piloto.md`                                                           | #235 |
