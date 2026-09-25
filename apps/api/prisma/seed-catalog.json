@@ -1,0 +1,36 @@
+{
+  "$comment": "Catálogo que siembra prisma/seed.ts y que el smoke de producción (scripts/smoke.mjs, checkCatalogs) compara contra main. Los nombres son textos de la interfaz (es-PE). Los precios de lista son provisionales: el dueño los cambia en «Productos», y el smoke no los compara. Los tipos de envase tampoco: la planta los renombra.",
+  "containerTypes": ["Con caño", "Sin caño"],
+  "products": [
+    {
+      "name": "Recarga 20L con caño",
+      "type": "REFILL",
+      "containerTypeName": "Con caño",
+      "listPrice": "8.00"
+    },
+    {
+      "name": "Recarga 20L sin caño",
+      "type": "REFILL",
+      "containerTypeName": "Sin caño",
+      "listPrice": "8.00"
+    },
+    {
+      "name": "Bidón 20L con caño",
+      "type": "CONTAINER_SALE",
+      "containerTypeName": "Con caño",
+      "listPrice": "30.00"
+    },
+    {
+      "name": "Bidón 20L sin caño",
+      "type": "CONTAINER_SALE",
+      "containerTypeName": "Sin caño",
+      "listPrice": "28.00"
+    }
+  ],
+  "paymentMethods": [
+    { "name": "Efectivo", "requiresConfirmation": false },
+    { "name": "Transferencia", "requiresConfirmation": true },
+    { "name": "Yape", "requiresConfirmation": true },
+    { "name": "Plin", "requiresConfirmation": true }
+  ]
+}

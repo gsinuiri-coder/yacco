@@ -1148,3 +1148,98 @@ D-016, como corresponde.
 - **`gcloud ... --format=value(...)` con campos anidados cuenta 0** aunque
   haya hallazgos: contar con `--format=json` y comparar contra un caso
   conocido.
+
+## Piloto — 2026-09-25
+
+La cola de `docs/plan-piloto.md`, con delegación plena de Giancarlo para las
+decisiones de producto (registradas como supuestos 16, 17 y 18) y todas las
+restricciones en pie. Un PR por ítem, los cinco checks en verde, squash sin
+`--admin`, rama borrada, la salida en rojo en el cuerpo, el subagente
+`reviewer` antes de cada PR y el deploy en verde (seis jobs, smoke de
+producción incluido) antes del siguiente merge.
+
+| Ítem                                             | Estado                                                                              | PRs  |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------- | ---- |
+| 1 · Documentación que hoy miente                 | ✅ Render: lo hizo Claude Code con `[OK]`; el 13 en Pendientes; backlog al día      | #226 |
+| 2 · Zonas del padrón                             | 🟨 herramienta lista; **corrida bloqueada**: las etiquetas no están en `main`       | #227 |
+| 3a · Encontrar a un cliente en el conteo (nuevo) | ✅ búsqueda por nombre o teléfono y filtro de zona                                  | #228 |
+| 3 · Envases y choferes: el camino                | ✅ ciclo e2e en el preview con conteo desde 0: **1 passed**; `DEPLOY.md`            | #229 |
+| 4a · Precios de lista                            | ✅ `PATCH /products/:id` y «Productos»; supuesto 17                                 | #230 |
+| 4b · Catálogos contra el seed                    | ✅ el smoke de producción los compara; primer deploy: «Smoke OK»                    | #231 |
+| 4c · Liquidación desactualizada                  | ✅ cobro rechazado después de liquidar: prueba de punta a punta; supuesto 18        | #232 |
+| 4e · Un merge de documentación no redespliega    | ✅ probado con #235: su deploy terminó en el gate («docs-only»)                     | #233 |
+| 4d · Producción atrás de `main` sin error        | ✅ `drift.yml` cada hora                                                            | #234 |
+| 4f · Índice `sales (location_id, sold_at)`       | ⏳ listo; se mergea **después de las 20:00 de Lima y con `[OK]`** (lleva migración) | —    |
+| 5 · Guion de la reunión                          | ✅ `docs/guion-piloto.md`                                                           | #235 |
+| 6 · Cierre                                       | ✅ este documento                                                                   | este |
+
+**2 · Por qué quedó bloqueado.** El goal suponía las etiquetas del sistema
+viejo en `customers.notes`. Esa columna no existe: `load:roster` exige la
+columna `notes` del CSV y nunca lee su valor (backlog nuevo, «El cargador del
+padrón descarta las notas del cliente»). Verificado en `main` por SQL de solo
+lectura: 605 clientes, 0 con zona, 0 zonas, el prefijo en ninguna columna. El
+export y los CSV del 24 se habían borrado, y el export de Firestore desde la
+sesión del agente lo negó el control de permisos (datos personales). Lo que
+sí quedó: `pnpm roster:zones` (dry-run por defecto, `--commit` solo a quien
+no tiene zona, frena ante etiquetas sin clasificar o zonas retiradas,
+verificación por huella de cada cliente) y `export:tags` (solo id y
+etiquetas). Procedimiento en `docs/DEPLOY.md`, «Zonas del padrón».
+
+**Lo que cambió en producción fuera de los PRs:** nada. Ninguna zona creada,
+ningún cliente asignado (el ítem 2 no corrió), ningún saldo ni usuario real.
+Las lecturas de `main` fueron todas de solo lectura (conteos, catálogos,
+`EXPLAIN`). En **demo**, las corridas del ciclo e2e dejaron dos choferes, dos
+clientes, dos pedidos y dos rutas de revisión (datos inventados, como en #223).
+La lectura de `yacco-demo-admin-password` para el e2e disparó el email de
+auditoría de D-016.
+
+**Lo que encontró el loop y no estaba en el goal:**
+
+- El supuesto 14 decía que las etiquetas quedaban en las notas del cliente: no.
+- «Envases en poder de clientes» no dejaba encontrar a un cliente entre ~600
+  ubicaciones (3a).
+- Un pedido tomado y todavía sin entregar se cobra al precio del día de la
+  entrega (supuesto 17): el primer texto de «Productos» decía lo contrario.
+- Recargar el padrón con `load:roster` no solo pisa nombre y teléfono: también
+  deja **sin zona** a todo cliente cuyo CSV no la traiga, y reescribe
+  dirección y referencia de cada ubicación (`DEPLOY.md`, «Saldos de envases»).
+- En `main` la planta renombró los tipos de envase («BIDON 20L CAÑO»,
+  «BIDON 20L NORMAL»): el chequeo de catálogos no los compara por nombre.
+- Backlog nuevo: «Cambiar un precio de lista no deja rastro».
+
+**Pendientes de Giancarlo:**
+
+- **Ítem 2:** correr `pnpm --filter @yacco/firestore-export export:tags -- --out <carpeta fuera del repo>`.
+  Con eso: dry-run → informe → `[OK]` → `--commit` → verificación, y se llena la
+  tabla de etiquetas del guion.
+- **4f:** `[OK]` para mergear la migración del índice después de las 20:00 de Lima.
+- **F:** rotar la contraseña del admin de producción (desde la app) y destruir
+  la versión de `yacco-admin-initial-password`; y el token de Vercel de CI por
+  uno con vencimiento, **antes del 2026-10-16**.
+- **A1:** decidir un team propio de Vercel para Yacco.
+- Confirmar en GitHub que la app de Render quedó desinstalada.
+- **La reunión con el dueño**, con `docs/guion-piloto.md`, y después bajar a
+  Validados (o al backlog) lo que conteste, con la hoja de cierre.
+
+### Lecciones
+
+- **Leer el esquema antes de creer una premisa.** El plan asumía un dato que
+  nunca se guardó; lo mostró un `grep` de `notes` en el cargador y un SQL de
+  solo lectura, antes de escribir la herramienta contra una columna que no
+  existe.
+- **Un atajo de «ya está desplegado» esconde un deploy roto.** Relanzar la
+  corrida de un deploy que falló en el web o el smoke tiene que volver a
+  hacerlos: el filtro de documentación no puede cortar ahí.
+- **Prettier renumera una lista con «3a»**: el plan pasó a viñetas.
+- **En Windows, `gcloud` de Git Bash busca Python**: `gcloud.cmd`.
+
+### Qué probar como producto final, y por dónde empezar
+
+Entrar a `yacco-web.vercel.app` como administrador y recorrer lo que va a usar
+la planta el primer día: **Productos** (poner los precios reales), **Usuarios**
+(crear un chofer), **Rutas** (planificar una para hoy y cargar el camión),
+**Mi ruta** desde un celular con ese chofer (registrar una entrega), **Envases
+en poder de clientes** (buscar a un cliente y contarlo desde 0) y la
+**liquidación** de esa ruta. Para no tocar datos reales, el mismo recorrido
+entero corre en un preview contra demo (`docs/DEPLOY.md`, «El ciclo entero
+contra un preview»). Después, sentarse con el dueño y `docs/guion-piloto.md`.

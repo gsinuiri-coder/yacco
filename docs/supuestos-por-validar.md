@@ -450,12 +450,14 @@ línea de delegación con la fecha, más las cuatro de siempre.
   zona. Las zonas nacen **sin días de reparto**: los pone el dueño. La regla
   es de Giancarlo hablando como cliente; el mapeo concreto lo decide el
   agente con ella.
-- **Mapeo resultante:** `scripts/roster-zones-labels.json`. Hoy lleva solo las
-  cuatro etiquetas que ya se conocían (PARQUE y SURCO → zona; EMPRESAS y
-  DISTRIBUIDOR → no). La lista completa, con cuántos clientes tiene cada una,
-  sale del dry-run de `pnpm roster:zones` cuando Giancarlo corra el export de
-  etiquetas (ítem 2 de `plan-piloto.md`); ahí se completa el mapeo y se
-  actualiza esta línea.
+- **Mapeo resultante (dry-run del 2026-09-25 contra `main`):** en
+  `scripts/roster-zones-labels.json`. Zona: PARQUE (476 clientes), SURCO (58)
+  y CASAS PARQUE (3, zona propia: no la juntamos con Parque sin que el dueño
+  lo diga). No zona: EMPRESAS (59) y DISTRIBUIDOR (4), tipos de cliente;
+  HERMES (3) y BIOZON (1), nombres de negocio, no lugares. Ningún cliente tiene
+  más de una etiqueta. Las etiquetas suman los 604 del padrón: quedan con zona 537 y sin zona 67,
+  todos con una etiqueta que no es lugar. El cliente de prueba creado desde la app no está en
+  el export.
 - **Asumimos:** que el dueño organiza el reparto por lugar y que las
   etiquetas de lugar del sistema viejo son las mismas zonas con las que
   piensa sus recorridos; y que un cliente con dos lugares está en el primero.
@@ -468,6 +470,53 @@ línea de delegación con la fecha, más las cuatro de siempre.
 - **Si dice que no:** barato. Una zona se renombra o se retira en «Zonas», y
   un cliente se cambia de zona desde su ficha; nada de eso toca deudas ni
   envases.
+
+### 17. Un pedido se cobra al precio del día en que se entrega
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** cuando
+  cambia un precio de lista (o un precio pactado), un pedido ya tomado que
+  todavía no se entregó se cobra al precio vigente el día de la entrega, no al
+  del día en que se tomó. Las ventas ya registradas no cambian. Es lo que el
+  sistema ya hacía con los precios pactados; la pantalla «Productos» lo hace
+  cotidiano y ahora lo dice.
+- **Asumimos:** que un cambio de precio en la planta vale desde que se anuncia
+  para todo lo que sale en el camión, y que el cliente no espera que le
+  respeten el precio viejo por haber pedido antes.
+- **Construido encima:** `SalesService.registerStopDeliveryWithinTransaction`
+  resuelve el precio al registrar la entrega (precio de la ubicación, del
+  cliente, y si no hay, el de lista de ese momento); el formulario de parada
+  no lleva el precio del pedido. El texto de ayuda de
+  `apps/web-nuxt/app/pages/products.vue`.
+- **Preguntar:** si un cliente hizo un pedido el lunes y el martes usted sube
+  el precio de la recarga, cuando el chofer se lo entrega el miércoles, ¿le
+  cobra el precio del lunes o el nuevo?
+- **Si dice que no:** medio. El formulario de parada tendría que traer el
+  `unitPrice` de la línea del pedido en vez de dejarlo en blanco, y decidir
+  qué pasa con un pedido que lleva un producto sin precio en su línea. No
+  toca esquema: el precio ya está guardado en `order_items`.
+
+### 18. Un cobro rechazado después de liquidar no reabre la liquidación
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** la
+  liquidación de una ruta guarda lo que se sabía al cerrarla y no se reabre ni
+  se reescribe cuando la oficina rechaza después un cobro que estaba por
+  confirmar. La pantalla de la liquidación pone al lado lo que dice el libro
+  hoy (sin el cobro rechazado) y avisa que no coinciden. Es la misma regla que
+  ya rige para corregir una parada de una ruta liquidada.
+- **Asumimos:** que al dueño le sirve saber qué se sabía al cerrar la ruta y
+  qué se sabe hoy, y que un Yape que no llegó se persigue como deuda del
+  cliente —que es donde queda: el cobro rechazado nunca bajó su deuda— y no
+  reabriendo la ruta del chofer.
+- **Construido encima:** `RouteSettlementService.getSettlementView` (el
+  `expected` en vivo), `moneyDrifted` y el aviso de
+  `apps/web-nuxt/app/pages/routes/[id]/settlement.vue`; el test «un cobro
+  rechazado después de liquidar» de `route-settlement.int.test.ts`.
+- **Preguntar:** si un cliente le pagó por Yape al chofer, usted ya cerró la
+  ruta, y después ve que ese Yape nunca llegó, ¿quiere que la liquidación de
+  ese día cambie, o le basta con verlo marcado y cobrárselo al cliente?
+- **Si dice que no:** medio. Reabrir una liquidación pide una operación nueva
+  (con quién, cuándo y por qué, como la corrección de una parada) y decidir
+  qué pasa con lo que el chofer ya entregó en mano; no es un botón.
 
 ## Validados
 

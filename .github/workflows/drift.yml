@@ -1,0 +1,33 @@
+# ¿Producción corre lo que dice main? Cada hora, solo lectura.
+#
+# Un merge puede quedar sin desplegar sin que nada se ponga rojo: si GitHub no
+# dispara el CI de push (le pasó a #202), no hay deploy, y producción sigue
+# con el código anterior con todos los checks en verde. Este chequeo lo
+# convierte en una corrida fallida, y GitHub avisa por email. Detalle en
+# scripts/production-drift.mjs y en el backlog, «El auto-deploy de yacco-api
+# puede no dispararse sin error visible».
+#
+# No toca ninguna nube: lee /health de producción y la API de GitHub.
+
+name: Producción al día
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Producción corre la punta de main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - run: node scripts/production-drift.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
