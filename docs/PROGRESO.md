@@ -1279,7 +1279,7 @@ reglas en pie. Un PR por ítem, los cinco checks en verde, squash sin
 PR, la salida en rojo en cada cuerpo y el deploy en verde (seis jobs, smoke de
 producción incluido) antes del siguiente merge.
 
-| Ítem                                      | Estado                                                                                  | PR   |
+| Ítem                                      | Estado                                                                                  | PRs  |
 | ----------------------------------------- | --------------------------------------------------------------------------------------- | ---- |
 | D · Docs (D1–D6)                          | ✅ zonas hechas, supuesto 4 al día, cuatro productos, Parque y la deuda, stock, sup. 19 | #240 |
 | L4 · «Debe desde» con saldo inicial       | ✅ «Saldo inicial» y debajo «al <fecha>» (HU-19 E1 pide la fecha)                       | #241 |
@@ -1289,7 +1289,7 @@ producción incluido) antes del siguiente merge.
 | L3 · Envases en la ficha                  | ✅ sección «Envases» (ADMIN) y enlace al conteo filtrado (`customerId`)                 | #245 |
 | L6 · Enlaces en direcciones y referencias | ✅ `LinkedText` sin `v-html`, en la ficha y en «Mi ruta»                                | #246 |
 | L7 · Paradas en lote                      | ✅ `POST /routes/:id/stops/batch`, todo o nada, y «Agregar pedidos pendientes»          | #247 |
-| X · Datos de prueba en producción         | ⏸ propuesto, **espera `[OK]`** (ver abajo)                                              | —    |
+| X · Datos de prueba en producción         | ⏳ propuesto, **espera `[OK]`** (ver abajo)                                             | —    |
 | Cierre                                    | ✅ este documento                                                                       | este |
 
 **X · La propuesta, sin ejecutar.** El cliente de prueba (creado desde la app,
@@ -1335,7 +1335,7 @@ ni monto, el catálogo de productos, el inventario, el cliente de prueba).
 **Pendientes de Giancarlo:**
 
 - **X:** `[OK]` para contar en 0 y desactivar al cliente de prueba.
-- **4f (#238):** mergear la migración del índice después de las 20:00 de Lima.
+- **4f (#238):** `[OK]` para mergear la migración del índice, después de las 20:00 de Lima.
 - **Supuesto 19:** la diferencia con HU-01 E2 (¿se corrige la spec, o se agrega
   el paso de confirmación?), a decidir con el dueño.
 - **F:** rotar la contraseña del admin de producción y destruir la versión de
