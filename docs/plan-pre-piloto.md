@@ -27,7 +27,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
 
 ## Cola (en este orden)
 
-1. [ ] **gcloud fijado a Yacco:** ningún comando de Yacco depende del proyecto
+1. [x] (#220) **gcloud fijado a Yacco:** ningún comando de Yacco depende del proyecto
        por defecto de la máquina (hoy es `ayr-steel-erp`, de otro cliente).
        Configuración de gcloud con nombre para Yacco (proyecto y billing
        `yacco-v2-prod`), los scripts de `scripts/` pasan `--project`
