@@ -117,8 +117,14 @@ la pantalla.
 
 ## No se puede asignar zona a un cliente desde la UI
 
-**Estado:** abierto. **Disparador:** cuando exista un módulo Zones (listado y
-seed) para elegir de ahí.
+**Estado:** RESUELTA el 2026-09-17 (#158, pantallas de clientes de
+`apps/web-nuxt`): `CustomerForm.vue` ofrece «Zona (opcional)» como un
+`<select>` cargado de `GET /zones`; las zonas se crean desde `zones.vue` (#169,
+2026-09-18).
+Lo de abajo describe el `apps/web` de React, ya retirado. Registro original:
+
+**Estado original:** abierto. **Disparador:** cuando exista un módulo Zones
+(listado y seed) para elegir de ahí.
 
 El formulario de crear/editar cliente pedía `zoneId` como texto libre con
 formato UUID v4, pero no existe módulo de Zones: no hay endpoint para
@@ -2001,8 +2007,14 @@ primer paso.
 
 ## Rama de respaldo de `main` antes del primer dato real del piloto
 
-**Estado:** abierto. **Disparador:** antes de cargar el primer dato real del
-piloto de campo (el padrón de clientes, #59, u otra carga).
+**Estado:** CERRADA el 2026-09-24: antes de cargar el padrón real se creó
+`backup-pre-roster-20260924` (`br-square-rice-au1lk6lw`, hija de `main` al
+2026-09-24 16:13:02 UTC) con el procedimiento de D-006 (PROGRESO.md, «Cierre
+para el piloto»). Sigue en pie: las ramas de Neon no se borran. Registro
+original:
+
+**Estado original:** abierto. **Disparador:** antes de cargar el primer dato
+real del piloto de campo (el padrón de clientes, #59, u otra carga).
 
 Desde el 2026-09-24 **no hay ninguna rama de respaldo de `main`**: las dos de
 la fase 7 se borraron al cerrarla (PROGRESO.md, «Punto de retorno»). El único
@@ -2113,3 +2125,26 @@ a `npm` en runtime: es superficie sin uso.
 `corepack` (`/usr/local/lib/node_modules/{npm,corepack}` y sus binarios en
 `/usr/local/bin`). La etapa `base` los sigue necesitando para `pnpm`. Probarlo
 con el paso «API image» de CI y comparar el escaneo antes y después.
+
+## El cargador del padrón descarta las notas del cliente
+
+**Estado:** abierto. **Registrado:** 2026-09-25, al preparar las zonas del
+padrón (ítem 2 de `plan-piloto.md`). **Disparador:** la próxima carga de un
+padrón que traiga notas.
+
+`customers.csv` tiene una columna `notes` (`parse-and-validate-roster.ts` la
+exige en el encabezado pero nunca lee su valor); `customers` no tiene dónde guardarla y
+`RosterLoaderService` no la escribe en ningún lado. En la carga real del
+2026-09-24 esa columna llevaba las etiquetas del sistema viejo («Etiquetas del
+sistema anterior: …»), y el supuesto 14 decía que quedaban en las notas del
+cliente: no quedó ninguna. En `main` no hay rastro de ellas; la única fuente
+es el Firestore del Yacco viejo, de solo lectura.
+
+Nadie se enteró porque el cargador no avisa: exige la columna y tira su
+contenido sin decirlo.
+
+**Para cerrarla:** una de dos, y la primera toca esquema (pregunta al dueño y
+migración expand): una columna de notas en `customers` que el cargador llene,
+o que el cargador rechace (o al menos avise en el resumen) una columna `notes`
+no vacía que no va a guardar. Mientras tanto, las zonas del padrón salen de
+`pnpm roster:zones`, que lee las etiquetas de un export aparte.

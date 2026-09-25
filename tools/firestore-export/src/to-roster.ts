@@ -11,7 +11,9 @@
  *   locación. Todo lo demás entra, y lo raro se AVISA: descartar por teléfono
  *   compartido dejaría afuera a clientes reales con deuda.
  * - Zona vacía: las etiquetas del sistema viejo mezclan zonas (PARQUE, SURCO)
- *   con categorías (EMPRESAS, DISTRIBUIDOR). Quedan en las notas.
+ *   con categorías (EMPRESAS, DISTRIBUIDOR). Van a la columna `notes`, que
+ *   el cargador exige pero NO lee ni guarda (backlog: «El cargador del padrón
+ *   descarta las notas del cliente»).
  * - Envases: el sistema viejo no tiene saldos cargados (`containerBalances`
  *   vacío en todos), así que `opening_containers.csv` va vacío y los envases
  *   salen del conteo físico, no de un número inventado.
