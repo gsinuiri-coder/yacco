@@ -12,12 +12,15 @@ import { REPO_ROOT } from "./lib.mjs";
 const DOCKERFILE = readFileSync(join(REPO_ROOT, "apps", "api", "Dockerfile"), "utf8");
 const LOCKFILE = readFileSync(join(REPO_ROOT, "pnpm-lock.yaml"), "utf8");
 
-/** Las imágenes externas de los FROM (no las etapas propias como `base`). */
+/**
+ * Las imágenes externas de los FROM (no las etapas propias como `base`, ni
+ * `scratch`, que es la imagen vacía: no se descarga de ningún lado).
+ */
 function externalImages(dockerfile) {
   const stages = new Set();
   const images = [];
   for (const match of dockerfile.matchAll(/^FROM\s+(\S+)(?:\s+AS\s+(\S+))?/gim)) {
-    if (!stages.has(match[1])) images.push(match[1]);
+    if (!stages.has(match[1]) && match[1] !== "scratch") images.push(match[1]);
     if (match[2] !== undefined) stages.add(match[2]);
   }
   return images;
