@@ -15,17 +15,21 @@ import { PaginatedContainerBalancesDto } from "./dto/container-balance-response.
 import { ListContainerBalancesQueryDto } from "./dto/list-container-balances-query.dto.js";
 
 /**
- * ADMIN-only. This is the WORK LIST the owner audits the ~750 containers on
- * the street with, customer by customer — office work. What a driver needs
- * to see on the route (this stop's balance, right now) is a different
- * screen and a different query, and it does not exist yet; when it does it
- * gets its own route with its own role, rather than widening this one.
+ * ADMIN and SELLER. This is the WORK LIST the office audits the ~750
+ * containers on the street with, customer by customer: the owner, and the
+ * office clerk (SELLER) who records the counts and needs to see whom to count
+ * — the same two roles that can write a count (`container-counts`). Decided by
+ * Giancarlo with Claude's recommendation, supuesto 20 of
+ * docs/supuestos-por-validar.md. DRIVER and VIEWER stay out: what a driver
+ * needs on the route (this stop's balance, right now) is a different screen
+ * and a different query, and it does not exist yet; when it does it gets its
+ * own route with its own role, rather than widening this one.
  */
 @ApiTags("container-balances")
 @ApiBearerAuth()
-@ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
+@ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
 @UseGuards(JwtAccessGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.ADMIN, UserRole.SELLER)
 @Controller("container-balances")
 export class ContainerBalancesController {
   constructor(private readonly containerBalancesService: ContainerBalancesService) {}

@@ -386,10 +386,24 @@ describe("GET /api/v1/container-balances", () => {
 });
 
 describe("role guard", () => {
-  test("SELLER is refused — the audit is office work", async () => {
+  // Supuesto 20: quien anota los conteos en la oficina (Vendedor) tiene que ver
+  // a quién contar. El chofer y la cuenta técnica del smoke, no.
+  test("SELLER reads it: the office clerk who records the counts sees whom to count", async () => {
+    const response = await request(server())
+      .get("/api/v1/container-balances?limit=1")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .expect(200);
+    expect(response.body.total).toBeGreaterThan(0);
+  });
+
+  test.each([
+    ["DRIVER", "repartidor-auditoria"],
+    ["VIEWER", "visor-auditoria"],
+  ])("%s is refused with 403", async (role, username) => {
+    const token = await createUserAndLogin(username, role);
     await request(server())
       .get("/api/v1/container-balances")
-      .set("Authorization", `Bearer ${sellerToken}`)
+      .set("Authorization", `Bearer ${token}`)
       .expect(403);
   });
 

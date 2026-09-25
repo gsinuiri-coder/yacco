@@ -607,12 +607,25 @@ describe("Ficha del cliente", () => {
       expect(within(closed).getByText("3 Con caño")).toBeTruthy();
     });
 
-    it("un vendedor no la ve, y la ficha no la pide: el conteo es trabajo del administrador", async () => {
-      stubCustomerPage({ roles: ["SELLER"] });
+    it("el vendedor también la ve: es quien anota los conteos en la oficina (supuesto 20)", async () => {
+      stubCustomerPage({
+        roles: ["SELLER"],
+        balances: [
+          locationRow({
+            totalQuantity: 4,
+            containers: [{ containerType: WITH_SPOUT, quantity: 4, lastCountedAt: null }],
+          }),
+        ],
+      });
       await renderCustomerPage();
 
-      expect(screen.queryByRole("region", { name: "Envases" })).toBeNull();
-      expect(balanceQueries).toHaveLength(0);
+      const section = await screen.findByRole("region", { name: "Envases" });
+      expect(await within(section).findByText("4 Con caño")).toBeTruthy();
+      expect(within(section).getByText("Sin contar")).toBeTruthy();
+      expect(
+        within(section).getByRole("link", { name: "Contarlo en Envases en poder de clientes" }),
+      ).toBeTruthy();
+      expect(balanceQueries[0]).toMatchObject({ customerId: ID });
     });
   });
 
