@@ -100,6 +100,13 @@ jobs:
         # desplegar, migrando las bases en cada intento antes de fallar.
         run: docker build -f apps/api/Dockerfile -t yacco-api:ci .
 
+      - name: API image carries node and the runtime only
+        # Mira dentro de la imagen recién construida: ni npm/npx/corepack/yarn/
+        # pnpm, ni el CLI de Prisma ni TypeScript (la poda de
+        # prune-runtime-deps.mjs), y el cliente de Prisma presente. Es lo que
+        # el escaneo de Artifact Registry marcaba HIGH, visto antes del merge.
+        run: node scripts/check-api-image.mjs yacco-api:ci
+
       - name: Web build output for Vercel (D-023)
         # Runs apps/web-nuxt/vercel.json's buildCommand the way `vercel build`
         # does in deploy «5 · Web a Vercel», then the same Build Output guard

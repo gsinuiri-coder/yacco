@@ -1599,6 +1599,36 @@ cuatro de cada entorno y no el proyecto entero: `yacco-admin-initial-password`,
 el token de Vercel y cualquier secreto futuro quedan fuera de su alcance salvo
 concesión explícita.
 
+### D-026 — La imagen de la API lleva node y las dependencias de runtime, nada más
+
+**Contexto.** El escaneo de Artifact Registry de `api:d7c3aa8ed6e5` daba 14
+hallazgos, 9 HIGH. Trece venían de `/usr/local/lib/node_modules/npm`, que
+trae la imagen `node:22-alpine` y la API nunca llama. El otro,
+`deepmerge-ts` 7.1.5, de `/app`: `pnpm deploy --prod` instala los peers
+OPCIONALES que resolvió el lockfile, y `@prisma/client` declara así el CLI
+`prisma` (con `@prisma/config` → `deepmerge-ts`) y `typescript`.
+
+**Decisión.**
+
+- La etapa `runtime` sale de `scratch` y copia el sistema de archivos de
+  una etapa `node-only` que ya borró npm, npx, corepack, yarn y los shims de
+  pnpm. Un `rm` en la etapa final no alcanza: el archivo queda en la capa
+  de abajo, que se descarga y se escanea igual. Se fija `PATH`, la única ENV
+  de la base que el runtime usa.
+- `scripts/prune-runtime-deps.mjs` borra de `/app/node_modules/.pnpm` todo lo
+  que ninguna dependencia de runtime alcanza (dependencias, opcionales y
+  peers obligatorios; no los peers opcionales). Reemplaza al `rm` de
+  TypeScript, y se lleva 39 paquetes: el CLI de Prisma, su árbol y
+  TypeScript. `@prisma/client` no los usa: el motor de consultas viaja en el
+  cliente generado (`.prisma/client`), y las migraciones corren en su paso
+  de CI con las devDependencies.
+- CI (`check-api-image.mjs`) mira DENTRO de la imagen construida en cada PR.
+
+**Consecuencia.** La imagen baja de 548 a 405 MB. Actualizar Prisma o sumar
+una dependencia con peers opcionales se verifica en el PR: el log del build
+lista lo podado, y `check-api-image.mjs` falla si la poda se llevó el
+cliente de Prisma.
+
 ---
 
 ## Preguntas abiertas de infraestructura

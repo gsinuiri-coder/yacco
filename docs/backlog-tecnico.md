@@ -2089,9 +2089,14 @@ estaba en la misma entrada, ya está (hoy `^10.11.0`).
 
 ## La imagen de la API trae `npm` con dependencias vulnerables que el runtime no usa
 
-**Estado:** abierto. **Registrado:** 2026-09-24, con el primer escaneo de
-Artifact Registry (ítem 6 de `plan-endurecimiento.md`). **Disparador:** el
-próximo cambio al Dockerfile, o un hallazgo CRITICAL.
+**Estado:** resuelto 2026-09-25 (ítem 3 de `plan-pre-piloto.md`, D-026). La
+etapa final sale de `scratch` con un node sin npm, npx, corepack, yarn ni
+pnpm, y `scripts/prune-runtime-deps.mjs` saca de `/app` el CLI de Prisma
+(con `deepmerge-ts`) y TypeScript. CI lo verifica dentro de la imagen
+(`check-api-image.mjs`). Lo que sigue es el registro original.
+
+**Registrado:** 2026-09-24, con el primer escaneo de Artifact Registry (ítem 6
+de `plan-endurecimiento.md`).
 
 El escaneo de `api:fd0bd204bd39` dio 15 hallazgos (8 HIGH, 6 MEDIUM, 1 LOW).
 Salvo `qs` (A7, ya corregido) y `deepmerge-ts` (de Prisma, ver «Migración a
