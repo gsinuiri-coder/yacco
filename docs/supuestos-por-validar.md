@@ -450,12 +450,14 @@ línea de delegación con la fecha, más las cuatro de siempre.
   zona. Las zonas nacen **sin días de reparto**: los pone el dueño. La regla
   es de Giancarlo hablando como cliente; el mapeo concreto lo decide el
   agente con ella.
-- **Mapeo resultante:** `scripts/roster-zones-labels.json`. Hoy lleva solo las
-  cuatro etiquetas que ya se conocían (PARQUE y SURCO → zona; EMPRESAS y
-  DISTRIBUIDOR → no). La lista completa, con cuántos clientes tiene cada una,
-  sale del dry-run de `pnpm roster:zones` cuando Giancarlo corra el export de
-  etiquetas (ítem 2 de `plan-piloto.md`); ahí se completa el mapeo y se
-  actualiza esta línea.
+- **Mapeo resultante (dry-run del 2026-09-25 contra `main`):** en
+  `scripts/roster-zones-labels.json`. Zona: PARQUE (476 clientes), SURCO (58)
+  y CASAS PARQUE (3, zona propia: no la juntamos con Parque sin que el dueño
+  lo diga). No zona: EMPRESAS (59) y DISTRIBUIDOR (4), tipos de cliente;
+  HERMES (3) y BIOZON (1), nombres de negocio, no lugares. Ningún cliente tiene
+  más de una etiqueta. Las etiquetas suman los 604 del padrón: quedan con zona 537 y sin zona 67,
+  todos con una etiqueta que no es lugar. El cliente de prueba creado desde la app no está en
+  el export.
 - **Asumimos:** que el dueño organiza el reparto por lugar y que las
   etiquetas de lugar del sistema viejo son las mismas zonas con las que
   piensa sus recorridos; y que un cliente con dos lugares está en el primero.

@@ -1,8 +1,9 @@
 {
-  "$comment": "Mapeo etiqueta del sistema viejo -> zona, para pnpm roster:zones. Regla (Giancarlo como cliente, supuesto 16): una etiqueta es zona si nombra un lugar (distrito, urbanización, avenida, parque); no lo es si nombra un tipo de cliente. Una etiqueta que no esté en ninguna de las dos listas frena el --commit. Las claves se comparan sin tildes, sin mayúsculas y sin espacios de más.",
+  "$comment": "Mapeo etiqueta del sistema viejo -> zona, para pnpm roster:zones. Regla (Giancarlo como cliente, supuesto 16): una etiqueta es zona si nombra un lugar (distrito, urbanización, avenida, parque); no lo es si nombra un tipo de cliente o un negocio. Una etiqueta que no esté en ninguna de las dos listas frena el --commit. Las claves se comparan sin tildes, sin mayúsculas y sin espacios de más. CASAS PARQUE es zona propia y no se junta con Parque: si son lo mismo, lo dice el dueño (guion).",
   "zones": {
     "PARQUE": "Parque",
-    "SURCO": "Surco"
+    "SURCO": "Surco",
+    "CASAS PARQUE": "Casas Parque"
   },
-  "notZones": ["EMPRESAS", "DISTRIBUIDOR"]
+  "notZones": ["EMPRESAS", "DISTRIBUIDOR", "HERMES", "BIOZON"]
 }

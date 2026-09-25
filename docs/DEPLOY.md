@@ -366,12 +366,14 @@ tiene zona: una puesta a mano desde la ficha del cliente no se pisa.
    de Giancarlo:
 
    ```bash
-   pnpm --filter @yacco/firestore-export export:tags -- --out <carpeta fuera del repo>
+   pnpm --filter @yacco/firestore-export export:tags --out <carpeta fuera del repo>
    # tags: N clientes, M con etiquetas -> <carpeta>/tags.json
    ```
 
    `tags.json` lleva solo el id de cada cliente y sus etiquetas: ni nombre, ni
-   teléfono, ni deuda.
+   teléfono, ni deuda. Con o sin `--` antes de `--out` da lo mismo: pnpm 9 pasa
+   ese separador literal y el export lo ignora (antes lo rechazaba con
+   «Opción desconocida: "--"»).
 
 2. Dry-run (por defecto): imprime las etiquetas con cuántos clientes tiene
    cada una, las zonas a crear, cuántos clientes van a cada zona, los códigos
@@ -379,8 +381,11 @@ tiene zona: una puesta a mano desde la ficha del cliente no se pisa.
    escribe nada.
 
    ```bash
-   pnpm roster:zones -- --tags <carpeta>/tags.json
+   pnpm roster:zones --tags <carpeta>/tags.json
    ```
+
+   Acá también el `--` es opcional: el script busca `--tags` y `--commit` por
+   nombre.
 
 3. Si hay «etiquetas SIN CLASIFICAR», se agregan a
    `scripts/roster-zones-labels.json` (zona o no-zona, regla del supuesto 16)

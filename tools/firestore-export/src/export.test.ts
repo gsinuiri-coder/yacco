@@ -116,6 +116,15 @@ describe("parseArgs", () => {
     expect(parseArgs(["customers", "--project", "otro"]).projectId).toBe("otro");
   });
 
+  it('ignores a bare "--": pnpm 9 passes it through literally', () => {
+    // `pnpm export:tags -- --out x` llega como ["tags", "--", "--out", "x"].
+    expect(parseArgs(["tags", "--", "--out", "x"])).toEqual({
+      command: "tags",
+      pendingOnly: true,
+      outDir: "x",
+    });
+  });
+
   it("rejects an unknown command, an unknown flag, and --out without a value", () => {
     expect(() => parseArgs([])).toThrow(UsageError);
     expect(() => parseArgs(["orders"])).toThrow(/Comando desconocido/);

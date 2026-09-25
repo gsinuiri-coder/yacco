@@ -165,21 +165,23 @@ secciones 2 y 3._
 
 #### Las etiquetas del sistema viejo y a qué zona van
 
-**Pendiente de completar antes de la reunión.** Las etiquetas no quedaron en
-el sistema nuevo (el cargador del padrón no guardó las notas); salen del
-export de solo lectura del sistema viejo, que tiene que correr Giancarlo
-(`pnpm roster:zones`, dry-run, ítem 2 de `plan-piloto.md`). Esta tabla se
-llena con ese informe: una fila por etiqueta, con cuántos clientes la tienen.
+Del export de solo lectura del sistema viejo (dry-run de `pnpm roster:zones`
+contra el padrón de `main`, 2026-09-25). Ningún cliente tiene más de una
+etiqueta.
 
-| Etiqueta del sistema viejo |      Clientes | La tomamos como zona | Zona   |
-| -------------------------- | ------------: | -------------------- | ------ |
-| PARQUE                     | (del informe) | Sí                   | Parque |
-| SURCO                      | (del informe) | Sí                   | Surco  |
-| EMPRESAS                   | (del informe) | No (tipo de cliente) | —      |
-| DISTRIBUIDOR               | (del informe) | No (tipo de cliente) | —      |
+| Etiqueta del sistema viejo | Clientes | La tomamos como zona   | Zona         |
+| -------------------------- | -------: | ---------------------- | ------------ |
+| PARQUE                     |      476 | Sí                     | Parque       |
+| SURCO                      |       58 | Sí                     | Surco        |
+| CASAS PARQUE               |        3 | Sí (aparte de Parque)  | Casas Parque |
+| EMPRESAS                   |       59 | No (tipo de cliente)   | —            |
+| DISTRIBUIDOR               |        4 | No (tipo de cliente)   | —            |
+| HERMES                     |        3 | No (nombre de negocio) | —            |
+| BIOZON                     |        1 | No (nombre de negocio) | —            |
 
-Clientes con más de una etiqueta: (del informe). Con dos etiquetas de lugar,
-tomamos la primera.
+Quedan con zona 537 clientes y sin zona 67, todos con una etiqueta que no es
+lugar. Para él: ¿Casas Parque es parte de Parque o se reparte
+aparte? ¿Dónde reparte a las empresas y distribuidores?
 
 Esta tabla es la que se le muestra al leer la pregunta del supuesto 16: no hay
 una pregunta aparte.
