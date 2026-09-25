@@ -83,6 +83,12 @@ preguntar por dominio. Se para SOLO por, y espera un `[OK]` literal:
      → informe → `[OK]` → `--commit` → verificación de solo lectura (clientes
      con zona = informe; hash por cliente de nombre/teléfono/dirección igual
      antes y después).
+     3a. [ ] **Defecto del recorrido (nuevo):** «Envases en poder de clientes»
+     no deja encontrar a un cliente entre ~600 ubicaciones sin pasar ~30
+     páginas, y no filtra por zona aunque la API lo admite y `/zones` ya
+     existe (el comentario de la pantalla decía que no había catálogo). Se
+     agrega búsqueda por nombre o teléfono (`search` en
+     `GET /container-balances`, sin esquema) y el filtro de zona.
 3. [ ] **Envases y choferes: el camino, no el dato.** Recorrido en preview
        (chofer nuevo → ruta → «Mi ruta» en celular → conteo desde 0 → liquidar);
        un paso que exija tocar la API a mano es un ítem nuevo. `docs/DEPLOY.md`:
