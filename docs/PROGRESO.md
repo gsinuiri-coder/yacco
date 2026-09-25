@@ -453,14 +453,15 @@ la app `render`; el último, de las 05:48 UTC, en `failure`.
 
 **Camino.** No hay `RENDER_API_KEY`, y el token de `gh` (OAuth, no de GitHub
 App) no puede listar ni editar instalaciones de apps: `GET user/installations`
-→ 403. Así que lo hizo Giancarlo desde los dashboards:
+→ 403. Así que lo hizo Claude Code, con el `[OK]` de Giancarlo para cada
+borrado, desde los dashboards abiertos en el Chrome de Giancarlo:
 
-| Dónde              | Qué                                                                                   |
-| ------------------ | ------------------------------------------------------------------------------------- |
-| Render, Blueprints | Desconectados `blue-yacco-main` y `blue-yacco-prod`                                   |
-| Render, servicios  | Borrados `yacco-web`, `yacco-api`, `yacco` y `Aid-Manager-General-BackEnd`            |
-| Render, proyectos  | Borrados «yacco» y «My project»                                                       |
-| GitHub             | Desinstalación de la app de Render **pedida, pendiente de que Giancarlo la confirme** |
+| Dónde              | Qué                                                                                                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render, Blueprints | Desconectados `blue-yacco-main` y `blue-yacco-prod`                                                                                                              |
+| Render, servicios  | Borrados `yacco-web`, `yacco-api`, `yacco` y `Aid-Manager-General-BackEnd`                                                                                       |
+| Render, proyectos  | Borrados «yacco» y «My project»                                                                                                                                  |
+| GitHub             | Desinstalación de la app de Render **pedida, pendiente de que Giancarlo la confirme** (se lanzó aceptando el `confirm()` del navegador; nadie vio que terminara) |
 
 El web de Render **sí** era un Blueprint sincronizado: corrige la premisa de
 D-019.
