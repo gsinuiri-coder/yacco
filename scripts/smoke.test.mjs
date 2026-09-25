@@ -5,13 +5,15 @@
  * raros — y el que más importa es `environment: null`.
  */
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 
 import { REPO_ROOT } from "./lib.mjs";
 import {
+  SEED_CATALOG_PATH,
   WEB_SCREENS,
+  checkCatalogs,
   checkFrameHeaders,
   checkHealth,
   checkNuxtShell,
@@ -226,5 +228,67 @@ describe("missingViewerProblem", () => {
 
   test("a mano, sin el flag, la falta de contraseña no falla", () => {
     assert.equal(missingViewerProblem([], undefined), null);
+  });
+});
+
+describe("checkCatalogs", () => {
+  const seed = JSON.parse(readFileSync(SEED_CATALOG_PATH, "utf8"));
+  // La forma de main el 2026-09-25: los productos del seed con otros precios y
+  // con tipos de envase renombrados por la planta, y los métodos del seed.
+  const products = seed.products.map((product) => ({
+    name: product.name,
+    type: product.type,
+    containerType: { id: "x", name: "BIDON 20L CAÑO" },
+    listPrice: "9.50",
+    active: true,
+  }));
+  const paymentMethods = seed.paymentMethods.map((method) => ({ ...method, active: true }));
+
+  test("producción como el seed, con precios y tipos de envase propios: sin problemas", () => {
+    const extra = { name: "Tarjeta", requiresConfirmation: true, active: true };
+    assert.deepEqual(
+      checkCatalogs({ products, paymentMethods: [...paymentMethods, extra] }, seed),
+      [],
+    );
+  });
+
+  test("un método de pago que no pide confirmación cuando el seed dice que sí", () => {
+    // Yape a false y Transferencia intacta: solo Yape tiene que aparecer.
+    const drifted = paymentMethods.map((method) =>
+      method.name === "Yape" ? { ...method, requiresConfirmation: false } : method,
+    );
+    assert.deepEqual(checkCatalogs({ products, paymentMethods: drifted }, seed), [
+      "«Yape»: requiresConfirmation es false, el seed dice true",
+    ]);
+  });
+
+  test("un método o un producto del seed que falta en producción", () => {
+    const problems = checkCatalogs(
+      {
+        products: products.filter((product) => product.name !== "Recarga 20L sin caño"),
+        paymentMethods: paymentMethods.filter((method) => method.name !== "Plin"),
+      },
+      seed,
+    );
+    assert.deepEqual(problems, [
+      "falta el método de pago «Plin» del seed (o está retirado)",
+      "falta el producto «Recarga 20L sin caño» del seed (o no está en venta)",
+    ]);
+  });
+
+  test("un producto con el tipo cambiado", () => {
+    const drifted = products.map((product) =>
+      product.name === "Bidón 20L con caño" ? { ...product, type: "REFILL" } : product,
+    );
+    assert.deepEqual(checkCatalogs({ products: drifted, paymentMethods }, seed), [
+      "«Bidón 20L con caño»: es REFILL, el seed dice CONTAINER_SALE",
+    ]);
+  });
+
+  test("una respuesta que no es una lista es un problema, no una excepción", () => {
+    assert.deepEqual(checkCatalogs({ products: null, paymentMethods: { message: "x" } }, seed), [
+      "GET /payment-methods no devolvió una lista",
+      "GET /products no devolvió una lista",
+    ]);
   });
 });
