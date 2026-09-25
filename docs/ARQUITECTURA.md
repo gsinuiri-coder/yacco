@@ -1179,6 +1179,15 @@ antes de que exista ningún aviso.
 
 ### D-019 — El corte es una redirección en el propio web, desde el host de Render
 
+> **Corrección 2026-09-25.** La premisa de abajo era falsa: el web de Render
+> **sí** era un Blueprint sincronizado (en el dashboard había dos,
+> `blue-yacco-main` y `blue-yacco-prod`, desconectados ese día al borrar
+> Render; ver PROGRESO, «Render, borrado»). La primera alternativa
+> descartada, la redirección en `render.yaml`, era viable. El resultado no
+> cambia: la redirección en el bundle ocurrió y se verificó en un navegador
+> real (fase 7, paso 1). Lo que estaba mal era el motivo del descarte, no el
+> corte.
+
 **Contexto.** «Apuntar las URLs públicas a Vercel» supone algo que mover, y no
 hay dominio propio ni DNS: la dirección que usa la planta es
 `yacco-web.onrender.com`, un sitio estático de Render. Cambiarlo desde su
