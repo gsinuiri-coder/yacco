@@ -966,3 +966,74 @@ Otra, menor: GitHub a veces no dispara el CI de push de un merge (le pasó a
 #202). El deploy sale con el merge siguiente. Si no hay un merge siguiente,
 alcanza un `workflow_dispatch` de `ci.yml`… pero el gate del deploy exige un
 CI de **push**, así que hay que mergear algo.
+
+## Endurecimiento post-carga — 2026-09-24/25
+
+La cola de `docs/plan-endurecimiento.md`, con datos reales en `main` y todas
+las restricciones en pie. Un PR por ítem (el 3 en dos, por la secuencia), los
+cinco checks en verde, squash sin `--admin`, la salida en rojo en el cuerpo y
+el deploy en verde antes del siguiente. El único merge con migraciones (#208)
+se hizo a las 20:02 de Lima.
+
+| Ítem                                         | Estado                                                                    | PRs       |
+| -------------------------------------------- | ------------------------------------------------------------------------- | --------- |
+| 1 · CI construye la imagen de la API         | ✅ rojo con el `COPY apps/web` de #171                                    | #206      |
+| 2 · `secrets:gcp --check`                    | ✅ paso 0 de la rotación de D-017                                         | #207      |
+| 3 · Cuenta de solo lectura para el smoke     | ✅ `smoke-viewer` (VIEWER) en producción, login válido obligatorio        | #208 #218 |
+| 4 · A4, una identidad de runtime por entorno | ✅ demo → producción `CANNOT_ACCESS` (Policy Troubleshooter), D-025       | #209      |
+| 5 · A5, 400 días y alerta (D-016)            | ✅ bucket, métrica y email; Giancarlo confirmó el aviso                   | #210      |
+| 6 · A7, digest, `qs`, escaneo                | ✅ `qs` 6.16; escaneo activo: 13 hallazgos, del `npm` de la base y Prisma | #211      |
+| 7 · Ramas                                    | ✅ rescatado lo vigente; 3 ramas borradas con [OK]                        | #212      |
+| 8 · Cierre                                   | ✅ este documento                                                         | este PR   |
+
+**Lo que cambió en la nube, fuera de los PRs** (todo reproducible con los
+scripts: `pnpm gcp:bootstrap`, `pnpm secrets:gcp`, `pnpm gcp:audit`,
+`pnpm smoke:viewer`):
+
+- **A4:** nueva `yacco-api-demo-run`. Ahora cada identidad tiene
+  `secretAccessor` sobre sus cuatro secretos, uno por uno, y `yacco-api-run`
+  ya no lo tiene sobre el proyecto: se quitó recién con el deploy de `b4e8a6d`
+  verde, porque antes demo todavía corría con ella. Los deploys siguientes
+  (#210 a #218) levantaron revisiones nuevas de las dos APIs con sólo esos
+  permisos, y el último smoke (`a497c0d`) hizo el login válido de
+  `smoke-viewer` por WIF: `Smoke OK`.
+- **A5:** el bucket `secret-manager-audit`, a 400 días, con su sink; la
+  métrica `unexpected-secret-access`; un canal de email y la política de
+  alerta. Las APIs `policytroubleshooter` y `containerscanning` quedaron
+  habilitadas.
+- **3:** el secreto `yacco-production-smoke-viewer-password` y el usuario
+  `smoke-viewer` en `main`, creado con `POST /users` como admin.
+
+**Los ids de rama borrados** (por si hiciera falta recuperarlos de un clon):
+`chore/dependency-hygiene` `d5f6f65`, `feat/firestore-export` `8946bf5`,
+`docs/backlog-stat-cache` `7acf967`.
+
+**Quedó en el backlog, nuevo:**
+
+- «La imagen de la API trae `npm` con dependencias vulnerables que el
+  runtime no usa»: 8 HIGH del escaneo, que se arreglan borrando `npm` y
+  `corepack` en la etapa `runtime`.
+- «Migración a Prisma 7» y «TypeScript 6», rescatadas.
+- `/auth/me` lee el token, no la base: «No hay endpoint de usuario actual»
+  sigue abierta con otro «para cerrarla».
+
+**Pendiente de siempre:** F, rotar la contraseña del admin de producción,
+cuando Giancarlo diga «cerramos». `pnpm smoke:viewer` la lee
+(`yacco-admin-initial-password`): después de rotarla, el secreto tiene que
+tener la nueva, o el script no puede entrar como admin. El smoke del deploy
+no depende de ella.
+
+### Lecciones
+
+- **Un merge a `main` con la protección estricta pide la rama al día:**
+  `gh pr update-branch`, nunca force-push. Con varios PRs en paralelo, cada
+  merge deja atrás a los demás, y el plan (que todos tocan) choca en cada
+  uno. Resolverlo a mano y releer el resultado: prettier renumeró la lista
+  una vez.
+- **gcloud cobra las llamadas al proyecto por defecto de la máquina**, que acá
+  es ajeno (`ayr-steel-erp`). Con el Policy Troubleshooter, y con
+  `--show-package-vulnerability`, pedía habilitar una API EN ESE proyecto. Se
+  cortó sin contestar. Siempre `--billing-project=yacco-v2-prod` o la API REST
+  con `x-goog-user-project`.
+- **Un sink de logs tarda ~15 minutos en propagarse:** una prueba hecha antes
+  de eso no llega al bucket, aunque la métrica sí la cuente.
