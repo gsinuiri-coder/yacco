@@ -106,7 +106,7 @@ vuelta. Mismas marcas y mismas reglas fijas, más estas:
 
 Cola (en este orden):
 
-- [ ] **R1 · El Vendedor ve a quién contar.** `GET /container-balances` pasa
+- [x] **R1 · El Vendedor ve a quién contar** (#249). `GET /container-balances` pasa
       a ADMIN y SELLER (DRIVER y VIEWER siguen con 403); la sección «Envases»
       de la ficha se muestra también al Vendedor; el comentario de la clase del
       controller al día. Supuesto 20 («Decidido por Giancarlo con la
