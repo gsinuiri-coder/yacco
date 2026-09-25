@@ -3,7 +3,8 @@
  *
  * Nada de lo que hace escribe en ninguna base. La única credencial que usa es
  * la de la cuenta `smoke-viewer` (rol VIEWER: sólo catálogos y /auth/me), por
- * SMOKE_VIEWER_PASSWORD; sin ella, el paso 5 no corre y lo avisa.
+ * SMOKE_VIEWER_PASSWORD. Sin ella, a mano, el paso 5 no corre y lo avisa; con
+ * --require-viewer (el job 6 de deploy.yml) el smoke FALLA.
  *
  *   pnpm smoke:prod                              todo, contra lo público
  *   node scripts/smoke.mjs api --env=demo        sólo una API (el gate de CI
@@ -307,6 +308,19 @@ export async function smokeProduction(expectedCommit, viewerPassword) {
   ];
 }
 
+/**
+ * `--require-viewer` (lo pasa el job 6 de deploy.yml): sin la contraseña de la
+ * cuenta VIEWER el smoke FALLA, en vez de saltearse el login válido. A mano,
+ * sin el flag, sólo avisa.
+ */
+export function missingViewerProblem(argv, viewerPassword) {
+  if (viewerPassword !== undefined || !argv.includes("--require-viewer")) return null;
+  return (
+    `falta SMOKE_VIEWER_PASSWORD: el login válido de ${SMOKE_VIEWER_USERNAME} es obligatorio ` +
+    `con --require-viewer (secreto ${SMOKE_VIEWER_SECRET})`
+  );
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const expectedCommit = (process.env.EXPECTED_COMMIT ?? "").trim() || undefined;
@@ -330,7 +344,11 @@ async function main() {
         `Sin SMOKE_VIEWER_PASSWORD: el login válido de ${SMOKE_VIEWER_USERNAME} NO se probó.`,
       );
     }
-    problems = await smokeProduction(expectedCommit, viewerPassword);
+    const missing = missingViewerProblem(argv, viewerPassword);
+    problems = [
+      ...(missing === null ? [] : [missing]),
+      ...(await smokeProduction(expectedCommit, viewerPassword)),
+    ];
   }
 
   if (problems.length > 0) {

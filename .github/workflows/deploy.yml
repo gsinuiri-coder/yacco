@@ -468,11 +468,28 @@ jobs:
     needs: [gate, web]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Sin credenciales de ningún tipo: todo lo que comprueba es público.
+    permissions:
+      contents: read
+      id-token: write
+    # Una sola credencial: la de `smoke-viewer`, rol VIEWER (sólo catálogos y
+    # /auth/me, ítem 3 de docs/plan-endurecimiento.md). Sale de Secret Manager
+    # por WIF, como el token de Vercel (D-015), y el smoke la exige
+    # (--require-viewer): si no llega, falla en vez de saltearse el login.
+    # Sin `pnpm install`: el smoke no tiene dependencias.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.gate.outputs.sha }}
-      - run: node scripts/smoke.mjs
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      - id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
+        with:
+          secrets: |-
+            smoke_viewer_password:${{ env.GCP_PROJECT_ID }}/yacco-production-smoke-viewer-password
+      - run: node scripts/smoke.mjs --require-viewer
         env:
           EXPECTED_COMMIT: ${{ needs.gate.outputs.sha }}
+          SMOKE_VIEWER_PASSWORD: ${{ steps.secrets.outputs.smoke_viewer_password }}
