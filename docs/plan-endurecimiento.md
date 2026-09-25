@@ -83,4 +83,4 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        propio). Después [OK] para borrar esa rama, `feat/firestore-export` y
        `docs/backlog-stat-cache`.
    - [OK] de Giancarlo (2026-09-24) para borrar las tres, después del merge.
-8. [ ] **Cierre:** PROGRESO.md, backlog y un reporte corto.
+8. [x] (#219) **Cierre:** PROGRESO.md, backlog y un reporte corto.
