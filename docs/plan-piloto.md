@@ -79,7 +79,7 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
         precios los pone el dueño. Supuesto 17.
   - [x] 4b (#231) · «Producción puede tener catálogos desincronizados del seed»: el
         smoke compara métodos de pago y productos contra `seed-catalog.json`.
-  - [ ] 4c · «Una liquidación puede quedar desactualizada»: la mitad del
+  - [x] 4c (#232) · «Una liquidación puede quedar desactualizada»: la mitad del
         pago rechazado, sin columna. Supuesto 18.
   - [x] 4e (#233) · «Cada merge de documentación redespliega producción»: filtro en
         el gate (`scripts/deploy-scope.mjs`). Va antes que 4d porque 4d lo usa.
