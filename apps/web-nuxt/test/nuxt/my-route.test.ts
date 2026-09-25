@@ -102,6 +102,27 @@ describe("Mi ruta", () => {
     expect(within(truck).getByText("7 × Bidón 20L")).toBeTruthy();
   });
 
+  it("un enlace en la referencia se abre aparte, y un intento de HTML se ve como texto", async () => {
+    const maps = "https://maps.app.goo.gl/AbC123xYz";
+    const stop = buildStop({
+      location: {
+        ...pending.location,
+        addressReference: `Portón verde <b>ojo</b> ${maps}`,
+      },
+    });
+    stubMyRoute([buildRoute({ status: "IN_PROGRESS", stops: [stop] })]);
+
+    await renderMyRoute();
+
+    const card = await screen.findByRole("article", { name: "Parada 1: Bodega Central" });
+    const link = within(card).getByRole("link", { name: maps });
+    expect(link.getAttribute("href")).toBe(maps);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(within(card).getByText(/Portón verde <b>ojo<\/b>/)).toBeTruthy();
+    expect(card.querySelector("b")).toBeNull();
+  });
+
   it("registra una entrega con el precio pactado, sin campo para cambiarlo", async () => {
     stubMyRoute([
       [buildRoute({ status: "IN_PROGRESS", stops: [pending] })],

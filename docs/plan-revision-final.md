@@ -79,7 +79,7 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
       que quedan sin zona. Desde la API, sin esquema.
 - [x] **L3 · Envases en la ficha del cliente** (#245). Saldo por tipo y ubicación,
       último conteo (o «Sin contar») y enlace al conteo ya filtrado.
-- [ ] **L6 · Enlaces en direcciones y referencias.** URLs http(s) como
+- [x] **L6 · Enlaces en direcciones y referencias** (#246). URLs http(s) como
       enlace en la ficha y en «Mi ruta», sin `v-html`.
 - [ ] **L7 · Paradas en lote.** «Agregar pedidos pendientes» en una ruta
       PLANNED; endpoint todo-o-nada con la validación de
