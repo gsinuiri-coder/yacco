@@ -16,6 +16,7 @@ import {
   checkHealth,
   checkNuxtShell,
   checkRejectedLogin,
+  checkViewerSession,
 } from "./smoke.mjs";
 
 const PAGES_DIR = join(REPO_ROOT, "apps", "web-nuxt", "app", "pages");
@@ -157,5 +158,54 @@ describe("WEB_SCREENS", () => {
       const asIndex = join(PAGES_DIR, ...segments, "index.vue");
       assert.ok(existsSync(asPage) || existsSync(asIndex), `${screen} no es una página del Nuxt`);
     }
+  });
+});
+
+describe("checkViewerSession", () => {
+  const healthy = () => ({
+    login: { status: 200, body: { accessToken: "un-token" } },
+    me: { status: 200, body: { id: "u-1", username: "smoke-viewer", roles: ["VIEWER"] } },
+    catalog: { status: 200 },
+    customers: { status: 403 },
+  });
+
+  test("sana: login, /auth/me con VIEWER, catálogo 200 y clientes 403", () => {
+    assert.deepEqual(checkViewerSession(healthy()), []);
+  });
+
+  test("un login rechazado falla y no evalúa lo demás", () => {
+    const problems = checkViewerSession({ login: { status: 401, body: {} } });
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /devolvió 401/);
+  });
+
+  test("un 200 sin accessToken también falla", () => {
+    assert.match(checkViewerSession({ login: { status: 200, body: {} } })[0], /login/);
+  });
+
+  test("si a la cuenta le agregaron un rol, falla aunque todo responda", () => {
+    const checks = healthy();
+    checks.me.body.roles = ["VIEWER", "ADMIN"];
+    const problems = checkViewerSession(checks);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /SOLO \["VIEWER"\]/);
+  });
+
+  test("clientes con 200 falla: la cuenta lee el padrón", () => {
+    const checks = healthy();
+    checks.customers.status = 200;
+    assert.match(checkViewerSession(checks)[0], /GET \/customers devolvió 200/);
+  });
+
+  test("el catálogo caído falla", () => {
+    const checks = healthy();
+    checks.catalog.status = 500;
+    assert.match(checkViewerSession(checks)[0], /GET \/products devolvió 500/);
+  });
+
+  test("/auth/me caído falla", () => {
+    const checks = healthy();
+    checks.me = { status: 404, body: null };
+    assert.match(checkViewerSession(checks)[0], /GET \/auth\/me devolvió 404/);
   });
 });

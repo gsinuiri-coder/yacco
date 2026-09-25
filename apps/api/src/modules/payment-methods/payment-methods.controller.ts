@@ -26,7 +26,8 @@ import { PaymentMethodsService } from "./payment-methods.service.js";
 @ApiBearerAuth()
 @ApiForbiddenResponse({ description: "Authenticated but missing the required role" })
 @UseGuards(JwtAccessGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER)
+// VIEWER: la cuenta del smoke lee los catálogos, que no tienen datos de clientes.
+@Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER, UserRole.VIEWER)
 @Controller("payment-methods")
 export class PaymentMethodsController {
   constructor(private readonly paymentMethodsService: PaymentMethodsService) {}

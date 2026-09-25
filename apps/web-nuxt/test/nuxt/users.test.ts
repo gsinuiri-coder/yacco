@@ -159,6 +159,44 @@ describe("Usuarios", () => {
     expect(await screen.findByText("Ana Retirada")).toBeTruthy();
   });
 
+  it("el alta no ofrece la cuenta de verificación del deploy", async () => {
+    stubList([SELF]);
+    const user = userEvent.setup();
+
+    await renderPage();
+    await user.click(await screen.findByRole("button", { name: "Nuevo usuario" }));
+
+    // «Chofer» es el control: el selector está y ofrece los roles de personas.
+    expect(screen.getByLabelText("Chofer")).toBeTruthy();
+    expect(screen.queryByLabelText("Cuenta de verificación")).toBeNull();
+  });
+
+  it("si la cuenta de verificación existe, la lista dice qué es y no ofrece cambiarla", async () => {
+    stubList([
+      SELF,
+      {
+        id: "smk-1",
+        name: "Verificación automática del sistema",
+        username: "smoke-viewer",
+        active: true,
+        roles: ["VIEWER"],
+      },
+    ]);
+
+    await renderPage();
+
+    const row = await rowOf("Verificación automática del sistema");
+    expect(within(row).getByText("Cuenta de verificación")).toBeTruthy();
+    // Su contraseña la lee el deploy: cambiarla o cambiarle los roles desde acá
+    // rompe la verificación. La fila de SELF es el control: ahí sí están.
+    expect(within(row).getByText("La usa el sistema: no se cambia desde acá")).toBeTruthy();
+    expect(within(row).queryByRole("button", { name: "Cambiar contraseña" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Roles" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Desactivar" })).toBeNull();
+    const selfRow = await rowOf("admin");
+    expect(within(selfRow).getByRole("button", { name: "Cambiar contraseña" })).toBeTruthy();
+  });
+
   it("da de alta un usuario con sus roles", async () => {
     stubList([SELF]);
     const bodies = stubWrite(cleanups, "/api/v1/users", "POST", () => DRIVER);

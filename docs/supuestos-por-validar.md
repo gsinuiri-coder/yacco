@@ -385,6 +385,30 @@ línea de delegación con la fecha, más las cuatro de siempre.
   deuda no es la vigente: se corrige con movimientos inversos, cliente por
   cliente, nunca editando la carga.
 
+### 15. Nadie de la planta tiene una cuenta para mirar sin tocar
+
+- **Decidido por Giancarlo (2026-09-24):** el único rol de solo lectura que
+  existe es `VIEWER`, y es una **cuenta técnica** para el smoke del deploy,
+  no un rol para personas. Lee sólo los catálogos sin datos de clientes
+  (productos, tipos de envase, métodos de pago) y `/auth/me`; recibe 403 en
+  clientes, pedidos, rutas, reportes y usuarios. El web no lo ofrece en el
+  selector de roles de Usuarios y no le arma menú. Hoy, quien entra al
+  sistema puede escribir algo: los tres roles de personas (Administrador,
+  Vendedor, Chofer) escriben.
+- **Asumimos:** que en el piloto nadie necesita mirar sin tocar (un socio, un
+  contador, alguien de la planta que controla).
+- **Construido encima:** el enum `user_role` con `VIEWER`, los `@Roles` de
+  los tres catálogos, `GET /auth/me`, `scripts/smoke-viewer.mjs` y el chequeo
+  `checkViewerSession` de `scripts/smoke.mjs` (ítem 3 de
+  `plan-endurecimiento.md`).
+- **Preguntar (pregunta abierta):** ¿hay alguien que tenga que ver el sistema
+  sin poder cambiar nada? ¿Qué tiene que ver: el padrón, las deudas, las
+  rutas, los reportes? ¿Y qué NO?
+- **Si dice que sí:** es **otro rol**, que se decide en el piloto con esas
+  respuestas; no se reutiliza `VIEWER`, que es de CI y cuya credencial lee el
+  deploy. Costo medio: valor nuevo del enum (migración expand), sus `@Roles`
+  endpoint por endpoint y su menú en el web.
+
 ## Validados
 
 ### 13. «Debe desde» es el cargo que abrió la deuda actual

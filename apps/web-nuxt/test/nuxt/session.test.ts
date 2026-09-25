@@ -107,4 +107,15 @@ describe("sesión en el cliente", () => {
     const nav = await screen.findByRole("navigation", { name: "Principal" });
     expect(within(nav).getByRole("link", { name: "Panel" })).toBeTruthy();
   });
+
+  it("la cuenta de verificación del deploy (VIEWER) no tiene menú", async () => {
+    // El test de arriba es el control: con ADMIN el mismo landmark trae
+    // «Panel». Acá, ni ese ni ningún otro enlace.
+    cleanups.push(signIn(["VIEWER"], "smoke-viewer"));
+
+    await renderSuspended(App, { route: "/" });
+
+    const nav = await screen.findByRole("navigation", { name: "Principal" });
+    expect(within(nav).queryAllByRole("link")).toHaveLength(0);
+  });
 });

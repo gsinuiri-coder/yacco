@@ -1,9 +1,9 @@
 /**
  * `pnpm smoke:prod` — comprueba que lo desplegado está vivo, de SOLO LECTURA.
  *
- * Nada de lo que hace escribe en ninguna base. No lleva ninguna credencial:
- * no hay usuario de verificación, porque no existe un rol sin permisos de
- * escritura (ver «Falta un rol de solo lectura» en docs/backlog-tecnico.md).
+ * Nada de lo que hace escribe en ninguna base. La única credencial que usa es
+ * la de la cuenta `smoke-viewer` (rol VIEWER: sólo catálogos y /auth/me), por
+ * SMOKE_VIEWER_PASSWORD; sin ella, el paso 5 no corre y lo avisa.
  *
  *   pnpm smoke:prod                              todo, contra lo público
  *   node scripts/smoke.mjs api --env=demo        sólo una API (el gate de CI
@@ -23,6 +23,9 @@
  *      módulo de entrada `/_nuxt/*.js` que ese HTML referencia. Una página
  *      servida por el web React (`<div id="root">`, `/assets/*.js`) FALLA: es
  *      lo que distingue si el corte ocurrió.
+ *   5. Con SMOKE_VIEWER_PASSWORD: un login VÁLIDO de `smoke-viewer` por el
+ *      dominio de producción, GET /auth/me y /products, y 403 en /customers.
+ *      Ver checkViewerSession.
  *
  * Si EXPECTED_COMMIT está en el entorno (CI la pone), el commit de cada API
  * tiene que coincidir. Sin ella (a mano) se comprueba todo lo demás.
@@ -116,6 +119,46 @@ export function checkRejectedLogin(status) {
   return [`el login con un usuario inexistente devolvió ${status}, se esperaba 401`];
 }
 
+// La cuenta técnica del smoke (ítem 3 de docs/plan-endurecimiento.md). Rol
+// VIEWER: lee los catálogos y /auth/me, nada más. La contraseña vive en
+// Secret Manager (SMOKE_VIEWER_SECRET) y llega por el entorno, nunca por argv.
+export const SMOKE_VIEWER_USERNAME = "smoke-viewer";
+export const SMOKE_VIEWER_SECRET = "yacco-production-smoke-viewer-password";
+
+/**
+ * Un login VÁLIDO de punta a punta, con la cuenta VIEWER. Recibe los status (y
+ * el cuerpo de /auth/me) de las cuatro peticiones:
+ *
+ *   login      200 con accessToken: la contraseña, el hash y la firma del JWT
+ *   me         200 y roles EXACTAMENTE ["VIEWER"]: el token se acepta
+ *   catalog    200 en GET /products: un GET autenticado que lee la base
+ *   customers  403: la cuenta sigue siendo de solo catálogos. Si alguien le
+ *              agregara un rol, el smoke lo ve en el deploy siguiente.
+ */
+export function checkViewerSession({ login, me, catalog, customers }) {
+  if (login.status !== 200 || typeof login.body?.accessToken !== "string") {
+    return [`el login de ${SMOKE_VIEWER_USERNAME} devolvió ${login.status}, se esperaba 200`];
+  }
+  const problems = [];
+  if (me.status !== 200) {
+    problems.push(`GET /auth/me devolvió ${me.status}, se esperaba 200`);
+  } else if (JSON.stringify(me.body?.roles) !== JSON.stringify(["VIEWER"])) {
+    problems.push(
+      `${SMOKE_VIEWER_USERNAME} tiene roles ${JSON.stringify(me.body?.roles)}: ` +
+        'tiene que ser SOLO ["VIEWER"], su contraseña la lee CI',
+    );
+  }
+  if (catalog.status !== 200) {
+    problems.push(`GET /products devolvió ${catalog.status}, se esperaba 200`);
+  }
+  if (customers.status !== 403) {
+    problems.push(
+      `GET /customers devolvió ${customers.status} para ${SMOKE_VIEWER_USERNAME}, se esperaba 403`,
+    );
+  }
+  return problems;
+}
+
 /**
  * El HTML del web Nuxt. Devuelve los problemas y la ruta del módulo de
  * entrada, para comprobar que el JavaScript también se sirve (un HTML sin su
@@ -188,6 +231,27 @@ async function smokeRejectedLogin(label, baseUrl) {
   return checkRejectedLogin(response.status).map((problem) => `${label}: ${problem}`);
 }
 
+async function smokeViewerSession(label, baseUrl, password) {
+  const login = await request(`${baseUrl}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: SMOKE_VIEWER_USERNAME, password }),
+  });
+  const loginBody = parseJson(login.text);
+  const token = loginBody?.accessToken;
+  const authorized = (path) =>
+    request(`${baseUrl}/api/v1${path}`, { headers: { authorization: `Bearer ${token}` } });
+
+  const checks = { login: { status: login.status, body: loginBody } };
+  if (login.status === 200 && typeof token === "string") {
+    const me = await authorized("/auth/me");
+    checks.me = { status: me.status, body: parseJson(me.text) };
+    checks.catalog = await authorized("/products");
+    checks.customers = await authorized("/customers");
+  }
+  return checkViewerSession(checks).map((problem) => `${label}: ${problem}`);
+}
+
 export async function smokeWebScreens(baseUrl) {
   const problems = [];
   let entryPath = null;
@@ -222,9 +286,18 @@ export async function smokeApi(envName, expectedCommit) {
   ];
 }
 
-/** Todo: las dos APIs directas, y el web con su rewrite. */
-export async function smokeProduction(expectedCommit) {
+/**
+ * Todo: las dos APIs directas, y el web con su rewrite. Con la contraseña de
+ * la cuenta VIEWER (SMOKE_VIEWER_PASSWORD), además un login válido y GETs
+ * autenticados por el dominio de producción.
+ */
+export async function smokeProduction(expectedCommit, viewerPassword) {
+  const viewer =
+    viewerPassword === undefined
+      ? []
+      : await smokeViewerSession("web sesión VIEWER", TARGETS.web, viewerPassword);
   return [
+    ...viewer,
     ...(await smokeHealth("api demo", TARGETS.apis.demo, "demo", expectedCommit)),
     ...(await smokeHealth("api production", TARGETS.apis.production, "production", expectedCommit)),
     // Por Vercel: si el rewrite de host mandara producción a demo, esto lo ve.
@@ -248,7 +321,16 @@ async function main() {
     }
     problems = await smokeApi(envName, expectedCommit);
   } else {
-    problems = await smokeProduction(expectedCommit);
+    // Sin registerSecret a propósito: smoke.mjs no importa lib.mjs (corre en el
+    // job 6 sin instalar nada), y la contraseña sólo viaja en el cuerpo del
+    // login: ningún mensaje de este archivo la incluye.
+    const viewerPassword = (process.env.SMOKE_VIEWER_PASSWORD ?? "").trim() || undefined;
+    if (viewerPassword === undefined) {
+      console.log(
+        `Sin SMOKE_VIEWER_PASSWORD: el login válido de ${SMOKE_VIEWER_USERNAME} NO se probó.`,
+      );
+    }
+    problems = await smokeProduction(expectedCommit, viewerPassword);
   }
 
   if (problems.length > 0) {

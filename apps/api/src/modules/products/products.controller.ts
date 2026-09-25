@@ -24,7 +24,8 @@ import { ProductsService } from "./products.service.js";
 @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
 @UseGuards(JwtAccessGuard, RolesGuard)
 // DRIVER lee el catálogo: el formulario de parada de «Mi ruta» lo necesita.
-@Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER)
+// VIEWER: la cuenta del smoke lee los catálogos, que no tienen datos de clientes.
+@Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER, UserRole.VIEWER)
 @Controller("products")
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}

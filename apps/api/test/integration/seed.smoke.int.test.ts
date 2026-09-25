@@ -23,7 +23,7 @@ afterAll(async () => {
 });
 
 test("migrations apply and seed produces the baseline rows", async () => {
-  expect(await prisma.role.count()).toBe(3);
+  expect(await prisma.role.count()).toBe(4);
   expect(await prisma.containerType.count()).toBe(2);
   expect(await prisma.paymentMethod.count()).toBe(4);
   expect(await prisma.product.count()).toBe(4);
@@ -42,7 +42,7 @@ test("seed is idempotent: re-running it does not duplicate rows", async () => {
     env: { ...process.env, DATABASE_URL: seedDatabaseUrl, DIRECT_URL: seedDatabaseUrl },
     stdio: "inherit",
   });
-  expect(await prisma.role.count()).toBe(3);
+  expect(await prisma.role.count()).toBe(4);
   expect(await prisma.containerType.count()).toBe(2);
   expect(await prisma.paymentMethod.count()).toBe(4);
   // Product.name is not @unique, so this is what actually proves the

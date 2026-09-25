@@ -104,7 +104,13 @@ export function isDriverOnly(roles: readonly UserRole[]): boolean {
   return roles.includes("DRIVER") && !roles.includes("ADMIN") && !roles.includes("SELLER");
 }
 
+/** Los roles de una persona. VIEWER es la cuenta técnica del smoke del deploy. */
+const PEOPLE_ROLES: readonly UserRole[] = ["ADMIN", "SELLER", "DRIVER"];
+
 export function visibleNavigation(roles: readonly UserRole[]): NavigationSection[] {
+  // La cuenta del smoke no tiene menú: no es de nadie de la planta, y cada
+  // pantalla le devolvería 403 salvo los catálogos.
+  if (!roles.some((role) => PEOPLE_ROLES.includes(role))) return [];
   if (isDriverOnly(roles)) return [{ label: "Reparto", links: [MY_ROUTE] }];
   return NAVIGATION.map((section, index) => ({
     ...section,

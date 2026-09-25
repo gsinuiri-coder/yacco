@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 // Idempotent: every insert is an upsert on a unique key, safe to re-run.
 async function main() {
-  for (const name of [UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER]) {
+  for (const name of [UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER, UserRole.VIEWER]) {
     await prisma.role.upsert({
       where: { name },
       update: {},
