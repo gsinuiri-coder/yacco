@@ -22,6 +22,8 @@ interface DebtEvent {
   at: Date;
   delta: Prisma.Decimal;
   isCharge: boolean;
+  /** El cargo de apertura del padrón (`sales.is_opening_balance`). */
+  isOpeningBalance?: boolean;
 }
 
 /**
@@ -35,19 +37,31 @@ interface DebtEvent {
  *
  * A la misma hora, el cargo va antes que el cobro: si no, un cobro exacto
  * registrado en el mismo instante dejaría abierta una deuda que no existe.
+ *
+ * `openedByOpeningBalance` dice si ese cargo es el saldo inicial del padrón:
+ * su fecha es la de corte, no la de una venta, y la pantalla no debe
+ * mostrarla como si lo fuera. La regla de la fecha no cambia.
  */
-export function replayDebt(events: DebtEvent[]): { debt: Prisma.Decimal; openSince: Date | null } {
+export function replayDebt(events: DebtEvent[]): {
+  debt: Prisma.Decimal;
+  openSince: Date | null;
+  openedByOpeningBalance: boolean;
+} {
   const ordered = [...events].sort(
     (a, b) => a.at.getTime() - b.at.getTime() || Number(b.isCharge) - Number(a.isCharge),
   );
   let balance = new Prisma.Decimal(0);
-  let openSince: Date | null = null;
+  let opener: DebtEvent | null = null;
   for (const event of ordered) {
-    if (event.isCharge && balance.lessThanOrEqualTo(0)) openSince = event.at;
+    if (event.isCharge && balance.lessThanOrEqualTo(0)) opener = event;
     balance = balance.plus(event.delta);
-    if (balance.lessThanOrEqualTo(0)) openSince = null;
+    if (balance.lessThanOrEqualTo(0)) opener = null;
   }
-  return { debt: balance, openSince };
+  return {
+    debt: balance,
+    openSince: opener?.at ?? null,
+    openedByOpeningBalance: opener?.isOpeningBalance === true,
+  };
 }
 
 function byName<T>(name: (item: T) => string) {
@@ -74,7 +88,12 @@ export class ReportsService {
       }),
       this.prisma.sale.findMany({
         where: { voidedAt: null },
-        select: { soldAt: true, total: true, location: { select: { customerId: true } } },
+        select: {
+          soldAt: true,
+          total: true,
+          isOpeningBalance: true,
+          location: { select: { customerId: true } },
+        },
       }),
       this.prisma.payment.findMany({
         where: { voidedAt: null, status: PaymentStatus.CONFIRMED },
@@ -89,7 +108,12 @@ export class ReportsService {
       events.set(customerId, list);
     };
     for (const sale of sales) {
-      push(sale.location.customerId, { at: sale.soldAt, delta: sale.total, isCharge: true });
+      push(sale.location.customerId, {
+        at: sale.soldAt,
+        delta: sale.total,
+        isCharge: true,
+        isOpeningBalance: sale.isOpeningBalance,
+      });
     }
     for (const payment of payments) {
       push(payment.customerId, {
@@ -102,7 +126,7 @@ export class ReportsService {
     const rows: CustomerDebtRowDto[] = [];
     let total = new Prisma.Decimal(0);
     for (const customer of customers) {
-      const { debt, openSince } = replayDebt(events.get(customer.id) ?? []);
+      const { debt, openSince, openedByOpeningBalance } = replayDebt(events.get(customer.id) ?? []);
       if (openSince === null) continue;
       total = total.plus(debt);
       rows.push({
@@ -110,6 +134,7 @@ export class ReportsService {
         zone: customer.zone,
         debt: debt.toFixed(2),
         oldestChargeDate: LIMA_DAY.format(openSince),
+        openedByOpeningBalance,
       });
     }
     rows.sort(

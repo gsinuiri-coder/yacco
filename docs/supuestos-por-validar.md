@@ -374,7 +374,7 @@ línea de delegación con la fecha, más las cuatro de siempre.
   cero, la fecha no se mueve.
 - **Construido encima:** `replayDebt` en
   `apps/api/src/modules/reports/reports.service.ts` y la columna «Debe desde»
-  de `apps/web-nuxt/app/pages/reports/debt.vue`. El día es el de Lima.
+  de `apps/web-nuxt/app/pages/reports/debt.vue`. El día es el de Lima. Si el cargo que abrió la deuda es el saldo inicial del padrón, la columna dice «Saldo inicial» y debajo «al» y la fecha con que se cargó, para que no pase por la de una venta (2026-09-25).
 - **Preguntar:** cuando un cliente le va pagando de a poco, ¿quiere ver desde
   cuándo no está al día, o la fecha de la venta más vieja que todavía no pagó?
 - **Si dice que no:** medio. «La venta más vieja impaga» exige decidir primero

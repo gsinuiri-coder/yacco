@@ -24,6 +24,12 @@ export class CustomerDebtRowDto {
       "Día (Lima) del cargo más antiguo desde la última vez que el cliente estuvo al día",
   })
   oldestChargeDate!: string;
+
+  @ApiProperty({
+    description:
+      "Si el cargo que abrió la deuda actual es el saldo inicial del padrón: entonces `oldestChargeDate` es la fecha con que se cargó, no la de una venta hecha en el sistema",
+  })
+  openedByOpeningBalance!: boolean;
 }
 
 export class CustomerDebtsReportDto {

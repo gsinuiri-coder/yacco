@@ -34,4 +34,23 @@ describe("replayDebt", () => {
   test("sin movimientos no hay deuda", () => {
     expect(replayDebt([]).openSince).toBeNull();
   });
+
+  test("dice si el cargo que abrió la deuda actual es el saldo inicial, no si el cliente lo tuvo", () => {
+    const opening = { ...charge("2026-08-31T17:00:00Z", "40.00"), isOpeningBalance: true };
+    const stillOwing = replayDebt([
+      opening,
+      pay("2026-09-02T10:00:00Z", "10.00"),
+      charge("2026-09-05T10:00:00Z", "5.00"),
+    ]);
+    expect(stillOwing.openSince?.toISOString()).toBe("2026-08-31T17:00:00.000Z");
+    expect(stillOwing.openedByOpeningBalance).toBe(true);
+
+    const paidOff = replayDebt([
+      opening,
+      pay("2026-09-02T10:00:00Z", "40.00"),
+      charge("2026-09-05T10:00:00Z", "5.00"),
+    ]);
+    expect(paidOff.openSince?.toISOString()).toBe("2026-09-05T10:00:00.000Z");
+    expect(paidOff.openedByOpeningBalance).toBe(false);
+  });
 });
