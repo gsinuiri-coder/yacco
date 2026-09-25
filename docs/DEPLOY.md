@@ -158,7 +158,7 @@ corre en este orden (D-014):
 
 | Paso          | Qué hace                                                                                      | Si falla, qué queda en pie                           |
 | ------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main`                             | Nada cambió                                          |
+| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main` y cambia algo que corre     | Nada cambió                                          |
 | preflight     | Comprueba que existen los secretos, y que el token de Vercel sirve (`vercel whoami`)          | Nada cambió                                          |
 | 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit                                      | Nada cambió                                          |
 | 2 migraciones | `prisma migrate deploy` contra la URL **directa**: demo, después main                         | Una o las dos bases migradas; código viejo sirviendo |
@@ -167,6 +167,15 @@ corre en este orden (D-014):
 | 4b producción | La MISMA imagen + smoke de esa API                                                            | Demo en el nuevo; web sin publicar                   |
 | 5 web         | `deploy-web.mjs`: `vercel build --prod`, guardia del Build Output, `deploy --prebuilt --prod` | APIs en el nuevo; web en su versión anterior         |
 | 6 smoke       | `pnpm smoke:prod`, solo lectura                                                               | Todo desplegado; el smoke dice qué no está sano      |
+
+**Un merge que solo toca documentación no redespliega.** El gate compara el
+commit contra el que corre HOY en producción (el `commit` de su `/health`) y,
+si todo lo que cambió es `docs/`, algún `*.md`, `.agents/` o `.claude/`, la
+corrida termina en el gate, en verde, con el aviso «solo cambia
+documentación». `.github/` y `scripts/` sí despliegan: el deploy y el smoke
+corren desde ahí. Ante cualquier duda (`/health` caído, commit desconocido,
+comparación imposible) se despliega (`scripts/deploy-scope.mjs`). Relanzar a
+mano (abajo) despliega siempre el camino entero.
 
 La fila del paso 3 es la que justifica una regla: **si las migraciones pasan y
 la imagen falla, la base quedó migrada y el código viejo sigue sirviendo.** Por
@@ -184,7 +193,8 @@ gh workflow run deploy.yml --ref main
 ```
 
 Pasa por el mismo gate: CI y CodeQL tienen que haber pasado para la punta de
-`main`.
+`main`. A mano no se saltea nada por ser solo documentación: es la forma de
+probar el camino completo cuando haga falta.
 
 ### A mano, cuando haga falta
 
