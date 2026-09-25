@@ -163,7 +163,7 @@ function markDone(result: RouteStop): void {
           Parada {{ marking.position }}: {{ marking.location.customer.name }}
         </h3>
         <p class="mb-4 text-sm text-muted">
-          {{ marking.location.name }} · {{ marking.location.address }}
+          {{ marking.location.name }} · <LinkedText :text="marking.location.address" />
         </p>
         <RouteStopMarkForm
           :route-id="route.id"
@@ -210,8 +210,8 @@ function markDone(result: RouteStop): void {
       <div v-else class="overflow-x-auto">
         <table class="w-full text-sm">
           <caption class="sr-only">
-            Paradas de la ruta con su orden, cliente, dirección, origen y estado, incluida la
-            corrección de la parada cuando la hubo
+            Paradas de la ruta con su orden, cliente, dirección y referencia, origen y estado,
+            incluida la corrección de la parada cuando la hubo
           </caption>
           <thead class="text-left text-xs tracking-wide text-muted uppercase">
             <tr>
@@ -236,7 +236,12 @@ function markDone(result: RouteStop): void {
                 <p class="font-medium text-highlighted">{{ stop.location.customer.name }}</p>
                 <!-- El nombre de la locación casi siempre es "Principal"; sólo
                      distingue algo cuando el cliente tiene más de un punto. -->
-                <p class="text-muted">{{ stop.location.name }} · {{ stop.location.address }}</p>
+                <p class="text-muted">
+                  {{ stop.location.name }} · <LinkedText :text="stop.location.address" />
+                </p>
+                <p v-if="stop.location.addressReference" class="text-sm text-muted">
+                  <LinkedText :text="stop.location.addressReference" />
+                </p>
               </td>
               <td class="py-3">{{ STOP_ORIGIN[stop.origin] }}</td>
               <td class="space-y-1 py-3">

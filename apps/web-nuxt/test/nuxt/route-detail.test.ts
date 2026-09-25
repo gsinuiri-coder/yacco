@@ -78,6 +78,80 @@ describe("Detalle de ruta", () => {
     expect(within(row("Bodega Central")).getByText("Pedido")).toBeTruthy();
   });
 
+  it("la dirección y la referencia de cada parada llevan sus enlaces, como en la ficha y en «Mi ruta»", async () => {
+    const maps = "https://maps.app.goo.gl/AbC123xYz";
+    const pin = "https://maps.app.goo.gl/Pin987";
+    stubRouteDetail(
+      cleanups,
+      buildRoute({
+        status: "IN_PROGRESS",
+        stops: [
+          buildStop({
+            location: {
+              id: "loc-1",
+              name: "Principal",
+              address: `Av. Siempre Viva 123 ${pin}`,
+              addressReference: `Portón verde <b>ojo</b> ${maps}`,
+              phone: "987000111",
+              customer: { id: "c-central", name: "Bodega Central" },
+            },
+          }),
+        ],
+      }),
+    );
+
+    await renderDetail();
+
+    const central = row("Bodega Central");
+    const link = within(central).getByRole("link", { name: maps });
+    expect(link.getAttribute("href")).toBe(maps);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(within(central).getByRole("link", { name: pin }).getAttribute("href")).toBe(pin);
+    expect(within(central).getByText(/Av. Siempre Viva 123/)).toBeTruthy();
+    expect(within(central).getByText(/Portón verde <b>ojo<\/b>/)).toBeTruthy();
+    expect(central.querySelector("b")).toBeNull();
+  });
+
+  it("la dirección en el encabezado de la parada que se está registrando también lleva su enlace", async () => {
+    const pin = "https://maps.app.goo.gl/Pin987";
+    stubRouteDetail(
+      cleanups,
+      buildRoute({
+        status: "IN_PROGRESS",
+        stops: [
+          buildStop({
+            location: {
+              id: "loc-1",
+              name: "Principal",
+              address: `Av. Siempre Viva 123 ${pin}`,
+              addressReference: "Portón verde",
+              phone: "987000111",
+              customer: { id: "c-central", name: "Bodega Central" },
+            },
+          }),
+        ],
+      }),
+    );
+    cleanups.push(
+      registerEndpoint("/api/v1/products", () => []),
+      registerEndpoint("/api/v1/payment-methods", () => []),
+      registerEndpoint("/api/v1/customers/c-central/effective-prices", () => []),
+    );
+
+    await renderDetail();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Registrar la parada de Bodega Central" }));
+
+    const header = await screen.findByRole("heading", {
+      name: "Parada 1: Bodega Central",
+      level: 3,
+    });
+    const panel = header.parentElement as HTMLElement;
+    expect(within(panel).getAllByRole("link", { name: pin }).length).toBeGreaterThan(0);
+  });
+
   describe("la corrección de una parada", () => {
     const correction = {
       correctedAt: "2026-08-28T20:15:00.000Z",
