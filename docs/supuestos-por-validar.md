@@ -543,6 +543,26 @@ línea de delegación con la fecha, más las cuatro de siempre.
   API responde el aviso sin guardar y se reenvía confirmado). Que no lo deje
   guardar del todo no es una opción de esta pregunta: contradice HU-01 E2.
 
+### 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes
+
+- **Decidido por Giancarlo con la recomendación de Claude (2026-09-25):** el
+  Vendedor lee «Envases en poder de clientes» y la sección «Envases» de la
+  ficha, igual que el administrador. El chofer y la cuenta técnica del smoke,
+  no.
+- **Asumimos:** que quien anota los conteos en la oficina (Vendedor) tiene que
+  ver los saldos de envases de los clientes para saber a quién contar.
+- **Construido encima:** los `@Roles(ADMIN, SELLER)` de
+  `apps/api/src/modules/container-balances/container-balances.controller.ts`
+  (los mismos que ya tenía `container-counts` para anotar un conteo) y la
+  sección «Envases» de la ficha
+  (`apps/web-nuxt/app/components/CustomerContainersSection.vue`, que
+  `apps/web-nuxt/app/pages/customers/[id]/index.vue` monta para ADMIN y SELLER).
+- **Preguntar:** la persona de la oficina que anota los conteos de bidones,
+  ¿puede ver cuántos bidones tiene cada cliente, o eso lo ve solo usted?
+- **Si dice que no:** barato. Se vuelve a ADMIN, y el enlace «Envases en poder
+  de clientes» del menú pasa a `onlyFor: "ADMIN"`, y la ficha deja de montar la
+  sección para el Vendedor. Entonces los conteos los anota solo él.
+
 ## Validados
 
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026

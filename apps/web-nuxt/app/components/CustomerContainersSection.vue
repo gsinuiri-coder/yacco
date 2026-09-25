@@ -8,8 +8,9 @@ import type { ContainerBalanceRow, LocationContainerBalance, Page } from "@yacco
  * clientes», filtrado por cliente, así que las dos pantallas no pueden decir
  * cosas distintas. Contar se hace allá: el enlace la abre ya filtrada.
  *
- * Solo para el administrador, igual que el reporte (el conteo es trabajo de
- * oficina del administrador): la ficha no la monta para otro rol.
+ * Para el administrador y el vendedor, los mismos roles que el reporte (quien
+ * anota los conteos en la oficina tiene que ver a quién contar: supuesto 20).
+ * La ficha no la monta para otro rol.
  */
 const props = defineProps<{ customerId: string }>();
 
