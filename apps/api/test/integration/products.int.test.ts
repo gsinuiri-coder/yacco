@@ -111,6 +111,76 @@ describe("GET /api/v1/products", () => {
   });
 });
 
+describe("PATCH /api/v1/products/:id", () => {
+  // A product of its own: the GET tests above read the seeded prices.
+  let productId: string;
+
+  beforeAll(async () => {
+    const prisma = ctx.app.get(PrismaService);
+    const containerType = await prisma.containerType.findFirstOrThrow();
+    const product = await prisma.product.create({
+      data: {
+        containerTypeId: containerType.id,
+        name: "Recarga para cambiar de precio",
+        type: "REFILL",
+        listPrice: "8.00",
+      },
+    });
+    productId = product.id;
+  });
+
+  test("ADMIN sets the list price, and the catalog reads it back as a 2-decimal string", async () => {
+    const response = await request(server())
+      .patch(`/api/v1/products/${productId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ listPrice: "9.5" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.listPrice).toBe("9.50");
+
+    const catalog = await request(server())
+      .get("/api/v1/products")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .expect(200);
+    const read = catalog.body.find((product: { id: string }) => product.id === productId);
+    expect(read.listPrice).toBe("9.50");
+  });
+
+  test.each([
+    ["a JSON number", 9.5],
+    ["three decimals", "9.505"],
+    ["a negative amount", "-1.00"],
+  ])("rejects %s with 400, in Spanish", async (_label, listPrice) => {
+    const response = await request(server())
+      .patch(`/api/v1/products/${productId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ listPrice });
+
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(response.body)).toContain("El precio de lista");
+  });
+
+  test("SELLER and DRIVER cannot change a price", async () => {
+    for (const token of [sellerToken, driverToken]) {
+      const response = await request(server())
+        .patch(`/api/v1/products/${productId}`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ listPrice: "1.00" });
+      expect(response.status).toBe(403);
+    }
+  });
+
+  test("an unknown product is a 404 in Spanish", async () => {
+    const response = await request(server())
+      .patch("/api/v1/products/00000000-0000-4000-8000-000000000000")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ listPrice: "1.00" });
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toContain("no existe");
+  });
+});
+
 describe("role guard", () => {
   // Desde «Mi ruta» (2026-09-24) el chofer lee el catálogo: su formulario de
   // parada lo necesita. Ver driver-scope.int.test.ts.

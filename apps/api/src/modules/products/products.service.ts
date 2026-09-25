@@ -1,8 +1,9 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto.js";
 import type { ProductResponseDto } from "./dto/product-response.dto.js";
+import type { UpdateProductDto } from "./dto/update-product.dto.js";
 
 /** Everything the wire shape needs, and nothing else. */
 const PRODUCT_INCLUDE = {
@@ -41,5 +42,22 @@ export class ProductsService {
       include: PRODUCT_INCLUDE,
     });
     return products.map(toProductResponse);
+  }
+
+  /** Sets the list price. Takes effect for what is priced from now on only. */
+  async update(id: string, dto: UpdateProductDto): Promise<ProductResponseDto> {
+    try {
+      const product = await this.prisma.product.update({
+        where: { id },
+        data: { listPrice: new Prisma.Decimal(dto.listPrice) },
+        include: PRODUCT_INCLUDE,
+      });
+      return toProductResponse(product);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        throw new NotFoundException(`El producto "${id}" no existe`);
+      }
+      throw error;
+    }
   }
 }
