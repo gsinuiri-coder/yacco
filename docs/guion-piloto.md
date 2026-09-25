@@ -181,7 +181,8 @@ etiqueta.
 
 Quedan con zona 537 clientes y sin zona 67, todos con una etiqueta que no es
 lugar. Para él: ¿Casas Parque es parte de Parque o se reparte
-aparte? ¿Dónde reparte a las empresas y distribuidores?
+aparte? ¿Dónde reparte a las empresas y distribuidores? HERMES y BIOZON las tomamos como
+nombres de negocio: ¿es así, o alguna es un lugar?
 
 Esta tabla es la que se le muestra al leer la pregunta del supuesto 16: no hay
 una pregunta aparte.
