@@ -32,7 +32,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
        un path inexistente.
 2. [x] (#207) **`secrets:gcp --check`:** valida config e ids sin escribir nada. La
        rotación de D-017 lo exige antes del reset.
-3. [x] (#208, #213) **Rol de solo lectura** (backlog «Falta un rol de solo lectura»). El
+3. [x] (#208, #218) **Rol de solo lectura** (backlog «Falta un rol de solo lectura»). El
        smoke lo usa para un login real y un GET autenticado. Credencial en
        Secret Manager.
    - **Decidido por Giancarlo (2026-09-24):** `VIEWER` lee SOLO catálogos
@@ -53,7 +53,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      - [x] (#208) **3a** — rol, `/auth/me`, web, `smoke.mjs` con el login válido
            cuando recibe `SMOKE_VIEWER_PASSWORD`, y `pnpm smoke:viewer`. Tras
            su deploy verde: `pnpm smoke:viewer` contra producción.
-     - [x] (#213) **3b** — el job 6 de `deploy.yml` lee
+     - [x] (#218) **3b** — el job 6 de `deploy.yml` lee
            `yacco-production-smoke-viewer-password` por WIF y el chequeo pasa
            a obligatorio. Sin migración.
    - Mientras 3a espera la ventana de las 20:00, se adelanta el ítem 4 si no
