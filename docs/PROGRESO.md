@@ -1052,7 +1052,7 @@ antes del siguiente. Ningún PR llevó migración.
 | 2 · `smoke:viewer` y el secreto de admin | ✅ `pnpm viewer:bootstrap` pide la contraseña en la terminal; nada automático lee admin   | #221      |
 | 3 · Imagen de la API                     | ✅ escaneo 14 (9 HIGH) → **0**; 548 → 405 MB; D-026                                       | #222      |
 | 4 · Dependabot y Nest 12                 | ✅ typescript-eslint; Nest 12 entero en un PR; e2e del preview OK                         | #213 #223 |
-| 5 · Cierre                               | ✅ este documento                                                                         | este PR   |
+| 5 · Cierre                               | ✅ este documento                                                                         | #224      |
 
 **1 · gcloud.** Todo `gcloud` de `scripts/` pasa por `run()`, que rechaza un
 `--project`/`--billing-project` ajeno antes de lanzarse y fija
