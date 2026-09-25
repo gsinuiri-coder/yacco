@@ -172,6 +172,33 @@ describe("Envases en poder de clientes", () => {
     expect(seen.at(-1)).not.toHaveProperty("countedBefore");
   });
 
+  it("busca a un cliente por nombre y recorre por zona, con las zonas del catálogo", async () => {
+    const seen = stubBalances(() => [buildRow()]);
+    cleanups.push(
+      registerEndpoint("/api/v1/zones", () => [
+        { id: "zone-norte", name: "Norte", deliveryDays: [], active: true },
+      ]),
+    );
+    const user = userEvent.setup();
+
+    await renderPage();
+    await screen.findByText("Bodega Santa Rosa");
+
+    await user.type(screen.getByLabelText("Buscar"), " santa ");
+    await waitFor(() => expect(seen.at(-1)?.search).toBe("santa"));
+
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(await screen.findByRole("option", { name: "Norte" }));
+    await waitFor(() => expect(seen.at(-1)?.zoneId).toBe("zone-norte"));
+    expect(seen.at(-1)?.search).toBe("santa");
+
+    await user.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+    await waitFor(() => {
+      expect(seen.at(-1)).not.toHaveProperty("zoneId");
+      expect(seen.at(-1)).not.toHaveProperty("search");
+    });
+  });
+
   it("registra un conteo que coincide sin pedir revisión y actualiza la fila desde el reporte", async () => {
     let counted = false;
     stubBalances(() => [
