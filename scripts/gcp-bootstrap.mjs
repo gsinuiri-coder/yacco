@@ -15,7 +15,7 @@
  * Cada paso comprueba antes de crear, con `describe ... --allowFailure`: es lo
  * que lo hace corrible dos veces. Nada de lo que imprime es un secreto.
  */
-import { RUNTIME_SERVICE_ACCOUNTS, loadConfig, run } from "./lib.mjs";
+import { RUNTIME_SERVICE_ACCOUNTS, loadConfig, resolveGcpProject, run } from "./lib.mjs";
 import { WIF_ATTRIBUTE_MAPPING, wifAttributeCondition } from "./wif-condition.mjs";
 
 const REQUIRED_SERVICES = [
@@ -352,7 +352,7 @@ function main() {
   const config = loadConfig();
   requireConfig(config, ["GCP_PROJECT_ID", "GCP_BILLING_ACCOUNT_ID", "GCP_REGION"]);
 
-  const projectId = config.GCP_PROJECT_ID.trim();
+  const projectId = resolveGcpProject(config);
   const region = config.GCP_REGION.trim();
   const repository = (config.GITHUB_REPOSITORY ?? "gsinuiri-coder/yacco").trim();
 

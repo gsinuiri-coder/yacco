@@ -16,6 +16,8 @@ import { after, describe, test } from "node:test";
 
 import {
   CommandError,
+  YACCO_GCP_PROJECT,
+  gcloudProjectEnv,
   isSecretKey,
   loadConfig,
   parseEnv,
@@ -23,6 +25,7 @@ import {
   readFileOrNull,
   redact,
   registerSecret,
+  resolveGcpProject,
   run,
 } from "./lib.mjs";
 
@@ -242,5 +245,36 @@ describe("run", () => {
 
   test("un ejecutable inexistente falla con un mensaje que lo nombra", () => {
     assert.throws(() => run("comando-que-no-existe-jamas", []), /comando-que-no-existe-jamas/);
+  });
+
+  test("un gcloud contra otro proyecto corta antes de lanzarse", () => {
+    // `--version` no sale a la red: si el guard faltara, este test tiene que
+    // fallar sin haberle preguntado nada a ningún proyecto real. Un proyecto
+    // inventado, por la misma razón.
+    for (const args of [
+      ["--version", "--project=proyecto-ajeno"],
+      ["--version", "--billing-project", "proyecto-ajeno"],
+    ]) {
+      assert.throws(() => run("gcloud", args), /proyecto-ajeno: los scripts de Yacco sólo usan/);
+    }
+  });
+});
+
+describe("proyecto de Google Cloud", () => {
+  test("resolveGcpProject acepta sólo yacco-v2-prod", () => {
+    assert.equal(resolveGcpProject({ GCP_PROJECT_ID: " yacco-v2-prod " }), YACCO_GCP_PROJECT);
+    assert.throws(() => resolveGcpProject({ GCP_PROJECT_ID: "ayr-steel-erp" }), /ayr-steel-erp/);
+    assert.throws(() => resolveGcpProject({}), /no yacco-v2-prod/);
+  });
+
+  test("gcloud queda fijado a Yacco aunque el comando no lleve --project", () => {
+    // `auth print-access-token` no acepta --project: lo que decide a qué
+    // proyecto se cobra es el core/project, y la variable lo pisa.
+    assert.deepEqual(gcloudProjectEnv(["auth", "print-access-token"]), {
+      CLOUDSDK_CORE_PROJECT: "yacco-v2-prod",
+    });
+    assert.deepEqual(gcloudProjectEnv(["secrets", "list", "--project=yacco-v2-prod"]), {
+      CLOUDSDK_CORE_PROJECT: "yacco-v2-prod",
+    });
   });
 });

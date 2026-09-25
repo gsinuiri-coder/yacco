@@ -52,6 +52,28 @@ access`, `vercel env pull`).
   cliente, tombstones, columnas de versión, y cualquier decisión sobre la app
   del conductor.
 
+## gcloud: siempre contra Yacco
+
+- **Ningún comando de Yacco depende del proyecto por defecto de la máquina.**
+  En la del dueño, la configuración `default` de gcloud apunta a
+  `ayr-steel-erp`, de OTRO cliente: un `gcloud` sin proyecto explícito lee,
+  cobra y ofrece habilitar APIs allá. Nunca se contesta que sí a ese
+  ofrecimiento.
+- Los scripts de `scripts/` validan `GCP_PROJECT_ID` con `resolveGcpProject`
+  (sólo `yacco-v2-prod`) y lanzan gcloud por `run()`, que corta cualquier
+  `--project`/`--billing-project` ajeno y fija `CLOUDSDK_CORE_PROJECT` al de
+  Yacco, así que hasta un comando sin `--project` resuelve acá. Un comando
+  nuevo lleva `--project=${projectId}` igual: la variable es la red, no la
+  costumbre.
+- A mano (el agente o una persona), se usa la configuración con nombre
+  `yacco` (cuenta del dueño, `core/project` y `billing/quota_project` en
+  `yacco-v2-prod`) SIN activarla, porque la `default` es la del otro cliente:
+  `gcloud ... --configuration=yacco`, o `CLOUDSDK_ACTIVE_CONFIG_NAME=yacco`
+  para una sesión entera. Además `--project=yacco-v2-prod` en todo comando
+  que lo acepte.
+- En `ayr-steel-erp` no se toca nada, ni para leer, salvo una verificación
+  pedida explícitamente.
+
 ## Despliegue
 
 - **Siempre demo antes que producción.** Se despliega el servicio de demo, se

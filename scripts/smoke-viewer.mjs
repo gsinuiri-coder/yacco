@@ -26,7 +26,7 @@
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
-import { registerSecret, run } from "./lib.mjs";
+import { registerSecret, resolveGcpProject, run } from "./lib.mjs";
 import {
   SMOKE_VIEWER_SECRET,
   SMOKE_VIEWER_USERNAME,
@@ -167,11 +167,7 @@ async function login(baseUrl, username, password) {
 }
 
 async function main() {
-  const projectId = (process.env.GCP_PROJECT_ID ?? "").trim();
-  if (projectId.length === 0) {
-    console.error("Falta GCP_PROJECT_ID (yacco-v2-prod).");
-    process.exit(1);
-  }
+  const projectId = resolveGcpProject(process.env);
   const baseUrl = TARGETS.apis.production;
 
   const adminPassword = readSecret(projectId, ADMIN_PASSWORD_SECRET);
