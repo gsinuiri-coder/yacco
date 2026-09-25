@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isMoneyInput } from "@yacco/shared";
+import { isAboveZero, isMoneyInput } from "@yacco/shared";
 import type { Product } from "@yacco/shared";
 
 /**
@@ -9,8 +9,9 @@ import type { Product } from "@yacco/shared";
  * cambia: el nombre viaja copiado a cada pedido y venta.
  */
 const PRICE_HELP =
-  "El precio nuevo vale para lo que se anote desde ahora: los pedidos y ventas ya " +
-  "registrados conservan el suyo, y el precio pactado con un cliente sigue mandando.";
+  "El precio nuevo se cobra en lo que se entregue desde ahora, también en pedidos ya " +
+  "tomados que todavía no se entregaron. Las ventas ya registradas conservan su precio, y " +
+  "el precio pactado con un cliente sigue mandando.";
 const PRICE_FORMAT_MESSAGE = "Escribe el precio en soles, con hasta dos decimales (ej. 8.50)";
 
 useHead({ title: "Productos · Yacco" });
@@ -66,6 +67,12 @@ async function savePrice(id: string): Promise<void> {
   const listPrice = priceValue.value.trim();
   if (!isMoneyInput(listPrice)) {
     rowError.value = { productId: id, message: PRICE_FORMAT_MESSAGE };
+    return;
+  }
+  // Un 0 casi siempre es un error de tipeo, y dejaría gratis toda entrega sin
+  // precio pactado.
+  if (!isAboveZero(listPrice)) {
+    rowError.value = { productId: id, message: "El precio de lista debe ser mayor que 0" };
     return;
   }
   saving.value = true;

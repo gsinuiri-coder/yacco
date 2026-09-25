@@ -91,6 +91,13 @@ describe("ProductsService", () => {
       expect(result.listPrice).toBe("9.50");
     });
 
+    it("refuses a zero list price without writing", async () => {
+      await expect(service.update("product-1", { listPrice: "0.00" })).rejects.toThrow(
+        "El precio de lista debe ser mayor que 0",
+      );
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    });
+
     it("turns an unknown id (P2025) into a 404", async () => {
       prisma.product.update.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError("not found", {

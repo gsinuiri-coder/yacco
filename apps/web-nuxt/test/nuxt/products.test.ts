@@ -62,6 +62,16 @@ describe("Productos", () => {
     expect(screen.getByText("2 productos")).toBeTruthy();
   });
 
+  it("le dice al administrador desde cuándo se cobra el precio nuevo", async () => {
+    stubList([REFILL]);
+
+    await renderPage();
+
+    expect(
+      await screen.findByText(/también en pedidos ya tomados que todavía no se entregaron/),
+    ).toBeTruthy();
+  });
+
   it("el administrador cambia el precio y la fila muestra el que devolvió la API", async () => {
     stubList([REFILL]);
     const bodies = stubWrite(cleanups, "/api/v1/products/refill-id", "PATCH", () => ({
@@ -103,6 +113,24 @@ describe("Productos", () => {
     expect(bodies).toHaveLength(0);
   });
 
+  it("no envía un precio de 0", async () => {
+    stubList([REFILL]);
+    const bodies = stubWrite(cleanups, "/api/v1/products/refill-id", "PATCH");
+    const user = userEvent.setup();
+
+    await renderPage();
+    await user.click(
+      within(await rowOf("Recarga 20L con caño")).getByRole("button", { name: "Cambiar precio" }),
+    );
+    const input = screen.getByLabelText("Precio de lista de Recarga 20L con caño");
+    await user.clear(input);
+    await user.type(input, "0.00");
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("mayor que 0");
+    expect(bodies).toHaveLength(0);
+  });
+
   it("si la API rechaza, muestra su mensaje en la fila y deja el campo abierto", async () => {
     stubList([REFILL]);
     stubWrite(
@@ -131,5 +159,6 @@ describe("Productos", () => {
     const row = await rowOf("Recarga 20L con caño");
     expect(within(row).getByText("S/ 8.00")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Cambiar precio" })).toBeNull();
+    expect(screen.queryByText(/El precio nuevo se cobra/)).toBeNull();
   });
 });

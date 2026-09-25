@@ -10,9 +10,12 @@ import { MONEY_MESSAGE, MONEY_PATTERN } from "../../customers/dto/create-custome
  * (`OrderItem`/`SaleItem`), and renaming one is a catalog decision nobody has
  * asked for yet.
  *
- * A new price only applies from now on: order lines and sales keep the
- * `unitPrice` they were written with, and a customer's agreed price
- * (`CustomerPrice`) still wins over the list price.
+ * A new price applies to what is DELIVERED from now on: sales already
+ * written keep their `unitPrice`, but a pending order is priced at delivery
+ * (SalesService resolves location price, customer price, then list price at
+ * that moment), so it gets the new one — supuesto 17. A customer's agreed
+ * price (`CustomerPrice`) still wins over the list price. Zero is refused
+ * in ProductsService.update.
  */
 export class UpdateProductDto {
   @ApiProperty({ type: String, example: "8.00", description: "Precio de lista en soles (S/)" })

@@ -409,6 +409,30 @@ línea de delegación con la fecha, más las cuatro de siempre.
   deploy. Costo medio: valor nuevo del enum (migración expand), sus `@Roles`
   endpoint por endpoint y su menú en el web.
 
+### 17. Un pedido se cobra al precio del día en que se entrega
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** cuando
+  cambia un precio de lista (o un precio pactado), un pedido ya tomado que
+  todavía no se entregó se cobra al precio vigente el día de la entrega, no al
+  del día en que se tomó. Las ventas ya registradas no cambian. Es lo que el
+  sistema ya hacía con los precios pactados; la pantalla «Productos» lo hace
+  cotidiano y ahora lo dice.
+- **Asumimos:** que un cambio de precio en la planta vale desde que se anuncia
+  para todo lo que sale en el camión, y que el cliente no espera que le
+  respeten el precio viejo por haber pedido antes.
+- **Construido encima:** `SalesService.registerStopDeliveryWithinTransaction`
+  resuelve el precio al registrar la entrega (precio de la ubicación, del
+  cliente, y si no hay, el de lista de ese momento); el formulario de parada
+  no lleva el precio del pedido. El texto de ayuda de
+  `apps/web-nuxt/app/pages/products.vue`.
+- **Preguntar:** si un cliente hizo un pedido el lunes y el martes usted sube
+  el precio de la recarga, cuando el chofer se lo entrega el miércoles, ¿le
+  cobra el precio del lunes o el nuevo?
+- **Si dice que no:** medio. El formulario de parada tendría que traer el
+  `unitPrice` de la línea del pedido en vez de dejarlo en blanco, y decidir
+  qué pasa con un pedido que lleva un producto sin precio en su línea. No
+  toca esquema: el precio ya está guardado en `order_items`.
+
 ## Validados
 
 ### 13. «Debe desde» es el cargo que abrió la deuda actual

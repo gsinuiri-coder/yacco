@@ -33,7 +33,7 @@ import { ProductsService } from "./products.service.js";
  */
 @ApiTags("products")
 @ApiBearerAuth()
-@ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
+@ApiForbiddenResponse({ description: "Authenticated but missing a role that reads the catalog" })
 @UseGuards(JwtAccessGuard, RolesGuard)
 // DRIVER lee el catálogo: el formulario de parada de «Mi ruta» lo necesita.
 // VIEWER: la cuenta del smoke lee los catálogos, que no tienen datos de clientes.
@@ -52,7 +52,8 @@ export class ProductsController {
   @ApiOperation({ summary: "Cambia el precio de lista de un producto (solo ADMIN)" })
   @ApiResponse({ status: 200, type: ProductResponseDto })
   @ApiNotFoundResponse({ description: "Product id does not exist" })
-  @ApiBadRequestResponse({ description: "listPrice is not a 2-decimal amount" })
+  @ApiBadRequestResponse({ description: "listPrice is not a 2-decimal amount above 0" })
+  @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
   @Roles(UserRole.ADMIN)
   @Patch(":id")
   update(

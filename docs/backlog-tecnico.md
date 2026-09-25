@@ -93,8 +93,9 @@ credenciales, nunca en el repositorio ni en un `.env` versionado.
 `plan-piloto.md`): no había forma de cambiar un precio de lista sin un
 `UPDATE` a mano. Ahora `PATCH /api/v1/products/:id` (solo ADMIN, solo
 `listPrice`) y la pantalla «Productos» (Administración) lo cambian; vale para
-lo que se anote desde ese momento, y el precio pactado con un cliente sigue
-mandando. **Los precios siguen siendo los provisionales** hasta que el dueño
+lo que se entregue desde ese momento —también pedidos ya tomados, que se
+cobran al entregar (supuesto 17)—, y el precio pactado con un cliente sigue
+mandando. Un precio de 0 se rechaza. **Los precios siguen siendo los provisionales** hasta que el dueño
 diga los reales: es una pregunta del guion de la reunión
 (`docs/guion-piloto.md`), y los carga él o la oficina desde esa pantalla.
 
@@ -2122,3 +2123,20 @@ a `npm` en runtime: es superficie sin uso.
 `corepack` (`/usr/local/lib/node_modules/{npm,corepack}` y sus binarios en
 `/usr/local/bin`). La etapa `base` los sigue necesitando para `pnpm`. Probarlo
 con el paso «API image» de CI y comparar el escaneo antes y después.
+
+## Cambiar un precio de lista no deja rastro
+
+**Estado:** abierto. **Registrado:** 2026-09-25, con la pantalla «Productos»
+(ítem 4a de `plan-piloto.md`). **Disparador:** que el dueño pregunte quién
+cambió un precio o cuánto valía antes, o una diferencia de cobro que dependa
+de eso.
+
+`PATCH /products/:id` pisa `list_price` en su lugar. `products` no tiene
+`updated_at` ni `updated_by`, así que después de un cambio no se sabe el
+valor anterior, ni quién lo cambió, ni cuándo. No rompe ningún invariante (un
+catálogo no es una fila operativa, y cada venta guarda su `unit_price`),
+pero es el precio que paga por defecto todo el padrón.
+
+**Para cerrarla:** toca esquema, así que se pregunta antes. O dos columnas
+(`updated_at`, `updated_by`), que dicen quién tocó último pero no el valor
+anterior; o una tabla de historial de precios de lista, de solo agregar.

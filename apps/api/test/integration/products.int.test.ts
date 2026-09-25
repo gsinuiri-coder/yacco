@@ -10,6 +10,7 @@ let ctx: TestAppContext;
 let adminToken: string;
 let sellerToken: string;
 let driverToken: string;
+let viewerToken: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -38,6 +39,7 @@ beforeAll(async () => {
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
   sellerToken = await createUserAndLogin("vendedor-productos", "SELLER");
   driverToken = await createUserAndLogin("repartidor-productos", "DRIVER");
+  viewerToken = await createUserAndLogin("lector-productos", "VIEWER");
 }, 180000);
 
 afterAll(async () => {
@@ -160,8 +162,18 @@ describe("PATCH /api/v1/products/:id", () => {
     expect(JSON.stringify(response.body)).toContain("El precio de lista");
   });
 
-  test("SELLER and DRIVER cannot change a price", async () => {
-    for (const token of [sellerToken, driverToken]) {
+  test("a zero list price is refused: it would make every unpriced delivery free", async () => {
+    const response = await request(server())
+      .patch(`/api/v1/products/${productId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ listPrice: "0.00" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain("mayor que 0");
+  });
+
+  test("SELLER, DRIVER and VIEWER read the catalog but cannot change a price", async () => {
+    for (const token of [sellerToken, driverToken, viewerToken]) {
       const response = await request(server())
         .patch(`/api/v1/products/${productId}`)
         .set("Authorization", `Bearer ${token}`)
