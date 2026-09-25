@@ -36,7 +36,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
    - Verificar, SOLO LECTURA, que en `ayr-steel-erp` no quedó ninguna API
      habilitada ni ningún recurso de estas sesiones, y reportarlo. No se toca
      nada ahí.
-2. [x] (#PR) **`smoke:viewer` y el secreto de admin:** explicar qué lo corre (CI,
+2. [x] (#221) **`smoke:viewer` y el secreto de admin:** explicar qué lo corre (CI,
        deploy, a mano) y por qué necesita admin. Ningún camino automático lee
        `yacco-admin-initial-password`. Si hace falta un admin para crear o
        reparar la cuenta VIEWER, es un paso manual aparte (bootstrap),
