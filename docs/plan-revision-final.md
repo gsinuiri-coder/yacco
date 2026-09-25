@@ -75,7 +75,7 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
 - [ ] **L1 · Filtro de zona en «Clientes».** «Todas», cada zona en uso y «Sin
       zona»; `withoutZone` en `ListCustomersQueryDto`, excluyente con
       `zoneId` (400).
-- [ ] **L2 · Clientes por zona en «Zonas».** Activos por zona y, arriba, los
+- [x] **L2 · Clientes por zona en «Zonas»** (#244). Activos por zona y, arriba, los
       que quedan sin zona. Desde la API, sin esquema.
 - [ ] **L3 · Envases en la ficha del cliente.** Saldo por tipo y ubicación,
       último conteo (o «Sin contar») y enlace al conteo ya filtrado.
