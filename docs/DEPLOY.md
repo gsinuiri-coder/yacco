@@ -158,7 +158,7 @@ corre en este orden (D-014):
 
 | Paso          | Qué hace                                                                                      | Si falla, qué queda en pie                           |
 | ------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main`                             | Nada cambió                                          |
+| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main` y cambia algo que corre     | Nada cambió                                          |
 | preflight     | Comprueba que existen los secretos, y que el token de Vercel sirve (`vercel whoami`)          | Nada cambió                                          |
 | 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit                                      | Nada cambió                                          |
 | 2 migraciones | `prisma migrate deploy` contra la URL **directa**: demo, después main                         | Una o las dos bases migradas; código viejo sirviendo |
@@ -167,6 +167,22 @@ corre en este orden (D-014):
 | 4b producción | La MISMA imagen + smoke de esa API                                                            | Demo en el nuevo; web sin publicar                   |
 | 5 web         | `deploy-web.mjs`: `vercel build --prod`, guardia del Build Output, `deploy --prebuilt --prod` | APIs en el nuevo; web en su versión anterior         |
 | 6 smoke       | `pnpm smoke:prod`, solo lectura                                                               | Todo desplegado; el smoke dice qué no está sano      |
+
+**Un merge que solo toca documentación no redespliega.** El gate compara el
+commit contra el que corre HOY en producción (el `commit` de su `/health`) y,
+si todo lo que cambió es `docs/`, algún `*.md`, `.agents/` o `.claude/`, la
+corrida termina en el gate, en verde, con el aviso «solo cambia
+documentación». `.github/` y `scripts/` sí despliegan: el deploy y el smoke
+corren desde ahí. Ante cualquier duda (`/health` caído, commit desconocido,
+comparación imposible) se despliega (`scripts/deploy-scope.mjs`). Relanzar a
+mano (abajo) despliega siempre el camino entero.
+
+Un caso que conviene tener presente: si un deploy falla en «5 · Web a
+Vercel», la API de producción ya corre el commit nuevo, así que un merge
+siguiente que solo toque documentación no redespliega y **el web queda en su
+versión anterior** (funciona: habla con la misma API por el mismo rewrite).
+Un deploy fallido se arregla relanzando: el botón «Re-run» de esa corrida
+vuelve a comparar y despliega, o `gh workflow run deploy.yml --ref main`.
 
 La fila del paso 3 es la que justifica una regla: **si las migraciones pasan y
 la imagen falla, la base quedó migrada y el código viejo sigue sirviendo.** Por
@@ -184,7 +200,8 @@ gh workflow run deploy.yml --ref main
 ```
 
 Pasa por el mismo gate: CI y CodeQL tienen que haber pasado para la punta de
-`main`.
+`main`. A mano no se saltea nada por ser solo documentación: es la forma de
+probar el camino completo cuando haga falta.
 
 ### A mano, cuando haga falta
 
@@ -292,6 +309,31 @@ mano, sin `SMOKE_VIEWER_PASSWORD`, ese paso se saltea y lo avisa. Ningún smoke,
 workflow ni script lee la contraseña del admin (lo verifica
 `scripts/viewer-bootstrap.test.mjs`), así que rotarla (F) no rompe ninguno.
 
+### El ciclo entero contra un preview
+
+Un preview del web apunta a la API de **demo** (D-011) y escribe ahí: un
+chofer, un pedido, una ruta y un cliente nuevos por corrida. Nunca toca
+producción. Es la prueba de punta a punta de lo que hace la planta: pedido →
+ruta → «Mi ruta» del chofer en el celular → conteo de envases de un cliente
+desde 0 → liquidación → reportes (`apps/web-nuxt/e2e-preview/review-cycle.test.ts`).
+
+1. Publicar el preview desde `main` y copiar la URL del resumen de la corrida:
+   `gh workflow run deploy.yml --ref main -f web_preview=true`.
+2. Correrlo. El preview está protegido: el token OIDC de desarrollo de Vercel
+   lo atraviesa (`vercel env run` lo pone en el entorno, sin escribir ningún
+   `.env`), y la contraseña del admin de demo sale de Secret Manager directo a
+   la variable. Ninguno de los dos se imprime. Leer ese secreto dispara el
+   email de auditoría de D-016, como corresponde. En Windows, `gcloud.cmd`
+   (el `gcloud` de Git Bash busca Python y falla).
+
+   ```bash
+   npx -y vercel@59.11.2 env run -- bash -c '
+     export DEMO_ADMIN_PASSWORD="$(gcloud.cmd secrets versions access latest \
+       --secret=yacco-demo-admin-password --project=yacco-v2-prod --configuration=yacco)"
+     cd apps/web-nuxt && PREVIEW_URL=<url del preview> \
+       pnpm exec playwright test -c playwright.preview.config.ts'
+   ```
+
 ### Cuenta del smoke: bootstrap manual
 
 Crear o reparar `smoke-viewer` pide un admin (igual que «Zonas del padrón»,
@@ -357,7 +399,52 @@ tiene zona: una puesta a mano desde la ficha del cliente no se pisa.
 
 **No uses `pnpm load:roster` para esto.** Su `upsert` vuelve a escribir el
 nombre y el teléfono de cada cliente desde el CSV, y pisaría lo que la
-oficina haya corregido en la app desde la carga.
+oficina haya corregido en la app desde la carga (ver abajo, «El peligro de
+recargar el padrón»).
+
+### Saldos de envases de los clientes: saberlos o contarlos
+
+Los 604 clientes del padrón entraron **sin envases**: el sistema viejo no
+tenía saldos (supuesto 14). Cada ubicación figura «Sin contar» en «Envases en
+poder de clientes» con 0 según el sistema. Hay dos caminos, y cuál sirve
+depende de una sola pregunta al dueño: _¿usted sabe cuántos bidones tiene
+cada cliente, o hay que ir a contarlos?_
+
+**Si hay que contarlos (el camino de hoy).** Visita a visita, el chofer cuenta
+lo que el cliente tiene y la oficina lo registra en «Envases en poder de
+clientes»: se busca al cliente por nombre o teléfono (o se recorre por zona),
+«Contar», se agrega el tipo de envase encontrado y se escribe lo contado.
+Como el sistema dice 0, la pantalla muestra la diferencia («según el sistema
+0, contado 3 (diferencia +3)») y pide confirmar; al confirmar queda un conteo
+y un movimiento `COUNT_ADJUSTMENT` que lleva el saldo a lo contado. La fila
+deja de decir «Sin contar». No hace falta ninguna herramienta ni tocar la API.
+El avance de arriba («N de M ubicaciones contadas») dice cuánto falta.
+
+**Si el dueño los sabe de antemano (una planilla por cliente).** El camino
+pensado para eso es el CSV `opening_containers.csv` de `pnpm load:roster`:
+una fila por ubicación con `qty_spout`, `qty_no_spout` y `confidence`. Cada
+cantidad entra como `OPENING_BALANCE` a la fecha de corte, y:
+
+- con `confidence = HIGH` (el dueño está seguro) el cargador además registra
+  un conteo de confirmación con esa misma cantidad, así que la ubicación
+  queda como **contada**: no hace falta ir a contarla;
+- con `confidence = ESTIMATED` queda el saldo pero la ubicación sigue «Sin
+  contar», para verificarla en la próxima visita.
+
+**El peligro de recargar el padrón.** `load:roster` no carga solo envases:
+lee los cuatro CSV y hace `upsert` de cada cliente y cada ubicación que
+nombran. Sobre un padrón que ya está en `main`, eso **vuelve a escribir desde
+el CSV el nombre del cliente, su zona (la deja vacía si la columna `zone` no
+la trae, borrando lo que asignó `roster:zones` o la oficina), y el nombre, la
+dirección, la referencia y el teléfono de cada ubicación**. Todo lo corregido
+en la app desde el 2026-09-24 se pierde sin aviso. No hay hoy una
+herramienta que arme los CSV desde `main`, y el export y los CSV originales
+se borraron. Así que, con el padrón ya cargado, **los saldos que el dueño
+sepa se registran igual que un conteo, desde la pantalla**, con la cantidad
+que él da: el resultado es el mismo (ubicación contada, saldo correcto), solo
+que el movimiento es `COUNT_ADJUSTMENT` y no `OPENING_BALANCE`. Si alguna vez
+se quisiera cargar por CSV, primero hace falta un cargador que solo agregue
+saldos y no toque clientes, y eso es trabajo nuevo, no una corrida.
 
 ## Vuelta atrás
 

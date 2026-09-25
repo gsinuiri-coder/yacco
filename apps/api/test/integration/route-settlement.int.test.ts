@@ -940,6 +940,61 @@ describe("roles", () => {
   });
 });
 
+/**
+ * Un cobro que estaba por confirmar al liquidar y que la oficina rechaza
+ * DESPUÉS. Decisión delegada del 2026-09-25 (supuesto 18): la liquidación no
+ * se reabre ni se reescribe —guarda lo que se sabía al cerrar— y la vista
+ * pone al lado el libro de hoy, que ya no cuenta el cobro rechazado. Dos
+ * cobros pendientes, y solo uno se rechaza: con uno solo, un cálculo que
+ * pusiera todo lo pendiente en cero pasaría igual.
+ */
+describe("un cobro rechazado después de liquidar", () => {
+  test("la liquidación guarda lo del cierre y la vista muestra el libro de hoy sin ese cobro", async () => {
+    const a = await createFreshLocation();
+    const b = await createFreshLocation();
+    const batchItemId = await createBatchItem(5);
+    const routeId = await createRoute();
+    await addLoad(routeId, batchItemId, 5);
+    const stopA = await addStop(routeId, a.locationId);
+    const stopB = await addStop(routeId, b.locationId);
+    await startRoute(routeId);
+    const deliverA = await deliverStop(routeId, stopA, {
+      items: [{ productId: refillProductId, quantity: 1 }],
+      payment: { paymentMethodId: yapePaymentMethodId, amount: "8.00" },
+    });
+    const deliverB = await deliverStop(routeId, stopB, {
+      items: [{ productId: refillProductId, quantity: 2 }],
+      payment: { paymentMethodId: yapePaymentMethodId, amount: "16.00" },
+    });
+    expect(deliverA.body.payment.status).toBe("PENDING");
+    expect(deliverB.body.payment.status).toBe("PENDING");
+    await finishRoute(routeId);
+    await postSettlement(routeId, { fullReturned: 2, emptiesCollected: [] }).then((r) =>
+      expect(r.status).toBe(201),
+    );
+
+    await request(server())
+      .post(`/api/v1/payments/${deliverA.body.payment.id}/reject`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ reason: "El Yape nunca llegó a la cuenta" })
+      .expect(200);
+
+    const view = await getSettlement(routeId);
+    expect(view.status).toBe(200);
+    // Lo del cierre, intacto.
+    expect(view.body.settlement.totalCollected).toBe("24.00");
+    expect(view.body.settlement.totalPendingConfirmation).toBe("24.00");
+    // El libro de hoy: sin el rechazado, con el otro todavía por confirmar.
+    expect(view.body.expected.totalCollected).toBe("16.00");
+    expect(view.body.expected.totalPendingConfirmation).toBe("16.00");
+    expect(view.body.expected.totalOnCredit).toBe("8.00");
+    // No es una corrección de parada, y la ruta no se reabre.
+    expect(view.body.settlementOutdated).toBe(false);
+    const route = await prisma.route.findUniqueOrThrow({ where: { id: routeId } });
+    expect(route.status).toBe(RouteStatus.SETTLED);
+  });
+});
+
 describe("GET .../settlement before and after settling", () => {
   test("before: expected is populated and settlement is null; after: both are", async () => {
     const { routeId } = await freshFinishedRoute();
