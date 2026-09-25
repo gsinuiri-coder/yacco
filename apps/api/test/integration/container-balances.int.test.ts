@@ -306,6 +306,18 @@ describe("GET /api/v1/container-balances", () => {
       for (const row of data) expect(row.zone).toEqual({ id: northZoneId, name: "Norte" });
     });
 
+    test("search finds a customer by part of the name, case-insensitive, and nobody else", async () => {
+      const { data } = await fetchAll("&search=antig");
+
+      expect(data.map((row) => row.location.id)).toEqual([stale.locationId]);
+    });
+
+    test("search also finds a location by its phone", async () => {
+      const { data } = await fetchAll("&search=987100003");
+
+      expect(data.map((row) => row.location.id)).toEqual([negative.locationId]);
+    });
+
     test("rejects a non-boolean or non-date filter with 400", async () => {
       await request(server())
         .get("/api/v1/container-balances?uncountedOnly=quizas")

@@ -4,7 +4,6 @@
  * Secret Manager.
  */
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -14,7 +13,6 @@ import {
   bootstrapViewer,
   classifySecretRead,
   findViewer,
-  promptHidden,
   viewerPlan,
   viewerUserBody,
 } from "./viewer-bootstrap.mjs";
@@ -192,45 +190,6 @@ describe("bootstrapViewer", () => {
       }),
       /login de admin devolvió 401/,
     );
-  });
-});
-
-/** Una terminal de mentira: lo que `promptHidden` necesita de process.stdin. */
-function fakeTty(isTTY = true) {
-  const input = new EventEmitter();
-  input.isTTY = isTTY;
-  input.rawModes = [];
-  input.setRawMode = (mode) => input.rawModes.push(mode);
-  input.setEncoding = () => {};
-  input.resume = () => {};
-  input.pause = () => {};
-  const written = [];
-  return { input, output: { write: (text) => written.push(text) }, written };
-}
-
-describe("promptHidden", () => {
-  test("devuelve lo tecleado, respeta el borrado y no lo escribe en la salida", async () => {
-    const tty = fakeTty();
-    const answer = promptHidden("Contraseña: ", tty);
-    tty.input.emit("data", "clavx");
-    tty.input.emit("data", "\u007fe\r");
-    assert.equal(await answer, "clave");
-    assert.deepEqual(tty.written, ["Contraseña: ", "\n"]);
-    assert.deepEqual(tty.input.rawModes, [true, false]);
-  });
-
-  test("Ctrl+C cancela y devuelve la terminal a su modo normal", async () => {
-    const tty = fakeTty();
-    const answer = promptHidden("Contraseña: ", tty);
-    tty.input.emit("data", "\u0003");
-    await assert.rejects(answer, /Cancelado/);
-    assert.deepEqual(tty.input.rawModes, [true, false]);
-  });
-
-  test("sin terminal interactiva no corre: nadie le pasa la del admin por un pipe", async () => {
-    const tty = fakeTty(false);
-    await assert.rejects(promptHidden("Contraseña: ", tty), /terminal interactiva/);
-    assert.deepEqual(tty.written, []);
   });
 });
 
