@@ -20,6 +20,11 @@ const SUR: Zone = { id: "sur-id", name: "Sur", deliveryDays: [], active: true };
 const OLD: Zone = { id: "old-id", name: "Zona antigua", deliveryDays: [], active: false };
 
 function stubList(zones: Zone[]) {
+  // El conteo de clientes por zona se pide aparte; por defecto, sin clientes.
+  // Un test que lo necesita registra el suyo después y ese es el que responde.
+  cleanups.push(
+    registerEndpoint("/api/v1/customers/zone-counts", () => ({ zones: [], withoutZone: 0 })),
+  );
   cleanups.push(
     registerEndpoint("/api/v1/zones", {
       method: "GET",
@@ -66,6 +71,39 @@ describe("Zonas", () => {
 
     const old = rowOf("Zona antigua");
     expect(within(old).getByText("Retirada")).toBeTruthy();
+  });
+
+  it("dice cuántos clientes activos tiene cada zona y, arriba, cuántos quedan sin zona", async () => {
+    stubList([NORTE, SUR, OLD]);
+    cleanups.push(
+      registerEndpoint("/api/v1/customers/zone-counts", () => ({
+        zones: [
+          { zoneId: NORTE.id, activeCustomers: 476 },
+          { zoneId: OLD.id, activeCustomers: 3 },
+        ],
+        withoutZone: 68,
+      })),
+    );
+
+    await renderPage();
+
+    await screen.findByText("Norte");
+    expect(await screen.findByText("68 clientes activos sin zona")).toBeTruthy();
+    expect(within(rowOf("Norte")).getByText("476")).toBeTruthy();
+    // Una zona que no vino en el conteo no tiene clientes activos.
+    expect(within(rowOf("Sur")).getByText("0")).toBeTruthy();
+    expect(within(rowOf("Zona antigua")).getByText("3")).toBeTruthy();
+  });
+
+  it("si el conteo de clientes falla, las zonas se ven igual y el conteo dice que no se pudo", async () => {
+    stubList([NORTE]);
+    cleanups.push(registerEndpoint("/api/v1/customers/zone-counts", failWith(500, "Base caída")));
+
+    await renderPage();
+
+    expect(await screen.findByText("Norte")).toBeTruthy();
+    expect(await screen.findByText("No se pudo contar los clientes por zona.")).toBeTruthy();
+    expect(within(rowOf("Norte")).getByText("—")).toBeTruthy();
   });
 
   it("crea una zona sin días: el POST omite deliveryDays, no lo manda vacío", async () => {
