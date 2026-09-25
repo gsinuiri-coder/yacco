@@ -41,7 +41,10 @@ export function parseArgs(argv: string[]): CliArgs {
   let projectId: string | undefined;
   for (let index = 0; index < rest.length; index += 1) {
     const flag = rest[index];
-    if (flag === "--all") {
+    if (flag === "--") {
+      // pnpm 9 pasa literal el separador de `pnpm export:tags -- --out x`.
+      continue;
+    } else if (flag === "--all") {
       pendingOnly = false;
     } else if (flag === "--pending-only") {
       pendingOnly = true;
