@@ -938,7 +938,17 @@ derivada, en el PR de la auditoría visible.
 
 ## Falta índice en `sales (location_id, sold_at)`
 
-**Estado:** abierto. **Disparador:** en el piloto de campo.
+**Estado:** RESUELTA el 2026-09-25 (ítem 4f de `plan-piloto.md`), migración
+expand `20260925130000_sales_location_sold_at_index`, sin columnas. Medido
+antes de decidir: en `main` hay 102 ventas y la consulta del estado de cuenta
+tarda 0,7 ms recorriendo la tabla entera, así que HOY el índice no se nota.
+Con un año de piloto simulado (600 clientes, 20 400 ventas, en un Postgres
+desechable) la parte de `sales` pasa de recorrer las 20 400 filas (5,1 ms) a
+un escaneo por índice de las 34 del cliente (0,23 ms). Queda sin índice
+`customer_locations (customer_id)`, que en esa misma consulta sigue recorriendo
+las ~600 ubicaciones; con ese tamaño no pesa. Registro original:
+
+**Estado original:** abierto. **Disparador:** en el piloto de campo.
 
 `sales` no tiene ningún índice sobre `location_id` ni `sold_at` — solo la
 PK y el índice parcial de `external_id`. `GET /customers/:id/account-statement`
