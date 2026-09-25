@@ -31,7 +31,7 @@
     "deploy:api": "node scripts/deploy-api.mjs",
     "deploy:web": "node scripts/deploy-web.mjs",
     "smoke:prod": "node scripts/smoke.mjs",
-    "smoke:viewer": "node scripts/smoke-viewer.mjs",
+    "viewer:bootstrap": "node scripts/viewer-bootstrap.mjs",
     "prepare": "husky",
     "test:e2e": "pnpm --filter @yacco/web-nuxt test:e2e"
   },

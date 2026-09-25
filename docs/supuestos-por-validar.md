@@ -398,7 +398,7 @@ línea de delegación con la fecha, más las cuatro de siempre.
 - **Asumimos:** que en el piloto nadie necesita mirar sin tocar (un socio, un
   contador, alguien de la planta que controla).
 - **Construido encima:** el enum `user_role` con `VIEWER`, los `@Roles` de
-  los tres catálogos, `GET /auth/me`, `scripts/smoke-viewer.mjs` y el chequeo
+  los tres catálogos, `GET /auth/me`, `scripts/viewer-bootstrap.mjs` y el chequeo
   `checkViewerSession` de `scripts/smoke.mjs` (ítem 3 de
   `plan-endurecimiento.md`).
 - **Preguntar (pregunta abierta):** ¿hay alguien que tenga que ver el sistema

@@ -1,13 +1,22 @@
 /**
- * `pnpm smoke:viewer` — crea la cuenta técnica del smoke del deploy en
- * PRODUCCIÓN (rol VIEWER: sólo catálogos y /auth/me) y deja su contraseña en
- * Secret Manager, legible por el deployer de CI. Idempotente.
+ * `pnpm viewer:bootstrap` — paso MANUAL, fuera de todo camino automático: crea
+ * o verifica la cuenta técnica del smoke del deploy en PRODUCCIÓN (rol VIEWER:
+ * sólo catálogos y /auth/me) y deja su contraseña en Secret Manager, legible
+ * por el deployer de CI. Idempotente.
  *
- *   GCP_PROJECT_ID=yacco-v2-prod pnpm smoke:viewer
+ *   GCP_PROJECT_ID=yacco-v2-prod pnpm viewer:bootstrap
+ *
+ * Crear un usuario pide un admin, y ESTE es el único lugar que lo usa. La
+ * contraseña del admin la escribe en la terminal la persona que lo corre (sin
+ * eco, nunca por argv ni por el entorno): el script no lee el secreto de la
+ * contraseña inicial del admin ni ningún otro secreto de admin. Así la
+ * rotación de F no rompe nada: el bootstrap pide la contraseña vigente, y el
+ * smoke del deploy (`smoke.mjs --require-viewer`) usa SÓLO la de VIEWER.
+ * Sin terminal interactiva no corre.
  *
  * Pasos, y por qué en este orden:
- *   1. Login como admin con `yacco-admin-initial-password`, y buscar
- *      `smoke-viewer` entre las cuentas en uso Y las desactivadas.
+ *   1. Login como admin, y buscar `smoke-viewer` entre las cuentas en uso Y
+ *      las desactivadas.
  *   2. La contraseña (viewerPlan): la que ya esté en SMOKE_VIEWER_SECRET o,
  *      SÓLO si el secreto no existe (NOT_FOUND) y la cuenta tampoco, una nueva
  *      al azar que va PRIMERO al secreto (por stdin). Si la subida falla, no se
@@ -16,7 +25,7 @@
  *      aborta sin escribir nada.
  *   3. Si `smoke-viewer` no existe, `POST /users` con roles ["VIEWER"]: el
  *      mismo camino que usa la oficina, con su validación y su hash.
- *   4. Login como la cuenta nueva y el mismo chequeo que corre el smoke
+ *   4. Login como la cuenta y el mismo chequeo que corre el smoke
  *      (checkViewerSession): así se sabe que el deploy siguiente va a pasar.
  *   5. `secretAccessor` para el deployer SOBRE ese secreto y ningún otro.
  *
@@ -35,7 +44,6 @@ import {
 } from "./smoke.mjs";
 
 const ADMIN_USERNAME = "admin";
-const ADMIN_PASSWORD_SECRET = "yacco-admin-initial-password";
 const DEPLOYER_SERVICE_ACCOUNT = "yacco-deployer";
 // Mismo tamaño que la contraseña inicial de admin (PROGRESO.md): 192 bits.
 const PASSWORD_BYTES = 24;
@@ -93,9 +101,45 @@ export function viewerPlan({ account, secret }) {
   };
 }
 
-function readSecret(projectId, name) {
+/**
+ * Pide una contraseña en la terminal sin mostrarla. Sin TTY rechaza: este
+ * paso lo corre una persona, y un stdin redirigido querría decir que alguien
+ * lo está automatizando con la contraseña del admin en un archivo o un pipe.
+ */
+export function promptHidden(question, { input = process.stdin, output = process.stderr } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!input.isTTY) {
+      reject(
+        new Error("viewer:bootstrap pide la contraseña del admin en una terminal interactiva."),
+      );
+      return;
+    }
+    let value = "";
+    const finish = (settle) => {
+      input.off("data", onData);
+      input.setRawMode(false);
+      input.pause();
+      output.write("\n");
+      settle();
+    };
+    const onData = (chunk) => {
+      for (const char of String(chunk)) {
+        if (char === "\r" || char === "\n") return finish(() => resolve(value));
+        if (char === "\u0003") return finish(() => reject(new Error("Cancelado.")));
+        value = char === "\u007f" || char === "\b" ? value.slice(0, -1) : value + char;
+      }
+    };
+    output.write(question);
+    input.setRawMode(true);
+    input.setEncoding("utf8");
+    input.on("data", onData);
+    input.resume();
+  });
+}
+
+function readSecret(runCommand, projectId, name) {
   const read = classifySecretRead(
-    run(
+    runCommand(
       "gcloud",
       ["secrets", "versions", "access", "latest", `--secret=${name}`, `--project=${projectId}`],
       { quiet: true, allowFailure: true },
@@ -105,16 +149,16 @@ function readSecret(projectId, name) {
   return read;
 }
 
-function storeNewPassword(projectId) {
+function storeNewPassword(runCommand, projectId) {
   const password = randomBytes(PASSWORD_BYTES).toString("base64url");
   registerSecret(password);
-  const exists = run(
+  const exists = runCommand(
     "gcloud",
     ["secrets", "describe", SMOKE_VIEWER_SECRET, `--project=${projectId}`, "--format=value(name)"],
     { allowFailure: true },
   );
   if (!exists.ok) {
-    run("gcloud", [
+    runCommand("gcloud", [
       "secrets",
       "create",
       SMOKE_VIEWER_SECRET,
@@ -122,14 +166,14 @@ function storeNewPassword(projectId) {
       "--replication-policy=automatic",
     ]);
   }
-  run(
+  runCommand(
     "gcloud",
     ["secrets", "versions", "add", SMOKE_VIEWER_SECRET, `--project=${projectId}`, "--data-file=-"],
     { input: password },
   );
   // Leída de vuelta: lo que se usa para crear el usuario es lo que quedó
   // guardado, no lo que se creyó mandar.
-  const stored = readSecret(projectId, SMOKE_VIEWER_SECRET);
+  const stored = readSecret(runCommand, projectId, SMOKE_VIEWER_SECRET);
   if (stored.value !== password) {
     throw new Error(
       `${SMOKE_VIEWER_SECRET} no devolvió lo que se subió. No se creó ningún usuario.`,
@@ -138,87 +182,93 @@ function storeNewPassword(projectId) {
   return password;
 }
 
-async function api(baseUrl, path, { token, method = "GET", body } = {}) {
-  const response = await fetch(`${baseUrl}/api/v1${path}`, {
-    method,
-    headers: {
-      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-  });
-  const text = await response.text();
-  let json = null;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    // El status alcanza para decidir.
-  }
-  return { status: response.status, body: json };
+function apiClient(baseUrl, fetchImpl) {
+  return async (path, { token, method = "GET", body } = {}) => {
+    const response = await fetchImpl(`${baseUrl}/api/v1${path}`, {
+      method,
+      headers: {
+        ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const text = await response.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // El status alcanza para decidir.
+    }
+    return { status: response.status, body: json };
+  };
 }
 
-async function login(baseUrl, username, password) {
-  const response = await api(baseUrl, "/auth/login", {
-    method: "POST",
-    body: { username, password },
-  });
-  return { status: response.status, body: response.body };
-}
+/**
+ * El bootstrap entero, con sus dependencias inyectables para el test. La
+ * contraseña del admin llega como argumento: de dónde sale es cosa de `main`
+ * (la terminal), nunca de Secret Manager.
+ */
+export async function bootstrapViewer({
+  projectId,
+  adminPassword,
+  baseUrl = TARGETS.apis.production,
+  run: runCommand = run,
+  fetch: fetchImpl = fetch,
+  log = console.log,
+}) {
+  registerSecret(adminPassword);
+  const api = apiClient(baseUrl, fetchImpl);
+  const login = (username, password) =>
+    api("/auth/login", { method: "POST", body: { username, password } });
 
-async function main() {
-  const projectId = resolveGcpProject(process.env);
-  const baseUrl = TARGETS.apis.production;
-
-  const adminPassword = readSecret(projectId, ADMIN_PASSWORD_SECRET);
-  if (adminPassword.state !== "found") throw new Error(`No pude leer ${ADMIN_PASSWORD_SECRET}.`);
-  const admin = await login(baseUrl, ADMIN_USERNAME, adminPassword.value);
+  const admin = await login(ADMIN_USERNAME, adminPassword);
   if (admin.status !== 200) throw new Error(`El login de admin devolvió ${admin.status}.`);
   const adminToken = admin.body.accessToken;
 
   // En uso Y desactivadas: GET /users trae sólo las activas si no se le dice.
   let account = null;
   for (const active of ["true", "false"]) {
-    const users = await api(baseUrl, `/users?role=VIEWER&active=${active}`, { token: adminToken });
+    const users = await api(`/users?role=VIEWER&active=${active}`, { token: adminToken });
     if (users.status !== 200) throw new Error(`GET /users devolvió ${users.status}.`);
     account ??= findViewer(users.body);
   }
 
-  const secret = readSecret(projectId, SMOKE_VIEWER_SECRET);
+  const secret = readSecret(runCommand, projectId, SMOKE_VIEWER_SECRET);
   const plan = viewerPlan({ account, secret });
   if (plan.error !== undefined) throw new Error(plan.error);
-  const password = plan.storeNewPassword ? storeNewPassword(projectId) : secret.value;
-  console.log(`${SMOKE_VIEWER_SECRET}: ${plan.storeNewPassword ? "creado" : "ya existía"}`);
+  const password = plan.storeNewPassword ? storeNewPassword(runCommand, projectId) : secret.value;
+  log(`${SMOKE_VIEWER_SECRET}: ${plan.storeNewPassword ? "creado" : "ya existía"}`);
 
   if (plan.createAccount) {
-    const created = await api(baseUrl, "/users", {
+    const created = await api("/users", {
       token: adminToken,
       method: "POST",
       body: viewerUserBody(password),
     });
     if (created.status !== 201) throw new Error(`POST /users devolvió ${created.status}.`);
-    console.log(`${SMOKE_VIEWER_USERNAME}: creado con rol VIEWER`);
+    log(`${SMOKE_VIEWER_USERNAME}: creado con rol VIEWER`);
   } else {
-    console.log(`${SMOKE_VIEWER_USERNAME}: ya existía`);
+    log(`${SMOKE_VIEWER_USERNAME}: ya existía`);
   }
 
-  const viewer = await login(baseUrl, SMOKE_VIEWER_USERNAME, password);
+  const viewer = await login(SMOKE_VIEWER_USERNAME, password);
   const checks = { login: viewer };
   if (viewer.status === 200) {
     const token = viewer.body.accessToken;
-    checks.me = await api(baseUrl, "/auth/me", { token });
-    checks.catalog = await api(baseUrl, "/products", { token });
-    checks.customers = await api(baseUrl, "/customers", { token });
+    checks.me = await api("/auth/me", { token });
+    checks.catalog = await api("/products", { token });
+    checks.customers = await api("/customers", { token });
   }
   const problems = checkViewerSession(checks);
   if (problems.length > 0) {
-    console.error("La cuenta NO pasa el chequeo del smoke:");
-    for (const problem of problems) console.error(`  - ${problem}`);
-    process.exit(1);
+    throw new Error(
+      `La cuenta NO pasa el chequeo del smoke:\n${problems.map((p) => `  - ${p}`).join("\n")}`,
+    );
   }
-  console.log(`${SMOKE_VIEWER_USERNAME}: pasa el chequeo del smoke`);
+  log(`${SMOKE_VIEWER_USERNAME}: pasa el chequeo del smoke`);
 
-  run("gcloud", [
+  runCommand("gcloud", [
     "secrets",
     "add-iam-policy-binding",
     SMOKE_VIEWER_SECRET,
@@ -227,8 +277,16 @@ async function main() {
     "--role=roles/secretmanager.secretAccessor",
     "--condition=None",
   ]);
-  console.log(`${SMOKE_VIEWER_SECRET}: legible por el deployer de CI`);
-  console.log("Ningún valor se imprimió.");
+  log(`${SMOKE_VIEWER_SECRET}: legible por el deployer de CI`);
+  log("Ningún valor se imprimió.");
+}
+
+async function main() {
+  const projectId = resolveGcpProject(process.env);
+  const adminPassword = await promptHidden(
+    `Contraseña ACTUAL del usuario ${ADMIN_USERNAME} de producción (no se muestra): `,
+  );
+  await bootstrapViewer({ projectId, adminPassword });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
