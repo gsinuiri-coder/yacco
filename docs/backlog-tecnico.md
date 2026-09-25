@@ -89,7 +89,16 @@ credenciales, nunca en el repositorio ni en un `.env` versionado.
 
 ## Precios de lista del catálogo de productos
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA la parte del sistema el 2026-09-25 (ítem 4a de
+`plan-piloto.md`): no había forma de cambiar un precio de lista sin un
+`UPDATE` a mano. Ahora `PATCH /api/v1/products/:id` (solo ADMIN, solo
+`listPrice`) y la pantalla «Productos» (Administración) lo cambian; vale para
+lo que se anote desde ese momento, y el precio pactado con un cliente sigue
+mandando. **Los precios siguen siendo los provisionales** hasta que el dueño
+diga los reales: es una pregunta del guion de la reunión
+(`docs/guion-piloto.md`), y los carga él o la oficina desde esa pantalla.
+
+**Estado original:** abierto. **Disparador:** antes del piloto de campo.
 
 Precios de lista del catálogo son placeholder; confirmar con el cliente antes
 del piloto de campo. Los cuatro productos sembrados en
