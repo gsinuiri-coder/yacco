@@ -1666,8 +1666,16 @@ Las URLs de Neon siguen validándose sólo por presencia: si no sirven, fallan e
 
 ## Cada merge de documentación redespliega producción
 
-**Estado:** abierto. **Disparador:** el piloto de campo, cuando haya tráfico
-real en Cloud Run y Vercel.
+**Estado:** RESUELTA el 2026-09-25 (ítem 4e de `plan-piloto.md`), con la
+forma que proponía «Para cerrarla»: filtro en el gate, no `paths-ignore`. El
+gate de `deploy.yml` corre `scripts/deploy-scope.mjs`, que compara el commit
+contra el que sirve producción (`/health`) y termina la corrida en verde si
+solo cambió documentación (`docs/`, `*.md`, `.agents/`, `.claude/`). Ante la
+duda despliega. `workflow_dispatch` sigue desplegando entero. Registro
+original:
+
+**Estado original:** abierto. **Disparador:** el piloto de campo, cuando haya
+tráfico real en Cloud Run y Vercel.
 
 El workflow de deploy corre en cada push a `main` que pasa CI, sin mirar qué
 cambió. Un PR que sólo toca `docs/` repite el camino entero: integración,

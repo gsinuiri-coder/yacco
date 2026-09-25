@@ -9,6 +9,9 @@
 #   gate → preflight → 1 integration → 2 migrate → 3 image
 #        → 4a deploy-demo → 4b deploy-production → 5 web → 6 smoke
 #
+# Un commit que, respecto de lo que corre en producción, solo cambia
+# documentación termina en el gate (scripts/deploy-scope.mjs).
+#
 # Cada job sólo corre si el anterior pasó. Qué queda en pie cuando uno falla
 # y los siguientes no corren:
 #
@@ -95,6 +98,10 @@ jobs:
       sha: ${{ steps.gate.outputs.sha }}
       deploy: ${{ steps.gate.outputs.deploy }}
     steps:
+      # Solo para scripts/deploy-scope.mjs, que no tiene dependencias.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - id: gate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -120,6 +127,22 @@ jobs:
             echo "::notice::$sha ya no es la punta de main ($tip); lo despliega la corrida de ese commit."
             echo "deploy=false" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+
+          # Un merge que solo toca documentación (docs/, *.md, .agents/,
+          # .claude/) no redespliega: comparado contra lo que corre HOY en
+          # producción (su /health), no contra el commit anterior, así que un
+          # cambio de código que nunca llegó a desplegarse se despliega igual.
+          # Ante cualquier duda el script dice «runtime». A mano
+          # (workflow_dispatch) siempre se despliega entero: es la forma de
+          # probar el camino completo cuando haga falta.
+          if [ "$EVENT" != "workflow_dispatch" ]; then
+            scope="$(node scripts/deploy-scope.mjs "$sha")"
+            if [ "$scope" = "docs-only" ]; then
+              echo "::notice::$sha solo cambia documentación respecto de lo desplegado: no se redespliega."
+              echo "deploy=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
 
           # Espera a que un workflow termine para este commit y exige éxito.

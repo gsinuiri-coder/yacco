@@ -81,7 +81,7 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
         smoke compara métodos de pago y productos contra `seed-catalog.json`.
   - [x] 4c (#232) · «Una liquidación puede quedar desactualizada»: la mitad del
         pago rechazado, sin columna. Supuesto 18.
-  - [ ] 4e · «Cada merge de documentación redespliega producción»: filtro en
+  - [x] 4e (#233) · «Cada merge de documentación redespliega producción»: filtro en
         el gate (`scripts/deploy-scope.mjs`). Va antes que 4d porque 4d lo usa.
   - [ ] 4d · «El auto-deploy puede no dispararse sin error visible»:
         `drift.yml` cada hora.
