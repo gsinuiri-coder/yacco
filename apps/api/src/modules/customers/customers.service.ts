@@ -393,12 +393,18 @@ export class CustomersService {
 /**
  * Search matches name or phone; zone and active narrow it further. Phone
  * lives on the location now, so it matches against any of the customer's
- * locations — not just the primary one.
+ * locations — not just the primary one. `withoutZone` is the "Sin zona"
+ * option of the zone filter: it and a `zoneId` contradict each other, so the
+ * two together are a 400 rather than an empty page.
  */
 function buildCustomerFilter(query: ListCustomersQueryDto): Prisma.CustomerWhereInput {
-  const { search, zoneId, active } = query;
+  const { search, zoneId, withoutZone, active } = query;
+  if (withoutZone === true && zoneId !== undefined) {
+    throw new BadRequestException("Elige una zona o «Sin zona», no las dos a la vez");
+  }
   return {
     ...(zoneId !== undefined ? { zoneId } : {}),
+    ...(withoutZone === true ? { zoneId: null } : {}),
     ...(active !== undefined ? { active } : {}),
     ...(search
       ? {
