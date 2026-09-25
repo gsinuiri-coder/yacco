@@ -881,7 +881,23 @@ en vez de por `requiresConfirmation`.
 
 ## Una liquidación puede quedar desactualizada
 
-**Estado:** abierto. **Disparador:** antes del piloto de campo.
+**Estado:** RESUELTA el 2026-09-25 (ítem 4c de `plan-piloto.md`). Las dos
+mitades se ven, y ninguna reabre la liquidación:
+
+- **La corrección de una parada** ya estaba cerrada: `settlementOutdated` se
+  deriva de `route_stops.corrected_at` contra `settled_at`, y la pantalla lo
+  avisa.
+- **El cobro rechazado después de liquidar**, decidido por delegación
+  (supuesto 18): la liquidación guarda lo que se sabía al cerrar y no se
+  reescribe; `GET .../settlement` trae al lado el libro de HOY (`expected`,
+  que no cuenta un cobro rechazado), y la pantalla avisa «desde entonces se
+  resolvió algún pago…» cuando los dos no coinciden (`moneyDrifted`, desde
+  #163). Lo que faltaba era la prueba de punta a punta: «un cobro rechazado
+  después de liquidar», en `route-settlement.int.test.ts`.
+
+Lo que sigue es el registro original.
+
+**Estado original:** abierto. **Disparador:** antes del piloto de campo.
 
 `RouteSettlementService.settle` persiste `totalCollected` y
 `totalPendingConfirmation` incluyendo los pagos `PENDING` de la ruta en el

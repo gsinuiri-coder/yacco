@@ -95,7 +95,7 @@ preguntar por dominio. Se para SOLO por, y espera un `[OK]` literal:
    - [ ] 4b · «Producción puede tener catálogos desincronizados del seed y
          nada lo detecta». El smoke (VIEWER lee los tres catálogos) compara
          contra el catálogo del seed.
-   - [ ] 4c · «Una liquidación puede quedar desactualizada». La mitad de la
+   - [x] 4c · «Una liquidación puede quedar desactualizada». La mitad de la
          corrección ya está; falta la del pago rechazado: derivada de
          `payments.rejected_at` contra `settled_at`, sin columna.
    - [ ] 4d · «El auto-deploy de yacco-api puede no dispararse sin error

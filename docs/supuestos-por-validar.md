@@ -439,6 +439,29 @@ línea de delegación con la fecha, más las cuatro de siempre.
   deploy. Costo medio: valor nuevo del enum (migración expand), sus `@Roles`
   endpoint por endpoint y su menú en el web.
 
+### 18. Un cobro rechazado después de liquidar no reabre la liquidación
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** la
+  liquidación de una ruta guarda lo que se sabía al cerrarla y no se reabre ni
+  se reescribe cuando la oficina rechaza después un cobro que estaba por
+  confirmar. La pantalla de la liquidación pone al lado lo que dice el libro
+  hoy (sin el cobro rechazado) y avisa que no coinciden. Es la misma regla que
+  ya rige para corregir una parada de una ruta liquidada.
+- **Asumimos:** que al dueño le sirve saber qué se sabía al cerrar la ruta y
+  qué se sabe hoy, y que un Yape que no llegó se persigue como deuda del
+  cliente —que es donde queda: el cobro rechazado nunca bajó su deuda— y no
+  reabriendo la ruta del chofer.
+- **Construido encima:** `RouteSettlementService.getSettlementView` (el
+  `expected` en vivo), `moneyDrifted` y el aviso de
+  `apps/web-nuxt/app/pages/routes/[id]/settlement.vue`; el test «un cobro
+  rechazado después de liquidar» de `route-settlement.int.test.ts`.
+- **Preguntar:** si un cliente le pagó por Yape al chofer, usted ya cerró la
+  ruta, y después ve que ese Yape nunca llegó, ¿quiere que la liquidación de
+  ese día cambie, o le basta con verlo marcado y cobrárselo al cliente?
+- **Si dice que no:** medio. Reabrir una liquidación pide una operación nueva
+  (con quién, cuándo y por qué, como la corrección de una parada) y decidir
+  qué pasa con lo que el chofer ya entregó en mano; no es un botón.
+
 ## Validados
 
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026
