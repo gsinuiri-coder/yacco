@@ -202,6 +202,24 @@ secciones 2 y 3._
   anota y avisa. Los bidones ya están llenos, y el aviso es para ir a
   registrar los envases que faltan.
 
+#### Supuesto 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes
+
+- **Asumimos:** que quien anota los conteos en la oficina (Vendedor) tiene que
+  ver los saldos de envases de los clientes para saber a quién contar.
+- **Construido encima:** los `@Roles(ADMIN, SELLER)` de
+  `apps/api/src/modules/container-balances/container-balances.controller.ts`
+  (los mismos que ya tenía `container-counts` para anotar un conteo) y la
+  sección «Envases» de la ficha
+  (`apps/web-nuxt/app/components/CustomerContainersSection.vue`, que
+  `apps/web-nuxt/app/pages/customers/[id]/index.vue` monta para ADMIN y SELLER).
+- **Preguntar:** la persona de la oficina que anota los conteos de bidones,
+  ¿puede ver cuántos bidones tiene cada cliente, o eso lo ve solo usted?
+- **Si dice que no:** barato. Se vuelve a ADMIN, y el enlace «Envases en poder
+  de clientes» del menú pasa a `onlyFor: "ADMIN"`, y la ficha deja de montar la
+  sección para el Vendedor. Entonces los conteos los anota solo él.
+- **Si pregunta qué haríamos nosotros:** recomendamos que la oficina los vea:
+  quien anota los conteos tiene que saber a quién le falta contar.
+
 ## 3. Las zonas
 
 #### Supuesto 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto
@@ -543,6 +561,7 @@ cuánto cuesta).
 | ¿Sabe cuántos bidones tiene cada cliente? (operativa)                                               | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
 | ¿Cuántos envases tiene hoy la planta? (operativa)                                                   | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
 | 19. Registrar un lote sin vacíos suficientes avisa y no bloquea                                     | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes                  | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
 | 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto                               | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
 | ¿Cómo reparte a los clientes de Parque? (operativa)                                                 | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
 | Días de reparto (operativa)                                                                         | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |

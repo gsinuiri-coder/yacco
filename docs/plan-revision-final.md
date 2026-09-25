@@ -92,3 +92,37 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
   existe la «Baja por daño»).
 - [x] **Cierre** (este PR; `sprint-close`): sección «Revisión final — 2026-09-25» en
       `PROGRESO.md` y «Qué probar como producto final» con L1–L7.
+
+## Segunda vuelta
+
+El goal que Giancarlo pasó el 2026-09-25 después del cierre de la primera
+vuelta. Mismas marcas y mismas reglas fijas, más estas:
+
+- Se para también si R2 encuentra OTRO enlace del menú que abre en 403 para
+  algún rol: se reporta con su endpoint y el permiso NO lo decide el agente.
+- `git add` nombra sus archivos: nunca `-A`.
+- Skills: `yacco-conventions` (siempre), `domain-invariants` y `nest-module`
+  (R1), `sprint-close` (cierre).
+
+Cola (en este orden):
+
+- [x] **R1 · El Vendedor ve a quién contar** (#249). `GET /container-balances` pasa
+      a ADMIN y SELLER (DRIVER y VIEWER siguen con 403); la sección «Envases»
+      de la ficha se muestra también al Vendedor; el comentario de la clase del
+      controller al día. Supuesto 20 («Decidido por Giancarlo con la
+      recomendación de Claude (2026-09-25)»), al guion (sección 2) y a la hoja
+      de cierre. Tests: SELLER 200, DRIVER 403, VIEWER 403; la ficha con sesión
+      de Vendedor muestra «Envases».
+- [ ] **R3 · Detalle de ruta con enlaces.** La dirección y la referencia de
+      cada parada con `LinkedText`. Test con un link de Google Maps.
+- [ ] **R2 · Ningún enlace del menú abre en 403.** Para ADMIN, SELLER, DRIVER y
+      DRIVER+SELLER, cada enlace de `visibleNavigation(roles)` (importado del
+      `navigation.ts` real) carga su pantalla sin 403 en ninguna petición que
+      hace al montarse. Prueba de que falla: revertir los `@Roles` de R1 → rojo
+      en «Envases en poder de clientes» para SELLER. Usuarios de demo
+      inventados, anotados en el cierre.
+- [bloqueado] **X · Datos de prueba en producción** (de la primera vuelta):
+  espera el `[OK]` de Giancarlo.
+- [ ] **Cierre** (`sprint-close`): subsección «Segunda vuelta» en «Revisión
+      final — 2026-09-25» de `PROGRESO.md` y «Qué probar como producto final»
+      con el recorrido de un Vendedor.
