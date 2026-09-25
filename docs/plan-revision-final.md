@@ -84,10 +84,11 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
 - [x] **L7 · Paradas en lote** (#247). «Agregar pedidos pendientes» en una ruta
       PLANNED; endpoint todo-o-nada con la validación de
       `POST /routes/:id/stops`.
-- [ ] **X · Datos de prueba en producción.** SE PARA ANTES y pide `[OK]`:
-      contar en 0 la ubicación del cliente de prueba y desactivarlo. Nunca
-      borrar. El lote de prueba no se toca: se ajusta contra el stock real
-      que dé el dueño (D5), con un mecanismo todavía por decidir (hoy solo
-      existe la «Baja por daño»).
-- [ ] **Cierre** (`sprint-close`): sección «Revisión final — 2026-09-25» en
+- [bloqueado] **X · Datos de prueba en producción.** Propuesto el
+  2026-09-25; **espera el `[OK]` de Giancarlo** (escritura en producción). SE PARA ANTES y pide `[OK]`:
+  contar en 0 la ubicación del cliente de prueba y desactivarlo. Nunca
+  borrar. El lote de prueba no se toca: se ajusta contra el stock real
+  que dé el dueño (D5), con un mecanismo todavía por decidir (hoy solo
+  existe la «Baja por daño»).
+- [x] **Cierre** (este PR; `sprint-close`): sección «Revisión final — 2026-09-25» en
       `PROGRESO.md` y «Qué probar como producto final» con L1–L7.

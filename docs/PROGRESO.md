@@ -1251,3 +1251,107 @@ en poder de clientes** (buscar a un cliente y contarlo desde 0) y la
 **liquidación** de esa ruta. Para no tocar datos reales, el mismo recorrido
 entero corre en un preview contra demo (`docs/DEPLOY.md`, «El ciclo entero
 contra un preview»). Después, sentarse con el dueño y `docs/guion-piloto.md`.
+
+**Desde la revisión final (2026-09-25), además:**
+
+- **Clientes** (L1): el filtro **Zona** con «Sin zona», para ver juntos a los
+  68 que no tienen. Un cliente con saldo negativo dice **«A favor S/ x.xx»**
+  (L5), en la lista, la ficha, su estado de cuenta y los avisos de cobro.
+- **Zonas** (L2): cuántos clientes activos tiene cada una, y arriba cuántos
+  quedan sin zona.
+- **La ficha de un cliente**: la sección **Envases** (L3), con su saldo por tipo
+  y ubicación, cuándo se contó o «Sin contar», y **«Contarlo»**, que abre
+  «Envases en poder de clientes» con solo ese cliente. Un link de Google Maps
+  en la referencia se abre aparte (L6), también en **Mi ruta**.
+- **Deuda por cliente** (L4): quien debe desde el padrón dice **«Saldo
+  inicial»**, con la fecha de carga debajo, en vez de una fecha que parecía
+  una venta.
+- **Rutas** (L7): en una ruta planificada, **«Agregar pedidos pendientes»**
+  arma la hoja de una vez, con los pedidos del día (y de su zona). Se agregan
+  todos o ninguno.
+
+## Revisión final — 2026-09-25
+
+La cola de `docs/plan-revision-final.md`: una revisión de producto final antes
+de la reunión con el dueño, con las recomendaciones ya decididas y todas las
+reglas en pie. Un PR por ítem, los cinco checks en verde, squash sin
+`--admin`, rama local y remota borradas, el subagente `reviewer` antes de cada
+PR, la salida en rojo en cada cuerpo y el deploy en verde (seis jobs, smoke de
+producción incluido) antes del siguiente merge.
+
+| Ítem                                      | Estado                                                                                  | PR   |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- | ---- |
+| D · Docs (D1–D6)                          | ✅ zonas hechas, supuesto 4 al día, cuatro productos, Parque y la deuda, stock, sup. 19 | #240 |
+| L4 · «Debe desde» con saldo inicial       | ✅ «Saldo inicial» y debajo «al <fecha>» (HU-19 E1 pide la fecha)                       | #241 |
+| L5 · Saldo a favor                        | ✅ «A favor S/ x.xx» por un solo helper, en toda pantalla que muestra la deuda          | #242 |
+| L1 · Filtro de zona en «Clientes»         | ✅ «Todas», cada zona en uso, «Sin zona» (`withoutZone`, excluyente con `zoneId`)       | #243 |
+| L2 · Clientes por zona en «Zonas»         | ✅ `GET /customers/zone-counts` (groupBy) y la columna «Clientes activos»               | #244 |
+| L3 · Envases en la ficha                  | ✅ sección «Envases» (ADMIN) y enlace al conteo filtrado (`customerId`)                 | #245 |
+| L6 · Enlaces en direcciones y referencias | ✅ `LinkedText` sin `v-html`, en la ficha y en «Mi ruta»                                | #246 |
+| L7 · Paradas en lote                      | ✅ `POST /routes/:id/stops/batch`, todo o nada, y «Agregar pedidos pendientes»          | #247 |
+| X · Datos de prueba en producción         | ⏸ propuesto, **espera `[OK]`** (ver abajo)                                              | —    |
+| Cierre                                    | ✅ este documento                                                                       | este |
+
+**X · La propuesta, sin ejecutar.** El cliente de prueba (creado desde la app,
+sin zona) tiene 10 + 10 envases en su única ubicación, dos conteos, un pedido
+cancelado y el Yape de prueba, que lo deja con plata a favor. Con el `[OK]`,
+desde la app como administrador: contar su ubicación en 0 en «Envases en poder
+de clientes» (los envases salen con su ajuste de conteo, en el libro) y después
+desactivarlo en su ficha. Nada se borra: el Yape y el pedido cancelado quedan en
+el historial. Se verifica en «Inventario», «Envases prestados» y «Cuadre de
+envases». El lote de prueba (50 llenos en planta) no se toca: se ajusta contra
+el stock que dé el dueño (D5), con un mecanismo todavía por decidir.
+
+**Lo que cambió en producción fuera de los PRs:** nada. Todas las lecturas de
+`main` fueron de solo lectura (conteos por zona, porcentajes de deuda sin nombre
+ni monto, el catálogo de productos, el inventario, el cliente de prueba).
+
+**Lo que encontró el loop y no estaba en el goal:**
+
+- **Spec contra código (supuesto 19).** HU-01 E2 dice que registrar un lote sin
+  vacíos suficientes «advierte la inconsistencia **antes de confirmar**»; el
+  código guarda el lote y avisa después. Quedó escrito como supuesto y como
+  pregunta; no se tocó código.
+- **El lote de prueba no tiene cómo descontarse** sin anotarlo como «Baja por
+  daño»: el ajuste por conteo solo mueve envases en poder de clientes.
+- **HU-19 E1 pide la fecha en cada fila** de «Deuda por cliente»: por eso L4
+  muestra «Saldo inicial» con la fecha debajo, y no en su lugar.
+- **Una segunda implementación de «saldo a favor»** en el aviso de cobro de la
+  ficha (`.replace(/^-/, '')`), y el saldo del estado de cuenta todavía con
+  signo: los dos pasan ahora por el mismo helper (L5).
+- **`SectionCard` no nombraba su región**: ninguna sección de la ficha ni de la
+  ruta se encontraba por rol. Ahora toma el nombre de su título (L3).
+- **`GET /container-balances` es solo ADMIN**: la sección «Envases» de la ficha
+  la ve solo el administrador (L3).
+- **Identificadores en castellano** en el test de la ficha (`stubFicha`,
+  `renderFicha`, `datos`, `tabla`): renombrados (L3).
+- **El detalle de ruta** muestra la dirección de cada parada sin enlace: L6 pedía
+  la ficha y «Mi ruta»; es una línea con `LinkedText` si se quiere.
+- **Las posiciones de las paradas no tienen restricción única**: dos altas
+  simultáneas en la misma ruta pueden repetir una posición. Ya pasaba con
+  `addStop`; el lote no lo empeora más que en duración.
+- El cliente con plata a favor que había en `main` es el de prueba.
+
+**Pendientes de Giancarlo:**
+
+- **X:** `[OK]` para contar en 0 y desactivar al cliente de prueba.
+- **4f (#238):** mergear la migración del índice después de las 20:00 de Lima.
+- **Supuesto 19:** la diferencia con HU-01 E2 (¿se corrige la spec, o se agrega
+  el paso de confirmación?), a decidir con el dueño.
+- **F:** rotar la contraseña del admin de producción y destruir la versión de
+  `yacco-admin-initial-password`; el token de Vercel de CI con vencimiento,
+  antes del 2026-10-16. **A1:** team propio de Vercel. Confirmar la
+  desinstalación de la app de Render en GitHub.
+- **La reunión con el dueño**, con `docs/guion-piloto.md` al día.
+
+### Lecciones
+
+- **Nunca `git add -A` con archivos de otro ítem en el árbol.** Al resolver el
+  conflicto de L1, un test sin commitear de L6 entró en su merge; se sacó con un
+  commit nuevo, sin force-push. Desde ahí, cada `git add` nombra sus archivos.
+- **Un test de «todo o nada» tiene que fallar adentro de la transacción.** Los
+  primeros de L7 se cortaban en la validación previa y nunca llegaban a
+  deshacer nada; el `reviewer` lo vio. Un `spyOn` que cancela el pedido después
+  de validarlo es lo que lo prueba de verdad.
+- **Antes de mostrar menos, leer el criterio de la HU.** «Saldo inicial» en vez
+  de la fecha contradecía HU-19 E1; debajo de la fecha, no.
