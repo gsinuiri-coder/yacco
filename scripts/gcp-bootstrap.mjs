@@ -4,7 +4,7 @@
  *
  * Qué crea, en este orden:
  *   1. el proyecto, si no existe, y lo vincula a la cuenta de facturación;
- *   2. las seis APIs que la migración necesita;
+ *   2. las APIs que la migración necesita;
  *   3. el repositorio de Artifact Registry donde vive la imagen;
  *   4. la service account con la que CORRE Cloud Run, con
  *      `secretmanager.secretAccessor` y nada más;
@@ -15,7 +15,7 @@
  * Cada paso comprueba antes de crear, con `describe ... --allowFailure`: es lo
  * que lo hace corrible dos veces. Nada de lo que imprime es un secreto.
  */
-import { RUNTIME_SERVICE_ACCOUNTS, loadConfig, run } from "./lib.mjs";
+import { RUNTIME_SERVICE_ACCOUNTS, loadConfig, resolveGcpProject, run } from "./lib.mjs";
 import { WIF_ATTRIBUTE_MAPPING, wifAttributeCondition } from "./wif-condition.mjs";
 
 const REQUIRED_SERVICES = [
@@ -25,6 +25,10 @@ const REQUIRED_SERVICES = [
   "secretmanager.googleapis.com",
   "iam.googleapis.com",
   "iamcredentials.googleapis.com",
+  // No la usa ningún deploy: la pide gcloud a mano con la configuración `yacco`,
+  // que factura acá (billing/quota_project) y sin ella ofrece habilitarla a
+  // mitad de un `projects get-iam-policy`.
+  "cloudresourcemanager.googleapis.com",
 ];
 
 export const ARTIFACT_REPOSITORY = "yacco";
@@ -97,7 +101,7 @@ function ensureServices(projectId) {
 
   const missing = REQUIRED_SERVICES.filter((service) => !enabled.has(service));
   if (missing.length === 0) {
-    log("APIs", "las seis ya estaban habilitadas");
+    log("APIs", `las ${REQUIRED_SERVICES.length} ya estaban habilitadas`);
     return;
   }
 
@@ -352,7 +356,7 @@ function main() {
   const config = loadConfig();
   requireConfig(config, ["GCP_PROJECT_ID", "GCP_BILLING_ACCOUNT_ID", "GCP_REGION"]);
 
-  const projectId = config.GCP_PROJECT_ID.trim();
+  const projectId = resolveGcpProject(config);
   const region = config.GCP_REGION.trim();
   const repository = (config.GITHUB_REPOSITORY ?? "gsinuiri-coder/yacco").trim();
 

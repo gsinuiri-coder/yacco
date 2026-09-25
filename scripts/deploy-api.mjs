@@ -26,7 +26,7 @@
  * correrían a la vez contra la misma base.
  */
 import { pathToFileURL } from "node:url";
-import { RUNTIME_SERVICE_ACCOUNTS, loadConfig, run } from "./lib.mjs";
+import { RUNTIME_SERVICE_ACCOUNTS, loadConfig, resolveGcpProject, run } from "./lib.mjs";
 
 export const ENVIRONMENTS = {
   demo: {
@@ -302,7 +302,7 @@ function main() {
 
   const config = loadConfig();
   requireConfig(config, ["GCP_PROJECT_ID", "GCP_REGION"]);
-  const projectId = config.GCP_PROJECT_ID.trim();
+  const projectId = resolveGcpProject(config);
   const region = config.GCP_REGION.trim();
   const commit = currentCommit();
 

@@ -21,7 +21,7 @@
  */
 import { pathToFileURL } from "node:url";
 
-import { RUNTIME_SERVICE_ACCOUNTS, run } from "./lib.mjs";
+import { RUNTIME_SERVICE_ACCOUNTS, resolveGcpProject, run } from "./lib.mjs";
 
 export const AUDIT_BUCKET = "secret-manager-audit";
 export const AUDIT_SINK = "secret-manager-audit";
@@ -223,12 +223,12 @@ async function ensureAlert(projectId, email) {
 }
 
 async function main() {
-  const projectId = (process.env.GCP_PROJECT_ID ?? "").trim();
   const email = (process.env.ALERT_EMAIL ?? "").trim();
-  if (projectId.length === 0 || email.length === 0) {
-    console.error("Faltan GCP_PROJECT_ID y/o ALERT_EMAIL.");
+  if (email.length === 0) {
+    console.error("Falta ALERT_EMAIL.");
     process.exit(1);
   }
+  const projectId = resolveGcpProject(process.env);
   ensureBucket(projectId);
   ensureSink(projectId);
   ensureMetric(projectId);

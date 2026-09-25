@@ -35,6 +35,7 @@ import {
   RUNTIME_SERVICE_ACCOUNTS,
   loadConfig,
   registerSecret,
+  resolveGcpProject,
   run,
 } from "./lib.mjs";
 
@@ -315,7 +316,12 @@ export function checkCanRun(config, upload, { run: runCommand = run } = {}) {
   const uploadError = checkUploadsHaveValue(config, upload);
   if (uploadError !== null) return [uploadError];
 
-  const projectId = config.GCP_PROJECT_ID.trim();
+  let projectId;
+  try {
+    projectId = resolveGcpProject(config);
+  } catch (error) {
+    return [error.message];
+  }
   const problems = [];
   const probe = (description, command, args) => {
     const result = runCommand(command, args, { quiet: true, allowFailure: true });
@@ -396,7 +402,7 @@ function main() {
     process.exit(1);
   }
 
-  const projectId = config.GCP_PROJECT_ID.trim();
+  const projectId = resolveGcpProject(config);
   const report = [];
 
   for (const environment of ENVIRONMENTS) {

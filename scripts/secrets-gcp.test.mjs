@@ -19,7 +19,7 @@ import {
 } from "./secrets-gcp.mjs";
 
 const FULL_CONFIG = {
-  GCP_PROJECT_ID: "proyecto-de-prueba",
+  GCP_PROJECT_ID: "yacco-v2-prod",
   NEON_PROJECT_ID: "neon-de-prueba",
   NEON_ORG_ID: "org-de-prueba",
   VERCEL_TOKEN: "un-token-de-prueba",
@@ -164,6 +164,18 @@ describe("checkCanRun (--check)", () => {
     const problems = checkCanRun(FULL_CONFIG, [], { run: runCommand });
     assert.equal(problems.length, 1);
     assert.match(problems[0], /yacco-production-database-url/);
+  });
+
+  test("con el proyecto de otro cliente falla nombrándolo, sin lanzar ningún comando", () => {
+    // El proyecto por defecto de la máquina del dueño es `ayr-steel-erp`: si
+    // GCP_PROJECT_ID viniera de ahí, cada probe preguntaría por recursos ajenos.
+    const { calls, runCommand } = fakeRun();
+    const problems = checkCanRun({ ...FULL_CONFIG, GCP_PROJECT_ID: "ayr-steel-erp" }, [], {
+      run: runCommand,
+    });
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /"ayr-steel-erp", no yacco-v2-prod/);
+    assert.deepEqual(calls, []);
   });
 
   test("--check con --upload de un valor vacío falla antes de lanzar nada", () => {

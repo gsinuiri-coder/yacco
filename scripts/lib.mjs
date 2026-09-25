@@ -31,6 +31,53 @@ export const RUNTIME_SERVICE_ACCOUNTS = {
   demo: "yacco-api-demo-run",
 };
 
+/**
+ * El único proyecto de Google Cloud de Yacco (demo y producción viven los dos
+ * acá). Ningún script depende del proyecto por defecto de la máquina: en la
+ * del dueño es el de OTRO cliente, y un `gcloud` sin proyecto explícito cobra
+ * y habilita APIs allá.
+ */
+export const YACCO_GCP_PROJECT = "yacco-v2-prod";
+
+/**
+ * El `GCP_PROJECT_ID` de la configuración, sólo si es el de Yacco. Cualquier
+ * otro valor corta el script antes de lanzar un solo `gcloud`.
+ */
+export function resolveGcpProject(config) {
+  const projectId = (config.GCP_PROJECT_ID ?? "").trim();
+  if (projectId !== YACCO_GCP_PROJECT) {
+    throw new Error(
+      `GCP_PROJECT_ID es "${projectId}", no ${YACCO_GCP_PROJECT}. Los scripts de Yacco ` +
+        "no corren contra otro proyecto.",
+    );
+  }
+  return projectId;
+}
+
+const GCLOUD_PROJECT_FLAGS = ["--project", "--billing-project"];
+
+/**
+ * El entorno que fija un `gcloud` al proyecto de Yacco, o un error si sus
+ * argumentos nombran otro. `CLOUDSDK_CORE_PROJECT` pisa el `core/project` de
+ * la configuración activa, así que hasta un comando sin `--project` (`auth
+ * print-access-token`, `auth configure-docker`) resuelve a Yacco.
+ */
+export function gcloudProjectEnv(args) {
+  args.forEach((arg, index) => {
+    for (const flag of GCLOUD_PROJECT_FLAGS) {
+      let value;
+      if (arg.startsWith(`${flag}=`)) value = arg.slice(flag.length + 1);
+      if (arg === flag) value = args[index + 1];
+      if (value !== undefined && value !== YACCO_GCP_PROJECT) {
+        throw new Error(
+          `gcloud con ${flag}=${value}: los scripts de Yacco sólo usan ${YACCO_GCP_PROJECT}.`,
+        );
+      }
+    }
+  });
+  return { CLOUDSDK_CORE_PROJECT: YACCO_GCP_PROJECT };
+}
+
 const IS_WINDOWS = process.platform === "win32";
 
 /**
@@ -304,10 +351,13 @@ export function run(command, args = [], options = {}) {
 
   for (const value of Object.values(env)) registerSecret(value);
 
+  // Antes de resolver el ejecutable: un proyecto ajeno corta aunque gcloud no
+  // esté instalado. Va después de `env` para que nadie pueda pisarlo.
+  const pinned = command === "gcloud" ? gcloudProjectEnv(args) : {};
   const resolved = resolveCommand(command);
   const result = spawnSync(resolved.file, [...resolved.prefixArgs, ...args], {
     cwd,
-    env: { ...process.env, ...resolved.env, ...env },
+    env: { ...process.env, ...resolved.env, ...env, ...pinned },
     shell: false,
     encoding: "utf8",
     input,
