@@ -294,9 +294,9 @@ workflow ni script lee la contraseña del admin (lo verifica
 
 ### Cuenta del smoke: bootstrap manual
 
-Crear o reparar `smoke-viewer` pide un admin, y es el ÚNICO paso que lo usa.
-No corre en CI ni en el deploy: lo corre una persona, en una terminal, y sólo
-cuando hace falta (la primera vez, o si el smoke dice que el login de
+Crear o reparar `smoke-viewer` pide un admin (igual que «Zonas del padrón»,
+abajo; ningún otro paso lo usa). No corre en CI ni en el deploy: lo corre
+una persona, en una terminal, y sólo cuando hace falta (la primera vez, o si el smoke dice que el login de
 `smoke-viewer` falla):
 
 ```bash
@@ -311,6 +311,53 @@ hace el mismo chequeo que el smoke del deploy y le da al deployer
 `secretAccessor` sobre ese secreto y sobre ningún otro. Los casos que no se
 arreglan solos (cuenta desactivada, cuenta sin secreto, secreto ilegible)
 abortan sin escribir nada y dicen qué hacer.
+
+### Zonas del padrón: `pnpm roster:zones`
+
+Les pone zona a los clientes del padrón a partir de sus etiquetas del sistema
+viejo. Es un paso manual, como el de arriba, y entra por la API como admin
+con la contraseña tecleada sin eco. Solo toca `zoneId`, y solo a quien no
+tiene zona: una puesta a mano desde la ficha del cliente no se pisa.
+
+1. Las etiquetas no están en `main` (el cargador no guarda las notas), así
+   que salen del Firestore del sistema viejo, de solo lectura. En la máquina
+   de Giancarlo:
+
+   ```bash
+   pnpm --filter @yacco/firestore-export export:tags -- --out <carpeta fuera del repo>
+   # tags: N clientes, M con etiquetas -> <carpeta>/tags.json
+   ```
+
+   `tags.json` lleva solo el id de cada cliente y sus etiquetas: ni nombre, ni
+   teléfono, ni deuda.
+
+2. Dry-run (por defecto): imprime las etiquetas con cuántos clientes tiene
+   cada una, las zonas a crear, cuántos clientes van a cada zona, los códigos
+   de los que tienen dos etiquetas de lugar y cuántos quedan sin zona. No
+   escribe nada.
+
+   ```bash
+   pnpm roster:zones -- --tags <carpeta>/tags.json
+   ```
+
+3. Si hay «etiquetas SIN CLASIFICAR», se agregan a
+   `scripts/roster-zones-labels.json` (zona o no-zona, regla del supuesto 16)
+   en un PR, y se vuelve al paso 2.
+4. Con el informe aprobado (`[OK]`): `--commit`. Crea las zonas que falten
+   (sin días de reparto: los pone el dueño en Zonas), asigna, y verifica de
+   solo lectura que la cantidad de clientes con zona cierra y que ningún
+   cliente cambió en otra cosa que la zona (huella por cliente, sin imprimir
+   el contenido). Correrlo con la oficina sin trabajar: un cobro o una
+   edición durante la corrida también cambian la huella, y la verificación
+   falla (después de escribir, pero sin haber pisado nada).
+
+   Frena ANTES de escribir si hay etiquetas sin clasificar, si una zona
+   retirada recibiría clientes (se reactiva en Zonas o se saca del mapeo), o
+   si la lista de clientes no se pudo leer completa.
+
+**No uses `pnpm load:roster` para esto.** Su `upsert` vuelve a escribir el
+nombre y el teléfono de cada cliente desde el CSV, y pisaría lo que la
+oficina haya corregido en la app desde la carga.
 
 ## Vuelta atrás
 

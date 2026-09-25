@@ -439,6 +439,36 @@ línea de delegación con la fecha, más las cuatro de siempre.
   deploy. Costo medio: valor nuevo del enum (migración expand), sus `@Roles`
   endpoint por endpoint y su menú en el web.
 
+### 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** una
+  etiqueta del sistema viejo es zona si nombra un lugar (distrito,
+  urbanización, avenida, parque); no lo es si nombra un tipo de cliente
+  (EMPRESAS, DISTRIBUIDOR y similares), y esas no se guardan en ningún lado
+  (el cargador no guarda notas). Un cliente con dos etiquetas de lugar toma la
+  primera y queda listado en el informe. Sin etiqueta de lugar, queda sin
+  zona. Las zonas nacen **sin días de reparto**: los pone el dueño. La regla
+  es de Giancarlo hablando como cliente; el mapeo concreto lo decide el
+  agente con ella.
+- **Mapeo resultante:** `scripts/roster-zones-labels.json`. Hoy lleva solo las
+  cuatro etiquetas que ya se conocían (PARQUE y SURCO → zona; EMPRESAS y
+  DISTRIBUIDOR → no). La lista completa, con cuántos clientes tiene cada una,
+  sale del dry-run de `pnpm roster:zones` cuando Giancarlo corra el export de
+  etiquetas (ítem 2 de `plan-piloto.md`); ahí se completa el mapeo y se
+  actualiza esta línea.
+- **Asumimos:** que el dueño organiza el reparto por lugar y que las
+  etiquetas de lugar del sistema viejo son las mismas zonas con las que
+  piensa sus recorridos; y que un cliente con dos lugares está en el primero.
+- **Construido encima:** `scripts/roster-zones.mjs` y su mapeo; las zonas que
+  cree en `main`, y el `zone_id` de los clientes que asigne. No toca ningún
+  otro dato del cliente.
+- **Preguntar:** estas son las etiquetas del sistema viejo y a qué zona
+  llevamos cada una: ¿así reparte usted? ¿Hay etiquetas que juntaría en una
+  sola zona, o zonas que le faltan? ¿Qué días va a cada zona?
+- **Si dice que no:** barato. Una zona se renombra o se retira en «Zonas», y
+  un cliente se cambia de zona desde su ficha; nada de eso toca deudas ni
+  envases.
+
 ## Validados
 
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026
