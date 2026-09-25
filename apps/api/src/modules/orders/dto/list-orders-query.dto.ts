@@ -59,6 +59,14 @@ export class ListOrdersQueryDto {
   @IsUUID("4", { message: "El cliente debe ser un identificador válido" })
   customerId?: string;
 
+  @ApiPropertyOptional({
+    format: "uuid",
+    description: "Solo pedidos de clientes de esta zona (armar la ruta de una zona)",
+  })
+  @IsOptional()
+  @IsUUID("4", { message: "La zona debe ser un identificador válido" })
+  zoneId?: string;
+
   @ApiPropertyOptional({ example: "2026-08-01", description: "Desde (inclusive)" })
   @IsOptional()
   @IsString({ message: `La fecha desde ${BUSINESS_DATE_MESSAGE}` })

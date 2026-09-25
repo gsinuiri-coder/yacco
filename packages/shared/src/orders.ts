@@ -39,6 +39,8 @@ export interface OrderListQuery {
   limit?: number;
   status?: OrderStatus;
   customerId?: string;
+  /** Only orders of customers in this zone. */
+  zoneId?: string;
   deliveryDateFrom?: string;
   deliveryDateTo?: string;
   hasRouteStop?: boolean;

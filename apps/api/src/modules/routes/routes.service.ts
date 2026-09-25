@@ -24,6 +24,7 @@ import type { CorrectRouteStopDto } from "./dto/correct-route-stop.dto.js";
 import type { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import type { CreateRouteDto } from "./dto/create-route.dto.js";
 import type { CreateRouteStopDto } from "./dto/create-route-stop.dto.js";
+import type { CreateRouteStopsBatchDto } from "./dto/create-route-stops-batch.dto.js";
 import type { FindRouteQueryDto } from "./dto/find-route-query.dto.js";
 import type { ListRoutesQueryDto } from "./dto/list-routes-query.dto.js";
 import type { MarkRouteStopDto } from "./dto/mark-route-stop.dto.js";
@@ -543,25 +544,7 @@ export class RoutesService {
           "Una parada de origen ORDER no lleva locationId; se toma del pedido",
         );
       }
-      const order = await this.prisma.order.findUnique({
-        where: { id: dto.orderId },
-        select: { id: true, status: true, locationId: true, routeStop: { select: { id: true } } },
-      });
-      if (order === null) {
-        throw new BadRequestException(`El pedido "${dto.orderId}" no existe`);
-      }
-      // "Ya asignado" se pregunta ANTES que "no está pendiente", y el orden
-      // importa desde que el pedido sigue a su parada: un pedido con parada
-      // está además en ON_ROUTE, así que preguntar por el estado primero
-      // taparía la causa específica con una genérica. Las dos son ciertas; la
-      // que le sirve a quien la lee es la que nombra la otra parada.
-      if (order.routeStop !== null) {
-        throw new BadRequestException(`El pedido "${dto.orderId}" ya está asignado a otra parada`);
-      }
-      if (order.status !== OrderStatus.PENDING) {
-        throw new BadRequestException(`El pedido "${dto.orderId}" no está pendiente`);
-      }
-      locationId = order.locationId;
+      locationId = await this.resolveOrderStopLocation(dto.orderId);
       orderId = dto.orderId;
     } else {
       if (dto.locationId === undefined) {
@@ -582,47 +565,14 @@ export class RoutesService {
     }
 
     try {
-      const stop = await this.prisma.$transaction(async (tx) => {
-        const last = await tx.routeStop.findFirst({
-          where: { routeId },
-          orderBy: { position: "desc" },
-          select: { position: true },
-        });
-        const created = await tx.routeStop.create({
-          data: {
-            routeId,
-            locationId,
-            origin: dto.origin,
-            orderId,
-            position: (last?.position ?? 0) + 1,
-            addedById: actor.id,
-          },
-          include: STOP_INCLUDE,
-        });
-
-        // HU-10 E1: el pedido pasa a ON_ROUTE en el momento de la asignación,
-        // no al iniciar la ruta. Escribirlo en `start()` dejaría una ventana en
-        // la que un pedido ya planificado se puede cancelar mientras el chofer
-        // lo lleva en la hoja de ruta.
-        //
-        // Va en ESTA transacción: si la escritura del pedido falla, la parada
-        // no queda creada. Y el `status: PENDING` del WHERE no es decorativo —
-        // la lectura de más arriba ocurrió fuera de la transacción, así que
-        // esta es la única comprobación que no puede ser adelantada por una
-        // cancelación concurrente. Solo las paradas ORDER tienen `orderId`;
-        // una de VAN_SALE no toca ningún pedido.
-        if (orderId !== null) {
-          const { count } = await tx.order.updateMany({
-            where: { id: orderId, status: OrderStatus.PENDING },
-            data: { status: OrderStatus.ON_ROUTE },
-          });
-          if (count === 0) {
-            throw new BadRequestException(`El pedido "${orderId}" no está pendiente`);
-          }
-        }
-
-        return created;
-      });
+      const stop = await this.prisma.$transaction((tx) =>
+        this.createStopWithinTransaction(
+          tx,
+          routeId,
+          { locationId, origin: dto.origin, orderId },
+          actor,
+        ),
+      );
       return toStopResponse(stop);
     } catch (error) {
       if (isPrismaKnownError(error, "P2002")) {
@@ -630,6 +580,149 @@ export class RoutesService {
       }
       throw error;
     }
+  }
+
+  /**
+   * «Agregar pedidos pendientes»: una parada ORDER por pedido, en el orden
+   * recibido, detrás de las que la ruta ya tenía. Solo con la ruta
+   * PLANIFICADA (armar la hoja antes de salir); una vez en la calle se agrega
+   * de a una, como siempre.
+   *
+   * Todo o nada. Cada pedido pasa por EXACTAMENTE la misma validación que
+   * `addStop` (`resolveOrderStopLocation`), todos antes de escribir nada: el
+   * primero que falla corta el lote con su 400, que lo nombra. Después, una
+   * sola transacción crea las paradas con la misma función que `addStop`; si
+   * ahí falla uno (una cancelación o una asignación concurrente), la
+   * transacción entera se deshace y el error también lo nombra.
+   */
+  async addOrderStops(
+    routeId: string,
+    dto: CreateRouteStopsBatchDto,
+    actor: RouteActor,
+  ): Promise<RouteStopResponseDto[]> {
+    const route = await this.getOwnedRouteOrThrow(routeId, actor);
+    if (route.status !== RouteStatus.PLANNED) {
+      throw new ConflictException(
+        `Solo se agregan pedidos en lote a una ruta planificada; esta está en ${route.status}`,
+      );
+    }
+
+    const stops: Array<{ orderId: string; locationId: string }> = [];
+    for (const orderId of dto.orderIds) {
+      stops.push({ orderId, locationId: await this.resolveOrderStopLocation(orderId) });
+    }
+
+    let current: string | undefined;
+    try {
+      const created = await this.prisma.$transaction(async (tx) => {
+        // Se vuelve a exigir PLANIFICADA adentro, y el UPDATE toma el candado
+        // de la fila: un `start` o un `finish` que llegue mientras se validaban
+        // los pedidos espera a este lote, o este lote ve que la ruta ya salió.
+        const { count } = await tx.route.updateMany({
+          where: { id: routeId, status: RouteStatus.PLANNED },
+          data: { status: RouteStatus.PLANNED },
+        });
+        if (count === 0) {
+          throw new ConflictException(
+            "La ruta dejó de estar planificada mientras se agregaban los pedidos",
+          );
+        }
+        const rows: StopWithRelations[] = [];
+        for (const stop of stops) {
+          current = stop.orderId;
+          rows.push(
+            await this.createStopWithinTransaction(
+              tx,
+              routeId,
+              { locationId: stop.locationId, origin: StopOrigin.ORDER, orderId: stop.orderId },
+              actor,
+            ),
+          );
+        }
+        return rows;
+      });
+      return created.map((stop) => toStopResponse(stop));
+    } catch (error) {
+      if (isPrismaKnownError(error, "P2002")) {
+        throw new BadRequestException(`El pedido "${current}" ya está asignado a otra parada`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Lo que una parada ORDER exige de su pedido, compartido por `addStop` y
+   * `addOrderStops` para que las dos puertas acepten exactamente lo mismo.
+   * Devuelve la ubicación del pedido: la parada va adonde va el pedido.
+   */
+  private async resolveOrderStopLocation(orderId: string): Promise<string> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, status: true, locationId: true, routeStop: { select: { id: true } } },
+    });
+    if (order === null) {
+      throw new BadRequestException(`El pedido "${orderId}" no existe`);
+    }
+    // "Ya asignado" se pregunta ANTES que "no está pendiente", y el orden
+    // importa desde que el pedido sigue a su parada: un pedido con parada
+    // está además en ON_ROUTE, así que preguntar por el estado primero
+    // taparía la causa específica con una genérica. Las dos son ciertas; la
+    // que le sirve a quien la lee es la que nombra la otra parada.
+    if (order.routeStop !== null) {
+      throw new BadRequestException(`El pedido "${orderId}" ya está asignado a otra parada`);
+    }
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException(`El pedido "${orderId}" no está pendiente`);
+    }
+    return order.locationId;
+  }
+
+  /** Crea una parada al final de la ruta, dentro de la transacción de quien llama. */
+  private async createStopWithinTransaction(
+    tx: Prisma.TransactionClient,
+    routeId: string,
+    stop: { locationId: string; origin: StopOrigin; orderId: string | null },
+    actor: RouteActor,
+  ): Promise<StopWithRelations> {
+    const last = await tx.routeStop.findFirst({
+      where: { routeId },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
+    const created = await tx.routeStop.create({
+      data: {
+        routeId,
+        locationId: stop.locationId,
+        origin: stop.origin,
+        orderId: stop.orderId,
+        position: (last?.position ?? 0) + 1,
+        addedById: actor.id,
+      },
+      include: STOP_INCLUDE,
+    });
+
+    // HU-10 E1: el pedido pasa a ON_ROUTE en el momento de la asignación,
+    // no al iniciar la ruta. Escribirlo en `start()` dejaría una ventana en
+    // la que un pedido ya planificado se puede cancelar mientras el chofer
+    // lo lleva en la hoja de ruta.
+    //
+    // Va en ESTA transacción: si la escritura del pedido falla, la parada
+    // no queda creada. Y el `status: PENDING` del WHERE no es decorativo —
+    // la lectura previa ocurrió fuera de la transacción, así que esta es la
+    // única comprobación que no puede ser adelantada por una cancelación
+    // concurrente. Solo las paradas ORDER tienen `orderId`; una de VAN_SALE
+    // no toca ningún pedido.
+    if (stop.orderId !== null) {
+      const { count } = await tx.order.updateMany({
+        where: { id: stop.orderId, status: OrderStatus.PENDING },
+        data: { status: OrderStatus.ON_ROUTE },
+      });
+      if (count === 0) {
+        throw new BadRequestException(`El pedido "${stop.orderId}" no está pendiente`);
+      }
+    }
+
+    return created;
   }
 
   /**

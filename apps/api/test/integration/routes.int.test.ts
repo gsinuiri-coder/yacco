@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import request from "supertest";
 import {
   ContainerMovementType,
@@ -10,6 +11,7 @@ import {
   StopStatus,
 } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
+import { RoutesService } from "../../src/modules/routes/routes.service.js";
 import { SalesService } from "../../src/modules/sales/sales.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
@@ -886,6 +888,200 @@ describe("POST /api/v1/routes/:id/stops", () => {
       .send({ origin: StopOrigin.VAN_SALE, locationId });
 
     expect(response.status).toBe(403);
+  });
+});
+
+describe("POST /api/v1/routes/:id/stops/batch", () => {
+  function addBatch(routeId: string, orderIds: string[], token = adminToken) {
+    return request(server())
+      .post(`/api/v1/routes/${routeId}/stops/batch`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ orderIds });
+  }
+  async function stopsOf(routeId: string) {
+    return prisma.routeStop.findMany({
+      where: { routeId },
+      orderBy: { position: "asc" },
+      select: { position: true, orderId: true, origin: true },
+    });
+  }
+
+  test("agrega una parada por pedido, en el orden recibido, detrás de las que ya había", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addVanSaleStop(adminToken, routeId);
+    const first = await createPendingOrder(adminToken);
+    const second = await createPendingOrder(adminToken);
+    const third = await createPendingOrder(adminToken);
+
+    // Ni el orden de creación ni el de los ids: el que manda la oficina.
+    const response = await addBatch(routeId, [third, first, second]);
+
+    expect(response.status).toBe(201);
+    expect(response.body.map((stop: { orderId: string }) => stop.orderId)).toEqual([
+      third,
+      first,
+      second,
+    ]);
+    expect(await stopsOf(routeId)).toEqual([
+      { position: 1, orderId: null, origin: StopOrigin.VAN_SALE },
+      { position: 2, orderId: third, origin: StopOrigin.ORDER },
+      { position: 3, orderId: first, origin: StopOrigin.ORDER },
+      { position: 4, orderId: second, origin: StopOrigin.ORDER },
+    ]);
+    const statuses = await prisma.order.findMany({
+      where: { id: { in: [first, second, third] } },
+      select: { status: true },
+    });
+    expect(statuses.every((order) => order.status === "ON_ROUTE")).toBe(true);
+  });
+
+  test("todo o nada: un pedido que ya está en otra ruta hace fallar el lote entero, y el 400 dice cuál", async () => {
+    const date = nextDate();
+    const routeId = await createRoute(adminToken, { date });
+    const otherRouteId = await createRoute(adminToken, { driverId: otherDriverId, date });
+    const free = await createPendingOrder(adminToken);
+    const taken = await createPendingOrder(adminToken);
+    await request(server())
+      .post(`/api/v1/routes/${otherRouteId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId: taken })
+      .expect(201);
+
+    // El libre va PRIMERO: si el lote se aplicara de a uno, ese sí quedaría.
+    const response = await addBatch(routeId, [free, taken]);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain(`El pedido "${taken}" ya está asignado a otra parada`);
+    expect(await stopsOf(routeId)).toEqual([]);
+    const freeOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: free },
+      select: { status: true, routeStop: { select: { id: true } } },
+    });
+    expect(freeOrder).toEqual({ status: "PENDING", routeStop: null });
+  });
+
+  test("todo o nada DENTRO de la transacción: si un pedido se cancela después de validarlo, la parada ya creada se deshace", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const first = await createPendingOrder(adminToken);
+    const second = await createPendingOrder(adminToken);
+    // Los dos pasan la validación previa; el segundo se cancela justo después
+    // (la oficina, en otra pestaña). La falla llega recién en la transacción,
+    // cuando la parada del primero YA está escrita: es lo que tiene que
+    // deshacerse.
+    const service = ctx.app.get(RoutesService) as unknown as {
+      resolveOrderStopLocation: (orderId: string) => Promise<string>;
+    };
+    const original = service.resolveOrderStopLocation.bind(service);
+    const spy = jest
+      .spyOn(service, "resolveOrderStopLocation")
+      .mockImplementation(async (orderId: string) => {
+        const location = await original(orderId);
+        if (orderId === second) {
+          await prisma.order.update({
+            where: { id: second },
+            data: { status: OrderStatus.CANCELLED },
+          });
+        }
+        return location;
+      });
+
+    try {
+      const response = await addBatch(routeId, [first, second]);
+
+      expect(response.status).toBe(400);
+      expect(messagesOf(response)).toContain(`El pedido "${second}" no está pendiente`);
+      expect(await stopsOf(routeId)).toEqual([]);
+      const firstOrder = await prisma.order.findUniqueOrThrow({
+        where: { id: first },
+        select: { status: true, routeStop: { select: { id: true } } },
+      });
+      expect(firstOrder).toEqual({ status: OrderStatus.PENDING, routeStop: null });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("si la ruta sale mientras se validaban los pedidos, el lote es un 409 y no agrega nada", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const orderId = await createPendingOrder(adminToken);
+    const service = ctx.app.get(RoutesService) as unknown as {
+      resolveOrderStopLocation: (orderId: string) => Promise<string>;
+    };
+    const original = service.resolveOrderStopLocation.bind(service);
+    const spy = jest
+      .spyOn(service, "resolveOrderStopLocation")
+      .mockImplementation(async (id: string) => {
+        const location = await original(id);
+        await prisma.route.update({
+          where: { id: routeId },
+          data: { status: RouteStatus.IN_PROGRESS },
+        });
+        return location;
+      });
+
+    try {
+      const response = await addBatch(routeId, [orderId]);
+
+      expect(response.status).toBe(409);
+      expect(await stopsOf(routeId)).toEqual([]);
+      const order = await prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
+        select: { status: true },
+      });
+      expect(order.status).toBe(OrderStatus.PENDING);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("todo o nada también con un pedido que no está pendiente", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const free = await createPendingOrder(adminToken);
+    const cancelled = await createPendingOrder(adminToken);
+    await request(server())
+      .patch(`/api/v1/orders/${cancelled}/cancel`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const response = await addBatch(routeId, [free, cancelled]);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain(`El pedido "${cancelled}" no está pendiente`);
+    expect(await stopsOf(routeId)).toEqual([]);
+  });
+
+  test("una ruta que ya salió no recibe un lote: 409, y no agrega nada", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await startRoute(adminToken, routeId);
+    const orderId = await createPendingOrder(adminToken);
+
+    const response = await addBatch(routeId, [orderId]);
+
+    expect(response.status).toBe(409);
+    expect(await stopsOf(routeId)).toEqual([]);
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    expect(order.status).toBe("PENDING");
+  });
+
+  test("una lista vacía o con un pedido repetido es un 400", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const orderId = await createPendingOrder(adminToken);
+
+    expect((await addBatch(routeId, [])).status).toBe(400);
+    const repeated = await addBatch(routeId, [orderId, orderId]);
+    expect(repeated.status).toBe(400);
+    expect(await stopsOf(routeId)).toEqual([]);
+  });
+
+  test("un chofer no arma su ruta en lote: es trabajo de la oficina", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const orderId = await createPendingOrder(adminToken);
+
+    expect((await addBatch(routeId, [orderId], driverToken)).status).toBe(403);
+    expect((await addBatch(routeId, [orderId], sellerToken)).status).toBe(201);
   });
 });
 

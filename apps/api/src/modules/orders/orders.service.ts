@@ -279,7 +279,7 @@ export class OrdersService {
 }
 
 function buildOrderFilter(query: ListOrdersQueryDto): Prisma.OrderWhereInput {
-  const { status, customerId, deliveryDateFrom, deliveryDateTo, hasRouteStop } = query;
+  const { status, customerId, zoneId, deliveryDateFrom, deliveryDateTo, hasRouteStop } = query;
   const from =
     deliveryDateFrom === undefined
       ? undefined
@@ -293,7 +293,15 @@ function buildOrderFilter(query: ListOrdersQueryDto): Prisma.OrderWhereInput {
 
   return {
     ...(status !== undefined ? { status } : {}),
-    ...(customerId !== undefined ? { location: { customerId } } : {}),
+    // Los dos miran al cliente del pedido; juntos, las dos condiciones valen.
+    ...(customerId !== undefined || zoneId !== undefined
+      ? {
+          location: {
+            ...(customerId !== undefined ? { customerId } : {}),
+            ...(zoneId !== undefined ? { customer: { zoneId } } : {}),
+          },
+        }
+      : {}),
     // `routeStop` es una relación uno-a-uno opcional (route_stops.order_id es
     // UNIQUE), así que "sin parada asignada" se pregunta por la relación, no
     // por una columna de Order: no existe tal columna.
