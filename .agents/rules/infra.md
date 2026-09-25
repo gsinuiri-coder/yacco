@@ -70,7 +70,9 @@ access`, `vercel env pull`).
   `yacco-v2-prod`) SIN activarla, porque la `default` es la del otro cliente:
   `gcloud ... --configuration=yacco`, o `CLOUDSDK_ACTIVE_CONFIG_NAME=yacco`
   para una sesión entera. Además `--project=yacco-v2-prod` en todo comando
-  que lo acepte.
+  que lo acepte. Como esa configuración factura a Yacco, una API que falte
+  allá se habilita a propósito y va a `REQUIRED_SERVICES` de
+  `gcp-bootstrap.mjs`; nunca se contesta el «¿habilitar?» de gcloud.
 - En `ayr-steel-erp` no se toca nada, ni para leer, salvo una verificación
   pedida explícitamente.
 
