@@ -130,34 +130,34 @@ línea de delegación con la fecha, más las cuatro de siempre.
   `UPDATE` a mano contra la base (ver «Password del admin de producción» en
   `backlog-tecnico.md`).
 
-### 4. Decirle que la sesión abierta no se cierra alcanza
+### 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos
 
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Ahora sí se corta la sesión (2026-09-24, ítem 7b del plan, D-024):**
-  cambiar la contraseña o desactivar a alguien deja viejo su refresh token, y
-  el sistema le pide volver a ingresar en cuanto vence su acceso actual (a lo
-  sumo 15 minutos). La pantalla dice eso ahora. El supuesto de abajo queda
-  como registro de lo que se asumió mientras no era así; la pregunta sigue
-  valiendo para saber si esos 15 minutos le alcanzan o necesita el corte en
-  el acto. Vale también para el administrador que se cambia la suya
-  (supuesto 3): su propia sesión se corta igual.
-- **Asumimos:** que alcanza con **avisar** que cambiar la contraseña no cierra
-  la sesión que esa persona tenga abierta, y que para cortarle el acceso hay
-  que desactivarla.
-- **Construido encima:** el aviso del bloque «Cambiar contraseña». Que la
-  sesión no se cierre **no** es un supuesto: es un hecho del código, fijado por
-  el test «resetting a user's password does NOT invalidate a refresh token
-  already issued» en `apps/api/test/integration/auth.int.test.ts`. El supuesto
-  es que decírselo sea suficiente.
-- **Preguntar:** si le cambia la contraseña a alguien porque no quiere que siga
-  entrando, ¿le sirve que esa persona siga adentro hasta que cierre sesión, o
-  necesita que se caiga en ese momento?
-- **Si dice que no:** caro, y no es un cambio de redacción. Hace falta
-  invalidar tokens ya emitidos — ver «No hay forma de invalidar un token ya
-  emitido» en `backlog-tecnico.md`, que además arrastra el caso de desactivar
-  y reactivar.
+- **Decidido por Claude por delegación de Giancarlo (2026-09-24, reescrito el
+  2026-09-25):** se mantiene el comportamiento de hoy, el corte a lo sumo en
+  15 minutos. La pregunta de abajo se le sigue haciendo al dueño en el piloto.
+- **Historia:** la delegación del 2026-09-24 cubría el comportamiento de
+  entonces: cambiar la contraseña no cortaba la sesión abierta y alcanzaba con
+  avisarlo. El ítem 7b de ese mismo día (D-024) hizo que sí se corte; el
+  supuesto se reescribió el 2026-09-25 para preguntar por lo que hay hoy.
+- **Asumimos:** que le alcanza con que la persona quede afuera **a lo sumo 15
+  minutos** después de desactivarla o de cambiarle la contraseña, y que no
+  necesita sacarla en el acto. Vale también para el administrador que se
+  cambia la suya (supuesto 3): su propia sesión se corta igual.
+- **Construido encima:** `users.token_version` (D-024): cambiar la contraseña
+  o desactivar deja viejo el refresh token de esa persona, y el sistema le
+  pide volver a ingresar en cuanto vence su acceso actual, que dura 15
+  minutos. Lo fijan los tests «resetting a user's password invalidates a
+  refresh token already issued» y «a user deactivated after issuing a refresh
+  token loses access on refresh» de
+  `apps/api/test/integration/auth.int.test.ts`, y lo dice el aviso del bloque
+  «Cambiar contraseña» de `apps/web-nuxt/app/pages/users.vue`.
+- **Preguntar:** si desactiva a alguien, o le cambia la contraseña porque no
+  quiere que siga entrando, esa persona puede seguir adentro hasta 15 minutos.
+  ¿Le alcanza, o necesita sacarla en el acto?
+- **Si dice que no:** medio. Sacarla en el acto exige que el acceso de
+  15 minutos también se revise contra `token_version` en cada pedido (hoy
+  solo lo revisa el refresh): una consulta más por pedido, o un acceso mucho
+  más corto. No toca esquema.
 
 ### 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea
 
@@ -517,6 +517,31 @@ línea de delegación con la fecha, más las cuatro de siempre.
 - **Si dice que no:** medio. Reabrir una liquidación pide una operación nueva
   (con quién, cuándo y por qué, como la corrección de una parada) y decidir
   qué pasa con lo que el chofer ya entregó en mano; no es un botón.
+
+### 19. Registrar un lote sin vacíos suficientes avisa y no bloquea
+
+- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** se
+  mantiene el comportamiento actual. Que avise y no bloquee está en la spec
+  (HU-01 E2: «el sistema advierte la inconsistencia antes de confirmar»). Lo
+  que la spec no dice es lo que hace el código: **avisa después de guardar**,
+  sin paso de confirmación. Esa diferencia es el supuesto.
+- **Asumimos:** que un aviso con el lote ya guardado le sirve igual que uno
+  antes de confirmar: si la oficina registra un lote que llena más bidones de
+  los que el sistema cree que había vacíos en la planta, el dato que está mal
+  es el inventario (faltan ingresos de envases por anotar), no el lote, porque
+  el dueño llenó esos bidones de verdad.
+- **Construido encima:** `ProductionBatchesService.create`: la comparación
+  `producedQty > emptyAvailable` no frena el lote; lo registra, deja los
+  vacíos en planta en negativo y devuelve un aviso por tipo de envase con las
+  dos cantidades, que `apps/web-nuxt/app/pages/production.vue` muestra con el
+  lote ya guardado («Una advertencia, no un error»).
+- **Preguntar:** si la oficina anota un lote de 80 bidones y el sistema cree
+  que en la planta había solo 50 vacíos, ¿le sirve que lo anote y le avise
+  después, o quiere que le avise antes y le pregunte si lo guarda igual?
+- **Si dice que no:** medio, sin esquema. Un paso de confirmación en
+  «Producción»: la pantalla pide los vacíos en planta antes de guardar (o la
+  API responde el aviso sin guardar y se reenvía confirmado). Que no lo deje
+  guardar del todo no es una opción de esta pregunta: contradice HU-01 E2.
 
 ## Validados
 

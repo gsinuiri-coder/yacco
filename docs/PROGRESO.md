@@ -1161,7 +1161,7 @@ producción incluido) antes del siguiente merge.
 | Ítem                                             | Estado                                                                              | PRs  |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------- | ---- |
 | 1 · Documentación que hoy miente                 | ✅ Render: lo hizo Claude Code con `[OK]`; el 13 en Pendientes; backlog al día      | #226 |
-| 2 · Zonas del padrón                             | 🟨 herramienta lista; **corrida bloqueada**: las etiquetas no están en `main`       | #227 |
+| 2 · Zonas del padrón                             | ✅ corrido por Giancarlo después del cierre (ver abajo)                             | #227 |
 | 3a · Encontrar a un cliente en el conteo (nuevo) | ✅ búsqueda por nombre o teléfono y filtro de zona                                  | #228 |
 | 3 · Envases y choferes: el camino                | ✅ ciclo e2e en el preview con conteo desde 0: **1 passed**; `DEPLOY.md`            | #229 |
 | 4a · Precios de lista                            | ✅ `PATCH /products/:id` y «Productos»; supuesto 17                                 | #230 |
@@ -1185,8 +1185,17 @@ no tiene zona, frena ante etiquetas sin clasificar o zonas retiradas,
 verificación por huella de cada cliente) y `export:tags` (solo id y
 etiquetas). Procedimiento en `docs/DEPLOY.md`, «Zonas del padrón».
 
-**Lo que cambió en producción fuera de los PRs:** nada. Ninguna zona creada,
-ningún cliente asignado (el ítem 2 no corrió), ningún saldo ni usuario real.
+**2 · Hecho, después del cierre (2026-09-25).** Giancarlo corrió
+`export:tags` y el dry-run; #237 clasificó las etiquetas (supuesto 16) y
+arregló el `--` de pnpm, y Giancarlo corrió el `--commit`; #239 le agregó el
+avance cada 50 clientes. Verificado en `main` por SQL de solo lectura: 3 zonas
+(Parque 476, Surco 58, Casas Parque 3), **las tres sin días de reparto**;
+537 clientes con zona y 68 sin zona (los 67 del padrón con una etiqueta que no
+es lugar, más el cliente de prueba creado desde la app).
+
+**Lo que cambió en producción fuera de los PRs** (hasta el cierre de esta
+sección; las zonas del ítem 2 vinieron después): nada. Ninguna zona creada,
+ningún cliente asignado, ningún saldo ni usuario real.
 Las lecturas de `main` fueron todas de solo lectura (conteos, catálogos,
 `EXPLAIN`). En **demo**, las corridas del ciclo e2e dejaron dos choferes, dos
 clientes, dos pedidos y dos rutas de revisión (datos inventados, como en #223).
@@ -1209,9 +1218,8 @@ auditoría de D-016.
 
 **Pendientes de Giancarlo:**
 
-- **Ítem 2:** correr `pnpm --filter @yacco/firestore-export export:tags -- --out <carpeta fuera del repo>`.
-  Con eso: dry-run → informe → `[OK]` → `--commit` → verificación, y se llena la
-  tabla de etiquetas del guion.
+- ~~**Ítem 2:** correr `export:tags`, dry-run, `[OK]`, `--commit`.~~ Hecho
+  (ver arriba).
 - **4f:** `[OK]` para mergear la migración del índice después de las 20:00 de Lima.
 - **F:** rotar la contraseña del admin de producción (desde la app) y destruir
   la versión de `yacco-admin-initial-password`; y el token de Vercel de CI por
