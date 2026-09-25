@@ -103,9 +103,10 @@ describe("deployScope", () => {
     assert.equal(result.scope, "runtime");
   });
 
-  test("el mismo commit que ya está desplegado no se vuelve a desplegar", async () => {
-    const result = await deployScope({ sha: "same", deployedCommit: "same", compare: ahead([]) });
-    assert.equal(result.scope, "docs-only");
+  test("relanzar sobre el commit que ya corre en producción despliega igual (el web o el smoke pudieron fallar)", async () => {
+    const compare = async () => ({ status: "identical", files: [] });
+    const result = await deployScope({ sha: "same", deployedCommit: "same", compare });
+    assert.equal(result.scope, "runtime");
   });
 });
 

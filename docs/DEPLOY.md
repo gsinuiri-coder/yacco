@@ -177,6 +177,13 @@ corren desde ahí. Ante cualquier duda (`/health` caído, commit desconocido,
 comparación imposible) se despliega (`scripts/deploy-scope.mjs`). Relanzar a
 mano (abajo) despliega siempre el camino entero.
 
+Un caso que conviene tener presente: si un deploy falla en «5 · Web a
+Vercel», la API de producción ya corre el commit nuevo, así que un merge
+siguiente que solo toque documentación no redespliega y **el web queda en su
+versión anterior** (funciona: habla con la misma API por el mismo rewrite).
+Un deploy fallido se arregla relanzando: el botón «Re-run» de esa corrida
+vuelve a comparar y despliega, o `gh workflow run deploy.yml --ref main`.
+
 La fila del paso 3 es la que justifica una regla: **si las migraciones pasan y
 la imagen falla, la base quedó migrada y el código viejo sigue sirviendo.** Por
 eso las migraciones son expand/contract. Una que no se banque ese estado no se
