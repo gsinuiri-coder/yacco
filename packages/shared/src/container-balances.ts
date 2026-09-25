@@ -33,12 +33,13 @@ export interface ContainerBalanceRow {
 
 /**
  * ListContainerBalancesQueryDto. `countedBefore` is an ISO-8601 instant, not
- * a business date. `zoneId` exists server-side but the front has no zones
- * catalog endpoint to offer it from at this screen, so it is not exposed.
+ * a business date. `zoneId` comes from the zones catalog (GET /zones).
  */
 export interface ContainerBalanceListQuery {
   page?: number;
   limit?: number;
+  zoneId?: string;
+  search?: string;
   uncountedOnly?: boolean;
   countedBefore?: string;
   withDiscrepancies?: boolean;

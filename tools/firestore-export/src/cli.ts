@@ -6,6 +6,7 @@ import type { CliArgs } from "./args.js";
 import { exportCustomers, exportVouchers } from "./export.js";
 import type { FirestoreLike } from "./export.js";
 import { connectFirestore, redactCredentials } from "./firestore.js";
+import { toCustomerTags } from "./tags.js";
 
 /**
  * Lo que la CLI toca del mundo de afuera, inyectado para poder probarla sin
@@ -47,6 +48,15 @@ export async function run(argv: string[], deps: CliDeps = REAL_DEPS): Promise<nu
       const file = join(args.outDir, "customers.json");
       deps.writeFile(file, JSON.stringify(customers, null, 2));
       deps.log(`customers: ${customers.length} documentos exportados -> ${file}`);
+      return 0;
+    }
+
+    if (args.command === "tags") {
+      const customers = toCustomerTags(await exportCustomers(firestore));
+      const file = join(args.outDir, "tags.json");
+      deps.writeFile(file, JSON.stringify(customers, null, 2));
+      const tagged = customers.filter((customer) => customer.tags.length > 0).length;
+      deps.log(`tags: ${customers.length} clientes, ${tagged} con etiquetas -> ${file}`);
       return 0;
     }
 
