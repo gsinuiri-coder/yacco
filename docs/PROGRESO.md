@@ -599,7 +599,7 @@ ninguna base.
 | Rama de Neon `backup-pre-roster-20260924` (`br-square-rice-au1lk6lw`) | creada 2026-09-24 16:13:40 UTC, datos de `main` a las 16:13:02, sin compute                                                             | El estado de `main` justo antes de la primera carga real. **No se borra** (deny sin excepción): si alguna vez sobra, lo decide Giancarlo a mano                                                                                                                                                                    |
 | Secreto `yacco-demo-driver-password`                                  | creado 2026-09-24                                                                                                                       | La contraseña de `chofer.demo.piloto` en la demo, para revisar «Mi ruta». Se lee con `gcloud secrets versions access latest --secret yacco-demo-driver-password`, nunca se pega en un chat. Se destruye cuando termine la revisión del piloto                                                                      |
 | Secreto `yacco-admin-initial-password`                                | 2026-09-17                                                                                                                              | **No se cambia hasta el final del proyecto** (Giancarlo, 2026-09-24). Entonces: la lee, la cambia desde la app y destruye la versión                                                                                                                                                                               |
-| Secreto `yacco-production-smoke-viewer-password`                      | creado 2026-09-25                                                                                                                       | La contraseña de `smoke-viewer` (rol VIEWER, sólo catálogos y `/auth/me`). La lee el job 6 del deploy por WIF; nadie la usa a mano. Se rota con una versión nueva y cambiando la contraseña de la cuenta, en ese orden (`pnpm smoke:viewer` no la pisa si el secreto existe)                                       |
+| Secreto `yacco-production-smoke-viewer-password`                      | creado 2026-09-25                                                                                                                       | La contraseña de `smoke-viewer` (rol VIEWER, sólo catálogos y `/auth/me`). La lee el job 6 del deploy por WIF; nadie la usa a mano. Se rota con una versión nueva y cambiando la contraseña de la cuenta, en ese orden (`pnpm viewer:bootstrap` no la pisa si el secreto existe)                                   |
 
 **Un token de Vercel vencido frena el deploy en el preflight**, antes de tocar
 ninguna base: `scripts/check-vercel-token.mjs` lo valida con `vercel whoami`.
@@ -1037,3 +1037,88 @@ no depende de ella.
   con `x-goog-user-project`.
 - **Un sink de logs tarda ~15 minutos en propagarse:** una prueba hecha antes
   de eso no llega al bucket, aunque la métrica sí la cuente.
+
+## Pre-piloto — 2026-09-25
+
+La cola de `docs/plan-pre-piloto.md`, con datos reales en `main` y todas las
+restricciones en pie. Un PR por ítem (el 4 en dos: el menor y Nest 12), los
+cinco checks en verde, squash sin `--admin`, la salida en rojo en el cuerpo y
+el deploy en verde (los seis jobs, smoke de producción con VIEWER incluido)
+antes del siguiente. Ningún PR llevó migración.
+
+| Ítem                                     | Estado                                                                                    | PRs       |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- | --------- |
+| 1 · gcloud fijado a Yacco                | ✅ `run()` corta otro proyecto y fija `CLOUDSDK_CORE_PROJECT`; config `yacco`; ayr limpio | #220      |
+| 2 · `smoke:viewer` y el secreto de admin | ✅ `pnpm viewer:bootstrap` pide la contraseña en la terminal; nada automático lee admin   | #221      |
+| 3 · Imagen de la API                     | ✅ escaneo 14 (9 HIGH) → **0**; 548 → 405 MB; D-026                                       | #222      |
+| 4 · Dependabot y Nest 12                 | ✅ typescript-eslint; Nest 12 entero en un PR; e2e del preview OK                         | #213 #223 |
+| 5 · Cierre                               | ✅ este documento                                                                         | #224      |
+
+**1 · gcloud.** Todo `gcloud` de `scripts/` pasa por `run()`, que rechaza un
+`--project`/`--billing-project` ajeno antes de lanzarse y fija
+`CLOUDSDK_CORE_PROJECT=yacco-v2-prod`; los scripts validan `GCP_PROJECT_ID`
+con `resolveGcpProject`. En la máquina del dueño hay una configuración
+`yacco` (cuenta, proyecto y `billing/quota_project` en `yacco-v2-prod`) SIN
+activar: la `default` sigue siendo la de `ayr-steel-erp`. Regla en
+`.agents/rules/infra.md`. Verificación SOLO LECTURA de `ayr-steel-erp`: ningún
+recurso de Yacco (secretos, service accounts, repos, sinks, servicios de Cloud
+Run), ninguna de las APIs que se ofrecieron habilitar allá, último alta de API
+el 2026-09-16 (`appoptimize`, ajena a Yacco); desde el 09-20 sólo hay deploys
+de `ayr-steel-erp-api`. Durante el rojo de un test, un `gcloud secrets list`
+real llegó a ese proyecto (nombres, ningún valor); el test ahora usa
+`gcloud --version` y un proyecto inventado.
+
+**2 · Quién corre qué.** El smoke del deploy (job 6) usa SÓLO
+`yacco-production-smoke-viewer-password`; el secreto de admin no tiene ningún
+binding de IAM (sólo los owners). `smoke:viewer` no lo corría nada
+automático: era el bootstrap de la cuenta, y leía el secreto de admin. Ahora es
+`pnpm viewer:bootstrap` (`docs/DEPLOY.md`, «Cuenta del smoke: bootstrap
+manual»): la contraseña del admin se teclea sin eco, sin TTY no corre, y un
+test verifica que ningún workflow ni script nombre el secreto de admin. **La
+rotación de F no rompe ningún smoke ni el bootstrap.**
+
+**3 · Imagen.** Etapa final `FROM scratch` con un node sin npm, npx,
+corepack, yarn ni pnpm; `prune-runtime-deps.mjs` saca los 39 paquetes que
+sólo alcanzaba el peer opcional `prisma` de `@prisma/client` (con
+`deepmerge-ts`) y TypeScript, sin tocar Prisma. CI mira dentro de la imagen
+(`check-api-image.mjs`). Escaneo de Artifact Registry con el mismo comando:
+`api:d7c3aa8ed6e5` 14 hallazgos (9 HIGH, 4 MEDIUM, 1 LOW) → `api:ca9f5c0…`
+**0**. Smoke de producción OK con la imagen nueva.
+
+**4 · Nest 12.** core, common, platform-express, testing, swagger, jwt,
+passport y config a 12 juntos (#214–#217 cerrados, reemplazados por #223):
+core, testing y swagger exigen common ^12, y config 4.x no lo acepta.
+`engines` de la raíz a `^20.19 || ^22.12 || >=24`. **Ningún cambio de código
+de dominio** (ni de ningún código). CI en Node 22.23: unitarios 1071/1071,
+integración 573/573, Playwright 9 + 2. Deploy verde con smoke de producción.
+Preview `yacco-llogv8ah8-…` (`/health` → `demo`, commit `d3da977`) y el
+ciclo e2e pedido → ruta → Mi ruta → liquidación → reportes: **1 passed**.
+
+**Lo que cambió en la nube, fuera de los PRs:** `cloudresourcemanager.googleapis.com`
+habilitada en `yacco-v2-prod` (la pide gcloud a mano con la configuración
+`yacco`; declarada en `gcp:bootstrap`). La lectura de
+`yacco-demo-admin-password` para el e2e disparó el email de auditoría de
+D-016, como corresponde.
+
+**Pendientes de Giancarlo:**
+
+- **F:** rotar la contraseña del admin de producción (cambiarla desde la app y
+  destruir la versión de `yacco-admin-initial-password`) y el token de
+  Vercel de CI por uno con vencimiento (antes del 2026-10-16). Ya no rompe
+  ningún smoke.
+- **Borrar Render** (los dos servicios, sin base desde la fase 7).
+- **A1:** decidir un team propio de Vercel para Yacco.
+
+### Lecciones
+
+- **El rojo de un test de guard puede salir a la red.** Revertir el guard deja
+  pasar el comando real: el test tiene que usar algo que no hable con nadie
+  (`--version`, un proyecto inventado).
+- **Un `rm` en la última etapa del Dockerfile no saca nada del escaneo:** el
+  archivo sigue en la capa de abajo. Se borra en una etapa previa y se copia
+  el sistema de archivos ya borrado.
+- **`pnpm deploy --prod` instala peers opcionales** que el lockfile resolvió
+  en el workspace: mirar el `.pnpm` de la imagen, no el `package.json`.
+- **`gcloud ... --format=value(...)` con campos anidados cuenta 0** aunque
+  haya hallazgos: contar con `--format=json` y comparar contra un caso
+  conocido.

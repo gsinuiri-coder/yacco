@@ -2070,6 +2070,10 @@ pendiente. `.github/dependabot.yml` ignora los majors de los dos paquetes para
 que cada 7.x no abra un PR que hay que cerrar a mano (ya pasó: #4, cerrado sin
 mergear). La premisa de ESM puro no se volvió a verificar al rescatarla.
 
+**Actualización 2026-09-25:** Nest 12 (#223) es sólo ESM y la API ya corre
+así (`"type": "module"`): la mitad Nest del bloqueo cayó. Falta volver a
+verificar la premisa del lado de Prisma 7 antes de retomarla.
+
 **Para cerrarla:** que el generador de Prisma 7 emita un cliente CommonJS, o
 que Nest soporte ESM estable. Entonces, en un PR propio: revisar
 `pnpm.auditConfig.ignoreGhsas` del `package.json` raíz, que hoy ignora

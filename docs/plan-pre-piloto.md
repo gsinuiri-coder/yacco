@@ -54,7 +54,7 @@ Cada PR marca su ítem. Marcas: `[ ]` pendiente, `[x]` hecho (con el PR),
      Playwright contra el preview y el smoke de producción OK.
    - Si algo del upgrade exige cambiar código de dominio, se para y se
      reporta.
-5. [ ] **Cierre:** PROGRESO.md, backlog y un reporte corto.
+5. [x] (#224) **Cierre:** PROGRESO.md, backlog y un reporte corto.
    - Quedan como pendientes de Giancarlo: F (rotar la contraseña de admin y
      el token de Vercel con vencimiento), borrar Render y la decisión de un
      team propio en Vercel (A1).
