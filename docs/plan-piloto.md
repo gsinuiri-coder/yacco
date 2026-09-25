@@ -89,4 +89,4 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
         expand, sin columnas; `EXPLAIN` antes y después; merge fuera de
         08:00–20:00 de Lima y con `[OK]`. Va última por la ventana.
 - [x] **5 · Guion de la reunión con el dueño** (#235) — `docs/guion-piloto.md`.
-- [ ] **6 · Cierre** — sección «Piloto — 2026-09-25» en `docs/PROGRESO.md`.
+- [x] **6 · Cierre** (este PR) — sección «Piloto — 2026-09-25» en `docs/PROGRESO.md`.
