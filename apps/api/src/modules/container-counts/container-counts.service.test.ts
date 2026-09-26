@@ -50,6 +50,7 @@ function buildPrismaMock() {
     customerLocation: { findUnique: jest.fn<() => Promise<unknown>>() },
     customerContainerBalance: { findUnique: jest.fn<() => Promise<unknown>>() },
     containerCount: { create: jest.fn<() => Promise<unknown>>() },
+    $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
 }

@@ -514,7 +514,14 @@ agreguen mañana — sin que el test tenga que conocer sus nombres.
 
 ## Sin lock sobre customer_container_balances al leer-y-reescribir
 
-**Estado:** aceptado. **Disparador:** más de dos rutas cargando/entregando al
+**Estado:** resuelta (2026-09-26, cierre final). El saldo se escribe con un
+solo `INSERT ... ON CONFLICT DO UPDATE SET quantity = quantity + delta`, y todo
+lo que mueve el saldo de una ubicación —movimientos y conteos— toma antes
+`FOR NO KEY UPDATE` sobre su fila de `customer_locations` (`lockLocation`).
+`container-balance-concurrency.int.test.ts`: doce entregas simultáneas daban
+saldo 4; ahora 12. Lo que sigue es la entrada original.
+
+**Disparador original:** más de dos rutas cargando/entregando al
 mismo tiempo, o un descuadre real que `GET /container-reconciliation` reporte
 sin que se le encuentre una causa identificable en el código.
 

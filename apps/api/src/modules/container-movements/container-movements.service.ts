@@ -172,6 +172,13 @@ export class ContainerMovementsService {
     if (dto.locationId !== undefined) {
       await assertLocationExists(client, dto.locationId);
     }
+    if (touchesCustomer) {
+      // Serializa por ubicación todo lo que mueve su saldo, con el conteo
+      // físico incluido (`ContainerCountsService.create` toma el mismo lock
+      // antes de leer lo esperado): sin él, una entrega que se anota mientras
+      // se registra un conteo deja el ajuste calculado contra un saldo viejo.
+      await lockLocation(client, dto.locationId as string);
+    }
 
     const created = await client.containerMovement.create({
       data: {
@@ -196,15 +203,13 @@ export class ContainerMovementsService {
       const delta = toState === ContainerState.WITH_CUSTOMER ? dto.quantity : -dto.quantity;
       // dto.locationId is defined here — touchesCustomer already required it above.
       const locationId = dto.locationId as string;
-      const key = {
-        locationId_containerTypeId: { locationId, containerTypeId: dto.containerTypeId },
-      };
-      // Reads the current balance and writes the absolute result inside
-      // this same transaction, rather than upsert's `increment`: with a
-      // composite (no single-column) id, Prisma's upsert does not apply
-      // `increment` against the row already on disk when the ON CONFLICT
-      // branch is taken, so a second movement silently overwrote the first
-      // instead of adding to it.
+      // Un solo INSERT ... ON CONFLICT que SUMA el delta a lo que ya está en
+      // disco, en vez de leer el saldo y escribir el absoluto: dos
+      // transacciones sobre el mismo par (ubicación, tipo) ya no pueden leer
+      // el mismo valor base y pisarse — la segunda espera el lock de fila que
+      // toma el UPDATE de la primera y suma sobre su resultado. (Tampoco sirve
+      // el upsert de Prisma con `increment`: con una clave compuesta no suma
+      // contra la fila en disco cuando entra por el ON CONFLICT.)
       // A negative result is valid and expected, never clamped or rejected:
       // this balance is what the system BELIEVES the customer holds, and the
       // belief can be wrong. The previous driver forgot to write down a
@@ -215,13 +220,12 @@ export class ContainerMovementsService {
       // would only make the driver skip registering the return, losing both
       // facts. A physical count later brings it back to what is actually
       // there, through COUNT_ADJUSTMENT.
-      const existing = await client.customerContainerBalance.findUnique({ where: key });
-      const nextQuantity = (existing?.quantity ?? 0) + delta;
-      await client.customerContainerBalance.upsert({
-        where: key,
-        create: { locationId, containerTypeId: dto.containerTypeId, quantity: nextQuantity },
-        update: { quantity: nextQuantity },
-      });
+      await client.$executeRaw`
+        INSERT INTO customer_container_balances (location_id, container_type_id, quantity)
+        VALUES (${locationId}::uuid, ${dto.containerTypeId}::uuid, ${delta})
+        ON CONFLICT (location_id, container_type_id)
+        DO UPDATE SET quantity = customer_container_balances.quantity + EXCLUDED.quantity
+      `;
     }
 
     return created;
@@ -355,6 +359,18 @@ export class ContainerMovementsService {
       })),
     );
   }
+}
+
+/**
+ * `FOR NO KEY UPDATE` y no `FOR UPDATE`: alcanza para que dos escrituras sobre
+ * el saldo de la misma ubicación vayan de a una, sin frenar las filas que solo
+ * la referencian (una venta, un pedido), que toman `FOR KEY SHARE`.
+ */
+export async function lockLocation(
+  client: Prisma.TransactionClient,
+  locationId: string,
+): Promise<void> {
+  await client.$queryRaw`SELECT id FROM customer_locations WHERE id = ${locationId}::uuid FOR NO KEY UPDATE`;
 }
 
 /**

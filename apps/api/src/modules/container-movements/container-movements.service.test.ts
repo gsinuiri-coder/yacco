@@ -66,12 +66,17 @@ function buildPrismaMock() {
       findMany: jest.fn<() => Promise<unknown>>(),
     },
     customerLocation: { findUnique: jest.fn<() => Promise<unknown>>() },
-    customerContainerBalance: {
-      findUnique: jest.fn<() => Promise<unknown>>(),
-      upsert: jest.fn<() => Promise<unknown>>(),
-    },
+    $executeRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue(1),
+    $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
+}
+
+/** El delta que el INSERT ... ON CONFLICT le suma al saldo: su tercer valor interpolado. */
+function balanceDelta(prisma: ReturnType<typeof buildPrismaMock>): unknown {
+  const call = prisma.$executeRaw.mock.calls[0] as unknown[] | undefined;
+  if (call === undefined) throw new Error("expected the balance upsert to have run");
+  return call[3];
 }
 
 describe("ContainerMovementsService", () => {
@@ -194,14 +199,13 @@ describe("ContainerMovementsService", () => {
         quantity: 10,
         recordedById: USER_ID,
       });
-      expect(prisma.customerContainerBalance.upsert).not.toHaveBeenCalled();
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
       expect(result.id).toBe(MOVEMENT_ID);
     });
 
     it("a loan delivery adds to a fresh (non-existent) customer balance", async () => {
       prisma.containerType.findUnique.mockResolvedValue(containerTypeRow());
       prisma.customerLocation.findUnique.mockResolvedValue(locationRow());
-      prisma.customerContainerBalance.findUnique.mockResolvedValue(null);
       prisma.containerMovement.create.mockResolvedValue(
         movementRow({
           type: ContainerMovementType.LOAN_DELIVERY,
@@ -224,18 +228,12 @@ describe("ContainerMovementsService", () => {
         USER_ID,
       );
 
-      const upsertArgs = firstCallArg<{
-        create: { quantity: number };
-        update: { quantity: number };
-      }>(prisma.customerContainerBalance.upsert);
-      expect(upsertArgs.create.quantity).toBe(6);
-      expect(upsertArgs.update.quantity).toBe(6);
+      expect(balanceDelta(prisma)).toBe(6);
     });
 
     it("an empty pickup adds its negative delta on top of the existing customer balance", async () => {
       prisma.containerType.findUnique.mockResolvedValue(containerTypeRow());
       prisma.customerLocation.findUnique.mockResolvedValue(locationRow());
-      prisma.customerContainerBalance.findUnique.mockResolvedValue({ quantity: 10 });
       prisma.containerMovement.create.mockResolvedValue(
         movementRow({
           type: ContainerMovementType.EMPTY_PICKUP,
@@ -258,14 +256,10 @@ describe("ContainerMovementsService", () => {
         USER_ID,
       );
 
-      // 10 already on the books, minus this pickup's 4 — never the raw
-      // -4 delta on its own, which is what an `increment` against the
-      // wrong base would have produced.
-      const upsertArgs = firstCallArg<{
-        create: { quantity: number };
-        update: { quantity: number };
-      }>(prisma.customerContainerBalance.upsert);
-      expect(upsertArgs.update.quantity).toBe(6);
+      // El delta con su signo: Postgres lo suma a la fila en disco en el mismo
+      // INSERT ... ON CONFLICT, así que nunca se calcula acá contra un saldo
+      // leído antes.
+      expect(balanceDelta(prisma)).toBe(-4);
     });
 
     it("rejects OPENING_BALANCE on the public route — it only enters through the roster loader", async () => {
@@ -389,7 +383,6 @@ describe("ContainerMovementsService", () => {
     it("increases the customer's container balance in the same transaction", async () => {
       prisma.containerType.findUnique.mockResolvedValue(containerTypeRow());
       prisma.customerLocation.findUnique.mockResolvedValue(locationRow());
-      prisma.customerContainerBalance.findUnique.mockResolvedValue(null);
       prisma.containerMovement.create.mockResolvedValue(
         movementRow({
           type: ContainerMovementType.OPENING_BALANCE,
@@ -413,12 +406,7 @@ describe("ContainerMovementsService", () => {
         { occurredAt: new Date("2026-01-01T05:00:00.000Z") },
       );
 
-      const upsertArgs = firstCallArg<{
-        create: { quantity: number };
-        update: { quantity: number };
-      }>(prisma.customerContainerBalance.upsert);
-      expect(upsertArgs.create.quantity).toBe(7);
-      expect(upsertArgs.update.quantity).toBe(7);
+      expect(balanceDelta(prisma)).toBe(7);
     });
   });
 

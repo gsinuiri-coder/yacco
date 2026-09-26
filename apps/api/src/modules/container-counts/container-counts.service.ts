@@ -1,7 +1,10 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
+import {
+  ContainerMovementsService,
+  lockLocation,
+} from "../container-movements/container-movements.service.js";
 import {
   assertContainerTypeExists,
   assertLocationExists,
@@ -101,6 +104,10 @@ export class ContainerCountsService {
       // type impossible to count, and therefore impossible to ever settle.
       await assertContainerTypeExists(tx, dto.containerTypeId);
       await assertLocationExists(tx, dto.locationId);
+      // El mismo lock que toma todo movimiento sobre el saldo de esta
+      // ubicación: dos conteos a la vez, o un conteo y una entrega, ya no
+      // calculan su diferencia contra el mismo saldo.
+      await lockLocation(tx, dto.locationId);
 
       const balance = await tx.customerContainerBalance.findUnique({
         where: {
@@ -173,8 +180,7 @@ export class ContainerCountsService {
    * bloqueo NO frena una carga de ruta, un lote o una liquidación que se
    * anote en el mismo instante: esas no lo toman, y lo contado se compara
    * contra el libro de un momento antes. Se acepta porque el conteo se hace
-   * con el galpón quieto; la deuda general de bloqueos está en «Sin lock
-   * sobre customer_container_balances al leer-y-reescribir» del backlog.
+   * con el galpón quieto.
    *
    * Lo esperado de los llenos sale del libro, no de los lotes. Hoy pueden no
    * coincidir: una baja por daño de un lleno en planta baja el libro y no el
