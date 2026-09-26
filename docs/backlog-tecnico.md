@@ -2242,7 +2242,14 @@ anterior; o una tabla de historial de precios de lista, de solo agregar.
 
 ## Una baja de llenos en planta no descuenta el lote
 
-**Estado:** abierto. **Registrado:** 2026-09-26, con el conteo de la planta
+**Estado:** resuelta (2026-09-26, cierre final). `POST /container-movements` con
+`fromState: FULL_AT_PLANT` (baja por daño, venta de mostrador) descuenta los
+lotes del más viejo al más nuevo, un movimiento por lote con su `batchId`, con
+el mismo `takeFullsFromPlantWithinTransaction` que el conteo de la planta; si
+los lotes no alcanzan, 409 y no se escribe nada. Lo que sigue es la entrada
+original.
+
+**Estado original:** abierto. **Registrado:** 2026-09-26, con el conteo de la planta
 (HU-25), por el `reviewer`. **Disparador:** la primera «Baja por daño» de un
 lleno en planta, o una venta de mostrador si algún día existe.
 

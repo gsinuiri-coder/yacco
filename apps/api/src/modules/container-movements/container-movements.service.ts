@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { OLDEST_BATCH_ITEM_FIRST } from "../production-batches/oldest-batch-first.js";
 import { isValidContainerTransition } from "./container-movement-transitions.js";
 import {
   assertContainerTypeDeliverable,
@@ -98,10 +99,83 @@ export class ContainerMovementsService {
     if (INTERNAL_ONLY_MOVEMENT_TYPES.has(dto.type)) {
       throw new BadRequestException("Este tipo de movimiento no se registra por esta vía");
     }
-    const movement = await this.prisma.$transaction((tx) =>
-      this.createWithinTransaction(tx, dto, recordedById),
-    );
+    const movement = await this.prisma.$transaction(async (tx) => {
+      if (dto.fromState === ContainerState.FULL_AT_PLANT) {
+        // Un lleno que sale de la planta (baja por daño, venta de mostrador)
+        // sale de un lote: se descuenta del más viejo, igual que la carga de
+        // una ruta. Si ocupa más de un lote, se anota un movimiento por lote;
+        // la respuesta es el primero.
+        const taken = await this.takeFullsFromPlantWithinTransaction(
+          tx,
+          { type: dto.type, containerTypeId: dto.containerTypeId, quantity: dto.quantity },
+          recordedById,
+        );
+        return (taken[0] as { movement: MovementWithRelations }).movement;
+      }
+      return this.createWithinTransaction(tx, dto, recordedById);
+    });
     return toMovementResponse(movement);
+  }
+
+  /**
+   * Saca `quantity` llenos de la planta lote por lote, del más viejo al más
+   * nuevo (`OLDEST_BATCH_ITEM_FIRST`, el orden de la carga de una ruta), con
+   * un movimiento por lote que lleva su `batchId`, en la transacción de quien
+   * llama. Así el libro y el `available_qty` de los lotes siguen diciendo lo
+   * mismo. Lo usan la baja o la venta de un lleno en planta y el conteo de la
+   * planta.
+   *
+   * Cada descuento es un UPDATE guardado por `available_qty >= n`: si una carga
+   * se llevó ese lote entre la lectura y la escritura, todo se cancela en vez
+   * de dejar un lote en negativo. Si los lotes no alcanzan, también: no hay
+   * de dónde sacar esos llenos sin inventar un lote.
+   */
+  async takeFullsFromPlantWithinTransaction(
+    client: Prisma.TransactionClient,
+    request: { type: ContainerMovementType; containerTypeId: string; quantity: number },
+    recordedById: string,
+  ): Promise<{ movement: MovementWithRelations; batch: { id: string; code: string } }[]> {
+    const items = await client.batchItem.findMany({
+      where: { containerTypeId: request.containerTypeId, availableQty: { gt: 0 } },
+      orderBy: OLDEST_BATCH_ITEM_FIRST,
+      select: { id: true, availableQty: true, batch: { select: { id: true, code: true } } },
+    });
+    const available = items.reduce((sum, item) => sum + item.availableQty, 0);
+    if (available < request.quantity) {
+      throw new ConflictException(
+        `Los lotes tienen ${available} llenos disponibles de este tipo de envase y se quieren sacar ${request.quantity}. Revise los lotes en Producción.`,
+      );
+    }
+
+    const taken: { movement: MovementWithRelations; batch: { id: string; code: string } }[] = [];
+    let remaining = request.quantity;
+    for (const item of items) {
+      if (remaining === 0) break;
+      const quantity = Math.min(item.availableQty, remaining);
+      const { count } = await client.batchItem.updateMany({
+        where: { id: item.id, availableQty: { gte: quantity } },
+        data: { availableQty: { decrement: quantity } },
+      });
+      if (count === 0) {
+        throw new ConflictException(
+          "Mientras se anotaba cambiaron los llenos de la planta. Vuelva a abrir el inventario e intente de nuevo.",
+        );
+      }
+      const movement = await this.createWithinTransaction(
+        client,
+        {
+          type: request.type,
+          containerTypeId: request.containerTypeId,
+          quantity,
+          fromState: ContainerState.FULL_AT_PLANT,
+        },
+        recordedById,
+        { batchId: item.batch.id },
+      );
+      taken.push({ movement, batch: item.batch });
+      remaining -= quantity;
+    }
+    return taken;
   }
 
   /**

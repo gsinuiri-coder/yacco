@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
@@ -6,14 +6,10 @@ import {
   assertContainerTypeExists,
   assertLocationExists,
 } from "../container-movements/container-reference-guards.js";
-import { OLDEST_BATCH_ITEM_FIRST } from "../production-batches/oldest-batch-first.js";
 import type { CreateContainerCountDto } from "./dto/create-container-count.dto.js";
 import type { ContainerCountResponseDto } from "./dto/container-count-response.dto.js";
 import type { CreatePlantCountDto } from "./dto/create-plant-count.dto.js";
-import type {
-  PlantCountAdjustmentDto,
-  PlantCountResponseDto,
-} from "./dto/plant-count-response.dto.js";
+import type { PlantCountResponseDto } from "./dto/plant-count-response.dto.js";
 
 /** Everything the wire shape needs, and nothing else. */
 const COUNT_INCLUDE = {
@@ -176,9 +172,9 @@ export class ContainerCountsService {
    * con el galpón quieto; la deuda general de bloqueos está en «Sin lock
    * sobre customer_container_balances al leer-y-reescribir» del backlog.
    *
-   * Lo esperado de los llenos sale del libro, no de los lotes. Hoy pueden no
-   * coincidir: una baja por daño de un lleno en planta baja el libro y no el
-   * lote («Una baja de llenos en planta no descuenta el lote», backlog).
+   * Lo esperado de los llenos sale del libro. Coincide con lo disponible en
+   * los lotes porque todo lleno que sale de la planta —carga, baja, venta,
+   * conteo— sale de un lote (`takeFullsFromPlantWithinTransaction`).
    */
   async countPlant(dto: CreatePlantCountDto, countedById: string): Promise<PlantCountResponseDto> {
     return this.prisma.$transaction(async (tx) => {
@@ -225,72 +221,21 @@ export class ContainerCountsService {
           `Se contaron ${dto.countedQuantity} llenos y el sistema tiene ${expectedQuantity}. Los llenos que faltan se anotan como lote en Producción.`,
         );
       }
-      const adjustments = await this.consumeFullsOldestFirst(
-        tx,
-        dto.containerTypeId,
-        -delta,
-        countedById,
-      );
-      return { ...response, adjustments };
-    });
-  }
-
-  /**
-   * Saca `quantity` llenos de la planta lote por lote, del más viejo al más
-   * nuevo. Cada descuento es un UPDATE guardado por `available_qty >= n`, igual
-   * que la carga de una ruta: si una carga se llevó ese lote entre la lectura
-   * y la escritura, el conteo se cancela entero en vez de dejar un lote en
-   * negativo.
-   */
-  private async consumeFullsOldestFirst(
-    tx: Prisma.TransactionClient,
-    containerTypeId: string,
-    quantity: number,
-    countedById: string,
-  ): Promise<PlantCountAdjustmentDto[]> {
-    const items = await tx.batchItem.findMany({
-      where: { containerTypeId, availableQty: { gt: 0 } },
-      orderBy: OLDEST_BATCH_ITEM_FIRST,
-      select: { id: true, availableQty: true, batch: { select: { id: true, code: true } } },
-    });
-
-    const adjustments: PlantCountAdjustmentDto[] = [];
-    let remaining = quantity;
-    for (const item of items) {
-      if (remaining === 0) break;
-      const taken = Math.min(item.availableQty, remaining);
-      const { count } = await tx.batchItem.updateMany({
-        where: { id: item.id, availableQty: { gte: taken } },
-        data: { availableQty: { decrement: taken } },
-      });
-      if (count === 0) {
-        throw new ConflictException(
-          "Mientras se anotaba el conteo cambiaron los llenos de la planta. Vuelva a abrir el inventario y cuente de nuevo.",
-        );
-      }
-      const movement = await this.containerMovementsService.createWithinTransaction(
+      const taken = await this.containerMovementsService.takeFullsFromPlantWithinTransaction(
         tx,
         {
           type: ContainerMovementType.COUNT_ADJUSTMENT,
-          containerTypeId,
-          quantity: taken,
-          fromState: ContainerState.FULL_AT_PLANT,
+          containerTypeId: dto.containerTypeId,
+          quantity: -delta,
         },
         countedById,
-        { batchId: item.batch.id },
       );
-      adjustments.push({ id: movement.id, quantity: taken, batch: item.batch });
-      remaining -= taken;
-    }
-
-    if (remaining > 0) {
-      // El libro dice más llenos en planta que los que quedan en los lotes:
-      // no hay de dónde descontarlos sin inventar un lote. No debería pasar
-      // (todo lleno entra por un lote), así que se frena en vez de adivinar.
-      throw new ConflictException(
-        "Los lotes no tienen tantos llenos disponibles como dice el inventario. Revise los lotes en Producción antes de contar.",
-      );
-    }
-    return adjustments;
+      const adjustments = taken.map(({ movement, batch }) => ({
+        id: movement.id,
+        quantity: movement.quantity,
+        batch,
+      }));
+      return { ...response, adjustments };
+    });
   }
 }
