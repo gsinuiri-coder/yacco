@@ -1270,8 +1270,11 @@ contra un preview»). Después, sentarse con el dueño y `docs/guion-piloto.md`.
   arma la hoja de una vez, con los pedidos del día (y de su zona). Se agregan
   todos o ninguno.
 
-**El recorrido con un Vendedor (segunda vuelta):** crear en **Usuarios** a una
-persona con el rol Vendedor y entrar con ella. Su menú no tiene «Cuadre de
+**El recorrido con un Vendedor (segunda vuelta)**, en un preview contra demo
+(`docs/DEPLOY.md`, «El ciclo entero contra un preview»), no en producción: anota
+un conteo, un pedido, una ruta y un cobro, que en un cliente real no se borran.
+Un administrador crea en **Usuarios** a una persona con el rol Vendedor, y se
+entra con ella. Su menú no tiene «Cuadre de
 envases» ni «Reportes», y ninguna pantalla que sí tiene abre con un error de
 permisos (lo cuida el e2e de #251). Recorrer:
 
@@ -1403,13 +1406,17 @@ usuarios de prueba del e2e, desactivados.
 - Una comparación de URL anclada solo al final (`/customers$`) dejaba pasar
   `/login?from=/customers`: un test del menú hubiera dado verde con la sesión
   perdida. El de R2 compara la ruta exacta, y se probó en rojo así.
-- El job de e2e de CI tarda unos 4 minutos más: el recorrido del administrador
+- El test de R2 suma unos 4 minutos al e2e (medido en local): el recorrido del administrador
   son 17 pantallas que `nuxt dev` compila la primera vez.
 
-**Pendientes de Giancarlo:** los de la primera vuelta menos X, más el supuesto 20 con el
-dueño (va en la sección 2 del guion). Siguen: **4f (#238)**
-(`[OK]` y merge después de las 20:00 de Lima), el supuesto 19 contra HU-01 E2,
-**F**, **A1** y la app de Render en GitHub.
+**Pendientes de Giancarlo:**
+
+- **El supuesto 20** con el dueño (va en la sección 2 del guion).
+- **4f (#238):** `[OK]` para mergear la migración del índice, después de las
+  20:00 de Lima.
+- **Supuesto 19:** la diferencia con HU-01 E2, a decidir con el dueño.
+- **F**, **A1** y la desinstalación de la app de Render en GitHub (sin cambios).
+- **La reunión con el dueño**, con `docs/guion-piloto.md` al día.
 
 #### Lecciones
 

@@ -85,7 +85,8 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
       PLANNED; endpoint todo-o-nada con la validación de
       `POST /routes/:id/stops`.
 - [bloqueado] **X · Datos de prueba en producción.** Propuesto el
-  2026-09-25; espera el `[OK]` de Giancarlo (escritura en producción):
+  2026-09-25; espera el `[OK]` de Giancarlo (escritura en producción; llegó en
+  la segunda vuelta, ver abajo):
   contar en 0 la ubicación del cliente de prueba y desactivarlo. Nunca
   borrar. El lote de prueba no se toca: se ajusta contra el stock real
   que dé el dueño (D5), con un mecanismo todavía por decidir (hoy solo
@@ -119,8 +120,8 @@ Cola (en este orden):
       DRIVER+SELLER, cada enlace de `visibleNavigation(roles)` (importado del
       `navigation.ts` real) carga su pantalla sin 403 en ninguna petición que
       hace al montarse. Prueba de que falla: revertir los `@Roles` de R1 → rojo
-      en «Envases en poder de clientes» para SELLER. Usuarios de demo
-      inventados, anotados en el cierre.
+      en «Envases en poder de clientes» para SELLER. Los usuarios del test
+      viven en la base `e2e`, no en demo.
 - [ ] **X · Datos de prueba en producción** (de la primera vuelta): el `[OK]`
       de Giancarlo llegó el 2026-09-25; se hace después de este cierre.
 - [x] **Cierre** (este PR; `sprint-close`): subsección «Segunda vuelta» en «Revisión
