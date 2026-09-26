@@ -60,9 +60,19 @@ export const CONTAINER_MOVEMENT_TRANSITIONS: Record<ContainerMovementType, State
   // later, to tell a real customer debt from a bookkeeping error. Whoever
   // records the count picks which one applies; this matrix only says both
   // directions are structurally valid for COUNT_ADJUSTMENT.
+  //
+  // El conteo de la planta (`ContainerCountsService.countPlant`) usa los
+  // otros tres pares: vacíos en planta en las dos direcciones, y llenos en
+  // planta solo hacia afuera. NO existe null -> FULL_AT_PLANT a propósito: un
+  // lleno sin lote rompe el FIFO de la carga (se carga por `batch_items`, y
+  // ese lleno no estaría en ninguno). Los llenos que faltan se anotan como
+  // lote en Producción.
   [ContainerMovementType.COUNT_ADJUSTMENT]: [
     { from: null, to: ContainerState.WITH_CUSTOMER },
     { from: ContainerState.WITH_CUSTOMER, to: null },
+    { from: null, to: ContainerState.EMPTY_AT_PLANT },
+    { from: ContainerState.EMPTY_AT_PLANT, to: null },
+    { from: ContainerState.FULL_AT_PLANT, to: null },
   ],
   // Las tres anulaciones deshacen su movimiento: el par es el de su tipo,
   // leído al revés.

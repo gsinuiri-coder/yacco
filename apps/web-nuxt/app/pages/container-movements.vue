@@ -478,7 +478,7 @@ function clearHistoryFilters(): void {
                     <td class="px-4 py-3 whitespace-nowrap tabular-nums">
                       {{ formatInstantInLima(movement.occurredAt) }}
                     </td>
-                    <td class="px-4 py-3">{{ MOVEMENT_TYPE_LABEL[movement.type] }}</td>
+                    <td class="px-4 py-3">{{ movementLabel(movement) }}</td>
                     <td class="px-4 py-3">{{ movement.containerType.name }}</td>
                     <td class="px-4 py-3 text-right tabular-nums">{{ movement.quantity }}</td>
                     <td class="px-4 py-3 text-muted">

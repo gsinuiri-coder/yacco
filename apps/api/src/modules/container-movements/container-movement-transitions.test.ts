@@ -99,29 +99,25 @@ describe("isValidContainerTransition", () => {
     }
   });
 
-  it("COUNT_ADJUSTMENT accepts both directions across the fleet boundary, nothing else", () => {
-    expect(
-      isValidContainerTransition(
-        ContainerMovementType.COUNT_ADJUSTMENT,
-        null,
-        ContainerState.WITH_CUSTOMER,
-      ),
-    ).toBe(true);
-    expect(
-      isValidContainerTransition(
-        ContainerMovementType.COUNT_ADJUSTMENT,
-        ContainerState.WITH_CUSTOMER,
-        null,
-      ),
-    ).toBe(true);
-    for (const state of ALL_STATES) {
-      if (state === ContainerState.WITH_CUSTOMER) continue;
-      expect(isValidContainerTransition(ContainerMovementType.COUNT_ADJUSTMENT, null, state)).toBe(
-        false,
-      );
-      expect(isValidContainerTransition(ContainerMovementType.COUNT_ADJUSTMENT, state, null)).toBe(
-        false,
-      );
+  it("COUNT_ADJUSTMENT crosses the fleet boundary with customers and at the plant, and never adds a full", () => {
+    const { COUNT_ADJUSTMENT } = ContainerMovementType;
+    const accepted: [ContainerState | null, ContainerState | null][] = [
+      [null, ContainerState.WITH_CUSTOMER],
+      [ContainerState.WITH_CUSTOMER, null],
+      [null, ContainerState.EMPTY_AT_PLANT],
+      [ContainerState.EMPTY_AT_PLANT, null],
+      [ContainerState.FULL_AT_PLANT, null],
+    ];
+    for (const [from, to] of accepted) {
+      expect(isValidContainerTransition(COUNT_ADJUSTMENT, from, to)).toBe(true);
+    }
+    // Un lleno sin lote rompería el FIFO: los llenos que faltan entran como lote.
+    expect(isValidContainerTransition(COUNT_ADJUSTMENT, null, ContainerState.FULL_AT_PLANT)).toBe(
+      false,
+    );
+    for (const state of [ContainerState.FULL_ON_ROUTE, ContainerState.EMPTY_ON_ROUTE]) {
+      expect(isValidContainerTransition(COUNT_ADJUSTMENT, null, state)).toBe(false);
+      expect(isValidContainerTransition(COUNT_ADJUSTMENT, state, null)).toBe(false);
     }
   });
 

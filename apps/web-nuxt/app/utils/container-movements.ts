@@ -20,6 +20,23 @@ export const MOVEMENT_TYPE_LABEL: Record<ContainerMovementType, string> = {
   FULL_SALE_VOID: "Anulación de venta",
 };
 
+/**
+ * La etiqueta de una fila del libro. Un ajuste por conteo que no toca a un
+ * cliente es del conteo de la planta: el tipo solo no alcanza para decirlo.
+ */
+export function movementLabel(movement: {
+  type: ContainerMovementType;
+  fromState: ContainerState | null;
+  toState: ContainerState | null;
+}): string {
+  const touchesCustomer =
+    movement.fromState === "WITH_CUSTOMER" || movement.toState === "WITH_CUSTOMER";
+  if (movement.type === "COUNT_ADJUSTMENT" && !touchesCustomer) {
+    return "Ajuste por conteo de la planta";
+  }
+  return MOVEMENT_TYPE_LABEL[movement.type];
+}
+
 /** «De dónde sale», para elegir el origen de una baja. */
 export const ORIGIN_LABEL: Record<ContainerState, string> = {
   EMPTY_AT_PLANT: "de los vacíos en planta",
