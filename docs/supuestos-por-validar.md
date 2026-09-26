@@ -84,6 +84,21 @@ cuándo, y tres líneas:
 - **Construido encima** — qué código depende de eso.
 - **Si resulta que no** — qué cambia, y si es barato o caro.
 
+### La evidencia fotográfica sale del alcance con la app sin conexión
+
+- **Decidido por Claude Code (2026-09-26),** en el ítem B del cierre final.
+- **Asumimos:** que la foto de la entrega (HU-15) era parte de la app del
+  repartidor —su criterio es una cola local que sube al sincronizar—, y que
+  sin esa app el piloto no la necesita: el chofer registra cada parada en
+  línea y la oficina corrige lo mal anotado (HU-24). Nada de evidencia está
+  construido.
+- **Construido encima:** nada; la spec la saca del alcance (§1.3, Épica C y
+  la tabla de endpoints de §4.3).
+- **Si resulta que no:** medio. Subir una foto desde «Mi ruta» pide un
+  `POST /evidence/presign`, el bucket S3 de producción (hoy solo existe el
+  MinIO local) y una tabla de evidencias por parada: migración expand y una
+  pantalla.
+
 ## Validados
 
 ### 1. El buscador del Panel muestra clientes desactivados — 25/09/2026
@@ -201,7 +216,11 @@ cuándo, y tres líneas:
   que cambie precios.
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** la página `/my-route`, el menú reducido del Chofer y
-  la lectura por recurso de `common/viewer.ts`.
+  la lectura por recurso de `common/viewer.ts`. Sobre esta aprobación, el
+  cierre final (ítem B, 2026-09-26, por decisión de Giancarlo) dejó la app sin
+  conexión y la sincronización fuera del alcance en la spec (§1.3, §4.2, §4.3)
+  y en `AGENTS.md`; el diseño se conserva en
+  `.agents/skills/sync-protocol/SKILL.md`.
 
 ### 13. «Debe desde» es el cargo que abrió la deuda actual — 25/09/2026
 
@@ -276,8 +295,8 @@ cuándo, y tres líneas:
 - **Qué se decidió:** el lote se registra y el sistema avisa, con las dos
   cantidades por tipo de envase, que llenó más de los vacíos que figuraban en
   la planta (quedan en negativo). Quedaron afuera el paso de confirmación antes
-  de guardar y el bloqueo. HU-01 E2 todavía dice «antes de confirmar»: se
-  corrige para decir esto en el ítem B del cierre final.
+  de guardar y el bloqueo. HU-01 E2 dice esto desde el ítem B del cierre final
+  (2026-09-26); antes decía «antes de confirmar».
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** `ProductionBatchesService.create` y el aviso de
   `apps/web-nuxt/app/pages/production.vue`.
