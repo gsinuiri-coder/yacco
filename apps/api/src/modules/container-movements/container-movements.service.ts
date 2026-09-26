@@ -203,13 +203,16 @@ export class ContainerMovementsService {
       const delta = toState === ContainerState.WITH_CUSTOMER ? dto.quantity : -dto.quantity;
       // dto.locationId is defined here — touchesCustomer already required it above.
       const locationId = dto.locationId as string;
-      // Un solo INSERT ... ON CONFLICT que SUMA el delta a lo que ya está en
-      // disco, en vez de leer el saldo y escribir el absoluto: dos
-      // transacciones sobre el mismo par (ubicación, tipo) ya no pueden leer
-      // el mismo valor base y pisarse — la segunda espera el lock de fila que
-      // toma el UPDATE de la primera y suma sobre su resultado. (Tampoco sirve
-      // el upsert de Prisma con `increment`: con una clave compuesta no suma
-      // contra la fila en disco cuando entra por el ON CONFLICT.)
+      const key = {
+        locationId_containerTypeId: { locationId, containerTypeId: dto.containerTypeId },
+      };
+      // Reads the current balance and writes the absolute result inside
+      // this same transaction — safe because `lockLocation` above already
+      // serialized every writer of this location's balance — rather than upsert's `increment`: with a
+      // composite (no single-column) id, Prisma's upsert does not apply
+      // `increment` against the row already on disk when the ON CONFLICT
+      // branch is taken, so a second movement silently overwrote the first
+      // instead of adding to it.
       // A negative result is valid and expected, never clamped or rejected:
       // this balance is what the system BELIEVES the customer holds, and the
       // belief can be wrong. The previous driver forgot to write down a
@@ -220,12 +223,13 @@ export class ContainerMovementsService {
       // would only make the driver skip registering the return, losing both
       // facts. A physical count later brings it back to what is actually
       // there, through COUNT_ADJUSTMENT.
-      await client.$executeRaw`
-        INSERT INTO customer_container_balances (location_id, container_type_id, quantity)
-        VALUES (${locationId}::uuid, ${dto.containerTypeId}::uuid, ${delta})
-        ON CONFLICT (location_id, container_type_id)
-        DO UPDATE SET quantity = customer_container_balances.quantity + EXCLUDED.quantity
-      `;
+      const existing = await client.customerContainerBalance.findUnique({ where: key });
+      const nextQuantity = (existing?.quantity ?? 0) + delta;
+      await client.customerContainerBalance.upsert({
+        where: key,
+        create: { locationId, containerTypeId: dto.containerTypeId, quantity: nextQuantity },
+        update: { quantity: nextQuantity },
+      });
     }
 
     return created;

@@ -180,7 +180,8 @@ export class ContainerCountsService {
    * bloqueo NO frena una carga de ruta, un lote o una liquidación que se
    * anote en el mismo instante: esas no lo toman, y lo contado se compara
    * contra el libro de un momento antes. Se acepta porque el conteo se hace
-   * con el galpón quieto.
+   * con el galpón quieto («El conteo de la planta no bloquea contra cargas,
+   * lotes ni liquidaciones», backlog).
    *
    * Lo esperado de los llenos sale del libro, no de los lotes. Hoy pueden no
    * coincidir: una baja por daño de un lleno en planta baja el libro y no el

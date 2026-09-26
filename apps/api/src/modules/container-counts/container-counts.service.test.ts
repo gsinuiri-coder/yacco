@@ -201,6 +201,12 @@ describe("ContainerCountsService", () => {
 
     const data = firstCallData(prisma.containerCount.create);
     expect(data.expectedQuantity).toBe(0);
+    // Lo esperado se lee con la ubicación ya bloqueada: dos conteos a la vez
+    // no pueden calcular su diferencia contra el mismo saldo.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.customerContainerBalance.findUnique.mock.invocationCallOrder[0] ?? 0,
+    );
     const [, dto] = containerMovementsService.createWithinTransaction.mock.calls[0]!;
     expect(dto).toMatchObject({ quantity: 5, toState: ContainerState.WITH_CUSTOMER });
   });
