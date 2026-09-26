@@ -3,7 +3,12 @@ import { screen, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { getQuery } from "h3";
 import type { H3Event } from "h3";
-import type { CustomerDebtsReport, LoanedContainersReport, ProductionReport } from "@yacco/shared";
+import type {
+  CustomerDebtsReport,
+  DebtReconciliation,
+  LoanedContainersReport,
+  ProductionReport,
+} from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "~/app.vue";
 import { failWith } from "../support/route-detail";
@@ -35,6 +40,73 @@ describe("Reportes", () => {
 
   afterEach(() => {
     for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+
+  describe("Cuadre de la deuda", () => {
+    function stubReconciliation(body: DebtReconciliation) {
+      cleanups.push(registerEndpoint("/api/v1/debt-reconciliation", () => body));
+    }
+
+    it("dos clientes descuadrados, uno por faltante y otro por sobrante, con el dinero como texto", async () => {
+      stubReconciliation({
+        checkedAt: "2026-09-26T13:00:00.000Z",
+        discrepancyCount: 2,
+        discrepancies: [
+          {
+            customerId: "c-1",
+            customerName: "Bodega Central",
+            ledgerBalance: "25.00",
+            materializedBalance: "20.00",
+            difference: "5.00",
+          },
+          {
+            customerId: "c-2",
+            customerName: "Farmacia San Judas",
+            ledgerBalance: "10.00",
+            materializedBalance: "12.50",
+            difference: "-2.50",
+          },
+        ],
+      });
+
+      await renderReport("/reports/debt-reconciliation", "Cuadre de la deuda");
+
+      expect(
+        await screen.findByText("Hay 2 clientes cuya deuda no coincide con sus ventas y cobros."),
+      ).toBeTruthy();
+      const bodega = await rowOf("Bodega Central");
+      expect(within(bodega).getByText("S/ 25.00")).toBeTruthy();
+      expect(within(bodega).getByText("S/ 20.00")).toBeTruthy();
+      expect(within(bodega).getByText("A la deuda guardada le faltan S/ 5.00")).toBeTruthy();
+      const farmacia = await rowOf("Farmacia San Judas");
+      expect(within(farmacia).getByText("La deuda guardada tiene S/ 2.50 de más")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Cuadre de la deuda" })).toBeTruthy();
+    });
+
+    it("sin descuadres lo dice como buena noticia", async () => {
+      stubReconciliation({
+        checkedAt: "2026-09-26T13:00:00.000Z",
+        discrepancyCount: 0,
+        discrepancies: [],
+      });
+
+      await renderReport("/reports/debt-reconciliation", "Cuadre de la deuda");
+
+      expect(await screen.findByText("Las dos cuentas coinciden")).toBeTruthy();
+      expect(screen.queryByRole("table")).toBeNull();
+    });
+
+    it("el menú lo muestra al administrador y no al vendedor", async () => {
+      stubReconciliation({
+        checkedAt: "2026-09-26T13:00:00.000Z",
+        discrepancyCount: 0,
+        discrepancies: [],
+      });
+      cleanups.push(registerEndpoint("/api/v1/reports/debt", () => ({ rows: [], total: "0.00" })));
+
+      await renderReport("/reports/debt", "Deuda por cliente", ["SELLER"]);
+      expect(screen.queryByRole("link", { name: "Cuadre de la deuda" })).toBeNull();
+    });
   });
 
   describe("Deuda por cliente (HU-19)", () => {

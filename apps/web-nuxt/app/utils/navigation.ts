@@ -69,6 +69,12 @@ export const NAVIGATION: NavigationSection[] = [
         onlyFor: "ADMIN",
       },
       {
+        label: "Cuadre de la deuda",
+        icon: "i-lucide-scale",
+        to: "/reports/debt-reconciliation",
+        onlyFor: "ADMIN",
+      },
+      {
         label: "Envases prestados",
         icon: "i-lucide-container",
         to: "/reports/loaned-containers",
