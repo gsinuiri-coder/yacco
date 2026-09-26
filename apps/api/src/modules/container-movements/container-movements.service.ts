@@ -279,6 +279,30 @@ export class ContainerMovementsService {
   }
 
   /**
+   * El saldo de un tipo de envase en un estado, leído del libro dentro de la
+   * transacción de quien llama: todo lo que entró a ese estado menos todo lo
+   * que salió. Puede ser negativo. Es la celda del inventario que lee el
+   * conteo de la planta como «lo que había».
+   */
+  async getStateBalance(
+    client: Prisma.TransactionClient,
+    containerTypeId: string,
+    state: ContainerState,
+  ): Promise<number> {
+    const [into, outOf] = await Promise.all([
+      client.containerMovement.aggregate({
+        where: { containerTypeId, toState: state },
+        _sum: { quantity: true },
+      }),
+      client.containerMovement.aggregate({
+        where: { containerTypeId, fromState: state },
+        _sum: { quantity: true },
+      }),
+    ]);
+    return (into._sum.quantity ?? 0) - (outOf._sum.quantity ?? 0);
+  }
+
+  /**
    * `getRouteFullStock` for every container type at once: what is still on
    * this route's truck, full, keyed by container type. Reads by STATE like
    * its single-type sibling, so voids and returns correct it on their own.

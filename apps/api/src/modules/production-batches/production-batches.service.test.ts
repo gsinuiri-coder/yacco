@@ -81,7 +81,10 @@ function firstCallArg<T>(mockFn: { mock: { calls: unknown[] } }): T {
 describe("ProductionBatchesService", () => {
   let service: ProductionBatchesService;
   let prisma: ReturnType<typeof buildPrismaMock>;
-  let containerMovementsService: { createWithinTransaction: jest.Mock };
+  let containerMovementsService: {
+    createWithinTransaction: jest.Mock;
+    getStateBalance: ContainerMovementsService["getStateBalance"];
+  };
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
@@ -90,6 +93,8 @@ describe("ProductionBatchesService", () => {
     );
     containerMovementsService = {
       createWithinTransaction: jest.fn<() => Promise<unknown>>().mockResolvedValue(undefined),
+      // El saldo real, leído del `aggregate` de mentira de arriba.
+      getStateBalance: ContainerMovementsService.prototype.getStateBalance,
     };
 
     const moduleRef = await Test.createTestingModule({

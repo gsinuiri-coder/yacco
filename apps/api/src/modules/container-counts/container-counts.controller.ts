@@ -15,6 +15,8 @@ import type { AuthenticatedRequest } from "../auth/types/authenticated-request.j
 import { ContainerCountsService } from "./container-counts.service.js";
 import { CreateContainerCountDto } from "./dto/create-container-count.dto.js";
 import { ContainerCountResponseDto } from "./dto/container-count-response.dto.js";
+import { CreatePlantCountDto } from "./dto/create-plant-count.dto.js";
+import { PlantCountResponseDto } from "./dto/plant-count-response.dto.js";
 
 /**
  * ADMIN and SELLER register counts (office capture, same phase as
@@ -45,5 +47,26 @@ export class ContainerCountsController {
   ): Promise<ContainerCountResponseDto> {
     // countedById comes from the access token, never from the body.
     return this.containerCountsService.create(dto, request.user.sub);
+  }
+
+  /**
+   * Solo ADMIN: el conteo de la planta cambia el stock con que se cargan las
+   * rutas (descuenta llenos de los lotes), así que no es trabajo de oficina.
+   */
+  @ApiOperation({
+    summary: "Registra el conteo de vacíos o llenos en la planta y ajusta el libro a lo contado",
+  })
+  @ApiResponse({ status: 201, type: PlantCountResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      "Validation failed, the container type does not exist, or more fulls were counted than the ledger has",
+  })
+  @Roles(UserRole.ADMIN)
+  @Post("plant")
+  countPlant(
+    @Body() dto: CreatePlantCountDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<PlantCountResponseDto> {
+    return this.containerCountsService.countPlant(dto, request.user.sub);
   }
 }
