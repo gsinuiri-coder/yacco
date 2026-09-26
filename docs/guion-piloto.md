@@ -166,8 +166,9 @@ secciones 2 y 3._
 
 - **Hoy:** el «Inventario» de `main` muestra **solo los datos de prueba**:
   un ingreso de 50 bidones con caño que se llenaron en un lote de prueba (50
-  llenos en planta, 0 vacíos) y los 20 envases del cliente de prueba. Ningún
-  bidón sin caño en planta. No es el galpón real.
+  llenos en planta, 0 vacíos). Los envases del cliente de prueba ya se
+  contaron en 0 (2026-09-25): ningún cliente tiene envases. Ningún bidón sin
+  caño en planta. No es el galpón real.
 - **Preguntar:** ¿cuántos bidones tiene hoy en la planta, contando los vacíos
   y los llenos, de cada tipo (con caño y sin caño)?
 - **Qué hacemos con la respuesta:** lo que falte entra como «Ingreso de

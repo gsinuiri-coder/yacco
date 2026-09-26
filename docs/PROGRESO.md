@@ -1384,7 +1384,7 @@ que abre en 403 para algún rol.
 | R1 · El Vendedor ve a quién contar      | ✅ `GET /container-balances` para ADMIN y SELLER; «Envases» en la ficha; supuesto 20     | #249 |
 | R3 · Detalle de ruta con enlaces        | ✅ dirección y referencia de cada parada con `LinkedText` (la referencia no se mostraba) | #250 |
 | R2 · Ningún enlace del menú abre en 403 | ✅ e2e por rol sobre el menú real; rojo sin R1, verde con R1; ningún otro 403            | #251 |
-| X · Datos de prueba en producción       | ✅ hecho desde la app con el `[OK]`, después del cierre (ver abajo)                      | —    |
+| X · Datos de prueba en producción       | ✅ hecho desde la app con el `[OK]`, después del cierre (ver abajo)                      | #253 |
 | Cierre                                  | ✅ esta subsección                                                                       | este |
 
 **Supuesto 20 reemplaza lo que decía la primera vuelta** («`GET
@@ -1431,6 +1431,9 @@ usuarios de prueba del e2e, desactivados.
   20:00 de Lima.
 - **Supuesto 19:** la diferencia con HU-01 E2, a decidir con el dueño.
 - **F**, **A1** y la desinstalación de la app de Render en GitHub (sin cambios).
+- **El texto vacío de «Envases prestados»** («Todos los envases prestados
+  volvieron a la planta») no es cierto cuando salieron por un ajuste de conteo:
+  a reescribir (backlog, sin tocar).
 - **La reunión con el dueño**, con `docs/guion-piloto.md` al día.
 
 #### Lecciones

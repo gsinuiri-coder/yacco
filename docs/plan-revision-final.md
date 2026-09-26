@@ -85,8 +85,8 @@ las 20:00 de Lima; mientras su deploy corre, no se mergea nada.
       PLANNED; endpoint todo-o-nada con la validación de
       `POST /routes/:id/stops`.
 - [x] **X · Datos de prueba en producción** (hecho en la segunda vuelta). Propuesto el
-      2026-09-25; espera el `[OK]` de Giancarlo (escritura en producción; llegó en
-      la segunda vuelta, ver abajo):
+      2026-09-25; esperaba el `[OK]` de Giancarlo (escritura en producción), que
+      llegó en la segunda vuelta (ver abajo). Lo propuesto:
       contar en 0 la ubicación del cliente de prueba y desactivarlo. Nunca
       borrar. El lote de prueba no se toca: se ajusta contra el stock real
       que dé el dueño (D5), con un mecanismo todavía por decidir (hoy solo
