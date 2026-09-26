@@ -70,10 +70,10 @@ function describeDifference(discrepancy: DebtReconciliationDiscrepancy): string 
                 {{ discrepancy.customerName ?? "Cliente desconocido" }}
               </td>
               <td class="px-4 py-3 text-right">
-                <MoneyAmount :value="discrepancy.ledgerBalance" />
+                <MoneyAmount :value="discrepancy.ledgerBalance" debt />
               </td>
               <td class="px-4 py-3 text-right">
-                <MoneyAmount :value="discrepancy.materializedBalance" />
+                <MoneyAmount :value="discrepancy.materializedBalance" debt />
               </td>
               <td class="px-4 py-3">{{ describeDifference(discrepancy) }}</td>
             </tr>

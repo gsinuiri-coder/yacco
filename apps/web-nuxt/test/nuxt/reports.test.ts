@@ -62,8 +62,8 @@ describe("Reportes", () => {
           {
             customerId: "c-2",
             customerName: "Farmacia San Judas",
-            ledgerBalance: "10.00",
-            materializedBalance: "12.50",
+            ledgerBalance: "-15.00",
+            materializedBalance: "-12.50",
             difference: "-2.50",
           },
         ],
@@ -74,12 +74,13 @@ describe("Reportes", () => {
       expect(
         await screen.findByText("Hay 2 clientes cuya deuda no coincide con sus ventas y cobros."),
       ).toBeTruthy();
-      const bodega = await rowOf("Bodega Central");
-      expect(within(bodega).getByText("S/ 25.00")).toBeTruthy();
-      expect(within(bodega).getByText("S/ 20.00")).toBeTruthy();
-      expect(within(bodega).getByText("A la deuda guardada le faltan S/ 5.00")).toBeTruthy();
-      const farmacia = await rowOf("Farmacia San Judas");
-      expect(within(farmacia).getByText("La deuda guardada tiene S/ 2.50 de más")).toBeTruthy();
+      const shortRow = await rowOf("Bodega Central");
+      expect(within(shortRow).getByText("S/ 25.00")).toBeTruthy();
+      expect(within(shortRow).getByText("S/ 20.00")).toBeTruthy();
+      expect(within(shortRow).getByText("A la deuda guardada le faltan S/ 5.00")).toBeTruthy();
+      const overRow = await rowOf("Farmacia San Judas");
+      expect(within(overRow).getByText("A favor S/ 12.50")).toBeTruthy();
+      expect(within(overRow).getByText("La deuda guardada tiene S/ 2.50 de más")).toBeTruthy();
       expect(screen.getByRole("link", { name: "Cuadre de la deuda" })).toBeTruthy();
     });
 
@@ -96,7 +97,7 @@ describe("Reportes", () => {
       expect(screen.queryByRole("table")).toBeNull();
     });
 
-    it("el menú lo muestra al administrador y no al vendedor", async () => {
+    it("el vendedor no ve el enlace en el menú", async () => {
       stubReconciliation({
         checkedAt: "2026-09-26T13:00:00.000Z",
         discrepancyCount: 0,

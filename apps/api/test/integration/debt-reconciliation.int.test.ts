@@ -49,7 +49,7 @@ async function createUserAndLogin(username: string, role: string): Promise<strin
  * confirmar (PENDING). Su deuda es 25.00. El Yape pendiente está a propósito:
  * si el cuadre lo restara, este cliente aparecería descuadrado en 15.00.
  */
-async function customerWithActivity(): Promise<{ id: string; name: string; locationId: string }> {
+async function freshCustomer(): Promise<{ id: string; name: string }> {
   customerSeq += 1;
   const name = `Cuadre Dinero ${customerSeq}`;
   const customer = await request(server())
@@ -62,6 +62,13 @@ async function customerWithActivity(): Promise<{ id: string; name: string; locat
       addressReference: "Portón azul",
     })
     .expect(201);
+  return { id: customer.body.id, name };
+}
+
+async function customerWithActivity(): Promise<{ id: string; name: string; locationId: string }> {
+  const fresh = await freshCustomer();
+  const name = fresh.name;
+  const customer = { body: { id: fresh.id } };
   await ctx.app
     .get(SalesService)
     .createOpeningCharge(
@@ -84,6 +91,23 @@ async function customerWithActivity(): Promise<{ id: string; name: string; locat
       amount: new Prisma.Decimal("10.00"),
       status: "PENDING",
       recordedById: adminId,
+    },
+  });
+  // Un efectivo de 7.00 que después se anuló: la deuda guardada nunca lo
+  // restó (anular devuelve lo que se había restado). Si el cuadre lo restara,
+  // el cliente aparecería con 7.00 de menos.
+  await prisma().payment.create({
+    data: {
+      customerId: customer.body.id,
+      paymentMethodId: cashId,
+      paidAt: new Date("2026-09-04T15:00:00Z"),
+      amount: new Prisma.Decimal("7.00"),
+      status: "CONFIRMED",
+      confirmedAt: new Date("2026-09-04T15:00:00Z"),
+      recordedById: adminId,
+      voidedAt: new Date("2026-09-04T16:00:00Z"),
+      voidedById: adminId,
+      voidReason: "Cobro anotado dos veces",
     },
   });
   const location = await prisma().customerLocation.findFirstOrThrow({
@@ -113,8 +137,21 @@ afterAll(async () => {
 });
 
 describe("GET /api/v1/debt-reconciliation", () => {
-  test("a debt written only through the real paths matches: pending payments and voided sales do not count", async () => {
+  test("a debt written only through the real paths matches: pending payments and voided sales and payments do not count, opening credits do", async () => {
     const customer = await customerWithActivity();
+    // Un cliente que entró del padrón con saldo a favor: su abono de apertura
+    // cuenta como cualquier cobro. Si el cuadre lo dejara afuera, aparecería
+    // con 12.00 de diferencia.
+    const favored = await freshCustomer();
+    await ctx.app.get(SalesService).createOpeningCredit(
+      {
+        customerId: favored.id,
+        paymentMethodId: cashId,
+        amount: "12.00",
+        paidAt: new Date("2026-09-01T15:00:00Z"),
+      },
+      adminId,
+    );
     // Una venta anulada con su monto: si el cuadre la sumara, el cliente
     // aparecería con 99.00 de más.
     await prisma().sale.create({
@@ -133,6 +170,12 @@ describe("GET /api/v1/debt-reconciliation", () => {
         await prisma().customer.findUniqueOrThrow({ where: { id: customer.id } })
       ).debtBalance.toFixed(2),
     ).toBe("25.00");
+
+    expect(
+      (
+        await prisma().customer.findUniqueOrThrow({ where: { id: favored.id } })
+      ).debtBalance.toFixed(2),
+    ).toBe("-12.00");
 
     const response = await getReconciliation(adminToken).expect(200);
 
@@ -169,6 +212,31 @@ describe("GET /api/v1/debt-reconciliation", () => {
     await prisma().customer.update({
       where: { id: drifted.id },
       data: { debtBalance: new Prisma.Decimal("25.00") },
+    });
+  });
+
+  // La peor forma: una deuda guardada sin ninguna venta ni cobro detrás.
+  test("a debt with no sales or payments behind it is reported against a ledger of zero", async () => {
+    const orphan = await freshCustomer();
+    await prisma().customer.update({
+      where: { id: orphan.id },
+      data: { debtBalance: new Prisma.Decimal("3.00") },
+    });
+
+    const response = await getReconciliation(adminToken).expect(200);
+
+    expect(response.body.discrepancies).toEqual([
+      {
+        customerId: orphan.id,
+        customerName: orphan.name,
+        ledgerBalance: "0.00",
+        materializedBalance: "3.00",
+        difference: "-3.00",
+      },
+    ]);
+    await prisma().customer.update({
+      where: { id: orphan.id },
+      data: { debtBalance: new Prisma.Decimal("0.00") },
     });
   });
 
