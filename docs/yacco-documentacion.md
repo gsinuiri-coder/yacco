@@ -109,7 +109,7 @@ Desarrollar Yacco, un sistema de gestión para plantas purificadoras de agua que
 - Optimización algorítmica de rutas (VRP); la primera versión contempla ordenamiento manual o asistido simple de las paradas.
 - Integración con hardware (básculas, sensores, GPS dedicado).
 - Aplicación de autoservicio para el cliente final.
-- Aplicación móvil sin conexión para el repartidor y sincronización diferida (HU-11 E1, HU-15, HU-16). El dueño aprobó que el repartidor use la web en línea (supuesto 12, validado el 25/09/2026); el diseño del protocolo de sincronización se conserva en `.agents/skills/sync-protocol/SKILL.md` por si algún día se retoma.
+- Aplicación móvil sin conexión para el repartidor y sincronización diferida (HU-11 E1, HU-15, HU-16). El dueño aprobó que el repartidor use la web en línea (supuesto 12, validado el 25/09/2026) y, sobre esa base, Giancarlo la dejó fuera del alcance el 2026-09-26; el diseño del protocolo de sincronización se conserva en `.agents/skills/sync-protocol/SKILL.md` por si algún día se retoma.
 - Nómina, contabilidad general y otros módulos administrativos ajenos a la operación.
 
 **Decisión de producto abierta:** el modelo de despliegue —una instancia por planta o SaaS multi-tenant— condiciona requisitos (configuración por planta, aislamiento de datos) y arquitectura. Se decidirá a más tardar en el Capítulo III.

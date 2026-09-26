@@ -110,8 +110,8 @@ spec disagree, STOP and ask before proceeding.
 
 Not invariants: they govern no code. There is no sync module (only the
 `sync_operations` table, modelled ahead of time). The owner approved the
-driver using the web online (supuesto 12, 25/09/2026), so the offline app and
-sync are out of scope; the design is kept in
+driver using the web online (supuesto 12, 25/09/2026); on that basis
+Giancarlo took the offline app and sync out of scope (2026-09-26). Design kept in
 `.agents/skills/sync-protocol/SKILL.md` and applies only if that is reopened.
 
 - **Field writes.** TODAY a driver registers a delivery through
