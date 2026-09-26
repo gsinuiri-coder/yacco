@@ -10,6 +10,8 @@
 
 ---
 
+> **Alcance vigente (2026-09-26).** Este documento nació como plan (agosto de 2026) y muchas secciones describen una aplicación móvil sin conexión, su sincronización diferida y la evidencia fotográfica. **Las tres quedaron fuera del alcance** (§1.3): el dueño aprobó que el repartidor use la web en línea desde el celular (supuesto 12, 25/09/2026) y, sobre esa base, Giancarlo sacó la app y la sincronización del alcance el 2026-09-26; la evidencia fotográfica salió con ellas (`docs/supuestos-por-validar.md`, «Decididos sin el dueño»). Donde el resto del documento hable de la app móvil, `apps/mobile`, Expo, `POST /sync/operations`, el modo sin conexión o las fotos de evidencia, es plan histórico, no alcance. El diseño del protocolo de sincronización se conserva en `.agents/skills/sync-protocol/SKILL.md` por si algún día se retoma.
+
 ## Índice
 
 - **Capítulo I: Introducción y Contexto** — perfil del proyecto y del desarrollador; problemática y antecedentes; objetivos y alcance; usuarios objetivo.
@@ -100,7 +102,6 @@ Desarrollar Yacco, un sistema de gestión para plantas purificadoras de agua que
 - Aplicación web administrativa para administradores y vendedores.
 - Vista «Mi ruta» de la web para el repartidor, en línea desde el celular.
 - Autenticación con JWT y control de acceso por roles (administrador, vendedor, repartidor).
-- Almacenamiento de evidencias fotográficas en un servicio de objetos S3-compatible.
 
 **Excluye (propuesta, sujeta a validación en el Capítulo II):**
 
@@ -109,7 +110,7 @@ Desarrollar Yacco, un sistema de gestión para plantas purificadoras de agua que
 - Optimización algorítmica de rutas (VRP); la primera versión contempla ordenamiento manual o asistido simple de las paradas.
 - Integración con hardware (básculas, sensores, GPS dedicado).
 - Aplicación de autoservicio para el cliente final.
-- Aplicación móvil sin conexión para el repartidor y sincronización diferida (HU-11 E1, HU-15, HU-16). El dueño aprobó que el repartidor use la web en línea (supuesto 12, validado el 25/09/2026) y, sobre esa base, Giancarlo la dejó fuera del alcance el 2026-09-26; el diseño del protocolo de sincronización se conserva en `.agents/skills/sync-protocol/SKILL.md` por si algún día se retoma.
+- Aplicación móvil sin conexión para el repartidor, sincronización diferida y evidencia fotográfica con su almacenamiento S3 (HU-11 E1, HU-15, HU-16). El dueño aprobó que el repartidor use la web en línea (supuesto 12, validado el 25/09/2026) y, sobre esa base, Giancarlo la dejó fuera del alcance el 2026-09-26; el diseño del protocolo de sincronización se conserva en `.agents/skills/sync-protocol/SKILL.md` por si algún día se retoma.
 - Nómina, contabilidad general y otros módulos administrativos ajenos a la operación.
 
 **Decisión de producto abierta:** el modelo de despliegue —una instancia por planta o SaaS multi-tenant— condiciona requisitos (configuración por planta, aislamiento de datos) y arquitectura. Se decidirá a más tardar en el Capítulo III.
@@ -321,7 +322,7 @@ Formato: `Como <rol>, quiero <acción>, para <beneficio>`, con criterios de acep
 | HU-17 | Como administrador, quiero liquidar cada ruta al cierre, para conciliar envases y dinero.                                                                                                                         | **E1** Dado una ruta finalizada, cuando la liquido, entonces el sistema concilia: llenos salidos = entregados + vendidos completos + retornados; vacíos recogidos = descargados; total vendido = cobrado + fiado; y toda diferencia queda registrada.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | M         |
 | HU-24 | Como administrador, quiero corregir una parada de ruta que se anotó mal anulando lo registrado y volviendo a registrarlo, para que el libro refleje lo que realmente pasó sin editar ni borrar ningún movimiento. | **E1** Dado una parada entregada con una venta registrada, cuando la corrijo a entregada con los datos correctos y un motivo, entonces la venta anterior queda anulada con ese motivo (sigue visible, no desaparece), se registra una venta nueva con los datos corregidos, y la deuda del cliente queda como si se hubiera anotado bien desde el principio. <br> **E2** Dado una parada entregada con una venta registrada, cuando la corrijo a no entregada con un motivo, entonces la venta anterior queda anulada y no se registra ninguna entrega nueva. <br> **E3** Dado cualquiera de las dos correcciones, cuando se envía sin motivo, entonces el sistema la rechaza. <br> **E4** Dado que la ruta está en curso, terminada o ya liquidada, cuando corrijo una de sus paradas, entonces la corrección se aplica igual; dado que la ruta todavía está planificada, cuando intento corregirla, entonces el sistema la rechaza porque no hay ninguna entrega registrada todavía. <br> **E5** Dado un usuario con rol vendedor o repartidor, cuando intenta corregir una parada, entonces el acceso se rechaza: solo un administrador corrige. | M         |
 
-> **Alcance (25/09/2026):** el repartidor usa la web en línea (supuesto 12). Quedan fuera del alcance el registro sin señal de HU-11 E1, la cola local de fotos de HU-15 y la sincronización de HU-16; HU-11 (ver la ruta), HU-12, HU-13 y HU-14 se construyeron en la web.
+> **Alcance:** el dueño aprobó que el repartidor use la web en línea (supuesto 12, 25/09/2026); sobre esa base, el 2026-09-26 quedaron fuera del alcance el registro sin señal de HU-11 E1, HU-15 entera (la evidencia fotográfica) y la sincronización de HU-16. HU-11 (ver la ruta del día), HU-12 y HU-13 se construyeron en la web («Mi ruta» y el formulario de parada); HU-14 también, con un cliente que ya existe: el cliente nuevo se da de alta antes en «Clientes».
 
 > HU-24 corrige una parada y pertenece a esta épica, pero se numeró después de HU-23 (Épica E): la numeración del documento sigue el orden en que cada historia se escribió, no el orden de las épicas. No es un error de tipeo.
 
@@ -976,7 +977,7 @@ Cadencia: **sprints de 1 semana**. La dedicación es diaria y el objetivo acorda
 | S6       | Móvil: ruta offline       | HU-11, HU-12        | App con ruta del día sin conexión y registro de entrega/canje con sus dos resoluciones (deuda de envases / venta completa) |
 | S7       | Móvil: cobros y autoventa | HU-13, HU-14, HU-16 | Cobros por medio de pago, autoventa con cliente creado en campo, sincronización idempotente                                |
 | S8       | Cierre del ciclo          | HU-17, HU-18        | Liquidación de ruta, pagos desde la web → **MVP operando en la planta de referencia**                                      |
-| Post-MVP | Mejoras                   | HU-15, HU-19, HU-21 | Evidencias fotográficas, reporte de deuda con antigüedad, reporte de producción                                            |
+| Post-MVP | Mejoras                   | HU-19, HU-21        | Evidencias fotográficas, reporte de deuda con antigüedad, reporte de producción                                            |
 
 Gestión de riesgo del plan: lo más complejo es la sincronización offline (S6–S7); si se desvía, se posponen HU-15 y los reportes, nunca la integridad de saldos ni la liquidación. La regla de recorte es fija: primero cae lo accesorio, jamás el ciclo operativo.
 
@@ -990,7 +991,7 @@ La especificación OpenAPI se generará desde los decoradores de NestJS (`@nestj
 
 Principio de diseño original: la escritura del repartidor en campo (entregas, autoventas, cobros, evidencias registradas offline) entraba por **una sola puerta idempotente**, `POST /sync/operations`. **Quedó fuera del alcance** con la app sin conexión (§1.3, supuesto 12): el repartidor registra en línea con el mismo `PATCH` que la oficina, y ese es el camino definitivo. El diseño se conserva en `.agents/skills/sync-protocol/SKILL.md`.
 
-> **Estado real, decidido con el dueño de la planta:** ese principio sigue siendo la meta, pero el módulo de sincronización no existe todavía (`POST /sync/operations` no está construido y `apps/mobile` está vacío), así que hoy **la oficina registra cada parada desde la web**, con `PATCH /api/v1/routes/:id/stops/:stopId` — el chofer dicta o anota en papel y alguien lo carga. No es un rodeo temporal que se descubrió al programar: es la forma en que la planta va a operar hasta que exista la app del repartidor, y por eso esa pantalla se construyó completa (los tres escenarios de canje de HU-12, el cobro de HU-13 con su advertencia de límite de crédito, y la autoventa de HU-14 eligiendo el cliente y su dirección).
+> **Estado real:** cada parada se registra desde la web con `PATCH /api/v1/routes/:id/stops/:stopId` —el chofer desde «Mi ruta» en el celular, o la oficina con lo que el chofer dicta o anota en papel—. No es un rodeo temporal: es la forma en que opera la planta, y por eso esa pantalla se construyó completa (los tres escenarios de canje de HU-12, el cobro de HU-13 con su advertencia de límite de crédito, y la autoventa de HU-14 eligiendo el cliente y su dirección).
 >
 > Con la app sin conexión fuera del alcance, este `PATCH` es el camino definitivo del repartidor y de la oficina. Si algún día se retoma la sincronización, la decisión de restringirlo a ADMIN/SELLER se toma junto con ese módulo.
 
@@ -1191,7 +1192,7 @@ Sin una prioridad comercial impuesta por el negocio, el orden siguiente responde
 
 | Horizonte                        | Ítem                            | Detalle                                                                                                                                                                           |
 | -------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Corto plazo (Post-MVP inmediato) | Historias diferidas             | HU-15 (evidencias fotográficas), HU-19 (reporte de deuda con antigüedad), HU-21 (reporte de producción).                                                                          |
+| Corto plazo (Post-MVP inmediato) | Historias diferidas             | HU-19 (reporte de deuda con antigüedad), HU-21 (reporte de producción).                                                                                                           |
 | Corto plazo                      | Identidad y diseño formal       | Logotipo e identidad de marca; wireframes en herramienta de diseño. Cierra los PENDIENTE de 3.1 y 3.2.                                                                            |
 | Mediano plazo                    | Venta directa de envases        | El modelo ya la soporta (`ProductType.CONTAINER_SALE`, movimiento `FULL_SALE`); falta solo habilitar el flujo comercial y sus precios.                                            |
 | Mediano plazo                    | Optimización asistida de rutas  | Ordenamiento de paradas por cercanía o zona antes de plantear un optimizador formal (VRP).                                                                                        |

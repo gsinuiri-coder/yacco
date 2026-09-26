@@ -84,6 +84,21 @@ cuándo, y tres líneas:
 - **Construido encima** — qué código depende de eso.
 - **Si resulta que no** — qué cambia, y si es barato o caro.
 
+### La evidencia fotográfica sale del alcance con la app sin conexión
+
+- **Decidido por Claude Code (2026-09-26),** en el ítem B del cierre final.
+- **Asumimos:** que la foto de la entrega (HU-15) era parte de la app del
+  repartidor —su criterio es una cola local que sube al sincronizar—, y que
+  sin esa app el piloto no la necesita: el chofer registra cada parada en
+  línea y la oficina corrige lo mal anotado (HU-24). Nada de evidencia está
+  construido.
+- **Construido encima:** nada; la spec la saca del alcance (§1.3, Épica C y
+  la tabla de endpoints de §4.3).
+- **Si resulta que no:** medio. Subir una foto desde «Mi ruta» pide un
+  `POST /evidence/presign`, el bucket S3 de producción (hoy solo existe el
+  MinIO local) y una tabla de evidencias por parada: migración expand y una
+  pantalla.
+
 ## Validados
 
 ### 1. El buscador del Panel muestra clientes desactivados — 25/09/2026
