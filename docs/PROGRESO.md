@@ -1158,20 +1158,20 @@ restricciones en pie. Un PR por ítem, los cinco checks en verde, squash sin
 `reviewer` antes de cada PR y el deploy en verde (seis jobs, smoke de
 producción incluido) antes del siguiente merge.
 
-| Ítem                                             | Estado                                                                              | PRs  |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------- | ---- |
-| 1 · Documentación que hoy miente                 | ✅ Render: lo hizo Claude Code con `[OK]`; el 13 en Pendientes; backlog al día      | #226 |
-| 2 · Zonas del padrón                             | ✅ corrido por Giancarlo después del cierre (ver abajo)                             | #227 |
-| 3a · Encontrar a un cliente en el conteo (nuevo) | ✅ búsqueda por nombre o teléfono y filtro de zona                                  | #228 |
-| 3 · Envases y choferes: el camino                | ✅ ciclo e2e en el preview con conteo desde 0: **1 passed**; `DEPLOY.md`            | #229 |
-| 4a · Precios de lista                            | ✅ `PATCH /products/:id` y «Productos»; supuesto 17                                 | #230 |
-| 4b · Catálogos contra el seed                    | ✅ el smoke de producción los compara; primer deploy: «Smoke OK»                    | #231 |
-| 4c · Liquidación desactualizada                  | ✅ cobro rechazado después de liquidar: prueba de punta a punta; supuesto 18        | #232 |
-| 4e · Un merge de documentación no redespliega    | ✅ probado con #235: su deploy terminó en el gate («docs-only»)                     | #233 |
-| 4d · Producción atrás de `main` sin error        | ✅ `drift.yml` cada hora                                                            | #234 |
-| 4f · Índice `sales (location_id, sold_at)`       | ⏳ listo; se mergea **después de las 20:00 de Lima y con `[OK]`** (lleva migración) | —    |
-| 5 · Guion de la reunión                          | ✅ `docs/guion-piloto.md`                                                           | #235 |
-| 6 · Cierre                                       | ✅ este documento                                                                   | este |
+| Ítem                                             | Estado                                                                                 | PRs  |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------- | ---- |
+| 1 · Documentación que hoy miente                 | ✅ Render: lo hizo Claude Code con `[OK]`; el 13 en Pendientes; backlog al día         | #226 |
+| 2 · Zonas del padrón                             | ✅ corrido por Giancarlo después del cierre (ver abajo)                                | #227 |
+| 3a · Encontrar a un cliente en el conteo (nuevo) | ✅ búsqueda por nombre o teléfono y filtro de zona                                     | #228 |
+| 3 · Envases y choferes: el camino                | ✅ ciclo e2e en el preview con conteo desde 0: **1 passed**; `DEPLOY.md`               | #229 |
+| 4a · Precios de lista                            | ✅ `PATCH /products/:id` y «Productos»; supuesto 17                                    | #230 |
+| 4b · Catálogos contra el seed                    | ✅ el smoke de producción los compara; primer deploy: «Smoke OK»                       | #231 |
+| 4c · Liquidación desactualizada                  | ✅ cobro rechazado después de liquidar: prueba de punta a punta; supuesto 18           | #232 |
+| 4e · Un merge de documentación no redespliega    | ✅ probado con #235: su deploy terminó en el gate («docs-only»)                        | #233 |
+| 4d · Producción atrás de `main` sin error        | ✅ `drift.yml` cada hora                                                               | #234 |
+| 4f · Índice `sales (location_id, sold_at)`       | ✅ mergeado a las 20:03 de Lima con `[OK]`; deploy verde; índice en `main` (ver abajo) | #238 |
+| 5 · Guion de la reunión                          | ✅ `docs/guion-piloto.md`                                                              | #235 |
+| 6 · Cierre                                       | ✅ este documento                                                                      | este |
 
 **2 · Por qué quedó bloqueado.** El goal suponía las etiquetas del sistema
 viejo en `customers.notes`. Esa columna no existe: `load:roster` exige la
@@ -1192,6 +1192,17 @@ avance cada 50 clientes. Verificado en `main` por SQL de solo lectura: 3 zonas
 (Parque 476, Surco 58, Casas Parque 3), **las tres sin días de reparto**;
 537 clientes con zona y 68 sin zona (los 67 del padrón con una etiqueta que no
 es lugar, más el cliente de prueba creado desde la app).
+
+**4f · Hecho (2026-09-25, 20:03 de Lima).** Con el `[OK]` de Giancarlo, #238
+se puso al día con `main` (`gh pr update-branch`), pasó los cinco checks y se
+mergeó fuera de la ventana de 08:00–20:00. El deploy salió en verde en los seis
+pasos, con «2 · Migraciones (demo, después main)» y el smoke de producción
+incluidos. En `main` (solo lectura): `sales_location_id_sold_at_idx` existe y
+la migración `20260925130000_sales_location_sold_at_index` figura aplicada. El
+`EXPLAIN` de después está en el cuerpo de #238. Con 102 ventas, Postgres
+**sigue eligiendo el `Seq Scan`**, y es lo esperado: dos páginas se leen más
+rápido que el índice. Con `enable_seqscan` apagado, la misma consulta usa el
+índice para el filtro y para el orden. Lo va a elegir solo cuando haya volumen.
 
 **Lo que cambió en producción fuera de los PRs** (hasta el cierre de esta
 sección; las zonas del ítem 2 vinieron después): nada. Ninguna zona creada,
@@ -1220,7 +1231,7 @@ auditoría de D-016.
 
 - ~~**Ítem 2:** correr `export:tags`, dry-run, `[OK]`, `--commit`.~~ Hecho
   (ver arriba).
-- **4f:** `[OK]` para mergear la migración del índice después de las 20:00 de Lima.
+- ~~**4f:** `[OK]` para mergear la migración del índice.~~ Hecho (#238, ver arriba).
 - **F:** rotar la contraseña del admin de producción (desde la app) y destruir
   la versión de `yacco-admin-initial-password`; y el token de Vercel de CI por
   uno con vencimiento, **antes del 2026-10-16**.
@@ -1351,7 +1362,7 @@ ni monto, el catálogo de productos, el inventario, el cliente de prueba).
 **Pendientes de Giancarlo:**
 
 - **X:** `[OK]` para contar en 0 y desactivar al cliente de prueba.
-- **4f (#238):** `[OK]` para mergear la migración del índice, después de las 20:00 de Lima.
+- ~~**4f (#238):** `[OK]` para mergear la migración del índice.~~ Hecho (ver «Piloto»).
 - **Supuesto 19:** la diferencia con HU-01 E2 (¿se corrige la spec, o se agrega
   el paso de confirmación?), a decidir con el dueño.
 - **F:** rotar la contraseña del admin de producción y destruir la versión de
@@ -1427,8 +1438,8 @@ usuarios de prueba del e2e, desactivados.
 **Pendientes de Giancarlo:**
 
 - **El supuesto 20** con el dueño (va en la sección 2 del guion).
-- **4f (#238):** `[OK]` para mergear la migración del índice, después de las
-  20:00 de Lima.
+- ~~**4f (#238):** `[OK]` para mergear la migración del índice.~~ Hecho (ver
+  «Piloto»).
 - **Supuesto 19:** la diferencia con HU-01 E2, a decidir con el dueño.
 - **F**, **A1** y la desinstalación de la app de Render en GitHub (sin cambios).
 - **El texto vacío de «Envases prestados»** («Todos los envases prestados

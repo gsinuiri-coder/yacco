@@ -87,8 +87,9 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
         el gate (`scripts/deploy-scope.mjs`). Va antes que 4d porque 4d lo usa.
   - [x] 4d (#234) · «El auto-deploy puede no dispararse sin error visible»:
         `drift.yml` cada hora.
-  - [ ] 4f · «Falta índice en `sales (location_id, sold_at)`»: migración
+  - [x] 4f (#238) · «Falta índice en `sales (location_id, sold_at)`»: migración
         expand, sin columnas; `EXPLAIN` antes y después; merge fuera de
-        08:00–20:00 de Lima y con `[OK]`. Va última por la ventana.
+        08:00–20:00 de Lima y con `[OK]`. Mergeado el 2026-09-25 a las 20:03 de
+        Lima, deploy en verde (seis pasos) e índice aplicado en `main`.
 - [x] **5 · Guion de la reunión con el dueño** (#235) — `docs/guion-piloto.md`.
 - [x] **6 · Cierre** (este PR) — sección «Piloto — 2026-09-25» en `docs/PROGRESO.md`.
