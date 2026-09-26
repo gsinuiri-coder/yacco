@@ -53,517 +53,243 @@ Las entradas validadas tienen tres líneas:
 - **Construido encima** — qué código la implementa, o que todavía no hay ninguno.
 
 **Regla para escribir código nuevo:** si una decisión de producto se toma sin
-preguntarle, se anota acá y el comentario del código dice que es un supuesto.
+preguntarle, se anota en **Pendientes** (si se le va a preguntar) o en
+**Decididos sin el dueño** (si se tomó en un trabajo autónomo, sin reunión
+posible), y el comentario del código dice que es un supuesto.
 Lo que no se puede es escribirla como si él la hubiera pedido — el día que
 diga otra cosa, el documento tiene que mostrar que nunca se lo preguntamos, no
 que dijo que sí.
 
-## Pendientes — decididos por delegación, a confirmar en el piloto
+## Pendientes
 
-Desde el 2026-09-24 Giancarlo delegó en Claude (la capa arquitectónica) las
-decisiones de producto necesarias para cerrar el piloto (ver
-[`plan-cierre-piloto.md`](./plan-cierre-piloto.md)). Sobre los diez primeros supuestos
-de esta sección la decisión fue la misma: **se mantiene el comportamiento
-actual**.
+Ninguno. Los veinte supuestos que estaban acá (decididos por delegación entre
+el 2026-09-24 y el 2026-09-25) se le llevaron al dueño el 2026-09-25 con su
+recomendación y los aprobó: bajaron a **Validados**, numerados igual que
+antes para que los enlaces de `guion-piloto.md` sigan valiendo.
 
-Eso **no** los valida. Una decisión delegada no es una respuesta del dueño: por
-eso siguen en Pendientes, con su **Preguntar** intacto, y no bajan a Validados
-hasta que él conteste. La línea **Decidido por Claude por delegación** de cada
-uno dice quién decidió y cuándo, para que el día que el dueño diga otra cosa el
-documento muestre que nunca se lo preguntamos.
+Un supuesto nuevo se escribe acá con las cuatro líneas de «Cómo se usa», más
+una primera línea que dice quién lo decidió y cuándo.
 
-Las decisiones delegadas NUEVAS que tome el agente siguen el mismo formato: la
-línea de delegación con la fecha, más las cuatro de siempre.
+## Decididos sin el dueño
 
-### 1. El buscador del Panel muestra clientes desactivados
+Decisiones de dominio que se tomaron **sin preguntarle**, en un trabajo
+autónomo donde no había reunión posible. No son respuestas suyas ni preguntas
+agendadas: por eso no llevan **Preguntar** y no están en Pendientes. El día
+que diga otra cosa, la línea **Si resulta que no** (el equivalente de «Si dice
+que no») dice cuánto cuesta cambiarlas. Si después se le preguntan y contesta,
+bajan a Validados como cualquier otra. Cada una lleva quién la decidió y
+cuándo, y tres líneas:
 
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos:** que un cliente desactivado que todavía debe plata es
-  exactamente a quien viene a buscar en el Panel.
-- **Construido encima:** `apps/web-nuxt/app/components/CustomerQuickSearch.vue`
-  omite el filtro `active` que `CustomerPicker.vue` sí aplica. Buscar por
-  nombre o teléfono devuelve clientes en uso y desactivados por igual.
-- **Preguntar:** cuando busca a un cliente en la pantalla de inicio, ¿espera
-  encontrar también a los que dio de baja, o esos deberían desaparecer de la
-  búsqueda?
-- **Si dice que no:** barato. Agregarle `active: true` a la consulta de
-  `/customers` en ese componente, igual que hace `CustomerPicker.vue`. No
-  cambia el diseño de la búsqueda.
-
-### 2. Al cambiar una contraseña, el administrador la elige y la dicta
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos:** que el administrador elige la contraseña nueva y se la dicta a
-  la persona, en vez de que el sistema genere una temporal que la persona
-  cambie al entrar.
-- **Construido encima:** el bloque «Cambiar contraseña» de
-  `apps/web-nuxt/app/pages/users.vue`. Hoy no existe pantalla de «cambiar mi
-  contraseña» en `apps/web-nuxt/app/pages`, así que una temporal no tendría a
-  dónde ir.
-- **Preguntar:** cuando a alguien se le olvida su contraseña, ¿prefiere
-  ponerle una usted y decírsela, o que el sistema le dé una provisional y que
-  la persona se ponga la suya la primera vez que entre?
-- **Si dice que no:** caro. Lo primero que falta es la pantalla de «cambiar mi
-  contraseña» —que cualquier rol tiene que poder abrir—, y recién después el
-  campo que marca la contraseña como provisional. No es un campo más en la
-  pantalla de usuarios.
-
-### 3. El administrador puede cambiarse la contraseña a sí mismo
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos:** que está bien que el administrador se cambie la suya desde la
-  misma pantalla, y que esa es la forma prevista de rotar `admin123`.
-- **Construido encima:** `users.vue` ofrece «Cambiar contraseña» también en
-  la propia fila. La guarda de «es uno mismo» que sí tiene «Desactivar» —para
-  no cerrarse la puerta desde adentro— deliberadamente no se aplica acá.
-- **Preguntar:** ¿quiere poder cambiarse su propia contraseña desde esta
-  pantalla, o prefiere que su contraseña se toque solo desde afuera del
-  sistema?
-- **Si dice que no:** barato en la pantalla, caro en la operación. Aplicar la
-  misma guarda de `isSelf`, pero entonces rotar `admin123` vuelve a exigir un
-  `UPDATE` a mano contra la base (ver «Password del admin de producción» en
-  `backlog-tecnico.md`).
-
-### 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24, reescrito el
-  2026-09-25):** se mantiene el comportamiento de hoy, el corte a lo sumo en
-  15 minutos. La pregunta de abajo se le sigue haciendo al dueño en el piloto.
-- **Historia:** la delegación del 2026-09-24 cubría el comportamiento de
-  entonces: cambiar la contraseña no cortaba la sesión abierta y alcanzaba con
-  avisarlo. El ítem 7b de ese mismo día (D-024) hizo que sí se corte; el
-  supuesto se reescribió el 2026-09-25 para preguntar por lo que hay hoy.
-- **Asumimos:** que le alcanza con que la persona quede afuera **a lo sumo 15
-  minutos** después de desactivarla o de cambiarle la contraseña, y que no
-  necesita sacarla en el acto. Vale también para el administrador que se
-  cambia la suya (supuesto 3): su propia sesión se corta igual.
-- **Construido encima:** `users.token_version` (D-024): cambiar la contraseña
-  o desactivar deja viejo el refresh token de esa persona, y el sistema le
-  pide volver a ingresar en cuanto vence su acceso actual, que dura 15
-  minutos. Lo fijan los tests «resetting a user's password invalidates a
-  refresh token already issued» y «a user deactivated after issuing a refresh
-  token loses access on refresh» de
-  `apps/api/test/integration/auth.int.test.ts`, y lo dice el aviso del bloque
-  «Cambiar contraseña» de `apps/web-nuxt/app/pages/users.vue`.
-- **Preguntar:** si desactiva a alguien, o le cambia la contraseña porque no
-  quiere que siga entrando, esa persona puede seguir adentro hasta 15 minutos.
-  ¿Le alcanza, o necesita sacarla en el acto?
-- **Si dice que no:** medio. Sacarla en el acto exige que el acceso de
-  15 minutos también se revise contra `token_version` en cada pedido (hoy
-  solo lo revisa el refresh): una consulta más por pedido, o un acceso mucho
-  más corto. No toca esquema.
-
-### 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos:** que si el administrador le quita «Chofer» a alguien que todavía
-  tiene rutas sin cerrar, corresponde **avisarle cuántas** y dejarlo decidir, en
-  vez de impedírselo hasta que las cierre.
-- **Construido encima:** el bloque «Roles» de `apps/web-nuxt/app/pages/users.vue`
-  consulta las rutas `PLANNED` e `IN_PROGRESS` de esa persona y pide
-  confirmación diciendo el número. Si la consulta falla, se confirma igual
-  diciendo que no se pudo verificar. Es coherente con la filosofía del resto del
-  sistema —el límite de crédito advierte y no bloquea, una liquidación con
-  descuadre cierra igual—, pero eso es una inferencia nuestra, no algo que él
-  haya dicho de este caso.
-- **Preguntar:** si le saca el permiso de repartir a alguien que todavía tiene
-  reparto pendiente, ¿quiere que el sistema se lo deje hacer avisándole, o
-  prefiere que no lo deje hasta que esas rutas estén cerradas?
-- **Si dice que no:** barato en la pantalla —el botón de confirmar se
-  deshabilita en vez de guardar— pero hay que decidir antes qué pasa si la
-  consulta de rutas falla: bloquear por no poder verificar deja al
-  administrador sin poder corregir un rol por un problema de red.
-
-### 6. Las rutas conservan al chofer que las hizo
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos:** que al quitarle el rol de chofer a alguien, sus rutas ya
-  planificadas o en curso **siguen a su nombre**, sin reasignarse ni cancelarse.
-- **Construido encima:** el cambio de roles no toca `routes` en absoluto.
-  Descansa en que `route.driverId` es un hecho histórico y en que ADMIN y SELLER
-  pueden terminar cualquier ruta desde la oficina
-  (`assertCanAccessRoute`), así que ninguna queda trabada.
-- **Preguntar:** cuando alguien deja de repartir, ¿la ruta que ya salió a su
-  nombre tiene que seguir figurando como suya, o prefiere pasársela a otro
-  chofer?
-- **Si dice que no:** caro, y toca dominio. Reasignar una ruta cerrada o en
-  curso significa decidir qué pasa con lo ya entregado y cobrado en esa ruta, y
-  con la liquidación pendiente. No es un campo editable: es una operación con su
-  propia forma, y probablemente su propia entrada de backlog.
-
-### 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos** que el ciclo normal es: el chofer deja llenos hoy y se lleva los
-  vacíos de la visita anterior, así que un cliente habitual queda con más o
-  menos una visita de envases en la mano. También asumimos que un saldo
-  negativo es raro y viene del cuaderno de papel —envases entregados que nadie
-  anotó— y no de la operación de todos los días.
-- **Construido encima:** el plan de `seed-demo-plan.ts`. De nueve visitas con
-  devolución, ocho devuelven lo de la visita anterior y una devuelve de más,
-  que es el descuadre que la pantalla de cuadre necesita mostrar. Esa
-  proporción es la que enseña, a quien mire la demo, qué es normal y qué es
-  excepción.
-- **Preguntar:** cuando su chofer llega a un cliente, ¿se trae los envases
-  vacíos de la vez pasada, o el cliente se los va guardando y se los entrega
-  cada tanto? ¿Cuántos envases suele tener un cliente habitual en la mano?
-- **Si dice que no:** barato, y solo toca la demo. Si los clientes acumulan
-  varias visitas antes de devolver, cambian las cantidades del plan y los
-  saldos quedan más altos; el descuadre se sigue produciendo igual. Nada de
-  esto toca el código de producción.
-
-### 8. El administrador que corrige una parada queda como quien autorizó el precio
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos** que, en una corrección, no hace falta preguntarle a nadie más:
-  quien corrige es el administrador, la operación ya lleva su motivo escrito, y
-  que él mismo figure como el que autorizó el precio de esa venta es fiel a lo
-  que pasó. Asumimos también que al dueño no le molesta ver su propio nombre
-  como autorizador en una corrección que no tocó ningún precio.
-- **Construido encima:** `RoutesService.correctStop` manda
-  `priceOverrideAuthorizedById: actor.id` SIEMPRE al volver a registrar la
-  parada, no solo cuando el precio difiere, y el endpoint rechaza con 400 un
-  `priceOverrideAuthorizedById` que venga en el cuerpo. Tiene un efecto de
-  costado que conviene tener presente: `hasOverride` se calcula contra el
-  precio VIGENTE HOY, así que una corrección que no toca el precio igual queda
-  marcada como venta con precio autorizado si el `CustomerPrice` de ese cliente
-  cambió desde la venta original.
-- **Preguntar:** cuando usted corrige lo que se anotó de una visita, ¿alcanza
-  con que quede su nombre y el motivo, o quiere que el sistema le pregunte
-  aparte quién autorizó cobrar distinto de lo pactado?
-- **Si dice que no:** barato. `correctionReason` ya viaja obligatorio; lo que
-  cambia es dejar de forzar el autorizador y volver a exigirlo solo cuando el
-  precio difiere de verdad, con un campo más en el formulario de corrección.
-  Nada de esto toca la anulación ni el libro de movimientos.
-
-### 9. La parada muestra solo la última corrección, no todas
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos** que corregir una parada dos veces es raro, y que cuando pasa lo
-  que la oficina necesita ver es cómo quedó y por qué se cambió la última vez.
-  El historial completo de correcciones lo asumimos material de auditoría, no
-  de la pantalla del día a día.
-- **Construido encima:** las tres columnas `corrected_at` / `corrected_by` /
-  `correction_reason` de `route_stops`, que una segunda corrección PISA. No se
-  pierde nada: cada corrección deja su propia venta anulada —con su
-  `voided_at`, `voided_by` y `void_reason`— y sus movimientos `*_VOID` en el
-  libro, que es inmutable. La alternativa era una tabla
-  `route_stop_corrections` con su modelo, su endpoint y su pantalla, para
-  contar lo que esas dos fuentes ya cuentan.
-- **Preguntar:** si una visita se corrige dos veces, ¿le sirve ver solo la
-  última corrección con su motivo, o quiere la lista de todas las veces que se
-  cambió, con quién y cuándo?
-- **Si dice que no:** medio caro y toca esquema. Serían una tabla nueva de
-  correcciones, una migración que además tendría que reconstruir el historial
-  de lo ya corregido desde las ventas anuladas, y una pantalla que hoy no
-  existe. No es una columna más: es un modelo.
-
-### 10. Corregir hacia arriba deja el camión en negativo en vez de frenar
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** se
-  mantiene el comportamiento actual. La pregunta de abajo se le sigue haciendo
-  al dueño en el piloto.
-- **Asumimos** que cuando el dueño corrige una visita y dice que se entregaron
-  más bidones de los que el sistema creía que llevaba el camión, lo que hay que
-  hacer es creerle y anotarlo: el camión ya volvió, el hecho físico está
-  consumado, y frenarlo lo mandaría de vuelta al Excel, que es lo que esta
-  operación existe para impedir. Asumimos también que el caso típico detrás de
-  ese descuadre es una CARGA mal anotada, no una entrega inventada.
-- **Construido encima:** `allowStockShortfall` en
-  `SalesService.registerStopDeliveryWithinTransaction`, que solo prende
-  `RoutesService.correctStop`. El chequeo de llenos en el camión deja de
-  bloquear, el faltante viaja en `stockShortfall` y la pantalla lo avisa
-  (`RouteMarkOutcome.vue`, desde el 2026-09-24) y la corrección se registra igual. Tiene dos
-  consecuencias que conviene tener presentes: el saldo de ese camión queda
-  **negativo** en `FULL_ON_ROUTE` —y por lo tanto también en el inventario
-  general, igual que ya pasa con los saldos de envases de un cliente—, y si la
-  ruta todavía está en curso, la siguiente entrega normal de esa ruta se
-  rechaza con «hay -2». En una ruta ya terminada no molesta a nadie. Al
-  registrar una entrega normal el chequeo **sigue bloqueando**: entregar lo que
-  el camión no tiene no es un error de anotación, es imposible.
-- **Preguntar:** si al corregir una visita resulta que se entregaron más
-  bidones de los que figuraban cargados en el camión, ¿prefiere que el sistema
-  lo anote igual y le avise, o que no lo deje y le pida primero arreglar la
-  carga del camión?
-- **Si dice que no:** barato del lado del código —es apagar el `true` en
-  `correctStop`— pero caro de operación: la oficina tendría que corregir
-  primero la carga de la ruta, y hoy `DELETE /routes/:id/loads/:loadId` solo
-  funciona con la ruta PLANNED. Es decir, la alternativa no existe todavía:
-  antes de apagarlo hay que darle a la oficina una forma de corregir la carga
-  de una ruta que ya salió.
-
-### 11. Los llenos que vuelven reponen el lote más antiguo del que salieron
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** al
-  liquidar, los llenos que volvieron sin entregar se devuelven al galpón con
-  su movimiento, **desde lo contado**, igual que los vacíos, y reponen el lote
-  del que salieron: primero el más antiguo de los que cargó esa ruta, y a
-  ninguno más de lo que la ruta cargó de él. El conteo va por tipo de envase.
-  Contar más llenos de un tipo de los que la ruta cargó es un error de conteo
-  que la pantalla rechaza, no una diferencia que se registra.
-- **Asumimos:** que en el galpón un lleno que vuelve se vuelve a cargar en la
-  próxima ruta como cualquier otro, y que al dueño no le importa de qué lote
-  exacto era ese bidón mientras el lote más viejo se use primero.
-- **Construido encima:** `RouteSettlementService.returnFullsToPlant`: un
-  `FULL_RETURN` por lote repuesto y el `available_qty` de ese lote, en la misma
-  transacción de la liquidación. El origen de cada carga ya estaba en
-  `route_loads`: no hizo falta columna nueva.
-- **Preguntar:** cuando el chofer vuelve con bidones llenos que no entregó,
-  ¿esos bidones vuelven al stock para cargar mañana, o se tratan aparte (por
-  ejemplo, se revisan o se descartan por la fecha del lote)?
-- **Si dice que no:** medio. Si se revisan antes de volver al stock, hace falta
-  un estado intermedio (lleno en revisión) y una operación para liberarlo; el
-  movimiento de la liquidación dejaría de reponer el lote directamente. Si se
-  descartan, el retorno sería una baja por daño y no un `FULL_RETURN`.
-
-### 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** para el
-  piloto no hay app nativa ni modo sin conexión. El chofer entra al mismo web,
-  ve solo sus rutas del día en un diseño para celular («Mi ruta») y registra
-  cada parada con el mismo `PATCH` que usa la oficina. Lee los catálogos, y
-  los precios pactados y el pedido solo de los clientes de sus rutas. **No
-  cambia precios:** cobra el pactado, y un precio distinto lo corrige la
-  oficina. Quedan **diferidos al post-piloto** el trabajo sin conexión y la
-  sincronización (HU-11 E1, HU-16) y las fotos de evidencia (HU-15).
-- **Asumimos:** que en la zona del piloto el chofer tiene señal suficiente
-  para registrar cada parada en el momento, y que un precio distinto del
-  pactado es una excepción que puede esperar a la oficina.
-- **Construido encima:** la página `/my-route` del web, el menú reducido para
-  quien solo tiene el rol Chofer, y la apertura de lectura por recurso en
-  `OrdersService.findOne` y `CustomerPricesService.findEffectivePrices`
-  (`common/viewer.ts`).
-- **Preguntar:** ¿sus choferes tienen señal en todo el recorrido? Cuando un
-  cliente paga distinto de lo pactado, ¿el chofer lo decide ahí o lo tiene
-  que llamar a usted?
-- **Si dice que no:** sin señal, es caro: es el módulo de sincronización
-  entero (diseño en `.agents/rules/sync-protocol.md`), que hoy no existe. Si
-  el chofer tiene que poder cambiar el precio, es barato: mostrarle el campo
-  de precio y resolver quién autoriza (hoy la lista de usuarios es solo de la
-  oficina).
-
-### 13. «Debe desde» es el cargo que abrió la deuda actual
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** en el
-  reporte de deuda por cliente (HU-19), la «fecha del cargo más antiguo» es la
-  del primer cargo después de la última vez que el cliente estuvo al día (saldo
-  en cero o a favor). Se reproduce su libro en orden: ventas no anuladas suman,
-  cobros confirmados no anulados restan; un cobro pendiente o rechazado no
-  cuenta, igual que en `debt_balance` y el estado de cuenta.
-- **Asumimos:** que al dueño le sirve saber desde cuándo un cliente no está al
-  día, y no cuál venta puntual sigue impaga. El sistema no reparte cobros entre
-  ventas (ver «Reparto de un pago global entre deudas del cliente» en
-  `backlog-tecnico.md`), así que esta es la fecha más antigua que se puede
-  defender sin inventar ese reparto. Si el cliente paga algo pero nunca llega a
-  cero, la fecha no se mueve.
-- **Construido encima:** `replayDebt` en
-  `apps/api/src/modules/reports/reports.service.ts` y la columna «Debe desde»
-  de `apps/web-nuxt/app/pages/reports/debt.vue`. El día es el de Lima. Si el cargo que abrió la deuda es el saldo inicial del padrón, la columna dice «Saldo inicial» y debajo «al» y la fecha con que se cargó, para que no pase por la de una venta (2026-09-25).
-- **Preguntar:** cuando un cliente le va pagando de a poco, ¿quiere ver desde
-  cuándo no está al día, o la fecha de la venta más vieja que todavía no pagó?
-- **Si dice que no:** medio. «La venta más vieja impaga» exige decidir primero
-  cómo se reparte un cobro entre ventas (la más antigua primero es lo usual) y
-  aplicarlo igual en todas partes; el cálculo del reporte cambia, la pantalla
-  no.
-
-### 14. El padrón del sistema viejo entra entero, sin zona y sin envases
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-24):** los 604
-  clientes del Yacco viejo (Firestore `yacco-2026`, solo lectura) entran
-  todos. Se descarta únicamente lo que no se puede cargar sin inventar (sin
-  nombre, duplicado exacto por nombre y teléfono, sin locación): hoy, ninguno.
-  Los teléfonos compartidos o con formato raro y las direcciones vacías
-  entran con aviso. **Sin zona**: las etiquetas del sistema viejo mezclan
-  zonas (PARQUE, SURCO) con categorías (EMPRESAS, DISTRIBUIDOR). _Corrección
-  del 2026-09-25:_ acá decía que las etiquetas «quedan en las notas del
-  cliente». No quedaron: `customers` no tiene columna de notas y
-  `pnpm load:roster` exige la columna `notes` del CSV pero nunca lee su valor. Las
-  etiquetas solo están en el Firestore del sistema viejo (ver «El cargador del
-  padrón descarta las notas del cliente» en `backlog-tecnico.md`). **Sin envases**: el sistema viejo no tiene saldos de
-  envases cargados, así que salen del conteo físico. La deuda entra tal cual,
-  al centavo, como cargo de apertura con fecha de corte.
-- **Asumimos:** que `debtAmount` del sistema viejo es la deuda vigente de cada
-  cliente, y que los 192 clientes que comparten 25 teléfonos son clientes
-  distintos con un teléfono de relleno, no duplicados.
-- **Construido encima:** `tools/firestore-export/src/to-roster.ts` (del
-  export a los 4 CSV de `pnpm load:roster`) y la corrida en DEMO descrita en
-  `docs/padron-corrida-demo.md`.
-- **Preguntar:** ¿la deuda que muestra el sistema viejo es la que usted cobra
-  hoy? ¿Esos teléfonos repetidos son de relleno? ¿Qué etiquetas son zonas de
-  reparto y cuáles no? ¿Cuántos bidones tiene cada cliente, o hay que
-  contarlos?
-- **Si dice que no:** barato si es la zona (se asigna desde la ficha del
-  cliente, o con `pnpm roster:zones`, que solo toca la zona). **No** se
-  recarga con `pnpm load:roster`: su `upsert` vuelve a escribir nombre y
-  teléfono desde el CSV y pisaría lo que se corrigió en la app. Caro si la
-  deuda no es la vigente: se corrige con movimientos inversos, cliente por
-  cliente, nunca editando la carga.
-
-### 15. Nadie de la planta tiene una cuenta para mirar sin tocar
-
-- **Decidido por Giancarlo (2026-09-24):** el único rol de solo lectura que
-  existe es `VIEWER`, y es una **cuenta técnica** para el smoke del deploy,
-  no un rol para personas. Lee sólo los catálogos sin datos de clientes
-  (productos, tipos de envase, métodos de pago) y `/auth/me`; recibe 403 en
-  clientes, pedidos, rutas, reportes y usuarios. El web no lo ofrece en el
-  selector de roles de Usuarios y no le arma menú. Hoy, quien entra al
-  sistema puede escribir algo: los tres roles de personas (Administrador,
-  Vendedor, Chofer) escriben.
-- **Asumimos:** que en el piloto nadie necesita mirar sin tocar (un socio, un
-  contador, alguien de la planta que controla).
-- **Construido encima:** el enum `user_role` con `VIEWER`, los `@Roles` de
-  los tres catálogos, `GET /auth/me`, `scripts/viewer-bootstrap.mjs` y el chequeo
-  `checkViewerSession` de `scripts/smoke.mjs` (ítem 3 de
-  `plan-endurecimiento.md`).
-- **Preguntar (pregunta abierta):** ¿hay alguien que tenga que ver el sistema
-  sin poder cambiar nada? ¿Qué tiene que ver: el padrón, las deudas, las
-  rutas, los reportes? ¿Y qué NO?
-- **Si dice que sí:** es **otro rol**, que se decide en el piloto con esas
-  respuestas; no se reutiliza `VIEWER`, que es de CI y cuya credencial lee el
-  deploy. Costo medio: valor nuevo del enum (migración expand), sus `@Roles`
-  endpoint por endpoint y su menú en el web.
-
-### 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** una
-  etiqueta del sistema viejo es zona si nombra un lugar (distrito,
-  urbanización, avenida, parque); no lo es si nombra un tipo de cliente
-  (EMPRESAS, DISTRIBUIDOR y similares), y esas no se guardan en ningún lado
-  (el cargador no guarda notas). Un cliente con dos etiquetas de lugar toma la
-  primera y queda listado en el informe. Sin etiqueta de lugar, queda sin
-  zona. Las zonas nacen **sin días de reparto**: los pone el dueño. La regla
-  es de Giancarlo hablando como cliente; el mapeo concreto lo decide el
-  agente con ella.
-- **Mapeo resultante (dry-run del 2026-09-25 contra `main`):** en
-  `scripts/roster-zones-labels.json`. Zona: PARQUE (476 clientes), SURCO (58)
-  y CASAS PARQUE (3, zona propia: no la juntamos con Parque sin que el dueño
-  lo diga). No zona: EMPRESAS (59) y DISTRIBUIDOR (4), tipos de cliente;
-  HERMES (3) y BIOZON (1), nombres de negocio, no lugares. Ningún cliente tiene
-  más de una etiqueta. Las etiquetas suman los 604 del padrón: quedan con zona 537 y sin zona 67,
-  todos con una etiqueta que no es lugar. El cliente de prueba creado desde la app no está en
-  el export.
-- **Asumimos:** que el dueño organiza el reparto por lugar y que las
-  etiquetas de lugar del sistema viejo son las mismas zonas con las que
-  piensa sus recorridos; y que un cliente con dos lugares está en el primero.
-- **Construido encima:** `scripts/roster-zones.mjs` y su mapeo; las zonas que
-  cree en `main`, y el `zone_id` de los clientes que asigne. No toca ningún
-  otro dato del cliente.
-- **Preguntar:** estas son las etiquetas del sistema viejo y a qué zona
-  llevamos cada una: ¿así reparte usted? ¿Hay etiquetas que juntaría en una
-  sola zona, o zonas que le faltan? ¿Qué días va a cada zona?
-- **Si dice que no:** barato. Una zona se renombra o se retira en «Zonas», y
-  un cliente se cambia de zona desde su ficha; nada de eso toca deudas ni
-  envases.
-
-### 17. Un pedido se cobra al precio del día en que se entrega
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** cuando
-  cambia un precio de lista (o un precio pactado), un pedido ya tomado que
-  todavía no se entregó se cobra al precio vigente el día de la entrega, no al
-  del día en que se tomó. Las ventas ya registradas no cambian. Es lo que el
-  sistema ya hacía con los precios pactados; la pantalla «Productos» lo hace
-  cotidiano y ahora lo dice.
-- **Asumimos:** que un cambio de precio en la planta vale desde que se anuncia
-  para todo lo que sale en el camión, y que el cliente no espera que le
-  respeten el precio viejo por haber pedido antes.
-- **Construido encima:** `SalesService.registerStopDeliveryWithinTransaction`
-  resuelve el precio al registrar la entrega (precio de la ubicación, del
-  cliente, y si no hay, el de lista de ese momento); el formulario de parada
-  no lleva el precio del pedido. El texto de ayuda de
-  `apps/web-nuxt/app/pages/products.vue`.
-- **Preguntar:** si un cliente hizo un pedido el lunes y el martes usted sube
-  el precio de la recarga, cuando el chofer se lo entrega el miércoles, ¿le
-  cobra el precio del lunes o el nuevo?
-- **Si dice que no:** medio. El formulario de parada tendría que traer el
-  `unitPrice` de la línea del pedido en vez de dejarlo en blanco, y decidir
-  qué pasa con un pedido que lleva un producto sin precio en su línea. No
-  toca esquema: el precio ya está guardado en `order_items`.
-
-### 18. Un cobro rechazado después de liquidar no reabre la liquidación
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** la
-  liquidación de una ruta guarda lo que se sabía al cerrarla y no se reabre ni
-  se reescribe cuando la oficina rechaza después un cobro que estaba por
-  confirmar. La pantalla de la liquidación pone al lado lo que dice el libro
-  hoy (sin el cobro rechazado) y avisa que no coinciden. Es la misma regla que
-  ya rige para corregir una parada de una ruta liquidada.
-- **Asumimos:** que al dueño le sirve saber qué se sabía al cerrar la ruta y
-  qué se sabe hoy, y que un Yape que no llegó se persigue como deuda del
-  cliente —que es donde queda: el cobro rechazado nunca bajó su deuda— y no
-  reabriendo la ruta del chofer.
-- **Construido encima:** `RouteSettlementService.getSettlementView` (el
-  `expected` en vivo), `moneyDrifted` y el aviso de
-  `apps/web-nuxt/app/pages/routes/[id]/settlement.vue`; el test «un cobro
-  rechazado después de liquidar» de `route-settlement.int.test.ts`.
-- **Preguntar:** si un cliente le pagó por Yape al chofer, usted ya cerró la
-  ruta, y después ve que ese Yape nunca llegó, ¿quiere que la liquidación de
-  ese día cambie, o le basta con verlo marcado y cobrárselo al cliente?
-- **Si dice que no:** medio. Reabrir una liquidación pide una operación nueva
-  (con quién, cuándo y por qué, como la corrección de una parada) y decidir
-  qué pasa con lo que el chofer ya entregó en mano; no es un botón.
-
-### 19. Registrar un lote sin vacíos suficientes avisa y no bloquea
-
-- **Decidido por Claude por delegación de Giancarlo (2026-09-25):** se
-  mantiene el comportamiento actual. Que avise y no bloquee está en la spec
-  (HU-01 E2: «el sistema advierte la inconsistencia antes de confirmar»). Lo
-  que la spec no dice es lo que hace el código: **avisa después de guardar**,
-  sin paso de confirmación. Esa diferencia es el supuesto.
-- **Asumimos:** que un aviso con el lote ya guardado le sirve igual que uno
-  antes de confirmar: si la oficina registra un lote que llena más bidones de
-  los que el sistema cree que había vacíos en la planta, el dato que está mal
-  es el inventario (faltan ingresos de envases por anotar), no el lote, porque
-  el dueño llenó esos bidones de verdad.
-- **Construido encima:** `ProductionBatchesService.create`: la comparación
-  `producedQty > emptyAvailable` no frena el lote; lo registra, deja los
-  vacíos en planta en negativo y devuelve un aviso por tipo de envase con las
-  dos cantidades, que `apps/web-nuxt/app/pages/production.vue` muestra con el
-  lote ya guardado («Una advertencia, no un error»).
-- **Preguntar:** si la oficina anota un lote de 80 bidones y el sistema cree
-  que en la planta había solo 50 vacíos, ¿le sirve que lo anote y le avise
-  después, o quiere que le avise antes y le pregunte si lo guarda igual?
-- **Si dice que no:** medio, sin esquema. Un paso de confirmación en
-  «Producción»: la pantalla pide los vacíos en planta antes de guardar (o la
-  API responde el aviso sin guardar y se reenvía confirmado). Que no lo deje
-  guardar del todo no es una opción de esta pregunta: contradice HU-01 E2.
-
-### 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes
-
-- **Decidido por Giancarlo con la recomendación de Claude (2026-09-25):** el
-  Vendedor lee «Envases en poder de clientes» y la sección «Envases» de la
-  ficha, igual que el administrador. El chofer y la cuenta técnica del smoke,
-  no.
-- **Asumimos:** que quien anota los conteos en la oficina (Vendedor) tiene que
-  ver los saldos de envases de los clientes para saber a quién contar.
-- **Construido encima:** los `@Roles(ADMIN, SELLER)` de
-  `apps/api/src/modules/container-balances/container-balances.controller.ts`
-  (los mismos que ya tenía `container-counts` para anotar un conteo) y la
-  sección «Envases» de la ficha
-  (`apps/web-nuxt/app/components/CustomerContainersSection.vue`, que
-  `apps/web-nuxt/app/pages/customers/[id]/index.vue` monta para ADMIN y SELLER).
-- **Preguntar:** la persona de la oficina que anota los conteos de bidones,
-  ¿puede ver cuántos bidones tiene cada cliente, o eso lo ve solo usted?
-- **Si dice que no:** barato. Se vuelve a ADMIN, y el enlace «Envases en poder
-  de clientes» del menú pasa a `onlyFor: "ADMIN"`, y la ficha deja de montar la
-  sección para el Vendedor. Entonces los conteos los anota solo él.
+- **Asumimos** — lo que se da por cierto de la operación de la planta.
+- **Construido encima** — qué código depende de eso.
+- **Si resulta que no** — qué cambia, y si es barato o caro.
 
 ## Validados
+
+### 1. El buscador del Panel muestra clientes desactivados — 25/09/2026
+
+- **Qué se decidió:** el buscador de la pantalla de inicio trae también a los
+  clientes dados de baja, porque el que se dio de baja y todavía debe es a
+  quien se busca para cobrarle. Quedó afuera filtrarlo solo a los activos.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `apps/web-nuxt/app/components/CustomerQuickSearch.vue`,
+  sin el filtro `active` que sí aplica `CustomerPicker.vue`.
+
+### 2. Al cambiar una contraseña, el administrador la elige y la dicta — 25/09/2026
+
+- **Qué se decidió:** cuando a alguien se le olvida la contraseña, el
+  administrador le pone una y se la dicta. Quedaron afuera la contraseña
+  provisional que la persona cambia al entrar y la pantalla de «cambiar mi
+  contraseña».
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** el bloque «Cambiar contraseña» de
+  `apps/web-nuxt/app/pages/users.vue`.
+
+### 3. El administrador puede cambiarse la contraseña a sí mismo — 25/09/2026
+
+- **Qué se decidió:** el administrador se cambia la suya desde «Usuarios», en
+  su propia fila, y es la forma de rotar la contraseña inicial. Quedó afuera
+  aplicarle a «Cambiar contraseña» la guarda de «es uno mismo» que tiene
+  «Desactivar».
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `users.vue`, que ofrece «Cambiar contraseña» también
+  en la fila propia.
+
+### 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos — 25/09/2026
+
+- **Qué se decidió:** alcanza con que la persona quede afuera a lo sumo 15
+  minutos después de desactivarla o de cambiarle la contraseña, también el
+  administrador que se cambia la suya. Quedó afuera sacarla en el acto.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `users.token_version` (D-024) y los tests «resetting
+  a user's password invalidates a refresh token already issued» y «a user
+  deactivated after issuing a refresh token loses access on refresh» de
+  `apps/api/test/integration/auth.int.test.ts`.
+
+### 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea — 25/09/2026
+
+- **Qué se decidió:** si el administrador le quita «Chofer» a alguien con
+  rutas sin cerrar, el sistema le dice cuántas y lo deja decidir. Quedó afuera
+  impedirlo hasta que las rutas se cierren.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** el bloque «Roles» de `apps/web-nuxt/app/pages/users.vue`.
+
+### 6. Las rutas conservan al chofer que las hizo — 25/09/2026
+
+- **Qué se decidió:** la ruta sigue a nombre de quien salió con ella aunque
+  después deje de ser chofer; la oficina la termina y la liquida igual. Quedó
+  afuera reasignar una ruta a otro chofer.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** el cambio de roles no toca `routes`;
+  `assertCanAccessRoute` deja a ADMIN y SELLER terminar cualquier ruta.
+
+### 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento — 25/09/2026
+
+- **Qué se decidió:** la demo sigue mostrando que el chofer se lleva los vacíos
+  de la visita anterior, con un descuadre de ejemplo. Quedó afuera cambiar las
+  cantidades del plan de la demo. No toca el sistema real.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** el plan de `seed-demo-plan.ts`.
+
+### 8. El administrador que corrige una parada queda como quien autorizó el precio — 25/09/2026
+
+- **Qué se decidió:** en una corrección alcanza con el nombre de quien corrige
+  y el motivo; quien corrige queda como el que autorizó el precio de esa venta.
+  Quedó afuera un campo aparte para decir quién autorizó cobrar distinto de lo
+  pactado.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `RoutesService.correctStop`, que manda
+  `priceOverrideAuthorizedById: actor.id` siempre, y el 400 a un
+  `priceOverrideAuthorizedById` que venga en el cuerpo.
+
+### 9. La parada muestra solo la última corrección, no todas — 25/09/2026
+
+- **Qué se decidió:** la visita muestra la última corrección con su motivo.
+  Cuando la visita tenía una venta, la anterior queda anulada con su motivo y
+  el libro de envases guarda todo; si la visita había quedado como no
+  entregada, el motivo de la primera corrección se reemplaza con el de la
+  segunda. Quedó afuera la lista de todas las correcciones (una tabla nueva).
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `corrected_at` / `corrected_by` / `correction_reason`
+  de `route_stops`, que una segunda corrección pisa.
+
+### 10. Corregir hacia arriba deja el camión en negativo en vez de frenar — 25/09/2026
+
+- **Qué se decidió:** si al corregir una visita se entregaron más bidones de
+  los que figuraban cargados, la corrección se anota igual y avisa que el
+  camión queda en negativo. Quedó afuera frenarla hasta arreglar la carga. Una
+  entrega normal sigue sin poder entregar lo que el camión no tiene.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `allowStockShortfall` en
+  `SalesService.registerStopDeliveryWithinTransaction`, que solo prende
+  `RoutesService.correctStop`, y el aviso de `RouteMarkOutcome.vue`.
+
+### 11. Los llenos que vuelven reponen el lote más antiguo del que salieron — 25/09/2026
+
+- **Qué se decidió:** los bidones llenos que vuelven sin entregar entran otra
+  vez al stock para cargar mañana, reponiendo primero el lote más viejo de los
+  que cargó esa ruta. Quedaron afuera un estado «en revisión» y la baja por
+  fecha de lote.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `RouteSettlementService.returnFullsToPlant`.
+
+### 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios — 25/09/2026
+
+- **Qué se decidió:** el chofer usa el mismo web en el celular, con internet
+  («Mi ruta»), y cobra siempre el precio pactado; si el cliente paga distinto,
+  lo arregla la oficina. Quedaron afuera que el chofer registre sin señal y
+  que cambie precios.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** la página `/my-route`, el menú reducido del Chofer y
+  la lectura por recurso de `common/viewer.ts`.
+
+### 13. «Debe desde» es el cargo que abrió la deuda actual — 25/09/2026
+
+- **Qué se decidió:** «Debe desde» es la fecha en que el cliente dejó de estar
+  al día. Quedó afuera la fecha de la venta más vieja impaga, que exigiría
+  repartir cada cobro entre ventas.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `replayDebt` en
+  `apps/api/src/modules/reports/reports.service.ts` y la columna «Debe desde»
+  de `apps/web-nuxt/app/pages/reports/debt.vue`, con «Saldo inicial» y su fecha
+  cuando la deuda abre en el padrón.
+
+### 14. El padrón del sistema viejo entra entero, sin zona y sin envases — 25/09/2026
+
+- **Qué se decidió:** la deuda del sistema viejo es la vigente y entra tal
+  cual; los teléfonos repetidos son de relleno, no clientes duplicados; los
+  bidones de cada cliente se cuentan en la calle. Quedaron afuera tratar los
+  teléfonos repetidos como clientes duplicados y traer envases del sistema
+  viejo (no los tenía).
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `tools/firestore-export/src/to-roster.ts`,
+  `pnpm load:roster` y la carga en `main` del 2026-09-24.
+
+### El cliente con casi toda la deuda — 25/09/2026
+
+- **Qué se decidió:** la deuda del cliente que tiene cerca del 92 % del total
+  del padrón es real y vigente: no se toca, y el cliente sigue sin zona.
+- **Cómo se resolvió:** respondió la pregunta (operativa, sin recomendación).
+- **Construido encima:** nada nuevo; su saldo inicial del padrón queda como
+  entró.
+
+### 15. Nadie de la planta tiene una cuenta para mirar sin tocar — 25/09/2026
+
+- **Qué se decidió:** en el piloto nadie tiene una cuenta solo para mirar;
+  `VIEWER` sigue siendo la cuenta técnica del smoke. Quedó afuera un rol de
+  solo lectura para personas.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** el enum `user_role` con `VIEWER`,
+  `scripts/viewer-bootstrap.mjs` y `checkViewerSession` de `scripts/smoke.mjs`.
+
+### 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto — 25/09/2026
+
+- **Qué se decidió:** una etiqueta es zona si nombra un lugar. Parque, Surco y
+  **Casas Parque, que es zona aparte** de Parque. **EMPRESAS, DISTRIBUIDOR,
+  HERMES y BIOZON no son zonas**: sus clientes quedan sin zona. Quedó afuera
+  juntar Casas Parque con Parque. Los días de reparto de cada zona se ponen en
+  «Zonas».
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `scripts/roster-zones.mjs`, su mapeo
+  `scripts/roster-zones-labels.json` y las tres zonas de `main`.
+
+### 17. Un pedido se cobra al precio del día en que se entrega — 25/09/2026
+
+- **Qué se decidió:** se cobra el precio vigente el día de la entrega, también
+  en un pedido tomado antes del cambio. Quedó afuera respetar el precio del día
+  del pedido.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `SalesService.registerStopDeliveryWithinTransaction`
+  y el texto de ayuda de `apps/web-nuxt/app/pages/products.vue`.
+
+### 18. Un cobro rechazado después de liquidar no reabre la liquidación — 25/09/2026
+
+- **Qué se decidió:** la liquidación queda como se cerró, con el aviso de que
+  un cobro se cayó, y ese monto se le cobra al cliente, donde queda como deuda.
+  Quedó afuera reabrir la liquidación.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `RouteSettlementService.getSettlementView`,
+  `moneyDrifted` y el aviso de `apps/web-nuxt/app/pages/routes/[id]/settlement.vue`.
+
+### 19. Registrar un lote sin vacíos suficientes avisa y no bloquea — 25/09/2026
+
+- **Qué se decidió:** el lote se registra y el sistema avisa, con las dos
+  cantidades por tipo de envase, que llenó más de los vacíos que figuraban en
+  la planta (quedan en negativo). Quedaron afuera el paso de confirmación antes
+  de guardar y el bloqueo. HU-01 E2 todavía dice «antes de confirmar»: se
+  corrige para decir esto en el ítem B del cierre final.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** `ProductionBatchesService.create` y el aviso de
+  `apps/web-nuxt/app/pages/production.vue`.
+
+### 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes — 25/09/2026
+
+- **Qué se decidió:** el Vendedor ve «Envases en poder de clientes» y la
+  sección «Envases» de la ficha, igual que el administrador. Quedó afuera
+  dejárselo solo al administrador.
+- **Cómo se resolvió:** aprobó la recomendación.
+- **Construido encima:** los `@Roles(ADMIN, SELLER)` de
+  `container-balances.controller.ts` y `CustomerContainersSection.vue`.
 
 ### Terminar una ruta exige sus paradas resueltas — 29/08/2026
 

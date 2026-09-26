@@ -12,6 +12,14 @@ pregunta por un cliente puntual, se busca en la pantalla, no acá.
 
 Al final está la hoja de cierre: una fila por pregunta para marcar qué pasó.
 
+**La reunión se hizo el 2026-09-25.** El dueño aprobó la recomendación de los
+veinte supuestos, que bajaron a Validados en
+[`supuestos-por-validar.md`](./supuestos-por-validar.md). Las preguntas
+operativas no se le hicieron: se cargan en producción con datos de prueba en el
+ítem K del cierre final del 2026-09-26 (ver «Cierre final» en
+[`PROGRESO.md`](./PROGRESO.md)), y los datos reales los carga la planta al
+limpiarlos.
+
 ## 1. El padrón y la deuda
 
 _Del supuesto 14 se leen acá solo las dos primeras preguntas (la deuda y los
@@ -543,39 +551,40 @@ cambia desde su ficha.
 Una fila por pregunta. En «Qué pasó» se marca una sola de las tres: **Respondió
 la pregunta** (eligió sin que le propusiéramos nada), **Aprobó la
 recomendación** (le dijimos qué haríamos y dijo que sí) o **Dijo otra cosa**.
-El destino es lo que hay que hacer después en
+Una operativa que no se llegó a preguntar se marca **No se preguntó**, con el
+destino que tomó en su lugar. El destino es lo que hay que hacer después en
 [`supuestos-por-validar.md`](./supuestos-por-validar.md): si respondió o aprobó,
 el supuesto baja a **Validados** con la fecha, lo que se decidió y esa línea
 de «Cómo se resolvió»; si dijo otra cosa, se borra de Pendientes y se abre lo
 que corresponda en `backlog-tecnico.md` (su línea «Si dice que no» dice
 cuánto cuesta).
 
-| Pregunta                                                                                            | Qué pasó                             | Qué dijo, en una línea | Destino             |
-| --------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------------------- | ------------------- |
-| 14. El padrón del sistema viejo entra entero, sin zona y sin envases                                | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| Un cliente con casi toda la deuda: ¿real y vigente? (operativa)                                     | ☐ Respondió · ☐ Otra cosa            |                        | Nada / movimiento   |
-| 13. «Debe desde» es el cargo que abrió la deuda actual                                              | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| Precios de lista (operativa)                                                                        | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| 17. Un pedido se cobra al precio del día en que se entrega                                          | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento                          | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 11. Los llenos que vuelven reponen el lote más antiguo del que salieron                             | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| ¿Sabe cuántos bidones tiene cada cliente? (operativa)                                               | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| ¿Cuántos envases tiene hoy la planta? (operativa)                                                   | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| 19. Registrar un lote sin vacíos suficientes avisa y no bloquea                                     | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes                  | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto                               | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| ¿Cómo reparte a los clientes de Parque? (operativa)                                                 | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| Días de reparto (operativa)                                                                         | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios                    | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea                                       | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 6. Las rutas conservan al chofer que las hizo                                                       | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| Choferes y oficina (operativa)                                                                      | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| 18. Un cobro rechazado después de liquidar no reabre la liquidación                                 | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 8. El administrador que corrige una parada queda como quien autorizó el precio                      | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 9. La parada muestra solo la última corrección, no todas                                            | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 10. Corregir hacia arriba deja el camión en negativo en vez de frenar                               | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 2. Al cambiar una contraseña, el administrador la elige y la dicta                                  | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 3. El administrador puede cambiarse la contraseña a sí mismo                                        | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 15. Nadie de la planta tiene una cuenta para mirar sin tocar                                        | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 1. El buscador del Panel muestra clientes desactivados                                              | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| Pregunta                                                                                            | Qué pasó                  | Qué dijo, en una línea                                                    | Destino                                              |
+| --------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 14. El padrón del sistema viejo entra entero, sin zona y sin envases                                | ☒ Aprobó la recomendación | Deuda tal cual, teléfonos de relleno, bidones a contar                    | Validados                                            |
+| Un cliente con casi toda la deuda: ¿real y vigente? (operativa)                                     | ☒ Respondió               | Real y vigente: no se toca y sigue sin zona                               | Nada                                                 |
+| 13. «Debe desde» es el cargo que abrió la deuda actual                                              | ☒ Aprobó la recomendación | Desde que dejó de estar al día                                            | Validados                                            |
+| Precios de lista (operativa)                                                                        | ☒ No se preguntó          | —                                                                         | Datos de prueba (ítem K); los reales, en la limpieza |
+| 17. Un pedido se cobra al precio del día en que se entrega                                          | ☒ Aprobó la recomendación | Precio del día de la entrega                                              | Validados                                            |
+| 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento                          | ☒ Aprobó la recomendación | La demo queda como está                                                   | Validados                                            |
+| 11. Los llenos que vuelven reponen el lote más antiguo del que salieron                             | ☒ Aprobó la recomendación | Vuelven al stock, lote más viejo primero                                  | Validados                                            |
+| ¿Sabe cuántos bidones tiene cada cliente? (operativa)                                               | ☒ No se preguntó          | —                                                                         | Datos de prueba (ítem K); los reales, en la limpieza |
+| ¿Cuántos envases tiene hoy la planta? (operativa)                                                   | ☒ No se preguntó          | —                                                                         | Datos de prueba (ítem K); los reales, en la limpieza |
+| 19. Registrar un lote sin vacíos suficientes avisa y no bloquea                                     | ☒ Aprobó la recomendación | Anota y avisa con las dos cantidades                                      | Validados                                            |
+| 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes                  | ☒ Aprobó la recomendación | La oficina ve los saldos de envases                                       | Validados                                            |
+| 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto                               | ☒ Aprobó la recomendación | Casas Parque aparte; EMPRESAS, DISTRIBUIDOR, HERMES y BIOZON no son zonas | Validados                                            |
+| ¿Cómo reparte a los clientes de Parque? (operativa)                                                 | ☒ No se preguntó          | —                                                                         | Datos de prueba (ítem K); los reales, en la limpieza |
+| Días de reparto (operativa)                                                                         | ☒ No se preguntó          | —                                                                         | Datos de prueba (ítem K); los reales, en la limpieza |
+| 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios                    | ☒ Aprobó la recomendación | Web en línea, precio pactado                                              | Validados                                            |
+| 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea                                       | ☒ Aprobó la recomendación | Avisa cuántas rutas y deja decidir                                        | Validados                                            |
+| 6. Las rutas conservan al chofer que las hizo                                                       | ☒ Aprobó la recomendación | La ruta sigue a nombre de quien salió                                     | Validados                                            |
+| Choferes y oficina (operativa)                                                                      | ☒ No se preguntó          | —                                                                         | Datos de prueba (ítem K); los reales, en la limpieza |
+| 18. Un cobro rechazado después de liquidar no reabre la liquidación                                 | ☒ Aprobó la recomendación | La liquidación queda como se cerró                                        | Validados                                            |
+| 8. El administrador que corrige una parada queda como quien autorizó el precio                      | ☒ Aprobó la recomendación | Alcanza con su nombre y el motivo                                         | Validados                                            |
+| 9. La parada muestra solo la última corrección, no todas                                            | ☒ Aprobó la recomendación | Solo la última corrección                                                 | Validados                                            |
+| 10. Corregir hacia arriba deja el camión en negativo en vez de frenar                               | ☒ Aprobó la recomendación | Anota y avisa el negativo                                                 | Validados                                            |
+| 2. Al cambiar una contraseña, el administrador la elige y la dicta                                  | ☒ Aprobó la recomendación | Él la pone y la dicta                                                     | Validados                                            |
+| 3. El administrador puede cambiarse la contraseña a sí mismo                                        | ☒ Aprobó la recomendación | Sí, desde Usuarios                                                        | Validados                                            |
+| 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos | ☒ Aprobó la recomendación | Alcanzan los 15 minutos                                                   | Validados                                            |
+| 15. Nadie de la planta tiene una cuenta para mirar sin tocar                                        | ☒ Aprobó la recomendación | Nadie mira sin tocar                                                      | Validados                                            |
+| 1. El buscador del Panel muestra clientes desactivados                                              | ☒ Aprobó la recomendación | Trae también a los dados de baja                                          | Validados                                            |
