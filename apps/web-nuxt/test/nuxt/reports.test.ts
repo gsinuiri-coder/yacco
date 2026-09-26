@@ -172,6 +172,18 @@ describe("Reportes", () => {
       expect(within(farmacia).getByText("devolvió más de lo registrado")).toBeTruthy();
       expect(screen.getByText("Total prestado").nextElementSibling?.textContent).toBe("3");
     });
+
+    // Los envases también salen de un cliente por un ajuste de conteo: vacío
+    // no quiere decir que «volvieron a la planta».
+    it("sin envases en poder de clientes lo dice, sin suponer que volvieron a la planta", async () => {
+      const body: LoanedContainersReport = { rows: [], byType: [], total: 0 };
+      cleanups.push(registerEndpoint("/api/v1/reports/loaned-containers", () => body));
+
+      await renderReport("/reports/loaned-containers", "Envases prestados");
+
+      expect(await screen.findByText("Ningún cliente tiene envases prestados.")).toBeTruthy();
+      expect(screen.queryByText(/volvieron a la planta/)).toBeNull();
+    });
   });
 
   describe("Producción por período (HU-21)", () => {
