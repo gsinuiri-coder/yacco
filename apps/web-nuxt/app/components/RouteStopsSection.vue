@@ -28,6 +28,12 @@ const showActions = computed(() => editable.value || canCorrect.value);
 const correcting = ref<RouteStop | null>(null);
 
 const adding = ref(false);
+// Armar la hoja de una vez: solo con la ruta planificada, y solo la oficina
+// (la API lo limita a ADMIN y SELLER). En la calle se agrega de a una.
+const canBatch = computed(
+  () => props.route.status === "PLANNED" && (session.hasRole("ADMIN") || session.hasRole("SELLER")),
+);
+const batching = ref(false);
 const marking = ref<RouteStop | null>(null);
 const removingId = ref<string | null>(null);
 const busyId = ref<string | null>(null);
@@ -107,7 +113,18 @@ function markDone(result: RouteStop): void {
 
 <template>
   <SectionCard title="Paradas" description="En el orden en que el chofer las va a visitar.">
-    <template v-if="editable && !adding" #actions>
+    <template v-if="editable && !adding && !batching" #actions>
+      <UButton
+        v-if="canBatch"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-list-checks"
+        label="Agregar pedidos pendientes"
+        @click="
+          batching = true;
+          stopError = null;
+        "
+      />
       <UButton
         icon="i-lucide-map-pin-plus"
         label="Agregar parada"
@@ -119,6 +136,17 @@ function markDone(result: RouteStop): void {
     </template>
 
     <div class="space-y-4">
+      <div v-if="batching" class="rounded-md bg-elevated p-4">
+        <RouteBatchStopsForm
+          :route="route"
+          @cancel="batching = false"
+          @added="
+            batching = false;
+            emit('changed');
+          "
+        />
+      </div>
+
       <div v-if="adding" class="rounded-md bg-elevated p-4">
         <RouteStopAddForm
           :route-id="route.id"
@@ -135,7 +163,7 @@ function markDone(result: RouteStop): void {
           Parada {{ marking.position }}: {{ marking.location.customer.name }}
         </h3>
         <p class="mb-4 text-sm text-muted">
-          {{ marking.location.name }} · {{ marking.location.address }}
+          {{ marking.location.name }} · <LinkedText :text="marking.location.address" />
         </p>
         <RouteStopMarkForm
           :route-id="route.id"
@@ -182,8 +210,8 @@ function markDone(result: RouteStop): void {
       <div v-else class="overflow-x-auto">
         <table class="w-full text-sm">
           <caption class="sr-only">
-            Paradas de la ruta con su orden, cliente, dirección, origen y estado, incluida la
-            corrección de la parada cuando la hubo
+            Paradas de la ruta con su orden, cliente, dirección y referencia, origen y estado,
+            incluida la corrección de la parada cuando la hubo
           </caption>
           <thead class="text-left text-xs tracking-wide text-muted uppercase">
             <tr>
@@ -208,7 +236,12 @@ function markDone(result: RouteStop): void {
                 <p class="font-medium text-highlighted">{{ stop.location.customer.name }}</p>
                 <!-- El nombre de la locación casi siempre es "Principal"; sólo
                      distingue algo cuando el cliente tiene más de un punto. -->
-                <p class="text-muted">{{ stop.location.name }} · {{ stop.location.address }}</p>
+                <p class="text-muted">
+                  {{ stop.location.name }} · <LinkedText :text="stop.location.address" />
+                </p>
+                <p v-if="stop.location.addressReference" class="text-sm text-muted">
+                  <LinkedText :text="stop.location.addressReference" />
+                </p>
               </td>
               <td class="py-3">{{ STOP_ORIGIN[stop.origin] }}</td>
               <td class="space-y-1 py-3">

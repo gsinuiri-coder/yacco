@@ -93,6 +93,54 @@ describe("Clientes", () => {
     expect(screen.queryByText("S/ 0.3")).toBeNull();
   });
 
+  it("filtra por zona: «Todas», cada zona en uso del catálogo y «Sin zona»", async () => {
+    const seen = stubCustomers(() => pageOf([buildCustomer()]));
+    cleanups.push(
+      registerEndpoint("/api/v1/zones", (event: H3Event) => {
+        // Solo las zonas en uso: la pantalla pide el catálogo activo.
+        expect(getQuery(event).active).toBe("true");
+        return [{ id: "zone-parque", name: "Parque", deliveryDays: [], active: true }];
+      }),
+    );
+    const user = userEvent.setup();
+
+    await renderCustomers();
+    await screen.findByText("Bodega Santa Rosa");
+    expect(seen.at(-1)).not.toHaveProperty("zoneId");
+    expect(seen.at(-1)).not.toHaveProperty("withoutZone");
+
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent?.trim())).toEqual([
+      "Todas",
+      "Parque",
+      "Sin zona",
+    ]);
+    await user.click(screen.getByRole("option", { name: "Parque" }));
+    await waitFor(() => expect(seen.at(-1)?.zoneId).toBe("zone-parque"));
+    expect(seen.at(-1)).not.toHaveProperty("withoutZone");
+
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(await screen.findByRole("option", { name: "Sin zona" }));
+    await waitFor(() => expect(seen.at(-1)?.withoutZone).toBe("true"));
+    expect(seen.at(-1)).not.toHaveProperty("zoneId");
+
+    await user.click(screen.getByRole("combobox", { name: "Zona" }));
+    await user.click(await screen.findByRole("option", { name: "Todas" }));
+    await waitFor(() => expect(seen.at(-1)).not.toHaveProperty("withoutZone"));
+    expect(seen.at(-1)).not.toHaveProperty("zoneId");
+  });
+
+  it("un saldo negativo en la columna Deuda se lee como plata a favor, no como deuda con signo", async () => {
+    stubCustomers(() => pageOf([buildCustomer({ debtBalance: "-15.00" })]));
+
+    await renderCustomers();
+
+    const row = (await screen.findByText("Bodega Santa Rosa")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("A favor S/ 15.00")).toBeTruthy();
+    expect(within(row).queryByText("-S/ 15.00")).toBeNull();
+  });
+
   it("pide la primera página con el límite de la API, no la lista entera", async () => {
     const seen = stubCustomers(() => pageOf([buildCustomer()]));
 

@@ -34,6 +34,12 @@ const zoneItems = computed(() => [
   { label: "Todas las zonas", value: ALL_ZONES },
   ...zones.value.map((zone) => ({ label: zone.name, value: zone.id })),
 ]);
+// Abierta desde la ficha de un cliente (`?customerId=`): solo sus ubicaciones,
+// dicho arriba, hasta que se pida ver todas o se limpien los filtros.
+const route = useRoute();
+const customerFilter = ref(
+  typeof route.query.customerId === "string" ? route.query.customerId : undefined,
+);
 const uncountedOnly = ref(false);
 const withDiscrepancies = ref(false);
 const countedBeforeDay = ref("");
@@ -43,13 +49,22 @@ const list = usePagedList<ContainerBalanceRow>(
   CONTAINER_BALANCES_PAGE_SIZE,
   computed(() => ({
     search: search.value,
+    customerId: customerFilter.value,
     zoneId: zoneFilter.value === ALL_ZONES ? undefined : zoneFilter.value,
     uncountedOnly: uncountedOnly.value ? true : undefined,
     withDiscrepancies: withDiscrepancies.value ? true : undefined,
     countedBefore: limaDayStart(countedBeforeDay.value),
   })),
 );
+// El nombre sale de la primera fila; sin filas (un cliente sin ubicaciones, o
+// otro filtro que las deja afuera) el aviso igual se ve, sin nombre.
+const filteredCustomerName = computed(() => list.items.value[0]?.customer.name);
+function showEveryone(): void {
+  customerFilter.value = undefined;
+  void navigateTo("/container-counts", { replace: true });
+}
 function clearFilters(): void {
+  if (customerFilter.value !== undefined) showEveryone();
   searchInput.value = "";
   zoneFilter.value = ALL_ZONES;
   uncountedOnly.value = false;
@@ -142,6 +157,19 @@ function registered(row: ContainerBalanceRow): void {
         </div>
 
         <div class="space-y-2 p-4 pb-0">
+          <div v-if="customerFilter" class="flex flex-wrap items-center gap-2 text-sm">
+            <span class="font-medium text-highlighted"
+              >Solo las ubicaciones de {{ filteredCustomerName ?? "un cliente" }}, abierto desde su
+              ficha.</span
+            >
+            <UButton
+              color="neutral"
+              variant="link"
+              size="sm"
+              label="Ver todas"
+              @click="showEveryone"
+            />
+          </div>
           <p class="text-sm text-muted">{{ summary }}</p>
           <UAlert
             v-if="lastRegisteredLocation"

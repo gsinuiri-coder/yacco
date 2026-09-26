@@ -260,6 +260,43 @@ describe("GET /api/v1/customers", () => {
     }
   });
 
+  test("withoutZone=true lists the customers without a zone, and only them", async () => {
+    const orphan = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validCustomer({ name: "Tienda Sin Zona", phone: "911000009" }))
+      .expect(201);
+
+    const response = await request(server())
+      .get("/api/v1/customers?withoutZone=true&limit=100")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const ids = response.body.data.map((customer: { id: string }) => customer.id);
+    expect(ids).toContain(orphan.body.id);
+    const phones = response.body.data.map((customer: { phone: string }) => customer.phone);
+    // Los de las zonas Norte y Sur existen y no vienen.
+    expect(phones).not.toContain(listedPhones[0]);
+    expect(phones).not.toContain(listedPhones[1]);
+    for (const customer of response.body.data) {
+      expect(customer.zoneId).toBeNull();
+    }
+    const everyone = await request(server())
+      .get("/api/v1/customers?limit=1")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(response.body.total).toBeLessThan(everyone.body.total);
+  });
+
+  test("withoutZone and zoneId together are a 400: they contradict each other", async () => {
+    const response = await request(server())
+      .get(`/api/v1/customers?withoutZone=true&zoneId=${northZoneId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("Sin zona");
+  });
+
   test("filters by active, and a deactivated customer is still there to be found", async () => {
     const inactiveList = await request(server())
       .get("/api/v1/customers?active=false&limit=100")
@@ -413,5 +450,64 @@ describe("role guard", () => {
     const response = await request(server()).get("/api/v1/customers");
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe("GET /api/v1/customers/zone-counts", () => {
+  interface ZoneCounts {
+    zones: Array<{ zoneId: string; activeCustomers: number }>;
+    withoutZone: number;
+  }
+  async function counts(token = adminToken): Promise<ZoneCounts> {
+    const response = await request(server())
+      .get("/api/v1/customers/zone-counts")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    return response.body as ZoneCounts;
+  }
+  async function customer(name: string, phone: string, zoneId?: string): Promise<string> {
+    const response = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validCustomer({ name, phone, ...(zoneId ? { zoneId } : {}) }))
+      .expect(201);
+    return response.body.id;
+  }
+  async function deactivate(id: string): Promise<void> {
+    await request(server())
+      .patch(`/api/v1/customers/${id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ active: false })
+      .expect(200);
+  }
+
+  test("cuenta los clientes ACTIVOS de cada zona y los activos que quedan sin zona", async () => {
+    const zone = await ctx.app
+      .get(PrismaService)
+      .zone.create({ data: { name: "Conteo", deliveryDays: [] } });
+    const before = await counts();
+
+    await customer("Conteo Uno", "922000001", zone.id);
+    await customer("Conteo Dos", "922000002", zone.id);
+    // Un desactivado en la zona y otro sin zona: existen y no cuentan.
+    await deactivate(await customer("Conteo Baja", "922000003", zone.id));
+    await customer("Sin Zona Activo", "922000004");
+    await deactivate(await customer("Sin Zona Baja", "922000005"));
+
+    const after = await counts(sellerToken);
+
+    expect(after.zones.find((line) => line.zoneId === zone.id)?.activeCustomers).toBe(2);
+    expect(after.withoutZone - before.withoutZone).toBe(1);
+    // Una zona con clientes que no se tocaron conserva su número.
+    const north = (body: ZoneCounts) =>
+      body.zones.find((line) => line.zoneId === northZoneId)?.activeCustomers ?? 0;
+    expect(north(after)).toBe(north(before));
+  });
+
+  test("un chofer no la ve", async () => {
+    await request(server())
+      .get("/api/v1/customers/zone-counts")
+      .set("Authorization", `Bearer ${driverToken}`)
+      .expect(403);
   });
 });

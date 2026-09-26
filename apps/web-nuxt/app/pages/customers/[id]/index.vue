@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatSoles, isAboveZero } from "@yacco/shared";
+import { formatDebtBalance, formatSoles, isAboveZero } from "@yacco/shared";
 import type { Customer } from "@yacco/shared";
 
 const route = useRoute();
@@ -62,7 +62,7 @@ function paymentRegistered(debtBalance: string): void {
                   class="mt-1 font-display text-3xl font-semibold tabular-nums"
                   :class="isAboveZero(customer.debtBalance) ? 'text-error' : 'text-highlighted'"
                 >
-                  {{ formatSoles(customer.debtBalance) }}
+                  {{ formatDebtBalance(customer.debtBalance) }}
                 </p>
                 <p class="mt-1 text-sm text-muted">
                   Límite de crédito:
@@ -97,14 +97,20 @@ function paymentRegistered(debtBalance: string): void {
               </div>
               <div class="sm:col-span-2">
                 <dt class="text-muted">Dirección</dt>
-                <dd class="font-medium text-highlighted">{{ customer.address }}</dd>
-                <dd class="text-muted">{{ customer.addressReference }}</dd>
+                <dd class="font-medium text-highlighted">
+                  <LinkedText :text="customer.address" />
+                </dd>
+                <dd class="text-muted"><LinkedText :text="customer.addressReference" /></dd>
               </div>
             </dl>
           </section>
 
           <CustomerPaymentSection :customer-id="customer.id" @registered="paymentRegistered" />
           <CustomerPricesSection :customer-id="customer.id" :is-admin="session.hasRole('ADMIN')" />
+          <CustomerContainersSection
+            v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+            :customer-id="customer.id"
+          />
         </div>
 
         <CustomerAccountStatementSection

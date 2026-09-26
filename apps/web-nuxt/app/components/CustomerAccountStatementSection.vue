@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatInstantInLima, formatSoles } from "@yacco/shared";
+import { formatDebtBalance, formatInstantInLima, formatSoles } from "@yacco/shared";
 import type { AccountStatement, AccountStatementEntry, PaymentStatus } from "@yacco/shared";
 
 /**
@@ -58,7 +58,7 @@ function rowKey(entry: AccountStatementEntry): string {
     <template v-if="!loading && !loadError && statement" #actions>
       <span class="text-sm text-muted">Saldo</span>
       <span class="text-lg font-semibold text-highlighted tabular-nums">{{
-        formatSoles(statement.closingBalance)
+        formatDebtBalance(statement.closingBalance)
       }}</span>
     </template>
 
@@ -126,7 +126,7 @@ function rowKey(entry: AccountStatementEntry): string {
               {{ formatSoles(entry.amount) }}
             </td>
             <td class="py-3 text-right font-medium tabular-nums">
-              {{ formatSoles(entry.runningBalance) }}
+              {{ formatDebtBalance(entry.runningBalance) }}
             </td>
             <td class="py-3 pl-4">
               <span v-if="entry.type === 'PAYMENT'" class="flex flex-wrap items-center gap-1.5">

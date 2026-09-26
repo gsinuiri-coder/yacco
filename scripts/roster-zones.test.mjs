@@ -319,6 +319,17 @@ describe("rosterZones", () => {
     assert.equal(api.customers[2].zoneId, "z-surco");
   });
 
+  test("--commit imprime el avance cada tantos clientes, y el total al final", async () => {
+    const api = fakeApi();
+    const logs = [];
+    await run(api, { commit: true, progressEvery: 1, log: (line) => logs.push(line) });
+    assert.deepEqual(
+      logs.filter((line) => line.startsWith("Asignados")),
+      ["Asignados 1 de 2", "Asignados 2 de 2"],
+    );
+    assert.ok(!logs.join("\n").includes("Cliente 1"));
+  });
+
   test("--commit con una etiqueta sin clasificar no escribe nada", async () => {
     const api = fakeApi();
     const tags = [...TAGS, { externalCode: "a", tags: ["VIP"] }];

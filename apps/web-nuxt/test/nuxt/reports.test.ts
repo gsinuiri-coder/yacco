@@ -46,12 +46,14 @@ describe("Reportes", () => {
             zone: { id: "z-1", name: "Centro" },
             debt: "50.50",
             oldestChargeDate: "2026-09-03",
+            openedByOpeningBalance: false,
           },
           {
             customer: { id: "c-2", name: "Farmacia San Judas" },
             zone: null,
             debt: "12.00",
             oldestChargeDate: "2026-09-07",
+            openedByOpeningBalance: false,
           },
         ],
         total: "62.50",
@@ -66,6 +68,39 @@ describe("Reportes", () => {
       expect(within(central).getByText("S/ 50.50")).toBeTruthy();
       expect(within(await rowOf("Farmacia San Judas")).getByText("Sin zona")).toBeTruthy();
       expect(within(await rowOf("Total por cobrar")).getByText("S/ 62.50")).toBeTruthy();
+    });
+
+    it("cuando la deuda la abrió el saldo inicial, «Debe desde» dice «Saldo inicial» y la fecha no pasa por venta", async () => {
+      const body: CustomerDebtsReport = {
+        rows: [
+          {
+            customer: { id: "c-1", name: "Bodega Central" },
+            zone: null,
+            debt: "70.00",
+            oldestChargeDate: "2026-08-31",
+            openedByOpeningBalance: true,
+          },
+          {
+            customer: { id: "c-2", name: "Farmacia San Judas" },
+            zone: null,
+            debt: "9.00",
+            oldestChargeDate: "2026-08-31",
+            openedByOpeningBalance: false,
+          },
+        ],
+        total: "79.00",
+      };
+      cleanups.push(registerEndpoint("/api/v1/reports/debt", () => body));
+
+      await renderReport("/reports/debt", "Deuda por cliente");
+
+      const central = await rowOf("Bodega Central");
+      expect(within(central).getByText("Saldo inicial")).toBeTruthy();
+      expect(within(central).getByText("al 31/08/2026")).toBeTruthy();
+      expect(within(central).queryByText("31/08/2026")).toBeNull();
+      const farmacia = await rowOf("Farmacia San Judas");
+      expect(within(farmacia).getByText("31/08/2026")).toBeTruthy();
+      expect(within(farmacia).queryByText("Saldo inicial")).toBeNull();
     });
 
     it("sin deudores lo dice", async () => {

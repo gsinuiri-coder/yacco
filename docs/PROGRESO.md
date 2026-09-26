@@ -1161,7 +1161,7 @@ producción incluido) antes del siguiente merge.
 | Ítem                                             | Estado                                                                              | PRs  |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------- | ---- |
 | 1 · Documentación que hoy miente                 | ✅ Render: lo hizo Claude Code con `[OK]`; el 13 en Pendientes; backlog al día      | #226 |
-| 2 · Zonas del padrón                             | 🟨 herramienta lista; **corrida bloqueada**: las etiquetas no están en `main`       | #227 |
+| 2 · Zonas del padrón                             | ✅ corrido por Giancarlo después del cierre (ver abajo)                             | #227 |
 | 3a · Encontrar a un cliente en el conteo (nuevo) | ✅ búsqueda por nombre o teléfono y filtro de zona                                  | #228 |
 | 3 · Envases y choferes: el camino                | ✅ ciclo e2e en el preview con conteo desde 0: **1 passed**; `DEPLOY.md`            | #229 |
 | 4a · Precios de lista                            | ✅ `PATCH /products/:id` y «Productos»; supuesto 17                                 | #230 |
@@ -1185,8 +1185,17 @@ no tiene zona, frena ante etiquetas sin clasificar o zonas retiradas,
 verificación por huella de cada cliente) y `export:tags` (solo id y
 etiquetas). Procedimiento en `docs/DEPLOY.md`, «Zonas del padrón».
 
-**Lo que cambió en producción fuera de los PRs:** nada. Ninguna zona creada,
-ningún cliente asignado (el ítem 2 no corrió), ningún saldo ni usuario real.
+**2 · Hecho, después del cierre (2026-09-25).** Giancarlo corrió
+`export:tags` y el dry-run; #237 clasificó las etiquetas (supuesto 16) y
+arregló el `--` de pnpm, y Giancarlo corrió el `--commit`; #239 le agregó el
+avance cada 50 clientes. Verificado en `main` por SQL de solo lectura: 3 zonas
+(Parque 476, Surco 58, Casas Parque 3), **las tres sin días de reparto**;
+537 clientes con zona y 68 sin zona (los 67 del padrón con una etiqueta que no
+es lugar, más el cliente de prueba creado desde la app).
+
+**Lo que cambió en producción fuera de los PRs** (hasta el cierre de esta
+sección; las zonas del ítem 2 vinieron después): nada. Ninguna zona creada,
+ningún cliente asignado, ningún saldo ni usuario real.
 Las lecturas de `main` fueron todas de solo lectura (conteos, catálogos,
 `EXPLAIN`). En **demo**, las corridas del ciclo e2e dejaron dos choferes, dos
 clientes, dos pedidos y dos rutas de revisión (datos inventados, como en #223).
@@ -1209,9 +1218,8 @@ auditoría de D-016.
 
 **Pendientes de Giancarlo:**
 
-- **Ítem 2:** correr `pnpm --filter @yacco/firestore-export export:tags -- --out <carpeta fuera del repo>`.
-  Con eso: dry-run → informe → `[OK]` → `--commit` → verificación, y se llena la
-  tabla de etiquetas del guion.
+- ~~**Ítem 2:** correr `export:tags`, dry-run, `[OK]`, `--commit`.~~ Hecho
+  (ver arriba).
 - **4f:** `[OK]` para mergear la migración del índice después de las 20:00 de Lima.
 - **F:** rotar la contraseña del admin de producción (desde la app) y destruir
   la versión de `yacco-admin-initial-password`; y el token de Vercel de CI por
@@ -1243,3 +1251,195 @@ en poder de clientes** (buscar a un cliente y contarlo desde 0) y la
 **liquidación** de esa ruta. Para no tocar datos reales, el mismo recorrido
 entero corre en un preview contra demo (`docs/DEPLOY.md`, «El ciclo entero
 contra un preview»). Después, sentarse con el dueño y `docs/guion-piloto.md`.
+
+**Desde la revisión final (2026-09-25), además:**
+
+- **Clientes** (L1): el filtro **Zona** con «Sin zona», para ver juntos a los
+  68 que no tienen. Un cliente con saldo negativo dice **«A favor S/ x.xx»**
+  (L5), en la lista, la ficha, su estado de cuenta y los avisos de cobro.
+- **Zonas** (L2): cuántos clientes activos tiene cada una, y arriba cuántos
+  quedan sin zona.
+- **La ficha de un cliente**: la sección **Envases** (L3), con su saldo por tipo
+  y ubicación, cuándo se contó o «Sin contar», y **«Contarlo»**, que abre
+  «Envases en poder de clientes» con solo ese cliente. Un link de Google Maps
+  en la referencia se abre aparte (L6), también en **Mi ruta**.
+- **Deuda por cliente** (L4): quien debe desde el padrón dice **«Saldo
+  inicial»**, con la fecha de carga debajo, en vez de una fecha que parecía
+  una venta.
+- **Rutas** (L7): en una ruta planificada, **«Agregar pedidos pendientes»**
+  arma la hoja de una vez, con los pedidos del día (y de su zona). Se agregan
+  todos o ninguno.
+
+**El recorrido con un Vendedor (segunda vuelta)**, en un preview contra demo
+(`docs/DEPLOY.md`, «El ciclo entero contra un preview»), no en producción: anota
+un conteo, un pedido, una ruta y un cobro, que en un cliente real no se borran.
+Un administrador crea en **Usuarios** a una persona con el rol Vendedor, y se
+entra con ella. Su menú no tiene «Cuadre de
+envases» ni «Reportes», y ninguna pantalla que sí tiene abre con un error de
+permisos (lo cuida el e2e de #251). Recorrer:
+
+1. **Clientes**, con el filtro de zona.
+2. La **ficha** de un cliente: su sección **Envases** y **«Contarlo»**.
+3. **Envases en poder de clientes**: anotar ese conteo.
+4. **Pedidos**: tomar uno para hoy.
+5. **Rutas**: planificar la del día y **«Agregar pedidos pendientes»**. En el
+   detalle, la referencia de cada parada con su link de Maps.
+6. **Pagos**: registrar un cobro.
+
+## Revisión final — 2026-09-25
+
+La cola de `docs/plan-revision-final.md`: una revisión de producto final antes
+de la reunión con el dueño, con las recomendaciones ya decididas y todas las
+reglas en pie. Un PR por ítem, los cinco checks en verde, squash sin
+`--admin`, rama local y remota borradas, el subagente `reviewer` antes de cada
+PR, la salida en rojo en cada cuerpo y el deploy en verde (seis jobs, smoke de
+producción incluido) antes del siguiente merge.
+
+| Ítem                                      | Estado                                                                                  | PRs  |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- | ---- |
+| D · Docs (D1–D6)                          | ✅ zonas hechas, supuesto 4 al día, cuatro productos, Parque y la deuda, stock, sup. 19 | #240 |
+| L4 · «Debe desde» con saldo inicial       | ✅ «Saldo inicial» y debajo «al <fecha>» (HU-19 E1 pide la fecha)                       | #241 |
+| L5 · Saldo a favor                        | ✅ «A favor S/ x.xx» por un solo helper, en toda pantalla que muestra la deuda          | #242 |
+| L1 · Filtro de zona en «Clientes»         | ✅ «Todas», cada zona en uso, «Sin zona» (`withoutZone`, excluyente con `zoneId`)       | #243 |
+| L2 · Clientes por zona en «Zonas»         | ✅ `GET /customers/zone-counts` (groupBy) y la columna «Clientes activos»               | #244 |
+| L3 · Envases en la ficha                  | ✅ sección «Envases» (ADMIN) y enlace al conteo filtrado (`customerId`)                 | #245 |
+| L6 · Enlaces en direcciones y referencias | ✅ `LinkedText` sin `v-html`, en la ficha y en «Mi ruta»                                | #246 |
+| L7 · Paradas en lote                      | ✅ `POST /routes/:id/stops/batch`, todo o nada, y «Agregar pedidos pendientes»          | #247 |
+| X · Datos de prueba en producción         | ⏳ propuesto, **espera `[OK]`** (ver abajo)                                             | —    |
+| Cierre                                    | ✅ este documento                                                                       | este |
+
+**X · La propuesta, sin ejecutar.** El cliente de prueba (creado desde la app,
+sin zona) tiene 10 + 10 envases en su única ubicación, dos conteos, un pedido
+cancelado y el Yape de prueba, que lo deja con plata a favor. Con el `[OK]`,
+desde la app como administrador: contar su ubicación en 0 en «Envases en poder
+de clientes» (los envases salen con su ajuste de conteo, en el libro) y después
+desactivarlo en su ficha. Nada se borra: el Yape y el pedido cancelado quedan en
+el historial. Se verifica en «Inventario», «Envases prestados» y «Cuadre de
+envases». El lote de prueba (50 llenos en planta) no se toca: se ajusta contra
+el stock que dé el dueño (D5), con un mecanismo todavía por decidir.
+
+**Lo que cambió en producción fuera de los PRs:** nada. Todas las lecturas de
+`main` fueron de solo lectura (conteos por zona, porcentajes de deuda sin nombre
+ni monto, el catálogo de productos, el inventario, el cliente de prueba).
+
+**Lo que encontró el loop y no estaba en el goal:**
+
+- **Spec contra código (supuesto 19).** HU-01 E2 dice que registrar un lote sin
+  vacíos suficientes «advierte la inconsistencia **antes de confirmar**»; el
+  código guarda el lote y avisa después. Quedó escrito como supuesto y como
+  pregunta; no se tocó código.
+- **El lote de prueba no tiene cómo descontarse** sin anotarlo como «Baja por
+  daño»: el ajuste por conteo solo mueve envases en poder de clientes.
+- **HU-19 E1 pide la fecha en cada fila** de «Deuda por cliente»: por eso L4
+  muestra «Saldo inicial» con la fecha debajo, y no en su lugar.
+- **Una segunda implementación de «saldo a favor»** en el aviso de cobro de la
+  ficha (`.replace(/^-/, '')`), y el saldo del estado de cuenta todavía con
+  signo: los dos pasan ahora por el mismo helper (L5).
+- **`SectionCard` no nombraba su región**: ninguna sección de la ficha ni de la
+  ruta se encontraba por rol. Ahora toma el nombre de su título (L3).
+- **`GET /container-balances` es solo ADMIN**: la sección «Envases» de la ficha
+  la ve solo el administrador (L3).
+- **Identificadores en castellano** en el test de la ficha (`stubFicha`,
+  `renderFicha`, `datos`, `tabla`): renombrados (L3).
+- **El detalle de ruta** muestra la dirección de cada parada sin enlace: L6 pedía
+  la ficha y «Mi ruta»; es una línea con `LinkedText` si se quiere.
+- **Las posiciones de las paradas no tienen restricción única**: dos altas
+  simultáneas en la misma ruta pueden repetir una posición. Ya pasaba con
+  `addStop`; el lote no lo empeora más que en duración.
+- El cliente con plata a favor que había en `main` es el de prueba.
+
+**Pendientes de Giancarlo:**
+
+- **X:** `[OK]` para contar en 0 y desactivar al cliente de prueba.
+- **4f (#238):** `[OK]` para mergear la migración del índice, después de las 20:00 de Lima.
+- **Supuesto 19:** la diferencia con HU-01 E2 (¿se corrige la spec, o se agrega
+  el paso de confirmación?), a decidir con el dueño.
+- **F:** rotar la contraseña del admin de producción y destruir la versión de
+  `yacco-admin-initial-password`; el token de Vercel de CI con vencimiento,
+  antes del 2026-10-16. **A1:** team propio de Vercel. Confirmar la
+  desinstalación de la app de Render en GitHub.
+- **La reunión con el dueño**, con `docs/guion-piloto.md` al día.
+
+### Lecciones
+
+- **Nunca `git add -A` con archivos de otro ítem en el árbol.** Al resolver el
+  conflicto de L1, un test sin commitear de L6 entró en su merge; se sacó con un
+  commit nuevo, sin force-push. Desde ahí, cada `git add` nombra sus archivos.
+- **Un test de «todo o nada» tiene que fallar adentro de la transacción.** Los
+  primeros de L7 se cortaban en la validación previa y nunca llegaban a
+  deshacer nada; el `reviewer` lo vio. Un `spyOn` que cancela el pedido después
+  de validarlo es lo que lo prueba de verdad.
+- **Antes de mostrar menos, leer el criterio de la HU.** «Saldo inicial» en vez
+  de la fecha contradecía HU-19 E1; debajo de la fecha, no.
+
+### Segunda vuelta
+
+El goal que Giancarlo pasó después del cierre de la primera vuelta
+(`docs/plan-revision-final.md`, «Segunda vuelta»), con las mismas reglas y dos
+más: `git add` nombra sus archivos, y se para si aparece otro enlace del menú
+que abre en 403 para algún rol.
+
+| Ítem                                    | Estado                                                                                   | PRs  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------- | ---- |
+| R1 · El Vendedor ve a quién contar      | ✅ `GET /container-balances` para ADMIN y SELLER; «Envases» en la ficha; supuesto 20     | #249 |
+| R3 · Detalle de ruta con enlaces        | ✅ dirección y referencia de cada parada con `LinkedText` (la referencia no se mostraba) | #250 |
+| R2 · Ningún enlace del menú abre en 403 | ✅ e2e por rol sobre el menú real; rojo sin R1, verde con R1; ningún otro 403            | #251 |
+| X · Datos de prueba en producción       | ✅ hecho desde la app con el `[OK]`, después del cierre (ver abajo)                      | #253 |
+| Cierre                                  | ✅ esta subsección                                                                       | este |
+
+**Supuesto 20 reemplaza lo que decía la primera vuelta** («`GET
+/container-balances` es solo ADMIN», «sección «Envases» (ADMIN)»): desde #249
+lo leen el administrador y el vendedor.
+
+**X · Hecho (2026-09-25, con el `[OK]` de Giancarlo, después del cierre).** Desde
+la app como administrador: «Contarlo» en la ficha del cliente de prueba abrió
+«Envases en poder de clientes» filtrada; su única ubicación se contó en 0 para
+los dos tipos (la pantalla pidió confirmar la diferencia de −10 por tipo), y
+después se desmarcó «Cliente activo» en su edición. En el libro: dos
+`COUNT_ADJUSTMENT` de 10 que salen de `WITH_CUSTOMER` y dos conteos nuevos.
+Nada se borró: el cobro y el pedido cancelado siguen (1 y 1), el lote de
+prueba intacto (50 llenos disponibles), 604 clientes activos de 605.
+Verificado: **Inventario** (0 en poder de clientes; 50 llenos con caño en
+planta, el lote de prueba), **Envases prestados** («Ningún cliente tiene
+envases») y **Cuadre de envases** («Las dos cuentas coinciden»). Encontrado al
+hacerlo: «Envases prestados» vacío dice «Todos los envases prestados volvieron a
+la planta», que no es lo que pasó cuando salen por un ajuste de conteo (texto a
+revisar; no se tocó).
+
+**Lo que cambió en producción y en demo fuera de los PRs:** solo X (arriba). R2 corre en
+el e2e local y en el de CI, cada uno con su propia base (`e2e`): no se creó
+ningún usuario en demo ni en producción. En la base local de Docker quedaron
+usuarios de prueba del e2e, desactivados.
+
+**Lo que encontró el loop y no estaba en el goal:**
+
+- «Envases en poder de clientes» era **el único** enlace del menú que abría en
+  403 para algún rol (el Vendedor). Con R1, el recorrido de los cuatro roles no
+  encontró otro.
+- El detalle de ruta no mostraba la **referencia** de la parada, solo la
+  dirección: R3 la agrega, con su enlace.
+- Una comparación de URL anclada solo al final (`/customers$`) dejaba pasar
+  `/login?from=/customers`: un test del menú hubiera dado verde con la sesión
+  perdida. El de R2 compara la ruta exacta, y se probó en rojo así.
+- El test de R2 suma unos 4 minutos al e2e (medido en local): el recorrido del administrador
+  son 17 pantallas que `nuxt dev` compila la primera vez.
+
+**Pendientes de Giancarlo:**
+
+- **El supuesto 20** con el dueño (va en la sección 2 del guion).
+- **4f (#238):** `[OK]` para mergear la migración del índice, después de las
+  20:00 de Lima.
+- **Supuesto 19:** la diferencia con HU-01 E2, a decidir con el dueño.
+- **F**, **A1** y la desinstalación de la app de Render en GitHub (sin cambios).
+- **El texto vacío de «Envases prestados»** («Todos los envases prestados
+  volvieron a la planta») no es cierto cuando salieron por un ajuste de conteo:
+  a reescribir (backlog, sin tocar).
+- **La reunión con el dueño**, con `docs/guion-piloto.md` al día.
+
+#### Lecciones
+
+- **Un test de enlaces tiene que poner un enlace en cada campo que cambia.** El
+  primer test de R3 solo tenía uno en la referencia: revertir la dirección no
+  ponía nada en rojo. Lo vio el `reviewer`.
+- **Probar el rojo que el test dice cubrir, no solo el del goal.** El de R2 se
+  corrió en rojo dos veces: sin los `@Roles` de R1 y con la sesión borrada.

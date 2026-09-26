@@ -54,15 +54,17 @@ Viñetas y no lista numerada: prettier renumera una lista con «3a».
       código:** el supuesto 14 decía que las etiquetas del sistema viejo
       quedaban en las notas del cliente; `customers` no tiene notas y
       `load:roster` descarta la columna (backlog nuevo).
-- [bloqueado] **2 · Zonas del padrón.** La herramienta está (#227):
-  `pnpm roster:zones` (dry-run por defecto, `--commit` solo a quien no tiene
-  zona, verificación por huella) y `export:tags` en `tools/firestore-export`
-  (solo id y etiquetas). Regla del mapeo: supuesto 16. **Bloqueado:** las
-  etiquetas no están en `main` (605 clientes, 0 con zona, 0 zonas, el prefijo
-  en ninguna columna) y el export de Firestore desde la sesión del agente lo
-  denegó el control de permisos (datos personales). **Pendiente de
-  Giancarlo:** correr `export:tags` (comando en `docs/DEPLOY.md`, «Zonas del padrón»). Después: dry-run → informe → `[OK]` →
-  `--commit` → verificación.
+- [x] **2 · Zonas del padrón** (#227, #237, #239). La herramienta:
+      `pnpm roster:zones` (dry-run por defecto, `--commit` solo a quien no
+      tiene zona, verificación por huella) y `export:tags` en
+      `tools/firestore-export` (solo id y etiquetas). Regla del mapeo:
+      supuesto 16. Estuvo bloqueado porque las etiquetas no estaban en `main`
+      y el export desde la sesión del agente lo negó el control de permisos.
+      Giancarlo corrió `export:tags`, el dry-run (#237 clasificó las etiquetas)
+      y el `--commit`. Verificado en `main` por SQL de solo lectura
+      (2026-09-25): 3 zonas (Parque 476, Surco 58, Casas Parque 3), las tres
+      sin días de reparto; 537 clientes con zona y 68 sin zona (los 67 del
+      padrón con una etiqueta que no es lugar, más el cliente de prueba).
 - [x] **3a · Defecto del recorrido (nuevo)** (#228). «Envases en poder de
       clientes» no dejaba encontrar a un cliente entre ~600 ubicaciones sin pasar
       ~30 páginas, y no filtraba por zona aunque la API lo admite y `/zones`

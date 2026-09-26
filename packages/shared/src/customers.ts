@@ -28,6 +28,8 @@ export interface CustomerListQuery {
   limit?: number;
   search?: string;
   zoneId?: string;
+  /** Only customers without a zone ("Sin zona"). Mutually exclusive with `zoneId`: both is a 400. */
+  withoutZone?: boolean;
   active?: boolean;
 }
 
@@ -48,3 +50,12 @@ export interface UpdateCustomerBody extends Partial<CreateCustomerBody> {
 
 /** MAX_LIMIT in the API's list-customers-query.dto.ts. */
 export const CUSTOMERS_PAGE_SIZE = 20;
+
+/**
+ * ZoneCustomerCountsDto (GET /customers/zone-counts). Active customers only;
+ * a zone with none is absent from `zones`, so a missing zone reads as 0.
+ */
+export interface ZoneCustomerCounts {
+  zones: Array<{ zoneId: string; activeCustomers: number }>;
+  withoutZone: number;
+}

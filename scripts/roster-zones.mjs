@@ -223,10 +223,19 @@ async function createZones(api, token, names, zoneIdByKey) {
   }
 }
 
-async function assignZones(api, token, assignments, zoneIdByKey) {
+/** Cada cuántos clientes se imprime el avance: son dos llamadas por cliente. */
+export const PROGRESS_EVERY = 50;
+
+async function assignZones(api, token, assignments, zoneIdByKey, { log, progressEvery }) {
   let assigned = 0;
   let zonedMeanwhile = 0;
+  let done = 0;
   for (const { customerId, zoneName } of assignments) {
+    // Solo conteos: ~540 clientes son ~1 080 llamadas, y sin esto parece colgado.
+    if (done > 0 && done % progressEvery === 0) {
+      log(`Asignados ${done} de ${assignments.length}`);
+    }
+    done += 1;
     // Se relee justo antes: si alguien le puso zona desde la app mientras
     // corría el script, esa gana.
     const current = await api(`/customers/${customerId}`, { token });
@@ -245,6 +254,7 @@ async function assignZones(api, token, assignments, zoneIdByKey) {
       throw new Error(`PATCH /customers/:id devolvió ${response.status}.`);
     assigned += 1;
   }
+  log(`Asignados ${done} de ${assignments.length}`);
   return { assigned, zonedMeanwhile };
 }
 
@@ -254,6 +264,7 @@ export async function rosterZones({
   customerTags,
   labelMap,
   commit = false,
+  progressEvery = PROGRESS_EVERY,
   baseUrl = TARGETS.apis.production,
   fetch: fetchImpl = fetch,
   log = console.log,
@@ -291,7 +302,16 @@ export async function rosterZones({
   const zonedBefore = customers.filter((customer) => customer.zoneId !== null).length;
   const zoneIdByKey = new Map(zones.map((zone) => [labelKey(zone.name), zone.id]));
   await createZones(api, token, plan.zonesToCreate, zoneIdByKey);
-  const { assigned, zonedMeanwhile } = await assignZones(api, token, plan.assignments, zoneIdByKey);
+  const { assigned, zonedMeanwhile } = await assignZones(
+    api,
+    token,
+    plan.assignments,
+    zoneIdByKey,
+    {
+      log,
+      progressEvery,
+    },
+  );
   log(`Zonas creadas: ${plan.zonesToCreate.length}. Clientes con zona nueva: ${assigned}.`);
   if (zonedMeanwhile > 0) log(`Con zona puesta desde la app mientras corría: ${zonedMeanwhile}.`);
 

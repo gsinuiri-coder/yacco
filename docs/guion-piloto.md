@@ -38,6 +38,21 @@ secciones 2 y 3._
   cliente, nunca editando la carga.
 - **Si pregunta qué haríamos nosotros:** recomendamos tomar la deuda del sistema viejo tal cual, tratar los teléfonos repetidos como relleno (no como clientes duplicados), y contar los bidones en la calle.
 
+#### Un solo cliente tiene casi toda la deuda (pregunta operativa)
+
+- **Hoy:** en `main` (SQL de solo lectura, 2026-09-25), **un solo cliente
+  tiene alrededor del 92 % de toda la deuda** del padrón, y es un cliente
+  **sin zona** (su etiqueta del sistema viejo no es un lugar). Los otros 101
+  clientes que deben se reparten el 8 % restante. El nombre y el monto se
+  buscan en la pantalla («Deuda por cliente»), no acá.
+- **Preguntar:** este cliente tiene casi toda la deuda que trajimos del
+  sistema viejo. ¿Esa deuda es real y vigente?
+- **Si dice que sí:** no se toca. Conviene preguntarle en qué zona se le
+  reparte, para ponérsela en su ficha.
+- **Si dice que no:** es el «caro» del supuesto 14: se corrige con
+  movimientos inversos, nunca editando la carga del padrón. El monto correcto
+  lo da él.
+
 #### Supuesto 13. «Debe desde» es el cargo que abrió la deuda actual
 
 - **Asumimos:** que al dueño le sirve saber desde cuándo un cliente no está al
@@ -48,7 +63,7 @@ secciones 2 y 3._
   cero, la fecha no se mueve.
 - **Construido encima:** `replayDebt` en
   `apps/api/src/modules/reports/reports.service.ts` y la columna «Debe desde»
-  de `apps/web-nuxt/app/pages/reports/debt.vue`. El día es el de Lima.
+  de `apps/web-nuxt/app/pages/reports/debt.vue`. El día es el de Lima. Si el cargo que abrió la deuda es el saldo inicial del padrón, la columna dice «Saldo inicial» y debajo «al» y la fecha con que se cargó, para que no pase por la de una venta (2026-09-25).
 - **Preguntar:** cuando un cliente le va pagando de a poco, ¿quiere ver desde
   cuándo no está al día, o la fecha de la venta más vieja que todavía no pagó?
 - **Si dice que no:** medio. «La venta más vieja impaga» exige decidir primero
@@ -59,11 +74,13 @@ secciones 2 y 3._
 
 #### Los precios de lista (pregunta operativa)
 
-- **Hoy:** los precios de lista son provisionales (S/ 8.00 la recarga,
-  S/ 30.00 el bidón con caño, S/ 28.00 el bidón sin caño). Se cambian en
+- **Hoy:** son **cuatro productos**, con precios de lista provisionales: dos
+  recargas (S/ 8.00 la recarga de 20 L con caño y S/ 8.00 la de 20 L sin caño)
+  y dos bidones nuevos (S/ 30.00 con caño, S/ 28.00 sin caño). Se cambian en
   «Productos» (Administración), solo el administrador.
-- **Preguntar:** ¿cuánto cobra hoy la recarga de 20 litros, y cuánto el bidón
-  nuevo, con caño y sin caño, a un cliente que no tiene un precio especial?
+- **Preguntar:** a un cliente que no tiene un precio especial, ¿cuánto le
+  cobra hoy la recarga de 20 litros con caño, y cuánto la de sin caño? ¿Y el
+  bidón nuevo, con caño y sin caño?
 - **Qué hacemos con la respuesta:** los pone él (o la oficina, con él al lado)
   en «Productos» en ese momento. Los clientes con precio especial se cargan
   en su ficha, en «Precios pactados».
@@ -145,6 +162,65 @@ secciones 2 y 3._
   los nombres, teléfonos y zonas que ya se corrigieron (detalle en
   `docs/DEPLOY.md`, «Saldos de envases de los clientes»).
 
+#### ¿Cuántos envases tiene hoy la planta? (pregunta operativa)
+
+- **Hoy:** el «Inventario» de `main` muestra **solo los datos de prueba**:
+  un ingreso de 50 bidones con caño que se llenaron en un lote de prueba (50
+  llenos en planta, 0 vacíos). Los envases del cliente de prueba ya se
+  contaron en 0 (2026-09-25): ningún cliente tiene envases. Ningún bidón sin
+  caño en planta. No es el galpón real.
+- **Preguntar:** ¿cuántos bidones tiene hoy en la planta, contando los vacíos
+  y los llenos, de cada tipo (con caño y sin caño)?
+- **Qué hacemos con la respuesta:** lo que falte entra como «Ingreso de
+  envases nuevos» en «Movimientos de envases». El lote de prueba no se borra
+  (el libro de envases no se edita), y **cómo se descuenta está por decidir**:
+  hoy la única salida a mano de un lleno en planta es la «Baja por daño», que
+  anotaría datos de prueba como bidones rotos. Hasta entonces, un lote nuevo
+  que llene más de lo que figura vacío avisa (supuesto 19).
+
+#### Supuesto 19. Registrar un lote sin vacíos suficientes avisa y no bloquea
+
+- **Asumimos:** que un aviso con el lote ya guardado le sirve igual que uno
+  antes de confirmar: si la oficina registra un lote que llena más bidones de
+  los que el sistema cree que había vacíos en la planta, el dato que está mal
+  es el inventario (faltan ingresos de envases por anotar), no el lote, porque
+  el dueño llenó esos bidones de verdad. Que avise y no bloquee está en la
+  spec (HU-01 E2: «advierte la inconsistencia antes de confirmar»); lo que
+  hace el código es avisar **después** de guardar.
+- **Construido encima:** `ProductionBatchesService.create`: la comparación
+  `producedQty > emptyAvailable` no frena el lote; lo registra, deja los
+  vacíos en planta en negativo y devuelve un aviso por tipo de envase con las
+  dos cantidades, que `apps/web-nuxt/app/pages/production.vue` muestra con el
+  lote ya guardado («Una advertencia, no un error»).
+- **Preguntar:** si la oficina anota un lote de 80 bidones y el sistema cree
+  que en la planta había solo 50 vacíos, ¿le sirve que lo anote y le avise
+  después, o quiere que le avise antes y le pregunte si lo guarda igual?
+- **Si dice que no:** medio, sin esquema. Un paso de confirmación en
+  «Producción»: la pantalla pide los vacíos en planta antes de guardar (o la
+  API responde el aviso sin guardar y se reenvía confirmado). Que no lo deje
+  guardar del todo no es una opción de esta pregunta: contradice HU-01 E2.
+- **Si pregunta qué haríamos nosotros:** recomendamos dejarlo como está:
+  anota y avisa. Los bidones ya están llenos, y el aviso es para ir a
+  registrar los envases que faltan.
+
+#### Supuesto 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes
+
+- **Asumimos:** que quien anota los conteos en la oficina (Vendedor) tiene que
+  ver los saldos de envases de los clientes para saber a quién contar.
+- **Construido encima:** los `@Roles(ADMIN, SELLER)` de
+  `apps/api/src/modules/container-balances/container-balances.controller.ts`
+  (los mismos que ya tenía `container-counts` para anotar un conteo) y la
+  sección «Envases» de la ficha
+  (`apps/web-nuxt/app/components/CustomerContainersSection.vue`, que
+  `apps/web-nuxt/app/pages/customers/[id]/index.vue` monta para ADMIN y SELLER).
+- **Preguntar:** la persona de la oficina que anota los conteos de bidones,
+  ¿puede ver cuántos bidones tiene cada cliente, o eso lo ve solo usted?
+- **Si dice que no:** barato. Se vuelve a ADMIN, y el enlace «Envases en poder
+  de clientes» del menú pasa a `onlyFor: "ADMIN"`, y la ficha deja de montar la
+  sección para el Vendedor. Entonces los conteos los anota solo él.
+- **Si pregunta qué haríamos nosotros:** recomendamos que la oficina los vea:
+  quien anota los conteos tiene que saber a quién le falta contar.
+
 ## 3. Las zonas
 
 #### Supuesto 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto
@@ -187,9 +263,18 @@ nombres de negocio: ¿es así, o alguna es un lugar?
 Esta tabla es la que se le muestra al leer la pregunta del supuesto 16: no hay
 una pregunta aparte.
 
+**Ya está así en `main`** (SQL de solo lectura, 2026-09-25): las tres zonas
+existen y **Parque tiene el 79 % de los clientes** (Surco el 10 %, Casas
+Parque menos del 1 %, y el 11 % queda sin zona). Por ese peso, una
+pregunta más (operativa, con su fila en la hoja de cierre): **¿cómo reparte
+usted a los clientes de Parque?** Si la respuesta es que los divide (por
+sectores, calles o días), la división se arma en «Zonas» y cada cliente se
+cambia desde su ficha.
+
 #### Los días de reparto de cada zona (pregunta operativa)
 
-- **Hoy:** las zonas se crean sin días de reparto.
+- **Hoy:** las tres zonas de `main` (Parque, Surco, Casas Parque) no tienen
+  días de reparto.
 - **Preguntar:** ¿qué días va el camión a cada zona?
 - **Qué hacemos con la respuesta:** se ponen en «Zonas» (Administración),
   zona por zona.
@@ -396,31 +481,27 @@ una pregunta aparte.
   `backlog-tecnico.md`).
 - **Si pregunta qué haríamos nosotros:** recomendamos que sí pueda cambiarse la suya desde la misma pantalla, y que lo haga hoy mismo con una contraseña que solo usted sepa.
 
-#### Supuesto 4. Decirle que la sesión abierta no se cierra alcanza
+#### Supuesto 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos
 
-- **Ahora sí se corta la sesión (2026-09-24, ítem 7b del plan, D-024):**
-  cambiar la contraseña o desactivar a alguien deja viejo su refresh token, y
-  el sistema le pide volver a ingresar en cuanto vence su acceso actual (a lo
-  sumo 15 minutos). La pantalla dice eso ahora. El supuesto de abajo queda
-  como registro de lo que se asumió mientras no era así; la pregunta sigue
-  valiendo para saber si esos 15 minutos le alcanzan o necesita el corte en
-  el acto. Vale también para el administrador que se cambia la suya
-  (supuesto 3): su propia sesión se corta igual.
-- **Asumimos:** que alcanza con **avisar** que cambiar la contraseña no cierra
-  la sesión que esa persona tenga abierta, y que para cortarle el acceso hay
-  que desactivarla.
-- **Construido encima:** el aviso del bloque «Cambiar contraseña». Que la
-  sesión no se cierre **no** es un supuesto: es un hecho del código, fijado por
-  el test «resetting a user's password does NOT invalidate a refresh token
-  already issued» en `apps/api/test/integration/auth.int.test.ts`. El supuesto
-  es que decírselo sea suficiente.
-- **Preguntar:** si le cambia la contraseña a alguien porque no quiere que siga
-  entrando, ¿le sirve que esa persona siga adentro hasta que cierre sesión, o
-  necesita que se caiga en ese momento?
-- **Si dice que no:** caro, y no es un cambio de redacción. Hace falta
-  invalidar tokens ya emitidos — ver «No hay forma de invalidar un token ya
-  emitido» en `backlog-tecnico.md`, que además arrastra el caso de desactivar
-  y reactivar.
+- **Asumimos:** que le alcanza con que la persona quede afuera **a lo sumo 15
+  minutos** después de desactivarla o de cambiarle la contraseña, y que no
+  necesita sacarla en el acto. Vale también para el administrador que se
+  cambia la suya (supuesto 3): su propia sesión se corta igual.
+- **Construido encima:** `users.token_version` (D-024): cambiar la contraseña
+  o desactivar deja viejo el refresh token de esa persona, y el sistema le
+  pide volver a ingresar en cuanto vence su acceso actual, que dura 15
+  minutos. Lo fijan los tests «resetting a user's password invalidates a
+  refresh token already issued» y «a user deactivated after issuing a refresh
+  token loses access on refresh» de
+  `apps/api/test/integration/auth.int.test.ts`, y lo dice el aviso del bloque
+  «Cambiar contraseña» de `apps/web-nuxt/app/pages/users.vue`.
+- **Preguntar:** si desactiva a alguien, o le cambia la contraseña porque no
+  quiere que siga entrando, esa persona puede seguir adentro hasta 15 minutos.
+  ¿Le alcanza, o necesita sacarla en el acto?
+- **Si dice que no:** medio. Sacarla en el acto exige que el acceso de
+  15 minutos también se revise contra `token_version` en cada pedido (hoy
+  solo lo revisa el refresh): una consulta más por pedido, o un acceso mucho
+  más corto. No toca esquema.
 - **Si pregunta qué haríamos nosotros:** recomendamos que alcance con que la persona quede afuera a lo sumo 15 minutos después de desactivarla (o de cambiarle la contraseña, que hace lo mismo). Hoy no hay forma de sacarla en el acto: si eso le hace falta, es trabajo nuevo.
 
 #### Supuesto 15. Nadie de la planta tiene una cuenta para mirar sin tocar
@@ -469,27 +550,32 @@ de «Cómo se resolvió»; si dijo otra cosa, se borra de Pendientes y se abre l
 que corresponda en `backlog-tecnico.md` (su línea «Si dice que no» dice
 cuánto cuesta).
 
-| Pregunta                                                                         | Qué pasó                             | Qué dijo, en una línea | Destino             |
-| -------------------------------------------------------------------------------- | ------------------------------------ | ---------------------- | ------------------- |
-| 14. El padrón del sistema viejo entra entero, sin zona y sin envases             | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 13. «Debe desde» es el cargo que abrió la deuda actual                           | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| Precios de lista (operativa)                                                     | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| 17. Un pedido se cobra al precio del día en que se entrega                       | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento       | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 11. Los llenos que vuelven reponen el lote más antiguo del que salieron          | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| ¿Sabe cuántos bidones tiene cada cliente? (operativa)                            | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto            | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| Días de reparto (operativa)                                                      | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea                    | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 6. Las rutas conservan al chofer que las hizo                                    | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| Choferes y oficina (operativa)                                                   | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
-| 18. Un cobro rechazado después de liquidar no reabre la liquidación              | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 8. El administrador que corrige una parada queda como quien autorizó el precio   | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 9. La parada muestra solo la última corrección, no todas                         | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 10. Corregir hacia arriba deja el camión en negativo en vez de frenar            | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 2. Al cambiar una contraseña, el administrador la elige y la dicta               | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 3. El administrador puede cambiarse la contraseña a sí mismo                     | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 4. Decirle que la sesión abierta no se cierra alcanza                            | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 15. Nadie de la planta tiene una cuenta para mirar sin tocar                     | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
-| 1. El buscador del Panel muestra clientes desactivados                           | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| Pregunta                                                                                            | Qué pasó                             | Qué dijo, en una línea | Destino             |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------------------- | ------------------- |
+| 14. El padrón del sistema viejo entra entero, sin zona y sin envases                                | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| Un cliente con casi toda la deuda: ¿real y vigente? (operativa)                                     | ☐ Respondió · ☐ Otra cosa            |                        | Nada / movimiento   |
+| 13. «Debe desde» es el cargo que abrió la deuda actual                                              | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| Precios de lista (operativa)                                                                        | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
+| 17. Un pedido se cobra al precio del día en que se entrega                                          | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento                          | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 11. Los llenos que vuelven reponen el lote más antiguo del que salieron                             | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| ¿Sabe cuántos bidones tiene cada cliente? (operativa)                                               | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
+| ¿Cuántos envases tiene hoy la planta? (operativa)                                                   | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
+| 19. Registrar un lote sin vacíos suficientes avisa y no bloquea                                     | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes                  | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto                               | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| ¿Cómo reparte a los clientes de Parque? (operativa)                                                 | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
+| Días de reparto (operativa)                                                                         | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
+| 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios                    | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea                                       | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 6. Las rutas conservan al chofer que las hizo                                                       | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| Choferes y oficina (operativa)                                                                      | ☐ Respondió · ☐ Otra cosa            |                        | Se carga en la app  |
+| 18. Un cobro rechazado después de liquidar no reabre la liquidación                                 | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 8. El administrador que corrige una parada queda como quien autorizó el precio                      | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 9. La parada muestra solo la última corrección, no todas                                            | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 10. Corregir hacia arriba deja el camión en negativo en vez de frenar                               | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 2. Al cambiar una contraseña, el administrador la elige y la dicta                                  | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 3. El administrador puede cambiarse la contraseña a sí mismo                                        | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 15. Nadie de la planta tiene una cuenta para mirar sin tocar                                        | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |
+| 1. El buscador del Panel muestra clientes desactivados                                              | ☐ Respondió · ☐ Aprobó · ☐ Otra cosa |                        | Validados / backlog |

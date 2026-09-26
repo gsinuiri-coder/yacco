@@ -6,6 +6,8 @@ export interface CustomerDebtRow {
   zone: NamedReference | null;
   debt: string;
   oldestChargeDate: string;
+  /** The charge that opened the current debt is the roster's opening balance: `oldestChargeDate` is the date it was loaded with, not a sale made in the system. */
+  openedByOpeningBalance: boolean;
 }
 
 /** CustomerDebtsReportDto. Only customers who owe; `total` is their sum. */
