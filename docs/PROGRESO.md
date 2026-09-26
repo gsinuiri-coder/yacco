@@ -1384,14 +1384,29 @@ que abre en 403 para algún rol.
 | R1 · El Vendedor ve a quién contar      | ✅ `GET /container-balances` para ADMIN y SELLER; «Envases» en la ficha; supuesto 20     | #249 |
 | R3 · Detalle de ruta con enlaces        | ✅ dirección y referencia de cada parada con `LinkedText` (la referencia no se mostraba) | #250 |
 | R2 · Ningún enlace del menú abre en 403 | ✅ e2e por rol sobre el menú real; rojo sin R1, verde con R1; ningún otro 403            | #251 |
-| X · Datos de prueba en producción       | ⏳ `[OK]` recibido: se hace después de este PR, desde la app                             | —    |
+| X · Datos de prueba en producción       | ✅ hecho desde la app con el `[OK]`, después del cierre (ver abajo)                      | #253 |
 | Cierre                                  | ✅ esta subsección                                                                       | este |
 
 **Supuesto 20 reemplaza lo que decía la primera vuelta** («`GET
 /container-balances` es solo ADMIN», «sección «Envases» (ADMIN)»): desde #249
 lo leen el administrador y el vendedor.
 
-**Lo que cambió en producción y en demo fuera de los PRs:** nada. R2 corre en
+**X · Hecho (2026-09-25, con el `[OK]` de Giancarlo, después del cierre).** Desde
+la app como administrador: «Contarlo» en la ficha del cliente de prueba abrió
+«Envases en poder de clientes» filtrada; su única ubicación se contó en 0 para
+los dos tipos (la pantalla pidió confirmar la diferencia de −10 por tipo), y
+después se desmarcó «Cliente activo» en su edición. En el libro: dos
+`COUNT_ADJUSTMENT` de 10 que salen de `WITH_CUSTOMER` y dos conteos nuevos.
+Nada se borró: el cobro y el pedido cancelado siguen (1 y 1), el lote de
+prueba intacto (50 llenos disponibles), 604 clientes activos de 605.
+Verificado: **Inventario** (0 en poder de clientes; 50 llenos con caño en
+planta, el lote de prueba), **Envases prestados** («Ningún cliente tiene
+envases») y **Cuadre de envases** («Las dos cuentas coinciden»). Encontrado al
+hacerlo: «Envases prestados» vacío dice «Todos los envases prestados volvieron a
+la planta», que no es lo que pasó cuando salen por un ajuste de conteo (texto a
+revisar; no se tocó).
+
+**Lo que cambió en producción y en demo fuera de los PRs:** solo X (arriba). R2 corre en
 el e2e local y en el de CI, cada uno con su propia base (`e2e`): no se creó
 ningún usuario en demo ni en producción. En la base local de Docker quedaron
 usuarios de prueba del e2e, desactivados.
@@ -1416,6 +1431,9 @@ usuarios de prueba del e2e, desactivados.
   20:00 de Lima.
 - **Supuesto 19:** la diferencia con HU-01 E2, a decidir con el dueño.
 - **F**, **A1** y la desinstalación de la app de Render en GitHub (sin cambios).
+- **El texto vacío de «Envases prestados»** («Todos los envases prestados
+  volvieron a la planta») no es cierto cuando salieron por un ajuste de conteo:
+  a reescribir (backlog, sin tocar).
 - **La reunión con el dueño**, con `docs/guion-piloto.md` al día.
 
 #### Lecciones
