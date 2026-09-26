@@ -201,7 +201,11 @@ cuándo, y tres líneas:
   que cambie precios.
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** la página `/my-route`, el menú reducido del Chofer y
-  la lectura por recurso de `common/viewer.ts`.
+  la lectura por recurso de `common/viewer.ts`. Sobre esta aprobación, el
+  cierre final (ítem B, 2026-09-26, por decisión de Giancarlo) dejó la app sin
+  conexión y la sincronización fuera del alcance en la spec (§1.3, §4.2, §4.3)
+  y en `AGENTS.md`; el diseño se conserva en
+  `.agents/skills/sync-protocol/SKILL.md`.
 
 ### 13. «Debe desde» es el cargo que abrió la deuda actual — 25/09/2026
 
@@ -276,8 +280,8 @@ cuándo, y tres líneas:
 - **Qué se decidió:** el lote se registra y el sistema avisa, con las dos
   cantidades por tipo de envase, que llenó más de los vacíos que figuraban en
   la planta (quedan en negativo). Quedaron afuera el paso de confirmación antes
-  de guardar y el bloqueo. HU-01 E2 todavía dice «antes de confirmar»: se
-  corrige para decir esto en el ítem B del cierre final.
+  de guardar y el bloqueo. HU-01 E2 dice esto desde el ítem B del cierre final
+  (2026-09-26); antes decía «antes de confirmar».
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** `ProductionBatchesService.create` y el aviso de
   `apps/web-nuxt/app/pages/production.vue`.

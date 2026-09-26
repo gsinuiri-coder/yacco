@@ -464,11 +464,9 @@ arranque en frío que Cloud Run paga en la primera request de la mañana (D-008)
 Más trabajo, más superficie, y nadie lo necesita en producción: para leer la
 API está la tabla de endpoints en `yacco-documentacion.md`.
 
-> **Nota al pasar, no arreglada acá.** `AGENTS.md` referencia
-> `.agents/rules/sync-protocol.md`, y ese archivo no existe: el contenido vive
-> en `.agents/skills/sync-protocol/SKILL.md`. Está fuera del alcance de esta
-> migración, pero conviene corregir la referencia en algún PR de
-> documentación.
+> **Nota al pasar.** `AGENTS.md` referenciaba
+> `.agents/rules/sync-protocol.md`, que no existe; desde el cierre final
+> (2026-09-26) apunta a `.agents/skills/sync-protocol/SKILL.md`.
 
 ---
 

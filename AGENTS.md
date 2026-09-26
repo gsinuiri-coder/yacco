@@ -11,11 +11,9 @@ pnpm monorepo. **Built today:** `apps/api` (NestJS modular monolith +
 Prisma/PostgreSQL), `apps/web-nuxt` (Nuxt 4 + Nuxt UI), `packages/shared`
 (DTO contracts) — that is the whole of `packages/`. The original `apps/web`
 (React + Vite) was retired once `apps/web-nuxt` reached feature parity; it no
-longer exists in the repo. **Reserved, not built:**
-`apps/mobile` (Expo, offline-first driver app) holds a `.gitkeep` and nothing
-else, and `packages/sync-engine` (pure-TS offline queue) has no directory at
-all. Both are planned scope (spec §1.3, §4.2), not code you can import or
-point a reader at.
+longer exists in the repo. **Out of scope:** the offline driver app
+(`apps/mobile` holds only a `.gitkeep`) and `packages/sync-engine` (no
+directory). The driver uses the web online, «Mi ruta» (supuesto 12, spec §1.3).
 The spec at `docs/yacco-documentacion.md` is the source of truth. If code and
 spec disagree, STOP and ask before proceeding.
 
@@ -108,21 +106,19 @@ spec disagree, STOP and ask before proceeding.
   `orders.delivery_date`) are calendar `date` in America/Lima; convert at the
   edges, never store local time in a timestamp.
 
-## Sync protocol — agreed design, NOT built
+## Sync protocol — design kept, OUT OF SCOPE
 
-These are not invariants: they govern no code, so nothing can violate them.
-There is no sync module — `POST /api/v1/sync/operations` has no controller and
-no service (only the `sync_operations` table, modelled ahead of time), and
-`apps/mobile` is empty. They are direct application of the protocol and they
-apply WHEN that module exists. Whether the driver app gets built at all is an
-open decision, taken with the plant owner. Full design in
-`.agents/rules/sync-protocol.md`; status note in spec §4.3.
+Not invariants: they govern no code. There is no sync module (only the
+`sync_operations` table, modelled ahead of time). The owner approved the
+driver using the web online (supuesto 12, 25/09/2026), so the offline app and
+sync are out of scope; the design is kept in
+`.agents/skills/sync-protocol/SKILL.md` and applies only if that is reopened.
 
 - **Field writes.** TODAY a driver registers a delivery through
   `PATCH /api/v1/routes/:id/stops/:stopId`: `routes.controller.ts` declares
   `@Roles(ADMIN, SELLER, DRIVER)` at class level and that PATCH inherits it.
   In practice the office records each stop from the web — the driver dictates
-  or writes on paper and someone loads it (spec §4.3). WHEN sync exists,
+  or writes on paper and someone loads it (spec §4.3). IF sync is ever built,
   driver field writes enter through `POST /api/v1/sync/operations` (idempotent
   by device-generated UUID; duplicates -> DUPLICATE, never re-applied), and
   the PATCH stays as the office path or is restricted to ADMIN/SELLER. That
