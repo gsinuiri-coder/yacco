@@ -1437,8 +1437,8 @@ usuarios de prueba del e2e, desactivados.
 - **F**, **A1** y la desinstalación de la app de Render en GitHub (sin cambios).
 - ~~**El texto vacío de «Envases prestados»** («Todos los envases prestados
   volvieron a la planta») no es cierto cuando salieron por un ajuste de conteo:
-  a reescribir (backlog, sin tocar).~~ Hecho en el cierre final (ítem D): dice
-  «Ningún cliente tiene envases prestados.».
+  a reescribir (backlog, sin tocar).~~ Hecho en el cierre final (2026-09-26): dice «Ningún
+  cliente tiene envases prestados.».
 
 #### Lecciones
 

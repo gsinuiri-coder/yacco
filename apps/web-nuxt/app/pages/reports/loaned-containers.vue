@@ -25,7 +25,7 @@ const report = useReport<LoanedContainersReport>("/reports/loaned-containers");
       :error-message="report.errorMessage.value"
       :empty="report.data.value?.rows.length === 0"
       empty-title="Ningún cliente tiene envases prestados."
-      empty-description="Aparecen acá cuando un cliente recibe bidones o cuando se cuentan en su ubicación."
+      empty-description="Aparecen acá cuando se le dejan bidones prestados a un cliente o un conteo encuentra envases en su ubicación."
       @retry="report.load"
     >
       <div v-if="report.data.value" class="space-y-6">
