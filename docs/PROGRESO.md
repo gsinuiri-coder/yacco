@@ -1270,6 +1270,19 @@ contra un preview»). Después, sentarse con el dueño y `docs/guion-piloto.md`.
   arma la hoja de una vez, con los pedidos del día (y de su zona). Se agregan
   todos o ninguno.
 
+**El recorrido con un Vendedor (segunda vuelta):** crear en **Usuarios** a una
+persona con el rol Vendedor y entrar con ella. Su menú no tiene «Cuadre de
+envases» ni «Reportes», y ninguna pantalla que sí tiene abre con un error de
+permisos (lo cuida el e2e de #251). Recorrer:
+
+1. **Clientes**, con el filtro de zona.
+2. La **ficha** de un cliente: su sección **Envases** y **«Contarlo»**.
+3. **Envases en poder de clientes**: anotar ese conteo.
+4. **Pedidos**: tomar uno para hoy.
+5. **Rutas**: planificar la del día y **«Agregar pedidos pendientes»**. En el
+   detalle, la referencia de cada parada con su link de Maps.
+6. **Pagos**: registrar un cobro.
+
 ## Revisión final — 2026-09-25
 
 La cola de `docs/plan-revision-final.md`: una revisión de producto final antes
@@ -1355,3 +1368,53 @@ ni monto, el catálogo de productos, el inventario, el cliente de prueba).
   de validarlo es lo que lo prueba de verdad.
 - **Antes de mostrar menos, leer el criterio de la HU.** «Saldo inicial» en vez
   de la fecha contradecía HU-19 E1; debajo de la fecha, no.
+
+### Segunda vuelta
+
+El goal que Giancarlo pasó después del cierre de la primera vuelta
+(`docs/plan-revision-final.md`, «Segunda vuelta»), con las mismas reglas y dos
+más: `git add` nombra sus archivos, y se para si aparece otro enlace del menú
+que abre en 403 para algún rol.
+
+| Ítem                                    | Estado                                                                                   | PRs  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------- | ---- |
+| R1 · El Vendedor ve a quién contar      | ✅ `GET /container-balances` para ADMIN y SELLER; «Envases» en la ficha; supuesto 20     | #249 |
+| R3 · Detalle de ruta con enlaces        | ✅ dirección y referencia de cada parada con `LinkedText` (la referencia no se mostraba) | #250 |
+| R2 · Ningún enlace del menú abre en 403 | ✅ e2e por rol sobre el menú real; rojo sin R1, verde con R1; ningún otro 403            | #251 |
+| X · Datos de prueba en producción       | ⏳ `[OK]` recibido: se hace después de este PR, desde la app                             | —    |
+| Cierre                                  | ✅ esta subsección                                                                       | este |
+
+**Supuesto 20 reemplaza lo que decía la primera vuelta** («`GET
+/container-balances` es solo ADMIN», «sección «Envases» (ADMIN)»): desde #249
+lo leen el administrador y el vendedor.
+
+**Lo que cambió en producción y en demo fuera de los PRs:** nada. R2 corre en
+el e2e local y en el de CI, cada uno con su propia base (`e2e`): no se creó
+ningún usuario en demo ni en producción. En la base local de Docker quedaron
+usuarios de prueba del e2e, desactivados.
+
+**Lo que encontró el loop y no estaba en el goal:**
+
+- «Envases en poder de clientes» era **el único** enlace del menú que abría en
+  403 para algún rol (el Vendedor). Con R1, el recorrido de los cuatro roles no
+  encontró otro.
+- El detalle de ruta no mostraba la **referencia** de la parada, solo la
+  dirección: R3 la agrega, con su enlace.
+- Una comparación de URL anclada solo al final (`/customers$`) dejaba pasar
+  `/login?from=/customers`: un test del menú hubiera dado verde con la sesión
+  perdida. El de R2 compara la ruta exacta, y se probó en rojo así.
+- El job de e2e de CI tarda unos 4 minutos más: el recorrido del administrador
+  son 17 pantallas que `nuxt dev` compila la primera vez.
+
+**Pendientes de Giancarlo:** los de la primera vuelta menos X, más el supuesto 20 con el
+dueño (va en la sección 2 del guion). Siguen: **4f (#238)**
+(`[OK]` y merge después de las 20:00 de Lima), el supuesto 19 contra HU-01 E2,
+**F**, **A1** y la app de Render en GitHub.
+
+#### Lecciones
+
+- **Un test de enlaces tiene que poner un enlace en cada campo que cambia.** El
+  primer test de R3 solo tenía uno en la referencia: revertir la dirección no
+  ponía nada en rojo. Lo vio el `reviewer`.
+- **Probar el rojo que el test dice cubrir, no solo el del goal.** El de R2 se
+  corrió en rojo dos veces: sin los `@Roles` de R1 y con la sesión borrada.
