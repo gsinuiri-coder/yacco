@@ -172,6 +172,13 @@ export class ContainerMovementsService {
     if (dto.locationId !== undefined) {
       await assertLocationExists(client, dto.locationId);
     }
+    if (touchesCustomer) {
+      // Serializa por ubicación todo lo que mueve su saldo, con el conteo
+      // físico incluido (`ContainerCountsService.create` toma el mismo lock
+      // antes de leer lo esperado): sin él, una entrega que se anota mientras
+      // se registra un conteo deja el ajuste calculado contra un saldo viejo.
+      await lockLocation(client, dto.locationId as string);
+    }
 
     const created = await client.containerMovement.create({
       data: {
@@ -200,7 +207,8 @@ export class ContainerMovementsService {
         locationId_containerTypeId: { locationId, containerTypeId: dto.containerTypeId },
       };
       // Reads the current balance and writes the absolute result inside
-      // this same transaction, rather than upsert's `increment`: with a
+      // this same transaction — safe because `lockLocation` above already
+      // serialized every writer of this location's balance — rather than upsert's `increment`: with a
       // composite (no single-column) id, Prisma's upsert does not apply
       // `increment` against the row already on disk when the ON CONFLICT
       // branch is taken, so a second movement silently overwrote the first
@@ -355,6 +363,18 @@ export class ContainerMovementsService {
       })),
     );
   }
+}
+
+/**
+ * `FOR NO KEY UPDATE` y no `FOR UPDATE`: alcanza para que dos escrituras sobre
+ * el saldo de la misma ubicación vayan de a una, sin frenar las filas que solo
+ * la referencian (una venta, un pedido), que toman `FOR KEY SHARE`.
+ */
+export async function lockLocation(
+  client: Prisma.TransactionClient,
+  locationId: string,
+): Promise<void> {
+  await client.$queryRaw`SELECT id FROM customer_locations WHERE id = ${locationId}::uuid FOR NO KEY UPDATE`;
 }
 
 /**
