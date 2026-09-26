@@ -53,7 +53,9 @@ Las entradas validadas tienen tres líneas:
 - **Construido encima** — qué código la implementa, o que todavía no hay ninguno.
 
 **Regla para escribir código nuevo:** si una decisión de producto se toma sin
-preguntarle, se anota acá y el comentario del código dice que es un supuesto.
+preguntarle, se anota en **Pendientes** (si se le va a preguntar) o en
+**Decididos sin el dueño** (si se tomó en un trabajo autónomo, sin reunión
+posible), y el comentario del código dice que es un supuesto.
 Lo que no se puede es escribirla como si él la hubiera pedido — el día que
 diga otra cosa, el documento tiene que mostrar que nunca se lo preguntamos, no
 que dijo que sí.
@@ -65,16 +67,18 @@ el 2026-09-24 y el 2026-09-25) se le llevaron al dueño el 2026-09-25 con su
 recomendación y los aprobó: bajaron a **Validados**, numerados igual que
 antes para que los enlaces de `guion-piloto.md` sigan valiendo.
 
-Un supuesto nuevo se escribe acá con sus cuatro líneas (**Asumimos**,
-**Construido encima**, **Preguntar**, **Si dice que no**) y la línea de quién
-lo decidió y cuándo.
+Un supuesto nuevo se escribe acá con las cuatro líneas de «Cómo se usa», más
+una primera línea que dice quién lo decidió y cuándo.
 
 ## Decididos sin el dueño
 
 Decisiones de dominio que se tomaron **sin preguntarle**, en un trabajo
-autónomo donde no había reunión posible. No son respuestas suyas: el día que
-diga otra cosa, la línea **Si resulta que no** dice cuánto cuesta cambiarlas.
-Cada una lleva quién la decidió y cuándo, y tres líneas:
+autónomo donde no había reunión posible. No son respuestas suyas ni preguntas
+agendadas: por eso no llevan **Preguntar** y no están en Pendientes. El día
+que diga otra cosa, la línea **Si resulta que no** (el equivalente de «Si dice
+que no») dice cuánto cuesta cambiarlas. Si después se le preguntan y contesta,
+bajan a Validados como cualquier otra. Cada una lleva quién la decidió y
+cuándo, y tres líneas:
 
 - **Asumimos** — lo que se da por cierto de la operación de la planta.
 - **Construido encima** — qué código depende de eso.
@@ -82,7 +86,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 
 ## Validados
 
-### 1. El buscador del Panel muestra clientes desactivados — 2026-09-25
+### 1. El buscador del Panel muestra clientes desactivados — 25/09/2026
 
 - **Qué se decidió:** el buscador de la pantalla de inicio trae también a los
   clientes dados de baja, porque el que se dio de baja y todavía debe es a
@@ -91,7 +95,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Construido encima:** `apps/web-nuxt/app/components/CustomerQuickSearch.vue`,
   sin el filtro `active` que sí aplica `CustomerPicker.vue`.
 
-### 2. Al cambiar una contraseña, el administrador la elige y la dicta — 2026-09-25
+### 2. Al cambiar una contraseña, el administrador la elige y la dicta — 25/09/2026
 
 - **Qué se decidió:** cuando a alguien se le olvida la contraseña, el
   administrador le pone una y se la dicta. Quedaron afuera la contraseña
@@ -101,7 +105,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Construido encima:** el bloque «Cambiar contraseña» de
   `apps/web-nuxt/app/pages/users.vue`.
 
-### 3. El administrador puede cambiarse la contraseña a sí mismo — 2026-09-25
+### 3. El administrador puede cambiarse la contraseña a sí mismo — 25/09/2026
 
 - **Qué se decidió:** el administrador se cambia la suya desde «Usuarios», en
   su propia fila, y es la forma de rotar la contraseña inicial. Quedó afuera
@@ -111,7 +115,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Construido encima:** `users.vue`, que ofrece «Cambiar contraseña» también
   en la fila propia.
 
-### 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos — 2026-09-25
+### 4. Quien es desactivado, o a quien se le cambia la contraseña, queda afuera a lo sumo en 15 minutos — 25/09/2026
 
 - **Qué se decidió:** alcanza con que la persona quede afuera a lo sumo 15
   minutos después de desactivarla o de cambiarle la contraseña, también el
@@ -122,7 +126,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
   deactivated after issuing a refresh token loses access on refresh» de
   `apps/api/test/integration/auth.int.test.ts`.
 
-### 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea — 2026-09-25
+### 5. Quitarle el rol de chofer a alguien avisa, pero no bloquea — 25/09/2026
 
 - **Qué se decidió:** si el administrador le quita «Chofer» a alguien con
   rutas sin cerrar, el sistema le dice cuántas y lo deja decidir. Quedó afuera
@@ -130,7 +134,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** el bloque «Roles» de `apps/web-nuxt/app/pages/users.vue`.
 
-### 6. Las rutas conservan al chofer que las hizo — 2026-09-25
+### 6. Las rutas conservan al chofer que las hizo — 25/09/2026
 
 - **Qué se decidió:** la ruta sigue a nombre de quien salió con ella aunque
   después deje de ser chofer; la oficina la termina y la liquida igual. Quedó
@@ -139,7 +143,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Construido encima:** el cambio de roles no toca `routes`;
   `assertCanAccessRoute` deja a ADMIN y SELLER terminar cualquier ruta.
 
-### 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento — 2026-09-25
+### 7. El cliente devuelve los vacíos en la visita siguiente, no en el momento — 25/09/2026
 
 - **Qué se decidió:** la demo sigue mostrando que el chofer se lleva los vacíos
   de la visita anterior, con un descuadre de ejemplo. Quedó afuera cambiar las
@@ -147,7 +151,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** el plan de `seed-demo-plan.ts`.
 
-### 8. El administrador que corrige una parada queda como quien autorizó el precio — 2026-09-25
+### 8. El administrador que corrige una parada queda como quien autorizó el precio — 25/09/2026
 
 - **Qué se decidió:** en una corrección alcanza con el nombre de quien corrige
   y el motivo; quien corrige queda como el que autorizó el precio de esa venta.
@@ -158,16 +162,18 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
   `priceOverrideAuthorizedById: actor.id` siempre, y el 400 a un
   `priceOverrideAuthorizedById` que venga en el cuerpo.
 
-### 9. La parada muestra solo la última corrección, no todas — 2026-09-25
+### 9. La parada muestra solo la última corrección, no todas — 25/09/2026
 
-- **Qué se decidió:** la visita muestra la última corrección con su motivo; lo
-  anterior queda en la venta anulada y en el libro de envases. Quedó afuera la
-  lista de todas las correcciones (una tabla nueva).
+- **Qué se decidió:** la visita muestra la última corrección con su motivo.
+  Cuando la visita tenía una venta, la anterior queda anulada con su motivo y
+  el libro de envases guarda todo; si la visita había quedado como no
+  entregada, el motivo de la primera corrección se reemplaza con el de la
+  segunda. Quedó afuera la lista de todas las correcciones (una tabla nueva).
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** `corrected_at` / `corrected_by` / `correction_reason`
   de `route_stops`, que una segunda corrección pisa.
 
-### 10. Corregir hacia arriba deja el camión en negativo en vez de frenar — 2026-09-25
+### 10. Corregir hacia arriba deja el camión en negativo en vez de frenar — 25/09/2026
 
 - **Qué se decidió:** si al corregir una visita se entregaron más bidones de
   los que figuraban cargados, la corrección se anota igual y avisa que el
@@ -178,7 +184,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
   `SalesService.registerStopDeliveryWithinTransaction`, que solo prende
   `RoutesService.correctStop`, y el aviso de `RouteMarkOutcome.vue`.
 
-### 11. Los llenos que vuelven reponen el lote más antiguo del que salieron — 2026-09-25
+### 11. Los llenos que vuelven reponen el lote más antiguo del que salieron — 25/09/2026
 
 - **Qué se decidió:** los bidones llenos que vuelven sin entregar entran otra
   vez al stock para cargar mañana, reponiendo primero el lote más viejo de los
@@ -187,19 +193,17 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** `RouteSettlementService.returnFullsToPlant`.
 
-### 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios — 2026-09-25
+### 12. El chofer registra sus paradas en el celular, en línea y sin cambiar precios — 25/09/2026
 
 - **Qué se decidió:** el chofer usa el mismo web en el celular, con internet
   («Mi ruta»), y cobra siempre el precio pactado; si el cliente paga distinto,
-  lo arregla la oficina. Quedaron afuera, **fuera del alcance** del proyecto,
-  la app sin conexión y la sincronización (spec §1.3, §4.2 y §4.3; el diseño se
-  conserva en `.agents/rules/sync-protocol.md`), las fotos de evidencia y que el
-  chofer cambie precios.
+  lo arregla la oficina. Quedaron afuera que el chofer registre sin señal y
+  que cambie precios.
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** la página `/my-route`, el menú reducido del Chofer y
   la lectura por recurso de `common/viewer.ts`.
 
-### 13. «Debe desde» es el cargo que abrió la deuda actual — 2026-09-25
+### 13. «Debe desde» es el cargo que abrió la deuda actual — 25/09/2026
 
 - **Qué se decidió:** «Debe desde» es la fecha en que el cliente dejó de estar
   al día. Quedó afuera la fecha de la venta más vieja impaga, que exigiría
@@ -210,19 +214,26 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
   de `apps/web-nuxt/app/pages/reports/debt.vue`, con «Saldo inicial» y su fecha
   cuando la deuda abre en el padrón.
 
-### 14. El padrón del sistema viejo entra entero, sin zona y sin envases — 2026-09-25
+### 14. El padrón del sistema viejo entra entero, sin zona y sin envases — 25/09/2026
 
 - **Qué se decidió:** la deuda del sistema viejo es la vigente y entra tal
   cual; los teléfonos repetidos son de relleno, no clientes duplicados; los
-  bidones de cada cliente se cuentan en la calle. Quedaron afuera recargar el
-  padrón y traer envases del sistema viejo (no los tenía). El cliente que tiene
-  cerca del 92 % de la deuda es real y vigente, se deja como está y sigue sin
-  zona.
+  bidones de cada cliente se cuentan en la calle. Quedaron afuera tratar los
+  teléfonos repetidos como clientes duplicados y traer envases del sistema
+  viejo (no los tenía).
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** `tools/firestore-export/src/to-roster.ts`,
   `pnpm load:roster` y la carga en `main` del 2026-09-24.
 
-### 15. Nadie de la planta tiene una cuenta para mirar sin tocar — 2026-09-25
+### El cliente con casi toda la deuda — 25/09/2026
+
+- **Qué se decidió:** la deuda del cliente que tiene cerca del 92 % del total
+  del padrón es real y vigente: no se toca, y el cliente sigue sin zona.
+- **Cómo se resolvió:** respondió la pregunta (operativa, sin recomendación).
+- **Construido encima:** nada nuevo; su saldo inicial del padrón queda como
+  entró.
+
+### 15. Nadie de la planta tiene una cuenta para mirar sin tocar — 25/09/2026
 
 - **Qué se decidió:** en el piloto nadie tiene una cuenta solo para mirar;
   `VIEWER` sigue siendo la cuenta técnica del smoke. Quedó afuera un rol de
@@ -231,7 +242,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Construido encima:** el enum `user_role` con `VIEWER`,
   `scripts/viewer-bootstrap.mjs` y `checkViewerSession` de `scripts/smoke.mjs`.
 
-### 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto — 2026-09-25
+### 16. Las etiquetas de lugar del sistema viejo son las zonas de reparto — 25/09/2026
 
 - **Qué se decidió:** una etiqueta es zona si nombra un lugar. Parque, Surco y
   **Casas Parque, que es zona aparte** de Parque. **EMPRESAS, DISTRIBUIDOR,
@@ -242,7 +253,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Construido encima:** `scripts/roster-zones.mjs`, su mapeo
   `scripts/roster-zones-labels.json` y las tres zonas de `main`.
 
-### 17. Un pedido se cobra al precio del día en que se entrega — 2026-09-25
+### 17. Un pedido se cobra al precio del día en que se entrega — 25/09/2026
 
 - **Qué se decidió:** se cobra el precio vigente el día de la entrega, también
   en un pedido tomado antes del cambio. Quedó afuera respetar el precio del día
@@ -251,7 +262,7 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Construido encima:** `SalesService.registerStopDeliveryWithinTransaction`
   y el texto de ayuda de `apps/web-nuxt/app/pages/products.vue`.
 
-### 18. Un cobro rechazado después de liquidar no reabre la liquidación — 2026-09-25
+### 18. Un cobro rechazado después de liquidar no reabre la liquidación — 25/09/2026
 
 - **Qué se decidió:** la liquidación queda como se cerró, con el aviso de que
   un cobro se cayó, y ese monto se le cobra al cliente, donde queda como deuda.
@@ -260,17 +271,18 @@ Cada una lleva quién la decidió y cuándo, y tres líneas:
 - **Construido encima:** `RouteSettlementService.getSettlementView`,
   `moneyDrifted` y el aviso de `apps/web-nuxt/app/pages/routes/[id]/settlement.vue`.
 
-### 19. Registrar un lote sin vacíos suficientes avisa y no bloquea — 2026-09-25
+### 19. Registrar un lote sin vacíos suficientes avisa y no bloquea — 25/09/2026
 
 - **Qué se decidió:** el lote se registra y el sistema avisa, con las dos
   cantidades por tipo de envase, que llenó más de los vacíos que figuraban en
   la planta (quedan en negativo). Quedaron afuera el paso de confirmación antes
-  de guardar y el bloqueo. La spec (HU-01 E2) pasa a decir esto.
+  de guardar y el bloqueo. HU-01 E2 todavía dice «antes de confirmar»: se
+  corrige para decir esto en el ítem B del cierre final.
 - **Cómo se resolvió:** aprobó la recomendación.
 - **Construido encima:** `ProductionBatchesService.create` y el aviso de
   `apps/web-nuxt/app/pages/production.vue`.
 
-### 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes — 2026-09-25
+### 20. Quien anota los conteos en la oficina ve los saldos de envases de los clientes — 25/09/2026
 
 - **Qué se decidió:** el Vendedor ve «Envases en poder de clientes» y la
   sección «Envases» de la ficha, igual que el administrador. Quedó afuera
