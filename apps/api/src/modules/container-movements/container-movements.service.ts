@@ -57,7 +57,9 @@ function limaDayStartUtc(date: string): Date {
  * calling `createWithinTransaction` directly — never through this public
  * route. Each writer keeps a companion record this ledger row must stay in
  * lock-step with: the customer-roster loader's cutover entry for
- * OPENING_BALANCE, the `container_counts` row for COUNT_ADJUSTMENT, and the
+ * OPENING_BALANCE, the `container_counts` row for a customer COUNT_ADJUSTMENT
+ * (the plant count's adjustments have none: they carry the batch they came
+ * out of, or nothing for empties, and `countPlant` is their only writer), and the
  * voided Sale/Payment for each of the three *_VOID types. A movement of any
  * of these registered here by hand would have no such companion, leaving the
  * ledger and that record diverging — exactly what each of those tables
@@ -265,17 +267,7 @@ export class ContainerMovementsService {
     routeId: string,
     containerTypeId: string,
   ): Promise<number> {
-    const [loaded, left] = await Promise.all([
-      client.containerMovement.aggregate({
-        where: { routeId, containerTypeId, toState: ContainerState.FULL_ON_ROUTE },
-        _sum: { quantity: true },
-      }),
-      client.containerMovement.aggregate({
-        where: { routeId, containerTypeId, fromState: ContainerState.FULL_ON_ROUTE },
-        _sum: { quantity: true },
-      }),
-    ]);
-    return (loaded._sum.quantity ?? 0) - (left._sum.quantity ?? 0);
+    return netInState(client, { routeId, containerTypeId }, ContainerState.FULL_ON_ROUTE);
   }
 
   /**
@@ -289,17 +281,7 @@ export class ContainerMovementsService {
     containerTypeId: string,
     state: ContainerState,
   ): Promise<number> {
-    const [into, outOf] = await Promise.all([
-      client.containerMovement.aggregate({
-        where: { containerTypeId, toState: state },
-        _sum: { quantity: true },
-      }),
-      client.containerMovement.aggregate({
-        where: { containerTypeId, fromState: state },
-        _sum: { quantity: true },
-      }),
-    ]);
-    return (into._sum.quantity ?? 0) - (outOf._sum.quantity ?? 0);
+    return netInState(client, { containerTypeId }, state);
   }
 
   /**
@@ -373,6 +355,29 @@ export class ContainerMovementsService {
       })),
     );
   }
+}
+
+/**
+ * Lo que entró a `state` menos lo que salió, entre los movimientos que
+ * cumplen `where`. Una sola cuenta para el camión de una ruta y para una
+ * celda del inventario.
+ */
+async function netInState(
+  client: Prisma.TransactionClient,
+  where: Prisma.ContainerMovementWhereInput,
+  state: ContainerState,
+): Promise<number> {
+  const [into, outOf] = await Promise.all([
+    client.containerMovement.aggregate({
+      where: { ...where, toState: state },
+      _sum: { quantity: true },
+    }),
+    client.containerMovement.aggregate({
+      where: { ...where, fromState: state },
+      _sum: { quantity: true },
+    }),
+  ]);
+  return (into._sum.quantity ?? 0) - (outOf._sum.quantity ?? 0);
 }
 
 function buildMovementFilter(

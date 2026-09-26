@@ -110,7 +110,7 @@ describe("POST /api/v1/container-counts/plant", () => {
   // El lote más viejo se inserta SEGUNDO y tiene el código que ordena último:
   // si el descuento siguiera el orden de inserción o el código, tomaría del
   // lote nuevo. La diferencia (8) cruza los dos lotes.
-  test("fulls counted short are taken from the oldest batch first, one adjustment per batch, across two batches", async () => {
+  test("HU-25 E3: fulls counted short are taken from the oldest batch first, one adjustment per batch, across two batches", async () => {
     const containerTypeId = await newContainerType();
     await fleetEntry(containerTypeId, 20);
     const newer = await batch("A-PLANTA-NUEVO", "2026-09-10", containerTypeId, 5);
@@ -161,7 +161,7 @@ describe("POST /api/v1/container-counts/plant", () => {
     expect(reconciliation.body.discrepancyCount).toBe(0);
   });
 
-  test("empties counted from a negative balance enter the plant by the whole difference", async () => {
+  test("HU-25 E2: empties counted from a negative balance enter the plant by the whole difference", async () => {
     const containerTypeId = await newContainerType();
     await fleetEntry(containerTypeId, 2);
     await batch("PLANTA-NEGATIVO", "2026-09-02", containerTypeId, 5);
@@ -191,24 +191,24 @@ describe("POST /api/v1/container-counts/plant", () => {
     expect(await inventoryCell(containerTypeId, "FULL_AT_PLANT")).toBe(5);
   });
 
-  test("empties counted short leave the plant by the difference", async () => {
+  test("HU-25 E1: empties counted short leave the plant by the difference", async () => {
     const containerTypeId = await newContainerType();
-    await fleetEntry(containerTypeId, 10);
+    await fleetEntry(containerTypeId, 20);
 
     const response = await countPlant(adminToken, {
       containerTypeId,
       state: "EMPTY_AT_PLANT",
-      countedQuantity: 6,
+      countedQuantity: 14,
     }).expect(201);
 
     const movement = await prisma().containerMovement.findUniqueOrThrow({
       where: { id: response.body.adjustments[0].id },
     });
-    expect(movement).toMatchObject({ fromState: "EMPTY_AT_PLANT", toState: null, quantity: 4 });
-    expect(await inventoryCell(containerTypeId, "EMPTY_AT_PLANT")).toBe(6);
+    expect(movement).toMatchObject({ fromState: "EMPTY_AT_PLANT", toState: null, quantity: 6 });
+    expect(await inventoryCell(containerTypeId, "EMPTY_AT_PLANT")).toBe(14);
   });
 
-  test("a count that matches the ledger writes nothing", async () => {
+  test("HU-25 E5: a count that matches the ledger writes nothing", async () => {
     const containerTypeId = await newContainerType();
     await fleetEntry(containerTypeId, 5);
     const before = await prisma().containerMovement.count({ where: { containerTypeId } });
@@ -227,7 +227,7 @@ describe("POST /api/v1/container-counts/plant", () => {
     expect(await prisma().containerMovement.count({ where: { containerTypeId } })).toBe(before);
   });
 
-  test("more fulls than the ledger has is rejected and nothing is written", async () => {
+  test("HU-25 E4: more fulls than the ledger has is rejected and nothing is written", async () => {
     const containerTypeId = await newContainerType();
     await fleetEntry(containerTypeId, 3);
     const batchId = await batch("PLANTA-DE-MAS", "2026-09-03", containerTypeId, 3);
@@ -246,7 +246,46 @@ describe("POST /api/v1/container-counts/plant", () => {
     expect(await availableOf(batchId, containerTypeId)).toBe(3);
   });
 
-  test("only an administrator counts the plant", async () => {
+  test("HU-25 E4, with no movement of that type at all: counting fulls is rejected", async () => {
+    const containerTypeId = await newContainerType();
+
+    const response = await countPlant(adminToken, {
+      containerTypeId,
+      state: "FULL_AT_PLANT",
+      countedQuantity: 2,
+    }).expect(400);
+
+    expect(response.body.message).toContain(
+      "Los llenos que faltan se anotan como lote en Producción",
+    );
+    expect(await prisma().containerMovement.count({ where: { containerTypeId } })).toBe(0);
+  });
+
+  // No se puede llegar acá por la API (todo lleno entra por un lote): se
+  // escribe a mano un lote con menos disponibles que el libro, para probar
+  // que el conteo se frena en vez de inventar un lote.
+  test("when the batches hold fewer fulls than the ledger, the count stops and writes nothing", async () => {
+    const containerTypeId = await newContainerType();
+    await fleetEntry(containerTypeId, 5);
+    const batchId = await batch("PLANTA-DESFASADO", "2026-09-04", containerTypeId, 5);
+    await prisma().batchItem.updateMany({
+      where: { batchId, containerTypeId },
+      data: { availableQty: 2 },
+    });
+    const before = await prisma().containerMovement.count({ where: { containerTypeId } });
+
+    const response = await countPlant(adminToken, {
+      containerTypeId,
+      state: "FULL_AT_PLANT",
+      countedQuantity: 0,
+    }).expect(409);
+
+    expect(response.body.message).toContain("Revise los lotes en Producción");
+    expect(await prisma().containerMovement.count({ where: { containerTypeId } })).toBe(before);
+    expect(await availableOf(batchId, containerTypeId)).toBe(2);
+  });
+
+  test("HU-25 E6: only an administrator counts the plant", async () => {
     const containerTypeId = await newContainerType();
     await fleetEntry(containerTypeId, 4);
     const body = { containerTypeId, state: "EMPTY_AT_PLANT", countedQuantity: 0 };

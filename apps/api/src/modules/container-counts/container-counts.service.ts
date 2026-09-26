@@ -169,7 +169,16 @@ export class ContainerCountsService {
    *
    * Todo en una transacción. La fila del tipo de envase se bloquea al
    * empezar, así dos conteos del mismo tipo enviados a la vez (un doble clic)
-   * no descuentan dos veces: el segundo lee el libro que dejó el primero.
+   * no descuentan dos veces: el segundo lee el libro que dejó el primero. Ese
+   * bloqueo NO frena una carga de ruta, un lote o una liquidación que se
+   * anote en el mismo instante: esas no lo toman, y lo contado se compara
+   * contra el libro de un momento antes. Se acepta porque el conteo se hace
+   * con el galpón quieto; la deuda general de bloqueos está en «Sin lock
+   * sobre customer_container_balances al leer-y-reescribir» del backlog.
+   *
+   * Lo esperado de los llenos sale del libro, no de los lotes. Hoy pueden no
+   * coincidir: una baja por daño de un lleno en planta baja el libro y no el
+   * lote («Una baja de llenos en planta no descuenta el lote», backlog).
    */
   async countPlant(dto: CreatePlantCountDto, countedById: string): Promise<PlantCountResponseDto> {
     return this.prisma.$transaction(async (tx) => {
