@@ -8,6 +8,7 @@ export * from "./container-balances.js";
 export * from "./container-counts.js";
 export * from "./container-movements.js";
 export * from "./container-reconciliation.js";
+export * from "./debt-reconciliation.js";
 export * from "./customer-prices.js";
 export * from "./customers.js";
 export * from "./money.js";
