@@ -680,3 +680,17 @@ describe("una venta y un cobro anulados", () => {
     },
   );
 });
+
+describe("the index that supports the statement", () => {
+  // Migración 20260925130000 (ítem 4f de docs/plan-piloto.md). Con el volumen
+  // de un test el planificador igual recorre la tabla entera, así que lo que se
+  // prueba es que el índice exista y cubra las dos columnas, en ese orden.
+  test("sales has an index on (location_id, sold_at)", async () => {
+    const rows = await prisma.$queryRaw<{ indexdef: string }[]>`
+      SELECT indexdef FROM pg_indexes
+      WHERE tablename = 'sales' AND indexname = 'sales_location_id_sold_at_idx'`;
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.indexdef).toContain("(location_id, sold_at)");
+  });
+});

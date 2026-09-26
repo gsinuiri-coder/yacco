@@ -613,6 +613,9 @@ model Sale {
   items                     SaleItem[]
   payments                  Payment[]
 
+  // A customer's account statement walks their sales by location, oldest
+  // first (CustomersService.getAccountStatement). Expand-only, no column.
+  @@index([locationId, soldAt])
   @@map("sales")
 }
 
