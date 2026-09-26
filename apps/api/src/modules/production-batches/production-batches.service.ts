@@ -132,7 +132,11 @@ export class ProductionBatchesService {
 
         const warnings: ProductionBatchWarningDto[] = [];
         for (const item of dto.items) {
-          const emptyAvailable = await this.emptyAtPlantQuantity(tx, item.containerTypeId);
+          const emptyAvailable = await this.containerMovementsService.getStateBalance(
+            tx,
+            item.containerTypeId,
+            ContainerState.EMPTY_AT_PLANT,
+          );
 
           await this.containerMovementsService.createWithinTransaction(
             tx,
@@ -207,31 +211,6 @@ export class ProductionBatchesService {
       throw new NotFoundException(`El lote "${id}" no existe`);
     }
     return toBatchResponse(batch);
-  }
-
-  /**
-   * Net empty-at-plant quantity for one container type, derived from the
-   * ledger the same way `ContainerMovementsService.inventory` does — every
-   * movement that landed there minus every movement that left it — but
-   * scoped to a single type and read inside the caller's own transaction, so
-   * it reflects exactly what is on the books the instant before this
-   * batch's own FILLING movements are added to it.
-   */
-  private async emptyAtPlantQuantity(
-    client: Prisma.TransactionClient,
-    containerTypeId: string,
-  ): Promise<number> {
-    const [into, outOf] = await Promise.all([
-      client.containerMovement.aggregate({
-        where: { containerTypeId, toState: ContainerState.EMPTY_AT_PLANT },
-        _sum: { quantity: true },
-      }),
-      client.containerMovement.aggregate({
-        where: { containerTypeId, fromState: ContainerState.EMPTY_AT_PLANT },
-        _sum: { quantity: true },
-      }),
-    ]);
-    return (into._sum.quantity ?? 0) - (outOf._sum.quantity ?? 0);
   }
 }
 

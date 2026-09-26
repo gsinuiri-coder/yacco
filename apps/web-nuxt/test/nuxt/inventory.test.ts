@@ -2,10 +2,10 @@ import { registerEndpoint, renderSuspended } from "@nuxt/test-utils/runtime";
 import { screen, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import type { H3Event } from "h3";
-import type { ContainerInventoryItem, ContainerState } from "@yacco/shared";
+import type { ContainerInventoryItem, ContainerState, PlantCount } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
-import { failWith } from "../support/route-detail";
+import { failWith, stubWrite } from "../support/route-detail";
 import { resetSession, signIn } from "../support/session";
 
 const cleanups: Array<() => void> = [];
@@ -126,5 +126,129 @@ describe("Inventario de envases", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar" }));
 
     expect(await screen.findByRole("rowheader", { name: "Bidón 20L" })).toBeTruthy();
+  });
+
+  describe("Conteo de la planta", () => {
+    function plantCount(overrides: Partial<PlantCount> = {}): PlantCount {
+      return {
+        containerType: { id: "ct-Bidón 20L", name: "Bidón 20L" },
+        state: "EMPTY_AT_PLANT",
+        expectedQuantity: -3,
+        countedQuantity: 4,
+        adjustments: [{ id: "adj-1", quantity: 7, batch: null }],
+        ...overrides,
+      };
+    }
+
+    function countSection(): HTMLElement {
+      return screen.getByRole("region", { name: "Conteo de la planta" });
+    }
+
+    async function choose(label: string, option: string) {
+      const user = userEvent.setup();
+      await user.click(within(countSection()).getByLabelText(label));
+      await user.click(await screen.findByRole("option", { name: option }));
+    }
+
+    it("el vendedor no lo ve: solo el administrador cuenta la planta", async () => {
+      resetSession();
+      cleanups.push(signIn(["SELLER"], "vendedor"));
+      stubInventory([cell("Bidón 20L", "EMPTY_AT_PLANT", 4)]);
+
+      await renderInventory();
+
+      await screen.findByRole("rowheader", { name: "Bidón 20L" });
+      expect(screen.queryByRole("region", { name: "Conteo de la planta" })).toBeNull();
+    });
+
+    it("vacíos desde un saldo negativo: muestra lo que había, pide confirmar la diferencia y manda el conteo", async () => {
+      stubInventory([
+        cell("Bidón 20L", "EMPTY_AT_PLANT", -3),
+        cell("Bidón 20L", "FULL_AT_PLANT", 5),
+      ]);
+      const bodies = stubWrite(cleanups, "/api/v1/container-counts/plant", "POST", () =>
+        plantCount(),
+      );
+      const user = userEvent.setup();
+
+      await renderInventory();
+      await screen.findByRole("region", { name: "Conteo de la planta" });
+      await user.click(within(countSection()).getByRole("button", { name: "Contar la planta" }));
+      expect(within(countSection()).getByText("Según el sistema: -3")).toBeTruthy();
+      await user.type(within(countSection()).getByLabelText("Contado"), "4");
+      await user.click(within(countSection()).getByRole("button", { name: "Registrar conteo" }));
+
+      expect(
+        within(countSection()).getByText(
+          "Bidón 20L, vacíos en planta: según el sistema -3, contado 4 (diferencia +7).",
+        ),
+      ).toBeTruthy();
+      expect(bodies).toEqual([]);
+      await user.click(
+        within(countSection()).getByRole("button", { name: "Confirmar diferencia" }),
+      );
+
+      expect(
+        await screen.findByText("Conteo registrado: Bidón 20L, vacíos en planta pasó de -3 a 4."),
+      ).toBeTruthy();
+      expect(bodies).toEqual([
+        { containerTypeId: "ct-Bidón 20L", state: "EMPTY_AT_PLANT", countedQuantity: 4 },
+      ]);
+    });
+
+    it("llenos de menos: dice de qué lotes se descontaron, del más viejo al más nuevo", async () => {
+      stubInventory([cell("Bidón 20L", "FULL_AT_PLANT", 11)]);
+      const bodies = stubWrite(cleanups, "/api/v1/container-counts/plant", "POST", () =>
+        plantCount({
+          state: "FULL_AT_PLANT",
+          expectedQuantity: 11,
+          countedQuantity: 3,
+          adjustments: [
+            { id: "a", quantity: 6, batch: { id: "b-1", code: "L-VIEJO" } },
+            { id: "b", quantity: 2, batch: { id: "b-2", code: "L-NUEVO" } },
+          ],
+        }),
+      );
+      const user = userEvent.setup();
+
+      await renderInventory();
+      await screen.findByRole("region", { name: "Conteo de la planta" });
+      await user.click(within(countSection()).getByRole("button", { name: "Contar la planta" }));
+      await choose("Qué se contó", "Llenos en planta");
+      await user.type(within(countSection()).getByLabelText("Contado"), "3");
+      await user.click(within(countSection()).getByRole("button", { name: "Registrar conteo" }));
+      await user.click(
+        within(countSection()).getByRole("button", { name: "Confirmar diferencia" }),
+      );
+
+      expect(
+        await screen.findByText(
+          "Conteo registrado: Bidón 20L, llenos en planta pasó de 11 a 3. Se descontaron 6 del lote L-VIEJO y 2 del lote L-NUEVO.",
+        ),
+      ).toBeTruthy();
+      expect(bodies).toEqual([
+        { containerTypeId: "ct-Bidón 20L", state: "FULL_AT_PLANT", countedQuantity: 3 },
+      ]);
+    });
+
+    it("llenos de más: explica que se anotan como lote y no manda nada", async () => {
+      stubInventory([cell("Bidón 20L", "FULL_AT_PLANT", 2)]);
+      const bodies = stubWrite(cleanups, "/api/v1/container-counts/plant", "POST", () =>
+        plantCount(),
+      );
+      const user = userEvent.setup();
+
+      await renderInventory();
+      await screen.findByRole("region", { name: "Conteo de la planta" });
+      await user.click(within(countSection()).getByRole("button", { name: "Contar la planta" }));
+      await choose("Qué se contó", "Llenos en planta");
+      await user.type(within(countSection()).getByLabelText("Contado"), "5");
+      await user.click(within(countSection()).getByRole("button", { name: "Registrar conteo" }));
+
+      expect((await within(countSection()).findByRole("alert")).textContent).toContain(
+        "Los llenos que faltan se anotan como lote en Producción.",
+      );
+      expect(bodies).toEqual([]);
+    });
   });
 });

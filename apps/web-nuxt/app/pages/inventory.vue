@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ContainerInventoryItem } from "@yacco/shared";
+import type { ContainerInventoryItem, PlantCount } from "@yacco/shared";
 
 useHead({ title: "Inventario de envases · Yacco" });
 
@@ -13,6 +13,17 @@ const grandTotal = computed(() => rows.value.reduce((sum, row) => sum + row.tota
  * matriz (fue un bug de producción del web React).
  */
 const isEmpty = computed(() => resource.data.value !== null && resource.data.value.length === 0);
+
+const session = useSession();
+const isAdmin = computed(() => session.hasRole("ADMIN"));
+const counting = ref(false);
+const lastCount = ref<string | null>(null);
+
+function onCounted(count: PlantCount): void {
+  counting.value = false;
+  lastCount.value = describePlantCount(count);
+  void resource.reload();
+}
 </script>
 
 <template>
@@ -98,6 +109,42 @@ const isEmpty = computed(() => resource.data.value !== null && resource.data.val
             {{ grandTotal === 1 ? "envase" : "envases" }}
           </p>
         </UCard>
+
+        <SectionCard
+          v-if="isAdmin"
+          title="Conteo de la planta"
+          description="Cuente en el galpón los vacíos o los llenos de un tipo de envase: el inventario pasa a decir lo contado."
+        >
+          <template #actions>
+            <UButton
+              v-if="!counting"
+              icon="i-lucide-clipboard-check"
+              label="Contar la planta"
+              @click="
+                counting = true;
+                lastCount = null;
+              "
+            />
+          </template>
+          <PlantCountForm
+            v-if="counting"
+            :rows="rows"
+            @cancel="counting = false"
+            @registered="onCounted"
+          />
+          <UAlert
+            v-else-if="lastCount"
+            role="status"
+            color="success"
+            variant="subtle"
+            icon="i-lucide-check"
+            :title="lastCount"
+          />
+          <p v-else class="text-sm text-muted">
+            Los llenos que falten en planta se descuentan de los lotes, empezando por el más viejo.
+            Los que sobren se anotan como lote en Producción.
+          </p>
+        </SectionCard>
       </div>
     </ResourceState>
   </AppPage>

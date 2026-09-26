@@ -17,6 +17,7 @@ import {
 } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
+import { OLDEST_BATCH_ITEM_FIRST } from "../production-batches/oldest-batch-first.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { RegisterStopDeliveryResult } from "../sales/sales.service.js";
 import { SalesService } from "../sales/sales.service.js";
@@ -1378,10 +1379,8 @@ export class RoutesService {
  * así que el servidor la aplica acá también; el cálculo del lado de la web
  * sigue existiendo, para mostrar el plan antes de confirmarlo.
  *
- * El orden es el mismo que devuelve `GET /production-batches`
- * (`[{ date: "asc" }, { code: "asc" }]`): fecha del lote, y el código como
- * desempate cuando dos lotes son del mismo día. `code` es único, así que el
- * "más antiguo" nunca es ambiguo.
+ * El orden es `OLDEST_BATCH_ITEM_FIRST`: fecha del lote, y el código como
+ * desempate cuando dos lotes son del mismo día.
  *
  * La comprobación va DENTRO de la transacción de `addLoad` y con su mismo
  * cliente: leerla afuera dejaría una ventana en la que otra carga agota el
@@ -1397,7 +1396,7 @@ async function assertIsOldestBatchItemWithStock(
 ): Promise<void> {
   const oldest = await tx.batchItem.findFirst({
     where: { containerTypeId: batchItem.containerTypeId, availableQty: { gt: 0 } },
-    orderBy: [{ batch: { date: "asc" } }, { batch: { code: "asc" } }],
+    orderBy: OLDEST_BATCH_ITEM_FIRST,
     select: { id: true, batch: { select: { code: true } } },
   });
 

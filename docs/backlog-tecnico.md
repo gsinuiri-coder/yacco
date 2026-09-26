@@ -2239,3 +2239,19 @@ pero es el precio que paga por defecto todo el padrón.
 **Para cerrarla:** toca esquema, así que se pregunta antes. O dos columnas
 (`updated_at`, `updated_by`), que dicen quién tocó último pero no el valor
 anterior; o una tabla de historial de precios de lista, de solo agregar.
+
+## Una baja de llenos en planta no descuenta el lote
+
+**Estado:** abierto. **Registrado:** 2026-09-26, con el conteo de la planta
+(HU-25), por el `reviewer`. **Disparador:** la primera «Baja por daño» de un
+lleno en planta, o una venta de mostrador si algún día existe.
+
+`DAMAGE_WRITE_OFF` y `FULL_SALE` desde `FULL_AT_PLANT` entran por
+`POST /container-movements` y bajan el libro, pero no el `available_qty` de
+ningún lote. Desde ese momento los lotes dicen más llenos que el inventario, y
+una ruta puede cargar llenos que ya no existen. El conteo de la planta toma lo
+esperado del libro, así que no lo corrige.
+
+**Para cerrarla:** sin esquema. Que la baja de un lleno en planta descuente
+los lotes igual que el conteo (FIFO, un movimiento por lote con su
+`batchId`, `OLDEST_BATCH_ITEM_FIRST`), en la misma transacción.
