@@ -1237,8 +1237,6 @@ auditoría de D-016.
   uno con vencimiento, **antes del 2026-10-16**.
 - **A1:** decidir un team propio de Vercel para Yacco.
 - Confirmar en GitHub que la app de Render quedó desinstalada.
-- **La reunión con el dueño**, con `docs/guion-piloto.md`, y después bajar a
-  Validados (o al backlog) lo que conteste, con la hoja de cierre.
 
 ### Lecciones
 
@@ -1261,7 +1259,7 @@ la planta el primer día: **Productos** (poner los precios reales), **Usuarios**
 en poder de clientes** (buscar a un cliente y contarlo desde 0) y la
 **liquidación** de esa ruta. Para no tocar datos reales, el mismo recorrido
 entero corre en un preview contra demo (`docs/DEPLOY.md`, «El ciclo entero
-contra un preview»). Después, sentarse con el dueño y `docs/guion-piloto.md`.
+contra un preview»).
 
 **Desde la revisión final (2026-09-25), además:**
 
@@ -1363,13 +1361,10 @@ ni monto, el catálogo de productos, el inventario, el cliente de prueba).
 
 - **X:** `[OK]` para contar en 0 y desactivar al cliente de prueba.
 - ~~**4f (#238):** `[OK]` para mergear la migración del índice.~~ Hecho (ver «Piloto»).
-- **Supuesto 19:** la diferencia con HU-01 E2 (¿se corrige la spec, o se agrega
-  el paso de confirmación?), a decidir con el dueño.
 - **F:** rotar la contraseña del admin de producción y destruir la versión de
   `yacco-admin-initial-password`; el token de Vercel de CI con vencimiento,
   antes del 2026-10-16. **A1:** team propio de Vercel. Confirmar la
   desinstalación de la app de Render en GitHub.
-- **La reunión con el dueño**, con `docs/guion-piloto.md` al día.
 
 ### Lecciones
 
@@ -1437,15 +1432,12 @@ usuarios de prueba del e2e, desactivados.
 
 **Pendientes de Giancarlo:**
 
-- **El supuesto 20** con el dueño (va en la sección 2 del guion).
 - ~~**4f (#238):** `[OK]` para mergear la migración del índice.~~ Hecho (ver
   «Piloto»).
-- **Supuesto 19:** la diferencia con HU-01 E2, a decidir con el dueño.
 - **F**, **A1** y la desinstalación de la app de Render en GitHub (sin cambios).
 - **El texto vacío de «Envases prestados»** («Todos los envases prestados
   volvieron a la planta») no es cierto cuando salieron por un ajuste de conteo:
   a reescribir (backlog, sin tocar).
-- **La reunión con el dueño**, con `docs/guion-piloto.md` al día.
 
 #### Lecciones
 
