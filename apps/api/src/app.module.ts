@@ -8,6 +8,7 @@ import { ContainerMovementsModule } from "./modules/container-movements/containe
 import { ContainerBalancesModule } from "./modules/container-balances/container-balances.module.js";
 import { ContainerCountsModule } from "./modules/container-counts/container-counts.module.js";
 import { ContainerReconciliationModule } from "./modules/container-reconciliation/container-reconciliation.module.js";
+import { DebtReconciliationModule } from "./modules/debt-reconciliation/debt-reconciliation.module.js";
 import { ContainerTypesModule } from "./modules/container-types/container-types.module.js";
 import { CustomerLocationsModule } from "./modules/customer-locations/customer-locations.module.js";
 import { CustomerPricesModule } from "./modules/customer-prices/customer-prices.module.js";
@@ -41,6 +42,7 @@ import { ZonesModule } from "./modules/zones/zones.module.js";
     ContainerBalancesModule,
     ContainerCountsModule,
     ContainerReconciliationModule,
+    DebtReconciliationModule,
     ProductionBatchesModule,
     ReportsModule,
     RosterLoaderModule,
