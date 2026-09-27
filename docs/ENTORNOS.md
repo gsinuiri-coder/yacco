@@ -8,13 +8,22 @@ Las decisiones de infraestructura detrás de esta tabla están en
 [`ARQUITECTURA.md`](./ARQUITECTURA.md); cómo desplegar a cada uno, en
 [`DEPLOY.md`](./DEPLOY.md).
 
-## Los tres entornos
+## Los dos entornos
 
-| Entorno        | Web                           | API                        | Base de datos      | Escribe datos reales |
-| -------------- | ----------------------------- | -------------------------- | ------------------ | -------------------- |
-| **local**      | `nuxt dev`                    | `:3100`                    | Postgres en Docker | no                   |
-| **demo**       | previews de Vercel            | Cloud Run `yacco-api-demo` | Neon, rama `demo`  | no                   |
-| **producción** | Vercel, dominio de producción | Cloud Run `yacco-api`      | Neon, rama `main`  | **sí**               |
+**Modo local (2026-09-27, decisión de Giancarlo).** Hasta terminar la app se
+trabaja y se prueba sólo en local. El entorno de demo se eliminó y los dos
+servicios de Cloud Run se borraron; producción se recrea con el deploy final
+(`docs/infra/README.md`).
+
+| Entorno        | Web                           | API                                      | Base de datos      | Escribe datos reales |
+| -------------- | ----------------------------- | ---------------------------------------- | ------------------ | -------------------- |
+| **local**      | `nuxt dev`                    | `:3100`                                  | Postgres en Docker | no                   |
+| **producción** | Vercel, dominio de producción | Cloud Run `yacco-api` — **sin servicio** | Neon, rama `main`  | **sí**               |
+
+Producción está **congelada**: la base `main` de Neon conserva el padrón real
+tal como está, nada la migra ni la escribe, y el web de `yacco-web` sigue
+publicado pero sin API detrás hasta el deploy final. Ningún merge despliega:
+`deploy.yml` sólo corre a mano.
 
 Render ya no es un entorno: quedó retirado en la fase 7, vivo pero sin acceso
 a ninguna base (ver `PROGRESO.md`).
@@ -41,38 +50,37 @@ engañoso, como si la contraseña estuviera mal.
 la demo lo necesita; si alguna vez hace falta, se levanta a mano con
 `docker compose up -d minio`.
 
-## demo
+**Los datos de prueba viven acá.** `pnpm demo:data` carga sobre el Postgres de
+Docker un escenario con profundidad (clientes, pedidos, rutas, liquidaciones).
+Es «la demo» desde el modo local: lo que antes se ensayaba en la rama `demo`
+de Neon se ensaya en esta base. Nunca se cargan datos de prueba en Neon.
 
-El entorno de ensayo. Es donde se verifica un despliegue antes de tocar
-producción, y es adonde apuntan los previews de Vercel.
+La imagen de la API también se prueba acá antes del deploy final: la misma
+imagen que va a Cloud Run, corriendo en Docker contra esta base, y el smoke de
+solo lectura contra ella (`docs/DEPLOY.md`, «E2E local antes del deploy
+final»).
 
-- **API**: servicio `yacco-api-demo` en Cloud Run, misma imagen y misma
-  configuración que producción, con otros secretos.
-- **Base**: rama `demo` de Neon (`br-dawn-field-autu1p5w`), hija de `main`.
-  Nació con una copia del esquema y los datos del momento. **El flujo es en un
-  solo sentido**: `main` puede refrescar `demo`, nada de lo escrito en `demo`
-  vuelve a `main`.
-- **Web**: los deploys de preview de Vercel.
+## La rama `demo` de Neon
 
-Refrescar la demo con el estado actual de producción, cuando haga falta:
-
-```bash
-neonctl branches reset demo --parent --project-id "$NEON_PROJECT_ID" --org-id "$NEON_ORG_ID"
-```
-
-Borrar ramas de Neon está **denegado** en `.claude/settings.json`: ningún
-agente lo hace, ni siquiera para recrearlas.
+Queda como está: no se borra ni se resetea (D-006), y ningún servicio la usa.
+Sus secretos (`yacco-demo-*`) y la identidad `yacco-api-demo-run` siguen en
+Google Cloud, para recrear el servicio de demo si alguna vez vuelve
+(`docs/infra/README.md`). Borrar ramas de Neon está **denegado** en
+`.claude/settings.json`: ningún agente lo hace, ni siquiera para recrearlas.
 
 ## producción
 
-- **API**: servicio `yacco-api` en Cloud Run, región `us-east4`.
+- **API**: servicio `yacco-api` en Cloud Run, región `us-east4`. **Borrado
+  hasta el deploy final**; se recrea con el mismo nombre y región, y vuelve con
+  la misma URL determinística.
 - **Base**: rama `main` de Neon, proyecto `yacco-production`.
-- **Web**: proyecto de Vercel, despliegue de producción.
+- **Web**: proyecto `yacco-web` de Vercel, despliegue de producción. Sin
+  previews: el proyecto no está conectado a Git y CI ya no los publica.
 
 Reglas que no se negocian:
 
 - Ningún test que escriba corre contra producción. `pnpm smoke:prod` es de
-  **solo lectura** y sin ninguna credencial: `/health` de las dos APIs
+  **solo lectura** y sin ninguna credencial: `/health` de la API
   (FALLA si `environment` vuelve `null`), `/health` por el dominio de producción
   de Vercel, un login con un usuario inexistente que tiene que dar 401, y la
   carga de las pantallas principales. No hay

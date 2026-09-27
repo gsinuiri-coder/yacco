@@ -380,6 +380,12 @@ tienen por qué coincidir con los de producción — son entornos distintos.
 
 ### D-008 — `--min-instances=1` en producción, `0` en demo
 
+> **Suspendida, 2026-09-27 (modo local).** Hasta terminar la app se trabaja
+> sólo en local y los dos servicios de Cloud Run están borrados: no hay
+> instancias que dimensionar. Al recrear `yacco-api` para el deploy final,
+> Giancarlo decide `min-instances` en ese momento; el razonamiento de abajo
+> sigue siendo el punto de partida. `deploy-api.mjs` conserva `1` como valor.
+
 **Contexto.** Con `0`, la primera request de la mañana paga el arranque en
 frío, y es justo cuando el dueño abre la app en la planta. Con `1`, se paga una
 instancia encendida las 24 horas.
@@ -656,6 +662,11 @@ resolvió mirando el host en cambio.
 
 ### D-013 — `WEB_ORIGIN` cierra P-02: sólo el alias estable de Vercel en producción, sólo el dev local en demo
 
+> **Suspendida en su mitad de demo, 2026-09-27 (modo local).** No hay
+> servicio `yacco-api-demo` ni previews: el valor de demo no se aplica a nada.
+> La mitad de producción sigue en pie y vuelve tal cual con el deploy final
+> (`docs/infra/cloud-run-yacco-api.yaml` guarda la configuración exportada).
+
 **Contexto.** Esta rama deja `VITE_API_BASE_URL` relativo
 (`apps/web/src/config.ts`): bajo el rewrite, la SPA nunca vuelve a hacer una
 petición cross-origin a Cloud Run en el camino normal, porque toda llamada
@@ -739,6 +750,14 @@ sigue sirviendo. La protección ya no depende de que el deploy pase la variable
 ---
 
 ### D-014 — El deploy corre en CI, en un orden fijo, construyendo una sola imagen
+
+> **Modificada, 2026-09-27 (modo local).** `deploy.yml` ya no se dispara al
+> terminar CI: sólo `workflow_dispatch`. Sin demo, el orden es gate → preflight
+> → integración → migraciones (main) → imagen → producción → web → smoke. La
+> verificación previa que hacía el job de demo la hace el e2e local de
+> `docs/DEPLOY.md` («E2E local antes del deploy final»), obligatorio antes de
+> lanzar el workflow. `drift.yml` y `deploy-scope.mjs` se borraron: sólo
+> servían al deploy automático.
 
 **Contexto.** Hasta la fase 4, `pnpm deploy:api` corría `docker build` y
 `docker push` en la máquina de quien desplegaba. Con el Docker del dueño caído,

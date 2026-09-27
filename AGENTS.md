@@ -157,10 +157,11 @@ extraé lo compartido. Si dispara cobertura, escribí el test que falta.
 - El agente opera git solo: rama, push, PR, los cinco checks en verde (ci,
   analyze, CodeQL, gitleaks, SonarCloud), squash-merge SIN `--admin`, borrar la
   rama. Nunca `--admin`, nunca force-push, nunca merge con un check en rojo.
-- Migrations are expand/contract. Merges containing migrations happen outside
-  08:00–20:00 America/Lima. **In force since 2026-09-24**, when the real
-  customer roster was loaded into `main`: production now holds data that
-  cannot be regenerated. No exceptions per PR.
+- **Modo local (2026-09-27):** un merge exige CI verde, no deploy. Nada se
+  despliega solo; el deploy final es manual (`docs/infra/README.md`).
+- Migrations are expand/contract. The deploy that applies them to `main` runs
+  outside 08:00–20:00 America/Lima: since 2026-09-24 production holds the real
+  roster, data that cannot be regenerated. No exceptions.
 - Neon branches: never delete, reset or restore one (denied in
   `.claude/settings.json`, CLI and MCP alike), without exceptions. Creating a
   backup branch (D-006) is still allowed.
@@ -178,7 +179,7 @@ extraé lo compartido. Si dispara cobertura, escribí el test que falta.
 
 ## Infraestructura y secretos
 
-Cloud Run (API) + Vercel (web) + Neon. Reglas en `.agents/rules/infra.md`; no
+Cloud Run (API, sin servicio hasta el deploy final) + Vercel (web) + Neon. Reglas en `.agents/rules/infra.md`; no
 entran acá por el tope de 12.000 caracteres (D-005). Contexto en
 `docs/ARQUITECTURA.md`, `docs/ENTORNOS.md` y `docs/DEPLOY.md`.
 

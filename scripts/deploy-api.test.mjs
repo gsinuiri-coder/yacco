@@ -15,14 +15,22 @@ import {
   imageTagFor,
   parseArgs,
 } from "./deploy-api.mjs";
-import { VERCEL_ORG_ID, VERCEL_PROJECT_ID, vercelSteps } from "./deploy-web.mjs";
+import { VERCEL_ORG_ID, VERCEL_PROJECT_ID, previewRejected, vercelSteps } from "./deploy-web.mjs";
 
 const SHA = "6a7e33e1acd8b7655b07b64f2d6881d59cfa5106";
 const REPO = imageRepository("us-east4", "yacco-v2-prod");
 
 describe("parseArgs", () => {
-  test("sin subcomando ni flag: build + deploy a DEMO, nunca a producción", () => {
-    assert.deepEqual(parseArgs([]), { command: "all", envName: "demo", image: undefined });
+  // Modo local (2026-09-27): sin servicio de demo, un default a demo
+  // RECREARÍA yacco-api-demo sin que nadie lo haya pedido. El entorno se
+  // escribe siempre, el de producción y el de demo.
+  test("sin --env es un error: ningún servicio se crea por defecto", () => {
+    assert.match(parseArgs([]).error, /--env/);
+    assert.match(parseArgs(["deploy", "--image=x"]).error, /--env/);
+  });
+
+  test("demo hay que escribirla, igual que producción", () => {
+    assert.equal(parseArgs(["--env=demo"]).envName, "demo");
   });
 
   test("producción hay que escribirla", () => {
@@ -221,21 +229,21 @@ describe("ENVIRONMENTS", () => {
 
 describe("vercelSteps", () => {
   test("producción: pull de production, build --prod, deploy --prebuilt --prod", () => {
-    assert.deepEqual(vercelSteps({ preview: false }), [
+    assert.deepEqual(vercelSteps(), [
       ["pull", "--yes", "--environment=production"],
       ["build", "--prod"],
       ["deploy", "--prebuilt", "--prod"],
     ]);
   });
 
-  test("preview: nada lleva --prod", () => {
-    const steps = vercelSteps({ preview: true });
-    assert.ok(steps.every((args) => !args.includes("--prod")));
-    assert.deepEqual(steps[0], ["pull", "--yes", "--environment=preview"]);
+  // Un preview apuntaba a la API de demo (D-011), que no existe en modo local.
+  test("--preview se rechaza con un motivo, no cae a producción", () => {
+    assert.match(previewRejected(["--preview"]), /preview/i);
+    assert.equal(previewRejected([]), null);
   });
 
   test("ningún paso pasa el token por argv", () => {
-    for (const args of [...vercelSteps({ preview: false }), ...vercelSteps({ preview: true })]) {
+    for (const args of vercelSteps()) {
       assert.ok(args.every((arg) => !arg.startsWith("--token") && arg !== "-t"));
     }
   });

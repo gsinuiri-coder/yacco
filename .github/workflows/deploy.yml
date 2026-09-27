@@ -1,5 +1,11 @@
 # Deploy desde CI: la API a Cloud Run y el web a Vercel.
 #
+# MODO LOCAL (2026-09-27, decisión de Giancarlo): hasta terminar la app se
+# trabaja y se prueba sólo en local (Docker). Este workflow NO se dispara solo:
+# un merge exige CI verde, no deploy. Se lanza a mano para el deploy final,
+# fuera de 08:00–20:00 America/Lima, siguiendo docs/infra/README.md. El job 4
+# recrea yacco-api: `gcloud run deploy` crea el servicio si no existe. El servicio de demo y los previews del web no existen.
+#
 # Corre sólo sobre `main`, DESPUÉS de que CI (lint, typecheck, tests, audit,
 # SonarCloud, gitleaks) y CodeQL pasaron para ese mismo commit. No reemplaza
 # ni relaja nada de esos checks: los espera.
@@ -7,32 +13,31 @@
 # El orden de los jobs ES el diseño (D-014 en docs/ARQUITECTURA.md):
 #
 #   gate → preflight → 1 integration → 2 migrate → 3 image
-#        → 4a deploy-demo → 4b deploy-production → 5 web → 6 smoke
+#        → 4 deploy-production → 5 web → 6 smoke
 #
-# Un commit que, respecto de lo que corre en producción, solo cambia
-# documentación termina en el gate (scripts/deploy-scope.mjs).
+# Lo que antes verificaba demo antes de tocar producción —la misma imagen
+# arrancando sana contra una base migrada— se verifica ANTES de lanzar este
+# workflow, con la imagen corriendo en local: docs/DEPLOY.md, «E2E local antes
+# del deploy final». Es un paso obligatorio de ese procedimiento.
 #
 # Cada job sólo corre si el anterior pasó. Qué queda en pie cuando uno falla
 # y los siguientes no corren:
 #
 #   gate / preflight  nada cambió en ningún lado.
 #   1 integration     nada cambió en ningún lado.
-#   2 migrate         demo o main pueden haber quedado con migraciones nuevas
-#                     (demo va primero: si falla ahí, main no se tocó). El
-#                     código viejo sigue sirviendo sobre ese esquema.
-#   3 image           las bases QUEDARON MIGRADAS y el código viejo sigue
-#                     sirviendo en los dos servicios. Ver el comentario del job.
-#   4a deploy-demo    demo corre el código nuevo (o sigue en el viejo, si el
-#                     deploy no llegó a pasar) y quedó fuera de sano; producción
-#                     sigue en el viejo sobre la base ya migrada.
-#   4b deploy-prod    demo y producción en el código nuevo, o producción todavía
-#                     en el viejo; el web sigue en su versión anterior.
-#   5 web             las dos APIs en el código nuevo; el web sigue en el
-#                     anterior, que habla con la misma API por el mismo rewrite.
+#   2 migrate         main puede haber quedado con migraciones nuevas. Si hay
+#                     un servicio corriendo, el código viejo sigue sirviendo
+#                     sobre ese esquema.
+#   3 image           la base QUEDÓ MIGRADA y el código viejo sigue sirviendo
+#                     (o no hay servicio). Ver el comentario del job.
+#   4 deploy-prod     producción en el código nuevo, o todavía en el viejo; el
+#                     web sigue en su versión anterior.
+#   5 web             la API en el código nuevo; el web sigue en el anterior,
+#                     que habla con la misma API por el mismo rewrite.
 #   6 smoke           todo desplegado; el smoke dice qué no está sano.
 #
 # Autenticación: Workload Identity Federation (fase 2). GitHub no guarda
-# NINGUNA llave de larga vida. Lo que hace falta leer — las URLs directas de
+# NINGUNA llave de larga vida. Lo que hace falta leer — la URL directa de
 # Neon y el token de Vercel — sale de Secret Manager en el momento, y sólo en
 # el job que lo usa (D-014, D-015).
 #
@@ -43,21 +48,9 @@
 name: Deploy
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-  # Para relanzar a mano la punta de main (por ejemplo, después de subir un
-  # secreto que faltaba). Pasa por el mismo gate: CI y CodeQL tienen que haber
-  # pasado para ese commit.
+  # Sólo a mano, desde main (modo local: ver el encabezado). Pasa por el gate:
+  # CI y CodeQL tienen que haber pasado para ese commit.
   workflow_dispatch:
-    inputs:
-      web_preview:
-        description: >-
-          Solo un preview del web (apunta a demo, D-011): no migra, no toca las
-          APIs ni producción. Para revisar antes de un corte.
-        type: boolean
-        default: false
 
 # Un solo deploy a la vez, y nunca se cancela uno en curso: cortar un job a
 # mitad de una migración o de un `gcloud run deploy` deja un estado que nadie
@@ -84,11 +77,6 @@ env:
 jobs:
   gate:
     name: Esperar CI y CodeQL
-    # Un CI fallido, o uno disparado por un PR, no despliega nada.
-    if: >-
-      (github.event_name == 'workflow_dispatch' && !inputs.web_preview) ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -96,53 +84,24 @@ jobs:
       contents: read
     outputs:
       sha: ${{ steps.gate.outputs.sha }}
-      deploy: ${{ steps.gate.outputs.deploy }}
     steps:
-      # Solo para scripts/deploy-scope.mjs, que no tiene dependencias.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - id: gate
         env:
           GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-              echo "::error::El deploy sólo corre desde main."
-              exit 1
-            fi
-            sha="$GITHUB_SHA"
-          else
-            sha="$RUN_HEAD_SHA"
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::El deploy sólo corre desde main."
+            exit 1
           fi
+          sha="$GITHUB_SHA"
 
-          # Si main ya avanzó, este commit no se despliega: lo hace la corrida
-          # del commit nuevo. Sin esto, dos merges seguidos cuyos CI terminan
-          # en otro orden podrían desplegar el viejo DESPUÉS del nuevo.
+          # Si main avanzó entre el dispatch y este paso, no se despliega un
+          # commit que ya no es el último: se relanza sobre la punta nueva.
           tip="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
           if [ "$sha" != "$tip" ]; then
-            echo "::notice::$sha ya no es la punta de main ($tip); lo despliega la corrida de ese commit."
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Un merge que solo toca documentación (docs/, *.md, .agents/,
-          # .claude/) no redespliega: comparado contra lo que corre HOY en
-          # producción (su /health), no contra el commit anterior, así que un
-          # cambio de código que nunca llegó a desplegarse se despliega igual.
-          # Ante cualquier duda el script dice «runtime». A mano
-          # (workflow_dispatch) siempre se despliega entero: es la forma de
-          # probar el camino completo cuando haga falta.
-          if [ "$EVENT" != "workflow_dispatch" ]; then
-            scope="$(node scripts/deploy-scope.mjs "$sha")"
-            if [ "$scope" = "docs-only" ]; then
-              echo "::notice::$sha solo cambia documentación respecto de lo desplegado: no se redespliega."
-              echo "deploy=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+            echo "::error::$sha ya no es la punta de main ($tip): relanzar el deploy."
+            exit 1
           fi
 
           # Espera a que un workflow termine para este commit y exige éxito.
@@ -163,17 +122,14 @@ jobs:
             return 1
           }
 
-          # CI ya se sabe exitoso cuando llegamos por workflow_run; a mano no.
-          if [ "$EVENT" = "workflow_dispatch" ]; then require_success ci.yml; fi
+          require_success ci.yml
           require_success codeql.yml
 
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "deploy=true" >> "$GITHUB_OUTPUT"
 
   preflight:
     name: Preflight — lo que el deploy necesita existe y sirve
     needs: gate
-    if: needs.gate.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -192,41 +148,39 @@ jobs:
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
 
       # Si falta algo, mejor enterarse ANTES de migrar que a mitad del camino:
-      # un token de Vercel ausente descubierto en el paso 5 deja las bases
-      # migradas y las APIs desplegadas con un web que no se pudo publicar.
+      # un token de Vercel ausente descubierto en el paso 5 deja la base
+      # migrada y la API desplegada con un web que no se pudo publicar.
       # Si este paso falla con NOT_FOUND, el secreto no existe: se sube con
       # `pnpm secrets:gcp --upload=VERCEL_TOKEN` (el token, desde .env.setup).
       - id: secrets
         uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
         with:
           secrets: |-
-            demo_direct_url:${{ env.GCP_PROJECT_ID }}/yacco-demo-direct-url
             production_direct_url:${{ env.GCP_PROJECT_ID }}/yacco-production-direct-url
             vercel_token:${{ env.GCP_PROJECT_ID }}/yacco-ci-vercel-token
 
-      - name: Los tres secretos tienen valor
+      - name: Los dos secretos tienen valor
         env:
-          DEMO_DIRECT_URL: ${{ steps.secrets.outputs.demo_direct_url }}
           PRODUCTION_DIRECT_URL: ${{ steps.secrets.outputs.production_direct_url }}
           VERCEL_TOKEN: ${{ steps.secrets.outputs.vercel_token }}
         run: |
           set -euo pipefail
           # Sólo se mira el largo. Ningún valor se imprime; además la action
           # ya los enmascaró en el log.
-          for name in DEMO_DIRECT_URL PRODUCTION_DIRECT_URL VERCEL_TOKEN; do
+          for name in PRODUCTION_DIRECT_URL VERCEL_TOKEN; do
             if [ -z "${!name}" ]; then
               echo "::error::$name está vacío en Secret Manager."
               exit 1
             fi
           done
-          echo "Los tres secretos existen y tienen valor."
+          echo "Los dos secretos existen y tienen valor."
 
       # Presencia no es validez (D-015): un token vencido o revocado tiene
       # valor y pasa el paso anterior. Sin esta comprobación el deploy migraba
-      # las dos bases, desplegaba las dos APIs y fallaba recién en «5 · Web a
-      # Vercel». `vercel whoami` no escribe nada. Las URLs de Neon siguen
-      # validándose sólo por presencia: si no sirven, fallan en «2 ·
-      # Migraciones», antes de desplegar nada.
+      # la base, desplegaba la API y fallaba recién en «5 · Web a Vercel».
+      # `vercel whoami` no escribe nada. La URL de Neon sigue validándose sólo
+      # por presencia: si no sirve, falla en «2 · Migraciones», antes de
+      # desplegar nada.
       # --ignore-scripts (A3): este job tiene un token de GCP y, más abajo, el de
       # Vercel. Un script de instalación comprometido correría con los dos. La CLI
       # 59.11.2 no declara scripts de instalación, así que no pierde nada.
@@ -260,18 +214,19 @@ jobs:
       - run: pnpm test:integration
 
   migrate:
-    name: 2 · Migraciones (demo, después main)
+    name: 2 · Migraciones (main)
     needs: [gate, integration]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
-    # Si falla en demo: main no se tocó y nada se desplegó.
-    # Si falla en main: demo quedó migrada, main puede haber quedado a medias
-    # (Prisma aplica cada migración en su transacción; la que falló queda
-    # marcada y `migrate deploy` se niega a seguir hasta resolverla). Nada se
-    # desplegó: las dos APIs siguen con el código viejo.
+    # Si falla: main puede haber quedado a medias (Prisma aplica cada migración
+    # en su transacción; la que falló queda marcada y `migrate deploy` se niega
+    # a seguir hasta resolverla). Nada se desplegó. Antes la rama demo de Neon
+    # recibía las migraciones primero; en modo local ese ensayo es el e2e local
+    # (DEPLOY.md), y la vuelta atrás es la rama de respaldo de D-006, creada
+    # antes de lanzar este workflow.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -282,7 +237,7 @@ jobs:
           node-version: 22
           cache: pnpm
       # --ignore-scripts (A3): después de instalar, este mismo job obtiene un
-      # token de GCP y lee las URLs directas de las dos bases. Un postinstall no
+      # token de GCP y lee la URL directa de la base. Un postinstall no
       # necesita ver el token para robarlo: le alcanza con dejar algo en
       # node_modules que corra después. Lo único que este job ejecuta es `prisma migrate deploy`, y el CLI
       # de Prisma descarga su schema engine al primer uso si el postinstall de
@@ -293,23 +248,14 @@ jobs:
         with:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-      # Sólo las URLs DIRECTAS: Prisma Migrate necesita una sesión de verdad y
+      # Sólo la URL DIRECTA: Prisma Migrate necesita una sesión de verdad y
       # el pooler de Neon (modo transacción) no se la da. La pooled es la del
       # runtime y este job nunca la ve.
       - id: secrets
         uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
         with:
           secrets: |-
-            demo_direct_url:${{ env.GCP_PROJECT_ID }}/yacco-demo-direct-url
             production_direct_url:${{ env.GCP_PROJECT_ID }}/yacco-production-direct-url
-
-      # Demo primero: una migración que no aplica sobre la copia de main se ve
-      # acá, antes de tocar la base real.
-      - name: prisma migrate deploy — rama demo
-        run: pnpm --filter @yacco/api exec prisma migrate deploy
-        env:
-          DATABASE_URL: ${{ steps.secrets.outputs.demo_direct_url }}
-          DIRECT_URL: ${{ steps.secrets.outputs.demo_direct_url }}
 
       - name: prisma migrate deploy — rama main
         run: pnpm --filter @yacco/api exec prisma migrate deploy
@@ -327,7 +273,7 @@ jobs:
       id-token: write
     outputs:
       ref: ${{ steps.build.outputs.ref }}
-    # SI ESTE JOB FALLA, LAS BASES YA QUEDARON MIGRADAS Y EL CÓDIGO VIEJO SIGUE
+    # SI ESTE JOB FALLA, LA BASE YA QUEDÓ MIGRADA Y EL CÓDIGO VIEJO SIGUE
     # SIRVIENDO SOBRE EL ESQUEMA NUEVO. Eso no es un accidente que haya que
     # evitar acá: es exactamente por qué las migraciones son expand/contract.
     # Una migración que sólo AGREGA (expand) no rompe al código que no la
@@ -345,7 +291,7 @@ jobs:
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       # El MISMO script y el MISMO Dockerfile que un deploy a mano: no hay un
       # segundo camino de build. Construye una sola imagen, etiquetada con el
-      # sha, que después se despliega a demo y a producción sin reconstruir.
+      # sha, que es la que se despliega a producción.
       - id: build
         run: |
           set -euo pipefail
@@ -354,17 +300,16 @@ jobs:
           ref="$(node scripts/deploy-api.mjs build)"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
-  deploy-demo:
-    name: 4a · Cloud Run demo
+  deploy-production:
+    name: 4 · Cloud Run producción
     needs: [gate, image]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
-    # Si falla el deploy o el gate: producción sigue con el código viejo sobre
-    # la base ya migrada, y nada más avanza. Demo puede haber quedado con la
-    # revisión nueva y fuera de sano — es para eso que existe.
+    # Si falla: producción en el código viejo, o en una revisión nueva que no
+    # pasó el gate. El web no se publicó.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -374,40 +319,13 @@ jobs:
           workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-      - run: node scripts/deploy-api.mjs deploy --env=demo --image="$IMAGE"
-        env:
-          IMAGE: ${{ needs.image.outputs.ref }}
-      # "Sano" es: /health con el commit recién construido y environment=demo,
-      # y un login inexistente rechazado con 401 (la ruta montada y Neon
-      # respondiendo). Sólo lectura.
-      - name: ¿Demo quedó sana?
-        run: node scripts/smoke.mjs api --env=demo
-        env:
-          EXPECTED_COMMIT: ${{ needs.gate.outputs.sha }}
-
-  deploy-production:
-    name: 4b · Cloud Run producción
-    needs: [gate, image, deploy-demo]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      id-token: write
-    # Si falla: demo está en el código nuevo; producción, en el viejo o en una
-    # revisión nueva que no pasó el gate. El web no se publicó.
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.gate.outputs.sha }}
-      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-      # La MISMA imagen que acaba de pasar en demo, no una reconstruida.
+      # La MISMA imagen del job 3, no una reconstruida.
       - run: node scripts/deploy-api.mjs deploy --env=production --image="$IMAGE"
         env:
           IMAGE: ${{ needs.image.outputs.ref }}
+      # "Sano" es: /health con el commit recién construido y
+      # environment=production, y un login inexistente rechazado con 401 (la
+      # ruta montada y Neon respondiendo). Sólo lectura.
       - name: ¿Producción quedó sana?
         run: node scripts/smoke.mjs api --env=production
         env:
@@ -421,9 +339,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # Si falla: las dos APIs están en el código nuevo y el web sigue en su
-    # versión anterior. Si falla en la guardia del Build Output (D-023), no
-    # llegó a publicarse nada: el build existe sólo en el runner.
+    # Si falla: la API está en el código nuevo y el web sigue en su versión
+    # anterior. Si falla en la guardia del Build Output (D-023), no llegó a
+    # publicarse nada: el build existe sólo en el runner.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -449,40 +367,6 @@ jobs:
       # 59.11.2 no declara scripts de instalación, así que no pierde nada.
       - run: npm install --global --ignore-scripts vercel@59.11.2
       - run: node scripts/deploy-web.mjs
-        env:
-          VERCEL_TOKEN: ${{ steps.secrets.outputs.vercel_token }}
-
-  # Un preview del web, a mano, desde main. Vive en este archivo y no en uno
-  # propio porque la identidad de GCP solo se le da a deploy.yml en main (A3,
-  # scripts/wif-condition.mjs). Construye en Linux, como el job 5: en Windows,
-  # `vercel build` deja las funciones como enlaces absolutos que no se suben.
-  web-preview:
-    name: Preview del web (a mano)
-    if: github.event_name == 'workflow_dispatch' && inputs.web_preview
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-      - id: secrets
-        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3.0.0
-        with:
-          secrets: |-
-            vercel_token:${{ env.GCP_PROJECT_ID }}/yacco-ci-vercel-token
-      - run: npm install --global --ignore-scripts vercel@59.11.2
-      # deploy-web.mjs imprime SOLO la URL; queda en el resumen de la corrida.
-      - run: node scripts/deploy-web.mjs --preview | tee -a "$GITHUB_STEP_SUMMARY"
         env:
           VERCEL_TOKEN: ${{ steps.secrets.outputs.vercel_token }}
 

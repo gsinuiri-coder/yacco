@@ -5,21 +5,23 @@
  *
  * Tres formas, y las tres pasan por las MISMAS funciones de abajo:
  *
- *   pnpm deploy:api --env=demo                  build + push + deploy (a mano)
- *   pnpm deploy:api --env=production            ídem, a producción
+ *   pnpm deploy:api --env=production            build + push + deploy (a mano)
+ *   pnpm deploy:api --env=demo                  ídem, a demo (hoy sin servicio)
  *   node scripts/deploy-api.mjs build           sólo build + push; imprime la imagen
  *   node scripts/deploy-api.mjs deploy --env=demo --image=<ref>
  *                                               sólo deploy de una imagen ya subida
  *
  * Las dos últimas son las que usa CI (.github/workflows/deploy.yml): construye
- * UNA imagen y la despliega primero a demo y, si demo queda sana, la MISMA a
- * producción. Por eso build y deploy están separados, y por eso son el mismo
+ * UNA imagen y la despliega a producción. En modo local (2026-09-27) no hay
+ * servicio de demo; lo que demo verificaba antes lo verifica la misma imagen
+ * corriendo en local (docs/DEPLOY.md, «E2E local antes del deploy final»). Por eso build y deploy están separados, y por eso son el mismo
  * código que se corre a mano: no hay un segundo camino de build (ni
  * `gcloud run deploy --source` ni buildpacks) que pueda producir una imagen
  * distinta de la que se probó. Ver D-014 en docs/ARQUITECTURA.md.
  *
- * Demo es el valor por defecto a propósito: el despliegue a producción tiene
- * que ser algo que alguien escribió, no algo que se le escapó.
+ * `--env` no tiene valor por defecto: el entorno lo escribe quien despliega.
+ * Antes el default era demo; sin ese servicio, un default a demo lo RECREARÍA
+ * sin que nadie lo haya pedido, y uno a producción sería peor.
  *
  * NO corre migraciones. Eso es un paso propio de CI, contra DIRECT_URL, antes
  * del deploy — nunca al arrancar el contenedor, donde varias instancias las
@@ -89,7 +91,10 @@ export function parseArgs(argv) {
     return { error: `Subcomando desconocido: "${command}". Usá build, deploy, o ninguno.` };
   }
 
-  const envName = flag("env") ?? "demo";
+  const envName = flag("env");
+  if (command !== "build" && envName === undefined) {
+    return { error: "Falta --env=production (o --env=demo): ningún entorno se elige por defecto." };
+  }
   if (command !== "build" && ENVIRONMENTS[envName] === undefined) {
     return { error: `--env desconocido: "${envName}". Usá demo o production.` };
   }
