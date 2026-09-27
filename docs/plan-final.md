@@ -17,6 +17,11 @@ código de `main` y su historial, con uno de tres veredictos:
 
 El loop termina cuando esta tabla no tiene filas «a hacer».
 
+> **Modo local (2026-09-27).** Docker es el único entorno de prueba. Todo lo
+> que dependía de demo, previews o despliegue automático queda descartado por
+> no aplicar; las guardias necesarias para publicar quedan identificadas como
+> **Deploy final** y no bloquean el trabajo local.
+
 ## Tabla
 
 | Entrada                                                                         | Veredicto              | PR / razón                                                                                                          |
@@ -41,7 +46,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Falta la rutina de cuadre del dinero                                            | A hacer → cola 1       | No existía ninguna comparación de `debt_balance` contra ventas y cobros                                             |
 | Clientes con saldo a favor al cierre del cuaderno                               | A hacer → cola 10      | El código está bien; falta el test que su «Para cerrarla» pide (límite de crédito con deuda negativa)               |
 | CHECK de no negatividad en customer_container_balances                          | Resuelta               | #51                                                                                                                 |
-| El auto-deploy de yacco-api puede no dispararse sin error visible               | Resuelta               | #52, #234                                                                                                           |
+| El auto-deploy de yacco-api puede no dispararse sin error visible               | Descartada: modo local | No hay auto-deploy; el único deploy es final y manual                                                               |
 | Producción puede tener catálogos desincronizados del seed y nada lo detecta     | Resuelta               | #231                                                                                                                |
 | Test flaky en apps/web: customers-page falla bajo carga                         | Resuelta               | #109                                                                                                                |
 | La suite de web roza el timeout de 5 s bajo cobertura                           | Descartada             | Era la suite del web React retirado                                                                                 |
@@ -62,17 +67,17 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Los textos de diferencia de la liquidación no concuerdan en singular            | Resuelta               | #184                                                                                                                |
 | La columna «Diferencia» del formulario de conteo se lee al revés sin la palabra | Resuelta               | #184                                                                                                                |
 | 27 suites de integración levantan un Postgres cada una                          | Descartada             | Lento en la máquina local; en CI no falla ni flaquea                                                                |
-| El fail-safe a demo es silencioso                                               | A hacer → cola 8       | Sin marca «Datos de prueba», un web apuntado a demo no se distingue de producción                                   |
+| El fail-safe a demo es silencioso                                               | Descartada: modo local | Demo y Cloud Run están fuera; la prueba usa Docker local                                                            |
 | Falta un rol de solo lectura                                                    | Resuelta               | #208, #218 (y supuesto 15, validado)                                                                                |
-| El preflight no valida el token de Vercel                                       | Resuelta               | #139                                                                                                                |
+| El preflight no valida el token de Vercel                                       | Deploy final           | #139 queda como guardia del único deploy manual                                                                     |
 | Cada merge de documentación redespliega producción                              | Resuelta               | #233                                                                                                                |
 | Sin WEB_ORIGIN, producción vuelve a aceptar localhost en silencio               | Resuelta               | #137, #138                                                                                                          |
 | El preflight imprime `::error::` en corridas verdes                             | Descartada             | Cosmético: no hace fallar ni flaquear CI                                                                            |
-| `pnpm demo:data` no corre contra la demo de Cloud Run                           | Resuelta               | #196                                                                                                                |
+| `pnpm demo:data` no corre contra la demo de Cloud Run                           | Descartada: modo local | No existe servicio demo; los datos de prueba se cargan en Docker                                                    |
 | Cambiar la contraseña no invalida los refresh tokens                            | Resuelta               | #193                                                                                                                |
 | (auditoría) A1: el token de Vercel alcanza a todo el team                       | Descartada → Giancarlo | Necesita el dashboard del team de Vercel                                                                            |
 | (auditoría) A5 / D-016: retención de 400 días y alerta sobre Secret Manager     | Resuelta               | #210                                                                                                                |
-| (auditoría) A4: demo y producción comparten la identidad de runtime             | Resuelta               | #209                                                                                                                |
+| (auditoría) A4: demo y producción comparten la identidad de runtime             | Descartada: modo local | No hay runtime demo ni producción hasta el deploy final                                                             |
 | (auditoría) A7: `qs`, digest de la imagen base, escaneo de Artifact Registry    | Resuelta               | #211                                                                                                                |
 | (auditoría) CSP completa en el web                                              | Resuelta               | #195                                                                                                                |
 | (auditoría) El refresh token fuera de `localStorage`                            | Resuelta               | #194                                                                                                                |
@@ -106,10 +111,9 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | 5   | Cambiar un precio de lista no deja rastro             | pendiente (noche) |
 | 6   | El aviso de inventario negativo                       | pendiente         |
 | 7   | Mensajes con el estado en inglés                      | pendiente         |
-| 8   | El fail-safe a demo es silencioso                     | pendiente         |
-| 9   | El cargador del padrón descarta las notas del cliente | pendiente         |
-| 10  | Clientes con saldo a favor (test del límite)          | pendiente         |
-| 11  | El conteo de la planta no bloquea contra cargas       | pendiente         |
+| 8   | El cargador del padrón descarta las notas del cliente | pendiente         |
+| 9   | Clientes con saldo a favor (test del límite)          | pendiente         |
+| 10  | El conteo de la planta no bloquea contra cargas       | pendiente         |
 
 ## Pendientes de Giancarlo que salen de acá
 
