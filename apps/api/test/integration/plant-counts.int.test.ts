@@ -368,7 +368,7 @@ describe("a full that leaves the plant comes out of a batch", () => {
 
     const response = await request(server())
       .post("/api/v1/container-movements")
-      .set("Authorization")
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ type: "ROUTE_LOAD", fromState: "FULL_AT_PLANT", containerTypeId, quantity: 1 })
       .expect(400);
 
