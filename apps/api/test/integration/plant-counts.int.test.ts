@@ -304,3 +304,89 @@ describe("POST /api/v1/container-counts/plant", () => {
     }).expect(400);
   });
 });
+
+function writeOffFulls(containerTypeId: string, quantity: number, type = "DAMAGE_WRITE_OFF") {
+  return request(server())
+    .post("/api/v1/container-movements")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ type, fromState: "FULL_AT_PLANT", containerTypeId, quantity });
+}
+
+describe("a full that leaves the plant comes out of a batch", () => {
+  // El lote más viejo se inserta segundo y su código ordena último: ni el
+  // orden de inserción ni el del código dan el resultado correcto.
+  test("a damage write-off of fulls at the plant takes the oldest batch first, one movement per batch", async () => {
+    const containerTypeId = await newContainerType();
+    await fleetEntry(containerTypeId, 20);
+    const newer = await batch("A-BAJA-NUEVO", "2026-09-12", containerTypeId, 5);
+    const older = await batch("Z-BAJA-VIEJO", "2026-09-05", containerTypeId, 4);
+
+    await writeOffFulls(containerTypeId, 6).expect(201);
+
+    expect(await availableOf(older, containerTypeId)).toBe(0);
+    expect(await availableOf(newer, containerTypeId)).toBe(3);
+    const movements = await prisma().containerMovement.findMany({
+      where: { containerTypeId, type: "DAMAGE_WRITE_OFF" },
+      orderBy: { quantity: "desc" },
+    });
+    expect(movements).toMatchObject([
+      { fromState: "FULL_AT_PLANT", toState: null, quantity: 4, batchId: older },
+      { fromState: "FULL_AT_PLANT", toState: null, quantity: 2, batchId: newer },
+    ]);
+    // El inventario y los lotes siguen diciendo lo mismo: 3 llenos.
+    expect(await inventoryCell(containerTypeId, "FULL_AT_PLANT")).toBe(3);
+  });
+
+  test("a counter sale of fulls at the plant also comes out of the batch", async () => {
+    const containerTypeId = await newContainerType();
+    await fleetEntry(containerTypeId, 5);
+    const only = await batch("VENTA-MOSTRADOR", "2026-09-06", containerTypeId, 5);
+
+    await writeOffFulls(containerTypeId, 2, "FULL_SALE").expect(201);
+
+    expect(await availableOf(only, containerTypeId)).toBe(3);
+    expect(await inventoryCell(containerTypeId, "FULL_AT_PLANT")).toBe(3);
+  });
+
+  test("writing off more fulls than the batches hold is rejected and writes nothing", async () => {
+    const containerTypeId = await newContainerType();
+    await fleetEntry(containerTypeId, 5);
+    const only = await batch("BAJA-DE-MAS", "2026-09-07", containerTypeId, 2);
+    const before = await prisma().containerMovement.count({ where: { containerTypeId } });
+
+    const response = await writeOffFulls(containerTypeId, 3).expect(409);
+
+    expect(response.body.message).toContain("Revise los lotes en Producción");
+    expect(await prisma().containerMovement.count({ where: { containerTypeId } })).toBe(before);
+    expect(await availableOf(only, containerTypeId)).toBe(2);
+  });
+
+  // Un movimiento inválido se rechaza por inválido (400), no por falta de
+  // lotes (409): la transición se valida antes de mirar ningún lote.
+  test("an invalid movement out of the plant is rejected as invalid before looking at batches", async () => {
+    const containerTypeId = await newContainerType();
+
+    const response = await request(server())
+      .post("/api/v1/container-movements")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ type: "ROUTE_LOAD", fromState: "FULL_AT_PLANT", containerTypeId, quantity: 1 })
+      .expect(400);
+
+    expect(response.body.message).toContain("no admite");
+  });
+
+  test("a write-off of empties at the plant touches no batch", async () => {
+    const containerTypeId = await newContainerType();
+    await fleetEntry(containerTypeId, 5);
+    const only = await batch("BAJA-VACIOS", "2026-09-08", containerTypeId, 2);
+
+    await request(server())
+      .post("/api/v1/container-movements")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ type: "DAMAGE_WRITE_OFF", fromState: "EMPTY_AT_PLANT", containerTypeId, quantity: 1 })
+      .expect(201);
+
+    expect(await availableOf(only, containerTypeId)).toBe(2);
+    expect(await inventoryCell(containerTypeId, "EMPTY_AT_PLANT")).toBe(2);
+  });
+});

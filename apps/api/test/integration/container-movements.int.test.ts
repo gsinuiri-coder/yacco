@@ -96,6 +96,15 @@ afterEach(async () => {
   await prisma.customerContainerBalance.deleteMany({ where: { locationId } });
 });
 
+/** Un lote de producción del tipo de envase del test: emite su FILLING con lote. */
+async function fillBatch(code: string, date: string, producedQty: number): Promise<void> {
+  await request(server())
+    .post("/api/v1/production-batches")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ code, date, items: [{ containerTypeId, producedQty }] })
+    .expect(201);
+}
+
 describe("POST /api/v1/container-movements — the transition matrix", () => {
   test("FLEET_ENTRY: no origin, lands EMPTY_AT_PLANT", async () => {
     const response = await createMovement(adminToken, {
@@ -139,6 +148,8 @@ describe("POST /api/v1/container-movements — the transition matrix", () => {
   });
 
   test("FULL_SALE accepts leaving from the plant or from the route", async () => {
+    // Un lleno en planta sale de un lote: tiene que haber uno.
+    await fillBatch("LOTE-VENTA-PLANTA", "2026-08-01", 1);
     const fromPlant = await createMovement(adminToken, {
       type: "FULL_SALE",
       fromState: "FULL_AT_PLANT",
@@ -508,12 +519,8 @@ describe("GET /api/v1/container-movements/inventory", () => {
       toState: "EMPTY_AT_PLANT",
       quantity: 100,
     }).expect(201);
-    await createMovement(adminToken, {
-      type: "FILLING",
-      fromState: "EMPTY_AT_PLANT",
-      toState: "FULL_AT_PLANT",
-      quantity: 80,
-    }).expect(201);
+    // Llenado por un lote real: la venta de mostrador de abajo sale de él.
+    await fillBatch("LOTE-INVENTARIO", "2026-08-02", 80);
     await createMovement(adminToken, {
       type: "ROUTE_LOAD",
       fromState: "FULL_AT_PLANT",
