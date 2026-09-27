@@ -72,6 +72,16 @@ una primera línea que dice quién lo decidió y cuándo.
 
 ## Decididos sin el dueño
 
+### El precio de lista conserva cada cambio
+
+- **Decidido por Codex (2026-09-27),** por instrucción de Giancarlo durante el cierre final.
+- **Asumimos:** que, cuando la oficina cambia el precio de lista, necesita ver quién lo cambió,
+  cuándo y de cuánto a cuánto; el historial de precios pactados por cliente queda fuera.
+- **Construido encima:** `product_price_changes`, `ProductsService.update` y el bloque
+  «Cambios de precio» de `products.vue`.
+- **Si resulta que no:** bajo. La tabla es solo aditiva y no modifica ventas ni acuerdos ya escritos;
+  se deja de mostrar o de escribir sin alterar los precios históricos de las ventas.
+
 Decisiones de dominio que se tomaron **sin preguntarle**, en un trabajo
 autónomo donde no había reunión posible. No son respuestas suyas ni preguntas
 agendadas: por eso no llevan **Preguntar** y no están en Pendientes. El día

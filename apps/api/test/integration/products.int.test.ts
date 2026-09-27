@@ -193,6 +193,109 @@ describe("PATCH /api/v1/products/:id", () => {
   });
 });
 
+describe("historial inmutable de precios de lista", () => {
+  async function createProduct(listPrice = "8.00") {
+    const prisma = ctx.app.get(PrismaService);
+    const containerType = await prisma.containerType.findFirstOrThrow();
+    return prisma.product.create({
+      data: {
+        containerTypeId: containerType.id,
+        name: `Producto con historial ${crypto.randomUUID()}`,
+        type: "REFILL",
+        listPrice,
+      },
+    });
+  }
+
+  test("dos cambios seguidos guardan ambos valores anteriores y quién los hizo", async () => {
+    const product = await createProduct();
+
+    await request(server())
+      .patch(`/api/v1/products/${product.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ listPrice: "9.50" })
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/products/${product.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ listPrice: "10.25" })
+      .expect(200);
+
+    const history = await request(server())
+      .get(`/api/v1/products/${product.id}/price-changes`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(history.body).toEqual([
+      expect.objectContaining({ previousPrice: "9.50", newPrice: "10.25" }),
+      expect.objectContaining({ previousPrice: "8.00", newPrice: "9.50" }),
+    ]);
+    expect(history.body[0].changedBy).toEqual({ id: expect.any(String), name: expect.any(String) });
+    expect(typeof history.body[0].changedAt).toBe("string");
+  });
+
+  test("repetir el mismo precio no agrega una fila al historial", async () => {
+    const product = await createProduct("8.00");
+
+    await request(server())
+      .patch(`/api/v1/products/${product.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ listPrice: "8.00" })
+      .expect(200);
+
+    const prisma = ctx.app.get(PrismaService);
+    await expect(
+      prisma.productPriceChange.count({ where: { productId: product.id } }),
+    ).resolves.toBe(0);
+  });
+
+  test("si falla al escribir el historial, el precio y su fila se revierten juntos", async () => {
+    const product = await createProduct("8.00");
+    const prisma = ctx.app.get(PrismaService);
+    const triggerName = `fail_price_change_${product.id.replaceAll("-", "_")}`;
+    const functionName = `${triggerName}_fn`;
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'falla intencional del historial'; END;
+      $$;
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER ${triggerName}
+      BEFORE INSERT ON product_price_changes
+      FOR EACH ROW WHEN (NEW.product_id = '${product.id}'::uuid)
+      EXECUTE FUNCTION ${functionName}();
+    `);
+
+    try {
+      await request(server())
+        .patch(`/api/v1/products/${product.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ listPrice: "9.50" })
+        .expect(500);
+
+      const untouched = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
+      expect(untouched.listPrice.toFixed(2)).toBe("8.00");
+      await expect(
+        prisma.productPriceChange.count({ where: { productId: product.id } }),
+      ).resolves.toBe(0);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS ${triggerName} ON product_price_changes;`,
+      );
+      await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${functionName}();`);
+    }
+  });
+
+  test("SELLER no puede leer el historial", async () => {
+    const product = await createProduct();
+
+    await request(server())
+      .get(`/api/v1/products/${product.id}/price-changes`)
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .expect(403);
+  });
+});
+
 describe("role guard", () => {
   // Desde «Mi ruta» (2026-09-24) el chofer lee el catálogo: su formulario de
   // parada lo necesita. Ver driver-scope.int.test.ts.

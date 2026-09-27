@@ -23,8 +23,11 @@ function buildPrismaMock() {
   return {
     product: {
       findMany: jest.fn<() => Promise<unknown>>(),
+      findUniqueOrThrow: jest.fn<() => Promise<unknown>>(),
       update: jest.fn<() => Promise<unknown>>(),
     },
+    productPriceChange: { create: jest.fn<() => Promise<unknown>>() },
+    $transaction: jest.fn(),
   };
 }
 
@@ -34,6 +37,9 @@ describe("ProductsService", () => {
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
+    prisma.$transaction.mockImplementation(async (callback) =>
+      (callback as (transaction: typeof prisma) => Promise<unknown>)(prisma),
+    );
 
     const moduleRef = await Test.createTestingModule({
       providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
@@ -79,8 +85,9 @@ describe("ProductsService", () => {
       prisma.product.update.mockResolvedValue(
         buildProduct({ listPrice: new Prisma.Decimal("9.5") }),
       );
+      prisma.product.findUniqueOrThrow.mockResolvedValue(buildProduct());
 
-      const result = await service.update("product-1", { listPrice: "9.5" });
+      const result = await service.update("product-1", { listPrice: "9.5" }, "admin-1");
 
       expect(prisma.product.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -92,29 +99,31 @@ describe("ProductsService", () => {
     });
 
     it("refuses a zero list price without writing", async () => {
-      await expect(service.update("product-1", { listPrice: "0.00" })).rejects.toThrow(
+      await expect(service.update("product-1", { listPrice: "0.00" }, "admin-1")).rejects.toThrow(
         "El precio de lista debe ser mayor que 0",
       );
       expect(prisma.product.update).not.toHaveBeenCalled();
     });
 
     it("turns an unknown id (P2025) into a 404", async () => {
-      prisma.product.update.mockRejectedValue(
+      prisma.product.findUniqueOrThrow.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError("not found", {
           code: "P2025",
           clientVersion: "test",
         }),
       );
 
-      await expect(service.update("missing", { listPrice: "1.00" })).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.update("missing", { listPrice: "1.00" }, "admin-1"),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it("lets any other error through", async () => {
-      prisma.product.update.mockRejectedValue(new Error("boom"));
+      prisma.product.findUniqueOrThrow.mockRejectedValue(new Error("boom"));
 
-      await expect(service.update("product-1", { listPrice: "1.00" })).rejects.toThrow("boom");
+      await expect(service.update("product-1", { listPrice: "1.00" }, "admin-1")).rejects.toThrow(
+        "boom",
+      );
     });
   });
 });

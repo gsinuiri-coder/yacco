@@ -181,6 +181,7 @@ model User {
   paymentsVoided                Payment[]            @relation("PaymentVoidedBy")
   routeSettlements              RouteSettlement[]
   syncOperations                SyncOperation[]
+  productPriceChanges           ProductPriceChange[]
 
   @@map("users")
 }
@@ -324,8 +325,26 @@ model Product {
   customerPrices CustomerPrice[]
   orderItems     OrderItem[]
   saleItems      SaleItem[]
+  priceChanges   ProductPriceChange[]
 
   @@map("products")
+}
+
+// Append-only evidence of each list-price change. Existing products start
+// with no rows; their first subsequent edit records the price that was there.
+model ProductPriceChange {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  previousPrice Decimal? @map("previous_price") @db.Decimal(10, 2)
+  newPrice      Decimal  @map("new_price") @db.Decimal(10, 2)
+  changedAt     DateTime @default(now()) @map("changed_at") @db.Timestamptz(6)
+  changedById   String   @map("changed_by") @db.Uuid
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  changedBy User    @relation(fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([productId, changedAt(sort: Desc)])
+  @@map("product_price_changes")
 }
 
 // The price agreement is with the customer; `locationId` is an optional
