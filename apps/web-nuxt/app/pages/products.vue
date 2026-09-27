@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { isAboveZero, isMoneyInput } from "@yacco/shared";
-import type { Product } from "@yacco/shared";
+import { formatInstantInLima, formatSoles, isAboveZero, isMoneyInput } from "@yacco/shared";
+import type { Product, ProductPriceChange } from "@yacco/shared";
 
 /**
  * El catálogo de productos y su precio de lista: el que paga un cliente que
@@ -55,6 +55,9 @@ const priceValue = ref("");
 const saving = ref(false);
 /** El id de la fila viaja con el mensaje: un error arriba no diría cuál falló. */
 const rowError = ref<{ productId: string; message: string } | null>(null);
+const historyProductId = ref<string | null>(null);
+const priceChanges = ref<ProductPriceChange[]>([]);
+const loadingPriceChanges = ref(false);
 
 function startEdit(product: Product): void {
   editingId.value = product.id;
@@ -88,6 +91,28 @@ async function savePrice(id: string): Promise<void> {
     rowError.value = { productId: id, message: describeApiFailure(error) };
   } finally {
     saving.value = false;
+  }
+}
+
+async function togglePriceChanges(productId: string): Promise<void> {
+  if (historyProductId.value === productId) {
+    historyProductId.value = null;
+    priceChanges.value = [];
+    return;
+  }
+  historyProductId.value = productId;
+  priceChanges.value = [];
+  loadingPriceChanges.value = true;
+  rowError.value = null;
+  try {
+    priceChanges.value = await api.request<ProductPriceChange[]>(
+      `/products/${productId}/price-changes`,
+    );
+  } catch (error) {
+    historyProductId.value = null;
+    rowError.value = { productId, message: describeApiFailure(error) };
+  } finally {
+    loadingPriceChanges.value = false;
   }
 }
 </script>
@@ -175,7 +200,15 @@ async function savePrice(id: string): Promise<void> {
                         @click="savePrice(product.id)"
                       />
                     </div>
-                    <div v-else class="flex justify-end">
+                    <div v-else class="flex justify-end gap-2">
+                      <UButton
+                        color="neutral"
+                        variant="ghost"
+                        size="sm"
+                        label="Cambios de precio"
+                        :disabled="saving"
+                        @click="togglePriceChanges(product.id)"
+                      />
                       <UButton
                         color="neutral"
                         variant="ghost"
@@ -185,6 +218,26 @@ async function savePrice(id: string): Promise<void> {
                         @click="startEdit(product)"
                       />
                     </div>
+                  </td>
+                </tr>
+                <tr v-if="historyProductId === product.id">
+                  <td :colspan="5" class="bg-elevated px-4 py-3">
+                    <p class="mb-2 font-medium text-highlighted">Cambios de precio</p>
+                    <p v-if="loadingPriceChanges" role="status">Cargando cambios…</p>
+                    <p v-else-if="priceChanges.length === 0" class="text-muted">
+                      Todavía no hay cambios de precio registrados.
+                    </p>
+                    <ul v-else class="space-y-1">
+                      <li v-for="change in priceChanges" :key="change.id" class="tabular-nums">
+                        {{ formatInstantInLima(change.changedAt) }} · {{ change.changedBy.name }}:
+                        {{
+                          change.previousPrice === null
+                            ? "sin precio anterior"
+                            : formatSoles(change.previousPrice)
+                        }}
+                        a {{ formatSoles(change.newPrice) }}
+                      </li>
+                    </ul>
                   </td>
                 </tr>
                 <tr v-if="rowError?.productId === product.id">
