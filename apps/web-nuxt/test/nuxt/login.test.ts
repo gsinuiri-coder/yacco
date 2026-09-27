@@ -35,7 +35,7 @@ describe("login", () => {
     const received: unknown[] = [];
     onLogin(async (event) => {
       received.push(await readBody(event));
-      return { accessToken: buildToken({ username: "giancarlo" }), refreshToken: "refresh-nuevo" };
+      return { accessToken: buildToken({ username: "giancarlo" }) };
     });
 
     await renderSuspended(App, { route: "/login" });
@@ -103,7 +103,7 @@ describe("login", () => {
     });
     onLogin(async () => {
       await mayFinish;
-      return { accessToken: buildToken(), refreshToken: "refresh-nuevo" };
+      return { accessToken: buildToken() };
     });
 
     await renderSuspended(App, { route: "/login" });
@@ -118,7 +118,7 @@ describe("login", () => {
   });
 
   it("vuelve a la ruta que pedía antes de ingresar", async () => {
-    onLogin(() => ({ accessToken: buildToken(), refreshToken: "r" }));
+    onLogin(() => ({ accessToken: buildToken() }));
     await navigateTo("/login?from=/otra-pantalla");
 
     await renderSuspended(App, { route: "/login?from=/otra-pantalla" });
@@ -128,7 +128,7 @@ describe("login", () => {
   });
 
   it("no sigue un `from` que apunta a otro sitio", async () => {
-    onLogin(() => ({ accessToken: buildToken(), refreshToken: "r" }));
+    onLogin(() => ({ accessToken: buildToken() }));
 
     await renderSuspended(App, { route: "/login?from=//evil.example" });
     await fillAndSubmit("admin", "admin");

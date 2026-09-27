@@ -21,6 +21,17 @@ function server() {
   return ctx.app.getHttpServer();
 }
 
+function refreshCookieFrom(response: request.Response): string {
+  const raw = response.headers["set-cookie"] as unknown as string[] | undefined;
+  const cookie = (raw ?? []).find((value) => value.startsWith("yacco_refresh="));
+  expect(cookie).toBeDefined();
+  return cookie!;
+}
+
+function refreshCookiePairFrom(response: request.Response): string {
+  return refreshCookieFrom(response).split(";")[0]!;
+}
+
 // HU-23 §2.4 E1: "Dado un usuario activo, cuando inicia sesión con
 // credenciales válidas, entonces accede solo a las funciones de sus roles;
 // con credenciales inválidas, el acceso se rechaza."
@@ -33,7 +44,7 @@ test("HU-23 E1: valid login grants access to role-scoped endpoints", async () =>
 
   expect(typeof loginResponse.body.accessToken).toBe("string");
   expect(loginResponse.body.accessToken.split(".")).toHaveLength(3);
-  expect(typeof loginResponse.body.refreshToken).toBe("string");
+  expect(loginResponse.body.refreshToken).toBeUndefined();
 
   const usersResponse = await request(server())
     .get("/api/v1/users")
@@ -92,7 +103,7 @@ test("refresh: a valid refresh token issues a new access token", async () => {
 
   const refreshResponse = await request(server())
     .post("/api/v1/auth/refresh")
-    .set("Authorization", `Bearer ${login.body.refreshToken}`)
+    .set("Cookie", refreshCookiePairFrom(login))
     .expect(200);
 
   // Two tokens signed within the same second with identical claims are
@@ -182,7 +193,7 @@ test("refresh: a user deactivated after issuing a refresh token loses access on 
     .post("/api/v1/auth/login")
     .send({ username: "deactivated-after-refresh", password: "throwaway-password" })
     .expect(200);
-  const driverRefreshToken = driverLogin.body.refreshToken as string;
+  const driverRefreshCookie = refreshCookiePairFrom(driverLogin);
 
   await request(server())
     .patch(`/api/v1/users/${created.body.id}`)
@@ -192,7 +203,7 @@ test("refresh: a user deactivated after issuing a refresh token loses access on 
 
   await request(server())
     .post("/api/v1/auth/refresh")
-    .set("Authorization", `Bearer ${driverRefreshToken}`)
+    .set("Cookie", driverRefreshCookie)
     .expect(401);
 });
 
@@ -202,7 +213,7 @@ test("refresh: a user deactivated after issuing a refresh token loses access on 
  */
 async function userWithOpenSession(
   username: string,
-): Promise<{ adminToken: string; userId: string; refreshToken: string }> {
+): Promise<{ adminToken: string; userId: string; refreshCookie: string }> {
   const adminLogin = await request(server())
     .post("/api/v1/auth/login")
     .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
@@ -217,13 +228,11 @@ async function userWithOpenSession(
     .post("/api/v1/auth/login")
     .send({ username, password: "throwaway-password" })
     .expect(200);
-  return { adminToken, userId: created.body.id, refreshToken: login.body.refreshToken as string };
+  return { adminToken, userId: created.body.id, refreshCookie: refreshCookiePairFrom(login) };
 }
 
-function refreshWith(refreshToken: string): request.Test {
-  return request(server())
-    .post("/api/v1/auth/refresh")
-    .set("Authorization", `Bearer ${refreshToken}`);
+function refreshWith(refreshCookie: string): request.Test {
+  return request(server()).post("/api/v1/auth/refresh").set("Cookie", refreshCookie);
 }
 
 // Hasta el 2026-09-24 este test decía lo contrario («does NOT invalidate») y
@@ -232,7 +241,7 @@ function refreshWith(refreshToken: string): request.Test {
 // contraseña corta la sesión: el refresh token viejo lleva una versión que ya
 // no es la del usuario. El texto de users.vue cambió en el mismo commit.
 test("refresh: resetting a user's password invalidates a refresh token already issued", async () => {
-  const { adminToken, userId, refreshToken } = await userWithOpenSession(
+  const { adminToken, userId, refreshCookie } = await userWithOpenSession(
     "password-reset-after-refresh",
   );
 
@@ -242,19 +251,19 @@ test("refresh: resetting a user's password invalidates a refresh token already i
     .send({ password: "the-admin-dictated-this-one" })
     .expect(200);
 
-  await refreshWith(refreshToken).expect(401);
+  await refreshWith(refreshCookie).expect(401);
   // La contraseña nueva sí abre una sesión nueva, y su refresh vale.
   const again = await request(server())
     .post("/api/v1/auth/login")
     .send({ username: "password-reset-after-refresh", password: "the-admin-dictated-this-one" })
     .expect(200);
-  await refreshWith(again.body.refreshToken as string).expect(200);
+  await refreshWith(refreshCookiePairFrom(again)).expect(200);
 });
 
 // Antes, reactivar a alguien revivía su refresh token viejo: desactivar solo
 // tapaba la puerta mientras duraba.
 test("refresh: deactivating and reactivating a user does NOT revive the old refresh token", async () => {
-  const { adminToken, userId, refreshToken } = await userWithOpenSession("deactivated-then-back");
+  const { adminToken, userId, refreshCookie } = await userWithOpenSession("deactivated-then-back");
 
   for (const active of [false, true]) {
     await request(server())
@@ -264,13 +273,13 @@ test("refresh: deactivating and reactivating a user does NOT revive the old refr
       .expect(200);
   }
 
-  await refreshWith(refreshToken).expect(401);
+  await refreshWith(refreshCookie).expect(401);
 });
 
 // Lo que NO corta la sesión: cambiarle el nombre. Sin este test, invalidar de
 // más (en cualquier PATCH) pasaría igual los dos de arriba.
 test("refresh: renaming a user keeps their session", async () => {
-  const { adminToken, userId, refreshToken } = await userWithOpenSession("renamed-keeps-session");
+  const { adminToken, userId, refreshCookie } = await userWithOpenSession("renamed-keeps-session");
 
   await request(server())
     .patch(`/api/v1/users/${userId}`)
@@ -278,27 +287,20 @@ test("refresh: renaming a user keeps their session", async () => {
     .send({ name: "Nombre Corregido" })
     .expect(200);
 
-  await refreshWith(refreshToken).expect(200);
+  await refreshWith(refreshCookie).expect(200);
 });
 
 // D-024, segunda parte (ítem 7a del plan): el refresh token viaja en una cookie
 // httpOnly que el JavaScript de la página no puede leer. Un XSS ya no se lleva
 // una sesión renovable del localStorage.
 describe("refresh token en cookie httpOnly", () => {
-  function cookieFrom(response: request.Response): string {
-    const raw = response.headers["set-cookie"] as unknown as string[] | undefined;
-    const cookie = (raw ?? []).find((value) => value.startsWith("yacco_refresh="));
-    expect(cookie).toBeDefined();
-    return cookie!;
-  }
-
   test("el login deja el refresh en una cookie httpOnly, Secure, SameSite=Lax y solo para /api/v1/auth", async () => {
     const response = await request(server())
       .post("/api/v1/auth/login")
       .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
       .expect(200);
 
-    const cookie = cookieFrom(response);
+    const cookie = refreshCookieFrom(response);
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/Secure/i);
     expect(cookie).toMatch(/SameSite=Lax/i);
@@ -311,7 +313,7 @@ describe("refresh token en cookie httpOnly", () => {
       .post("/api/v1/auth/login")
       .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
       .expect(200);
-    const cookie = cookieFrom(login).split(";")[0]!;
+    const cookie = refreshCookiePairFrom(login);
 
     const response = await request(server())
       .post("/api/v1/auth/refresh")
@@ -321,10 +323,23 @@ describe("refresh token en cookie httpOnly", () => {
     expect(typeof response.body.accessToken).toBe("string");
   });
 
+  test("un refresh vigente enviado solo como Bearer se rechaza", async () => {
+    const login = await request(server())
+      .post("/api/v1/auth/login")
+      .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
+      .expect(200);
+    const refreshToken = decodeURIComponent(refreshCookiePairFrom(login).split("=")[1]!);
+
+    await request(server())
+      .post("/api/v1/auth/refresh")
+      .set("Authorization", `Bearer ${refreshToken}`)
+      .expect(401);
+  });
+
   test("cerrar sesión borra la cookie, y sin cookie no hay refresh", async () => {
     const response = await request(server()).post("/api/v1/auth/logout").expect(204);
 
-    const cookie = cookieFrom(response);
+    const cookie = refreshCookieFrom(response);
     expect(cookie).toMatch(/^yacco_refresh=;/);
     expect(cookie).toMatch(/Expires=Thu, 01 Jan 1970/i);
     await request(server()).post("/api/v1/auth/refresh").expect(401);
@@ -355,6 +370,6 @@ test("refresh guard: a token signed with the refresh secret but type=access is r
 
   await request(server())
     .post("/api/v1/auth/refresh")
-    .set("Authorization", `Bearer ${forgedToken}`)
+    .set("Cookie", `yacco_refresh=${forgedToken}`)
     .expect(401);
 });
