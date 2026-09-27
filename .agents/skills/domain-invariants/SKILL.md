@@ -38,7 +38,9 @@ it is wrong.
 | `DAMAGE_WRITE_OFF` | any state in plant → write-off                     | none (plant-side damage)                  |
 | `LOSS_WRITE_OFF`   | with customer → write-off                          | **−N** (loss declared, balance clears)    |
 
-Plus `OPENING_BALANCE` and `COUNT_ADJUSTMENT` (cutover and physical count),
+Plus `OPENING_BALANCE` and `COUNT_ADJUSTMENT` (cutover and physical count —
+of a customer location, or of the plant: empties in/out, fulls only out, one
+adjustment per batch consumed FIFO; never null → FULL_AT_PLANT),
 and the three anulaciones — `LOAN_DELIVERY_VOID`, `EMPTY_PICKUP_VOID`,
 `FULL_SALE_VOID` — each the reverse of its own type. All five are
 INTERNAL_ONLY: they never enter through `POST /container-movements`, because

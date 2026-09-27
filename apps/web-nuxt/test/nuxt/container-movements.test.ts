@@ -306,6 +306,34 @@ describe("Movimientos de envases", () => {
     expect(within(table).getByText("Llenos en planta → Fuera de la empresa")).toBeTruthy();
   });
 
+  it("un ajuste por conteo de la planta se distingue del de un cliente", async () => {
+    stubPage([
+      movement({
+        id: "mov-planta",
+        type: "COUNT_ADJUSTMENT",
+        fromState: "FULL_AT_PLANT",
+        toState: null,
+        quantity: 7,
+      }),
+      movement({
+        id: "mov-cliente",
+        type: "COUNT_ADJUSTMENT",
+        fromState: "WITH_CUSTOMER",
+        toState: null,
+        quantity: 3,
+      }),
+    ]);
+
+    await renderPage();
+
+    const table = await screen.findByRole("table");
+    const operationOf = (quantity: string) =>
+      within(within(table).getByText(quantity).closest("tr") as HTMLElement).getAllByRole("cell")[1]
+        ?.textContent;
+    expect(operationOf("7")).toBe("Ajuste por conteo de la planta");
+    expect(operationOf("3")).toBe("Ajuste por conteo");
+  });
+
   it("sin movimientos explica dónde van a aparecer; con filtro explica que ninguno coincide", async () => {
     const queries = stubPage([]);
 

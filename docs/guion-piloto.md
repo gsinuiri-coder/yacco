@@ -302,7 +302,7 @@ cambia desde su ficha.
   cliente paga distinto de lo pactado, ¿el chofer lo decide ahí o lo tiene
   que llamar a usted?
 - **Si dice que no:** sin señal, es caro: es el módulo de sincronización
-  entero (diseño en `.agents/rules/sync-protocol.md`), que hoy no existe. Si
+  entero (diseño en `.agents/skills/sync-protocol/SKILL.md`), que hoy no existe. Si
   el chofer tiene que poder cambiar el precio, es barato: mostrarle el campo
   de precio y resolver quién autoriza (hoy la lista de usuarios es solo de la
   oficina).

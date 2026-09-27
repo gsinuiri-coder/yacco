@@ -31,7 +31,7 @@ export class ProductionBatchItemResponseDto {
   @ApiProperty({ example: 200 })
   producedQty!: number;
 
-  /** Born equal to producedQty; consumed by route loading (S5), never here. */
+  /** Born equal to producedQty; consumed by route loading (S5) and by a plant count that finds fewer fulls, never here. */
   @ApiProperty({ example: 200 })
   availableQty!: number;
 }
