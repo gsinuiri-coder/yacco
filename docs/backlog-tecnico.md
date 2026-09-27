@@ -2147,18 +2147,13 @@ API devuelve (supuesto 10). Al cerrarla, `routes` vuelve a `Completo`.
 
 ## Retirar el refresh token del cuerpo del login
 
-**Estado:** abierto. **Disparador:** cuando el web con la cookie httpOnly
-(D-024) esté desplegado en producción y en demo.
+**Estado:** RESUELTA el 2026-09-27 (paso contract de D-024).
 
-Es el paso contract de D-024. Mientras un web anterior pudiera estar sirviendo,
-`POST /auth/login` sigue devolviendo `refreshToken` en el cuerpo y
-`JwtRefreshStrategy` sigue aceptando el header `Authorization`. Con el web
-nuevo desplegado, ninguno de los dos tiene quien lo use, y el del cuerpo le
-devuelve al JavaScript de la página justo lo que la cookie esconde.
-
-**Para cerrarla:** sacar `refreshToken` de `AuthTokensDto` (y del contrato
-compartido), dejar solo la cookie en `JwtRefreshStrategy`, y ajustar los tests
-de integración que todavía usan el header.
+El contrato ya devuelve solo `accessToken` en `POST /auth/login`;
+`JwtRefreshStrategy` lee únicamente la cookie httpOnly. Se conservaron las
+pruebas de cookie, de rechazo del Bearer con un refresh vigente y de
+invalidación por `token_version`, además de la limpieza local de
+`yacco.refreshToken` de clientes anteriores.
 
 ## Migración a Prisma 7
 

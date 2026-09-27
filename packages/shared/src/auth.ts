@@ -18,7 +18,6 @@ export interface LoginRequest {
 /** Response of POST /auth/login (AuthTokensDto). */
 export interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
 }
 
 /** Response of POST /auth/refresh: it only renews the access token. */

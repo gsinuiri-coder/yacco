@@ -83,7 +83,7 @@ describe("AuthService", () => {
         type: "access",
       });
 
-      const refreshPayload = jwtService.verify(tokens.refreshToken, {
+      const refreshPayload = jwtService.verify(tokens.refreshCookieValue, {
         secret: CONFIG_VALUES.JWT_REFRESH_SECRET,
       });
       expect(refreshPayload).toMatchObject({ sub: "user-1", type: "refresh" });

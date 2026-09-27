@@ -13,7 +13,7 @@ function endpoint(...args: Parameters<typeof registerEndpoint>) {
 async function signInWithLogin(accessToken = buildToken()) {
   endpoint("/api/v1/auth/login", {
     method: "POST",
-    handler: () => ({ accessToken, refreshToken: "refresh-1" }),
+    handler: () => ({ accessToken }),
     once: true,
   });
   await useSession().login({ username: "admin", password: "x" });

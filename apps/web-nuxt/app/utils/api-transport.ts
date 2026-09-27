@@ -18,7 +18,7 @@ export interface TransportRequest {
   method?: HttpMethod;
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
-  /** Bearer que viaja en Authorization: el access token, o el refresh en /auth/refresh. */
+  /** Bearer que viaja en Authorization: el access token. */
   bearer?: string | null;
 }
 

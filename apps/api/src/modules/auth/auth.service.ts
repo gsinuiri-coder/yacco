@@ -5,12 +5,16 @@ import type { JwtSignOptions } from "@nestjs/jwt";
 import type { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { UsersService } from "../users/users.service.js";
-import type { AuthTokensDto } from "./dto/auth-tokens.dto.js";
 import type { LoginDto } from "./dto/login.dto.js";
 import type { RefreshResponseDto } from "./dto/refresh-response.dto.js";
 import type { JwtPayload } from "./types/jwt-payload.js";
 
 const INVALID_CREDENTIALS = "Invalid credentials";
+
+interface LoginTokens {
+  accessToken: string;
+  refreshCookieValue: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -20,7 +24,7 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  async login(dto: LoginDto): Promise<AuthTokensDto> {
+  async login(dto: LoginDto): Promise<LoginTokens> {
     const user = await this.usersService.findByUsername(dto.username);
     if (!user || !user.active) {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
@@ -34,7 +38,7 @@ export class AuthService {
     const roles = user.roles.map((assignment) => assignment.role.name);
     return {
       accessToken: this.signAccessToken(user.id, user.username, roles),
-      refreshToken: this.signRefreshToken(user.id, user.username, roles, user.tokenVersion),
+      refreshCookieValue: this.signRefreshToken(user.id, user.username, roles, user.tokenVersion),
     };
   }
 

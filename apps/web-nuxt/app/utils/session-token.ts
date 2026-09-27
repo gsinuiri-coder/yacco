@@ -1,7 +1,5 @@
 import type { SessionUser } from "@yacco/shared";
 
-export const REFRESH_TOKEN_KEY = "yacco.refreshToken";
-
 /**
  * Lee el payload de un JWT SIN verificar la firma. Verificar es trabajo de la
  * API, que valida firma y vencimiento en cada petición: un token alterado en

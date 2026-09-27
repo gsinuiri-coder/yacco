@@ -39,14 +39,12 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthTokensDto> {
     const tokens = await this.authService.login(dto);
-    // El web lee el refresh de la cookie (D-024). El cuerpo lo sigue trayendo
-    // por un cliente anterior al cambio; se retira en el paso contract.
     response.cookie(
       REFRESH_COOKIE,
-      tokens.refreshToken,
-      refreshCookieOptions(this.authService.refreshTokenExpiry(tokens.refreshToken)),
+      tokens.refreshCookieValue,
+      refreshCookieOptions(this.authService.refreshTokenExpiry(tokens.refreshCookieValue)),
     );
-    return tokens;
+    return { accessToken: tokens.accessToken };
   }
 
   @ApiBearerAuth()

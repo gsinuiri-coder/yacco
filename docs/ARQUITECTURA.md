@@ -1567,17 +1567,16 @@ propia» que dejó pendiente D-022):
 SameSite=Lax; Path=/api/v1/auth` y el vencimiento del propio token. El web
   llega a la API por su mismo origen (el proxy de D-021), así que la cookie es
   de primera parte y no hace falta CORS con credenciales.
-- `POST /auth/refresh` lee la cookie primero y, si no está, el header
-  `Authorization`. `POST /auth/logout` (nuevo, sin guard) la borra.
+- `POST /auth/refresh` lee únicamente la cookie. `POST /auth/logout` (nuevo,
+  sin guard) la borra.
 - El web ya no guarda el token: en `localStorage` queda solo la marca
   `yacco.session` («en este navegador hubo sesión»), sin secreto, para no pedir
   un refresh a quien nunca ingresó y para distinguir una sesión vencida. Al
   pasar por ahí borra el `yacco.refreshToken` que dejaba la versión anterior.
-- **Expand/contract.** El cuerpo del login sigue trayendo `refreshToken`, y el
-  refresh sigue aceptando el header, para un cliente anterior al cambio.
-  Retirar las dos cosas es el paso contract, en un PR propio, cuando el web
-  nuevo esté desplegado (entrada de backlog «Retirar el refresh token del
-  cuerpo del login»).
+- **Paso contract (hecho el 2026-09-27).** El cuerpo del login devuelve solo
+  `accessToken`; el refresh queda exclusivamente en la cookie y
+  `/auth/refresh` ya no acepta `Authorization`. La limpieza de
+  `yacco.refreshToken` en navegadores de versiones anteriores permanece.
 - `SameSite=Lax` alcanza contra CSRF acá: refresh y logout son POST, y un POST
   que dispara otro sitio no lleva cookies Lax. Lo que devuelve el refresh (un
   access token en JSON) otro origen no lo puede leer.
