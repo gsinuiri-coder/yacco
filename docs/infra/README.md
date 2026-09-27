@@ -2,8 +2,8 @@
 
 **Decisión de Giancarlo, 2026-09-27.** Hasta terminar la app se trabaja y se
 prueba sólo en local (Docker). Se eliminó el entorno de demo, y los dos
-servicios de Cloud Run —`yacco-api` y `yacco-api-demo`— se borran y se
-recrean con el deploy final. Mientras tanto nada se despliega: `deploy.yml`
+servicios de Cloud Run —`yacco-api` y `yacco-api-demo`— se borraron el
+2026-09-27, después de mergear #263, y se recrean con el deploy final. Mientras tanto nada se despliega: `deploy.yml`
 sólo corre a mano (`docs/DEPLOY.md`).
 
 Este archivo es el respaldo de lo que había y la receta para volver.
@@ -18,7 +18,7 @@ corrida 36304499658 de Deploy.
 | `yacco-api`      | `https://yacco-api-297699663114.us-east4.run.app`      | `https://yacco-api-rngajdr5pa-uk.a.run.app`      | `yacco-api-00088-v79`      |
 | `yacco-api-demo` | `https://yacco-api-demo-297699663114.us-east4.run.app` | `https://yacco-api-demo-rngajdr5pa-uk.a.run.app` | `yacco-api-demo-00090-kfw` |
 
-Imagen de los dos:
+Imagen de los dos (la única que conserva el registro):
 `us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api:52dc5baf6f17`, digest
 `sha256:3a9318126ba41bce12156e44aaeb3a73fa1c3b0ee3fe5a03174b6954c2bc25f5`.
 
@@ -85,8 +85,6 @@ El propio workflow recrea el servicio: `gcloud run deploy` crea el servicio
 si no existe, y el deployer tiene `roles/run.admin` para crearlo y hacerlo
 público (`--allow-unauthenticated`). No hay un paso aparte.
 
-0. **Sacar la política de limpieza** del registro, si sigue puesta (abajo,
-   «Artifact Registry»): con ella, un reintento del deploy borraría imágenes.
 1. **Decidir `min-instances`** (Giancarlo, D-008). El valor vive en
    `ENVIRONMENTS.production.minInstances` de `scripts/deploy-api.mjs` (hoy
    `"1"`). Si cambia, va en un PR antes del deploy.
@@ -166,46 +164,38 @@ también es volver a poner en `deploy.yml` los jobs que se sacaron el
 
 ## Artifact Registry
 
-- **Limpieza, de una sola vez**: la política de [`artifact-registry-cleanup.json`](./artifact-registry-cleanup.json)
-  conserva la imagen etiquetada `52dc5baf6f17` y la más reciente, y borra el
-  resto. «La más reciente» es la de `52dc5ba` hoy; cuando el deploy final
-  suba una imagen nueva, la protege a ella también.
-
-  **Es una limpieza puntual, no una política permanente.** Con `keepCount: 1`,
-  la segunda imagen que se suba (un reintento del deploy final, un arreglo
-  posterior) deja de ser la más reciente y se borra: se perderían la imagen
-  corriendo si ese deploy falla y toda vuelta atrás a una revisión anterior.
-  Por eso, una vez que la limpieza corrió (Artifact Registry la aplica en
-  segundo plano, hasta un día después), y **siempre antes del deploy final**,
-  se sacan las tres reglas:
+- **Borrado único, 2026-09-27** (sin política de limpieza: una política corre
+  sola cada día y, el día del deploy final, se llevaría la imagen nueva o
+  habría que acordarse de sacarla). Se listaron las 91 imágenes de `api` con
+  su digest y sus tags, y se borraron las 90 que no eran el digest de
+  `52dc5ba`, primero el índice OCI `f66c8c775dac` (para no chocar con sus
+  manifiestos hijos) y después el resto, una por una:
 
   ```bash
-  gcloud artifacts repositories delete-cleanup-policies yacco --location=us-east4 \
-    --project=yacco-v2-prod --configuration=yacco \
-    --policynames=keep-52dc5ba,keep-newest,delete-rest
+  gcloud artifacts docker images delete     us-east4-docker.pkg.dev/yacco-v2-prod/yacco/api@<digest>     --delete-tags --quiet --project=yacco-v2-prod --configuration=yacco
   ```
 
-  Si después del deploy final se quiere una política permanente, que
-  conserve varias versiones (`keepCount` de 5 o más) y borre sólo las
-  viejas (`olderThan`).
-
-  ```bash
-  gcloud artifacts repositories set-cleanup-policies yacco --location=us-east4 \
-    --project=yacco-v2-prod --configuration=yacco \
-    --policy=docs/infra/artifact-registry-cleanup.json --dry-run
-  # y, revisado, lo mismo con --no-dry-run
-  ```
+  Quedó sólo `api:52dc5baf6f17`
+  (`sha256:3a9318126ba41bce12156e44aaeb3a73fa1c3b0ee3fe5a03174b6954c2bc25f5`).
+  Nada borra imágenes de forma automática: la que suba el deploy final se
+  queda. Si después se quiere una política permanente, que conserve varias
+  versiones y borre sólo las viejas (`olderThan`), nunca una que conserve
+  una sola.
 
 - **Escaneo de vulnerabilidades**: Artifact Analysis cobra por imagen
-  escaneada, y el escaneo automático estaba activo en el repositorio desde
-  2026-09-16. Se apaga a nivel de repositorio (la API
-  `containerscanning.googleapis.com` sigue habilitada en el proyecto):
+  escaneada, y el escaneo automático estaba activo desde 2026-09-16. Se apagó
+  el 2026-09-27 deshabilitando la API `containerscanning.googleapis.com` (la
+  que estaba activa; `ondemandscanning.googleapis.com` nunca se habilitó). El
+  repositorio quedó en `SCANNING_DISABLED`. `containeranalysis.googleapis.com`
+  sigue habilitada: guarda metadatos y no cobra por imagen.
+
+  Para volver a encenderlo:
 
   ```bash
-  gcloud artifacts repositories update yacco --location=us-east4 \
-    --project=yacco-v2-prod --configuration=yacco --disable-vulnerability-scanning
+  gcloud services enable containerscanning.googleapis.com     --project=yacco-v2-prod --configuration=yacco
+  gcloud artifacts repositories update yacco --location=us-east4     --project=yacco-v2-prod --configuration=yacco --allow-vulnerability-scanning
   ```
 
-  Para volver a prenderlo, `--allow-vulnerability-scanning`. El contenido de
+  Escanea sólo las imágenes que se suban desde ese momento. El contenido de
   la imagen lo sigue revisando CI en cada PR (`check-api-image.mjs`, D-026),
   que es lo que el escaneo marcaba.

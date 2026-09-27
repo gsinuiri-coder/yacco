@@ -161,7 +161,8 @@ extraé lo compartido. Si dispara cobertura, escribí el test que falta.
   despliega solo; el deploy final es manual (`docs/infra/README.md`).
 - Migrations are expand/contract. The deploy that applies them to `main` runs
   outside 08:00–20:00 America/Lima: since 2026-09-24 production holds the real
-  roster, data that cannot be regenerated. No exceptions.
+  roster, data that cannot be regenerated. No exceptions. If deploys become
+  automatic again, the window goes back to merges that contain migrations.
 - Neon branches: never delete, reset or restore one (denied in
   `.claude/settings.json`, CLI and MCP alike), without exceptions. Creating a
   backup branch (D-006) is still allowed.
