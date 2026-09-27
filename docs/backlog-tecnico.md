@@ -514,7 +514,18 @@ agreguen mañana — sin que el test tenga que conocer sus nombres.
 
 ## Sin lock sobre customer_container_balances al leer-y-reescribir
 
-**Estado:** aceptado. **Disparador:** más de dos rutas cargando/entregando al
+**Estado:** resuelta (2026-09-26, cierre final). Todo lo que mueve el saldo de
+una ubicación —cada movimiento que toca `WITH_CUSTOMER` y cada conteo— toma
+antes `FOR NO KEY UPDATE` sobre su fila de `customer_locations`
+(`lockLocation`), así que la lectura y la escritura del saldo van de a una por
+ubicación. Se tomó por ubicación y no por fila de saldo porque la fila puede no
+existir todavía, y porque el conteo lee el saldo antes de decidir el ajuste.
+La carga de ruta no toca `WITH_CUSTOMER` y no bloquea nada.
+`container-balance-concurrency.int.test.ts`: doce entregas simultáneas a la
+misma ubicación dejaban saldo 2 a 4; ahora 12. Lo que sigue es la entrada
+original.
+
+**Disparador original:** más de dos rutas cargando/entregando al
 mismo tiempo, o un descuadre real que `GET /container-reconciliation` reporte
 sin que se le encuentre una causa identificable en el código.
 
@@ -547,7 +558,13 @@ leerla, en ambos servicios.
 
 ## Falta la rutina de cuadre del dinero
 
-**Estado:** abierto. **Disparador:** cuando exista el camino de escritura de
+**Estado:** resuelta (2026-09-26, cierre final). `GET /api/v1/debt-reconciliation`
+(`DebtReconciliationService`, solo ADMIN) y la pantalla «Cuadre de la deuda» en
+Reportes. Una venta no anulada suma, un cobro CONFIRMED no anulado resta, un
+PENDING o REJECTED no cuenta; SQL propio, joins LEFT/FULL, informa y no repara.
+Lo que sigue es la entrada original.
+
+**Disparador original:** cuando exista el camino de escritura de
 ventas y pagos en S4.
 
 `GET /container-reconciliation` (`ContainerReconciliationService`) tiene un
@@ -2280,3 +2297,19 @@ pero los tests de integración los usan para armar escenarios.
 **Para cerrarla:** sumarlos a `INTERNAL_ONLY_MOVEMENT_TYPES` y armar esos
 escenarios de test por su escritor real (un lote, una ruta) o con
 `createWithinTransaction`.
+
+## El conteo de la planta no bloquea contra cargas, lotes ni liquidaciones
+
+**Estado:** aceptado. **Registrado:** 2026-09-26, en la revisión del bloqueo de
+saldos de clientes. **Disparador:** un conteo de la planta cuyo resultado no
+coincida con lo que se contó.
+
+`ContainerCountsService.countPlant` bloquea la fila del tipo de envase, así que
+dos conteos a la vez van de a uno. Una carga de ruta, un lote o una
+liquidación que se anoten en el mismo instante no toman ese bloqueo: el conteo
+compara contra el libro de un momento antes. Se acepta porque el conteo se hace
+con el galpón quieto.
+
+**Para cerrarla:** que `addLoad`, `ProductionBatchesService.create` y la
+liquidación tomen el mismo bloqueo del tipo de envase antes de mover llenos o
+vacíos de la planta.

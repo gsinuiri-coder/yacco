@@ -70,6 +70,7 @@ function buildPrismaMock() {
       findUnique: jest.fn<() => Promise<unknown>>(),
       upsert: jest.fn<() => Promise<unknown>>(),
     },
+    $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
 }
@@ -195,6 +196,8 @@ describe("ContainerMovementsService", () => {
         recordedById: USER_ID,
       });
       expect(prisma.customerContainerBalance.upsert).not.toHaveBeenCalled();
+      // No toca el saldo de ningún cliente: no bloquea ninguna ubicación.
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
       expect(result.id).toBe(MOVEMENT_ID);
     });
 
@@ -230,6 +233,12 @@ describe("ContainerMovementsService", () => {
       }>(prisma.customerContainerBalance.upsert);
       expect(upsertArgs.create.quantity).toBe(6);
       expect(upsertArgs.update.quantity).toBe(6);
+      // El lock de la ubicación va ANTES de leer el saldo: si no, dos
+      // escrituras a la vez leen el mismo valor base y se pisan.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.customerContainerBalance.findUnique.mock.invocationCallOrder[0] ?? 0,
+      );
     });
 
     it("an empty pickup adds its negative delta on top of the existing customer balance", async () => {
