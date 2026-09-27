@@ -3,7 +3,9 @@
  * de Vercel. Imprime SÓLO la URL del deploy.
  *
  *   pnpm deploy:web                producción: queda detrás de yacco-web.vercel.app
- *   pnpm deploy:web --preview      un preview: URL única, detrás del login de Vercel
+ *
+ * Sin previews desde el modo local (2026-09-27): un preview le hablaba a la API
+ * de demo (D-011), que no existe hasta el deploy final. `--preview` se rechaza.
  *
  * El build corre ACÁ (en el runner de CI o en la máquina de quien lo lanza) y
  * se sube ya construido (`vercel build` + `vercel deploy --prebuilt`), en vez
@@ -37,15 +39,26 @@ import { TARGETS } from "./smoke.mjs";
 export const VERCEL_ORG_ID = "team_qdzn9Mh8kLIgkekpqYuNxGR3";
 export const VERCEL_PROJECT_ID = "prj_CgKR5MHXsMTG0CzdxHo5huNLEaiU";
 
-/** Los argumentos de cada comando de la CLI, según el destino. */
-export function vercelSteps({ preview }) {
-  const environment = preview ? "preview" : "production";
-  const prod = preview ? [] : ["--prod"];
+/** Los argumentos de cada comando de la CLI. Siempre producción. */
+export function vercelSteps() {
   return [
-    ["pull", "--yes", `--environment=${environment}`],
-    ["build", ...prod],
-    ["deploy", "--prebuilt", ...prod],
+    ["pull", "--yes", "--environment=production"],
+    ["build", "--prod"],
+    ["deploy", "--prebuilt", "--prod"],
   ];
+}
+
+/**
+ * `--preview` ya no existe: un preview apuntaba a la API de demo, borrada en el
+ * modo local. Devuelve el motivo, o null si no se pidió. Rechazarlo en vez de
+ * ignorarlo evita que quien pidió un preview publique producción sin querer.
+ */
+export function previewRejected(argv) {
+  if (!argv.includes("--preview")) return null;
+  return (
+    "Los previews del web están apagados desde el modo local (2026-09-27): apuntaban a " +
+    "yacco-api-demo, que no existe. Probá el web en local (docs/ENTORNOS.md)."
+  );
 }
 
 export const BUILD_OUTPUT_CONFIG = join(REPO_ROOT, ".vercel", "output", "config.json");
@@ -140,8 +153,9 @@ export function assertPublishable(path = BUILD_OUTPUT_CONFIG) {
 }
 
 function main() {
+  const rejected = previewRejected(process.argv.slice(2));
+  if (rejected !== null) throw new Error(rejected);
   const config = loadConfig();
-  const preview = process.argv.includes("--preview");
 
   // Los ids van al entorno del proceso y no a `options.env` de run(): todo lo
   // que pasa por ahí se registra como secreto y se tacha de la salida, y
@@ -162,10 +176,8 @@ function main() {
     );
   }
 
-  const [pull, build, deploy] = vercelSteps({ preview });
-  console.error(
-    `Trayendo la configuración del proyecto (${preview ? "preview" : "producción"})...`,
-  );
+  const [pull, build, deploy] = vercelSteps();
+  console.error("Trayendo la configuración del proyecto (producción)...");
   run("vercel", pull, { env });
   console.error("Construyendo el web...");
   run("vercel", build, { env });

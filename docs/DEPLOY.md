@@ -150,39 +150,40 @@ Si `gcp:bootstrap` falla con `PERMISSION_DENIED` en Artifact Registry justo
 después de crear el proyecto, es propagación de IAM tras habilitar la API:
 esperá un minuto y volvé a correrlo.
 
-### Desde CI, que es el camino normal _(fase 5)_
+### Desde CI, sólo a mano _(modo local desde 2026-09-27)_
 
-Mergear a `main` despliega. `.github/workflows/deploy.yml` arranca cuando CI
-termina bien sobre `main`, espera a que CodeQL también pase para ese commit, y
-corre en este orden (D-014):
+**Mergear a `main` NO despliega.** Hasta terminar la app se trabaja sólo en
+local; un merge exige CI verde y nada más. `.github/workflows/deploy.yml`
+corre sólo con `workflow_dispatch`, y se usa una vez: en el deploy final,
+siguiendo `docs/infra/README.md` (e2e local, rama de respaldo de Neon, este
+workflow fuera de 08:00–20:00 Lima, smoke). El job 4 recrea `yacco-api`: no
+hay que crearlo antes a mano.
 
-| Paso          | Qué hace                                                                                      | Si falla, qué queda en pie                           |
-| ------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main` y cambia algo que corre     | Nada cambió                                          |
-| preflight     | Comprueba que existen los secretos, y que el token de Vercel sirve (`vercel whoami`)          | Nada cambió                                          |
-| 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit                                      | Nada cambió                                          |
-| 2 migraciones | `prisma migrate deploy` contra la URL **directa**: demo, después main                         | Una o las dos bases migradas; código viejo sirviendo |
-| 3 imagen      | `deploy-api.mjs build`: una imagen, etiquetada con el sha                                     | **Bases migradas, código viejo sirviendo**           |
-| 4a demo       | `deploy-api.mjs deploy --env=demo` + smoke de esa API                                         | Producción en el código viejo                        |
-| 4b producción | La MISMA imagen + smoke de esa API                                                            | Demo en el nuevo; web sin publicar                   |
-| 5 web         | `deploy-web.mjs`: `vercel build --prod`, guardia del Build Output, `deploy --prebuilt --prod` | APIs en el nuevo; web en su versión anterior         |
-| 6 smoke       | `pnpm smoke:prod`, solo lectura                                                               | Todo desplegado; el smoke dice qué no está sano      |
+```bash
+gh workflow run deploy.yml --ref main
+```
 
-**Un merge que solo toca documentación no redespliega.** El gate compara el
-commit contra el que corre HOY en producción (el `commit` de su `/health`) y,
-si todo lo que cambió es `docs/`, algún `*.md`, `.agents/` o `.claude/`, la
-corrida termina en el gate, en verde, con el aviso «solo cambia
-documentación». `.github/` y `scripts/` sí despliegan: el deploy y el smoke
-corren desde ahí. Ante cualquier duda (`/health` caído, commit desconocido,
-comparación imposible) se despliega (`scripts/deploy-scope.mjs`). Relanzar a
-mano (abajo) despliega siempre el camino entero.
+El gate exige que el commit sea la punta de `main` y que CI y CodeQL hayan
+pasado para él. Después corre en este orden (D-014):
 
-Un caso que conviene tener presente: si un deploy falla en «5 · Web a
-Vercel», la API de producción ya corre el commit nuevo, así que un merge
-siguiente que solo toque documentación no redespliega y **el web queda en su
-versión anterior** (funciona: habla con la misma API por el mismo rewrite).
-Un deploy fallido se arregla relanzando: el botón «Re-run» de esa corrida
-vuelve a comparar y despliega, o `gh workflow run deploy.yml --ref main`.
+| Paso          | Qué hace                                                                                      | Si falla, qué queda en pie                       |
+| ------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| gate          | Espera CI y CodeQL; sólo sigue si el commit es la punta de `main`                             | Nada cambió                                      |
+| preflight     | Comprueba que existen los secretos, y que el token de Vercel sirve (`vercel whoami`)          | Nada cambió                                      |
+| 1 integración | `pnpm test:integration` (Testcontainers) sobre el commit                                      | Nada cambió                                      |
+| 2 migraciones | `prisma migrate deploy` contra la URL **directa** de `main`                                   | Base migrada (o a medias); nada desplegado       |
+| 3 imagen      | `deploy-api.mjs build`: una imagen, etiquetada con el sha                                     | **Base migrada, código viejo o ningún servicio** |
+| 4 producción  | `deploy-api.mjs deploy --env=production` con esa imagen + smoke de esa API                    | Web sin publicar                                 |
+| 5 web         | `deploy-web.mjs`: `vercel build --prod`, guardia del Build Output, `deploy --prebuilt --prod` | API en el nuevo; web en su versión anterior      |
+| 6 smoke       | `pnpm smoke:prod`, solo lectura                                                               | Todo desplegado; el smoke dice qué no está sano  |
+
+**Lo que hacía demo, ahora lo hace el e2e local.** Hasta el modo local, el
+job 4a desplegaba la imagen en `yacco-api-demo` y la verificaba ANTES de
+producción, y la rama `demo` de Neon recibía las migraciones primero. Esa
+verificación no se perdió: se corre antes de lanzar el workflow (abajo, «E2E
+local antes del deploy final»), y es obligatoria. Lo que el e2e local NO
+reproduce es aplicar las migraciones sobre los datos reales; para eso está la
+rama de respaldo de D-006, creada justo antes.
 
 La fila del paso 3 es la que justifica una regla: **si las migraciones pasan y
 la imagen falla, la base quedó migrada y el código viejo sigue sirviendo.** Por
@@ -190,46 +191,82 @@ eso las migraciones son expand/contract. Una que no se banque ese estado no se
 mergea.
 
 Nada de esto usa llaves guardadas en GitHub: entra a Google Cloud por Workload
-Identity (sólo desde `main`) y lee de Secret Manager, en el job que lo usa, la
-URL directa de cada rama y el token de Vercel (D-014, D-015).
+Identity (sólo `deploy.yml` desde `main`) y lee de Secret Manager, en el job
+que lo usa, la URL directa de `main` y el token de Vercel (D-014, D-015).
 
-**Relanzar** — por ejemplo, después de subir un secreto que faltaba:
+Ya no existen `drift.yml` (avisaba si producción quedaba atrás de `main`) ni
+`scripts/deploy-scope.mjs` (salteaba el deploy de un merge sólo de
+documentación): los dos sólo tenían sentido con deploy automático. Si el
+deploy automático vuelve, se recuperan del commit anterior a este cambio.
+
+### E2E local antes del deploy final
+
+La MISMA imagen que va a Cloud Run, corriendo en Docker contra el Postgres
+local con las migraciones al día, y el smoke de solo lectura contra ella. Es
+lo que verificaba el job de demo. Desde la raíz, en Git Bash, sobre el commit
+que se va a desplegar (la punta de `main`, limpia):
 
 ```bash
-gh workflow run deploy.yml --ref main
+pnpm demo:up && pnpm demo:data
+docker build -f apps/api/Dockerfile -t yacco-api:local .
+
+# La red de Docker Compose del Postgres local: el contenedor le habla por
+# nombre de servicio (postgres:5432), sin depender del puerto del host.
+NET="$(docker inspect "$(docker compose ps -q postgres)" \
+  -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}')"
+COMMIT="$(git rev-parse HEAD)"
+LOCAL_DB=postgresql://yacco:yacco@postgres:5432/yacco_dev   # credenciales de docker-compose.yml
+
+docker run -d --rm --name yacco-api-e2e --network "$NET" -p 8080:8080 \
+  -e APP_ENV=local -e DEPLOYED_COMMIT="$COMMIT" \
+  -e DATABASE_URL="$LOCAL_DB" -e DIRECT_URL="$LOCAL_DB" \
+  -e JWT_ACCESS_SECRET=e2e-local-access -e JWT_REFRESH_SECRET=e2e-local-refresh \
+  -e JWT_ACCESS_EXPIRES_IN=15m -e JWT_REFRESH_EXPIRES_IN=30d \
+  yacco-api:local
+
+# Unos segundos para que arranque (docker logs yacco-api-e2e), y:
+EXPECTED_COMMIT="$COMMIT" node scripts/smoke.mjs api --env=local   # → Smoke OK.
+
+docker stop yacco-api-e2e
 ```
 
-Pasa por el mismo gate: CI y CodeQL tienen que haber pasado para la punta de
-`main`. A mano no se saltea nada por ser solo documentación: es la forma de
-probar el camino completo cuando haga falta.
+`smoke.mjs api --env=local` exige lo mismo que el smoke de producción a una
+API: `/health` con `status: ok`, `environment: local` y el commit esperado, y
+un login inexistente rechazado con 401 (ruta montada, base respondiendo).
+Verificado el 2026-09-27 sobre `52dc5ba`: `Smoke OK.`; con un
+`EXPECTED_COMMIT` equivocado, FALLA. Los secretos de JWT son de usar y tirar,
+como los del e2e de CI: esta API no ve ningún dato real.
+
+El resto del e2e ya corre en CI en cada PR, contra el stack real: el build de
+la imagen y su contenido (`check-api-image.mjs`), Playwright contra la API
+compilada y el web, y la CSP del build de producción del web.
 
 ### A mano, cuando haga falta
 
 Son los mismos scripts que corre CI, no una copia:
 
 ```bash
-pnpm deploy:api --env=demo          # build + push + deploy: servicio yacco-api-demo
-pnpm deploy:api --env=production    # ídem: servicio yacco-api, rama main de Neon
+pnpm deploy:api --env=production    # build + push + deploy: servicio yacco-api, rama main de Neon
+pnpm deploy:api --env=demo          # ídem al servicio yacco-api-demo (hoy borrado: lo recrearía)
 pnpm deploy:web                     # web a producción (yacco-web.vercel.app)
-pnpm deploy:web --preview           # un preview: URL única, detrás del login de Vercel
 ```
 
 `deploy:api` necesita Docker en la máquina; `deploy:web` no. Imprimen **sólo
 la URL**. No corren migraciones: eso es sólo de CI.
 
-**Siempre demo primero, verificar, y recién entonces producción.** `--env=`
-tiene que escribirse: sin flag, el script cae en `demo` — a propósito, así el
-despliegue a producción es algo que alguien escribió, no algo que se le
-escapó.
+`--env=` es obligatorio: sin flag, el script se niega. Antes caía en `demo`;
+sin ese servicio, un default lo recrearía sin que nadie lo pidiera.
+`pnpm deploy:web --preview` ya no existe (se niega con el motivo): un preview
+le hablaba a la API de demo.
 
 El web es `apps/web-nuxt` (D-023): el proyecto `yacco-web` tiene
 `rootDirectory: apps/web-nuxt` y construye con el `vercel.json` de esa
 carpeta. El proxy por host son rutas del Build Output (D-011, D-021): el
-dominio de producción de `yacco-web` va a `yacco-api`, cualquier otro host
-—incluido cada preview— va a `yacco-api-demo`, y todo lo demás lo renderiza
-la función SSR de Nuxt. `deploy:web` revisa esas rutas en
-`.vercel/output/config.json` y no publica si falta la de producción o si va
-después del default a demo.
+dominio de producción de `yacco-web` va a `yacco-api`, cualquier otro host va
+a `yacco-api-demo` —que hoy no existe, así que no llega a ninguna base: es el
+sentido del error que eligió D-011—, y todo lo demás lo renderiza la función
+SSR de Nuxt. `deploy:web` revisa esas rutas en `.vercel/output/config.json` y
+no publica si falta la de producción o si va después del default a demo.
 
 ### Verificar P-05: que cada host cae en la API correcta
 
@@ -245,7 +282,8 @@ pasos, cada uno contra un host distinto de `yacco-web`:
    # { "status": "ok", "commit": "...", "environment": "production" }
    ```
 
-2. **Cualquier preview tiene que contestar `"demo"`.** CI no publica previews,
+2. _(Suspendido en modo local: no hay previews ni API de demo.)_
+   **Cualquier preview tiene que contestar `"demo"`.** CI no publica previews,
    así que este paso es manual y se corre una vez después del primer deploy
    desde CI. Un preview queda detrás de Vercel Authentication (D-011): sin
    sesión, `curl` recibe un 302 a `vercel.com/sso-api`. `vercel curl` arma la
@@ -285,19 +323,21 @@ todas correrían `migrate deploy` a la vez contra la misma base.
 pnpm smoke:prod
 ```
 
-**solo lectura** y sin ninguna credencial: `/health` de las dos APIs
+**solo lectura** y sin ninguna credencial: `/health` de la API
 (FALLA si `environment` vuelve `null`), `/health` por el dominio de producción
 de Vercel, un login con un usuario inexistente que tiene que dar 401, y la
 carga de las pantallas principales servidas por el Nuxt (`<div id="__nuxt">`,
 su módulo `/_nuxt/*.js` y los headers anti-enmarcado): un web React falla.
 **Nunca corre nada que escriba contra producción**, y no lleva ninguna
-credencial. Con `EXPECTED_COMMIT=<sha>` además exige que las dos APIs estén en
-ese commit; CI la pone.
+credencial. Con `EXPECTED_COMMIT=<sha>` además exige que la API esté en ese
+commit; CI la pone.
 
-Para una sola API (es el gate de CI después de cada deploy de Cloud Run):
+Para una sola API (es el gate de CI después del deploy de Cloud Run, y el del
+e2e local):
 
 ```bash
-node scripts/smoke.mjs api --env=demo
+node scripts/smoke.mjs api --env=production
+node scripts/smoke.mjs api --env=local
 ```
 
 **La única credencial de un smoke es la de VIEWER.** El job 6 de
@@ -310,6 +350,10 @@ workflow ni script lee la contraseña del admin (lo verifica
 `scripts/viewer-bootstrap.test.mjs`), así que rotarla (F) no rompe ninguno.
 
 ### El ciclo entero contra un preview
+
+> **Suspendido en modo local (2026-09-27):** no hay previews ni API de demo.
+> El ciclo de la planta se prueba en local, con `pnpm demo:up` + `pnpm demo:data`
+> y el web de `nuxt dev`. Queda escrito para cuando la demo vuelva.
 
 Un preview del web apunta a la API de **demo** (D-011) y escribe ahí: un
 chofer, un pedido, una ruta y un cliente nuevos por corrida. Nunca toca

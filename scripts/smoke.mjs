@@ -7,12 +7,15 @@
  * --require-viewer (el job 6 de deploy.yml) el smoke FALLA.
  *
  *   pnpm smoke:prod                              todo, contra lo público
- *   node scripts/smoke.mjs api --env=demo        sólo una API (el gate de CI
- *   node scripts/smoke.mjs api --env=production  después de cada deploy)
+ *   node scripts/smoke.mjs api --env=production  sólo una API (el gate de CI
+ *                                                después del deploy)
+ *   node scripts/smoke.mjs api --env=local       la imagen corriendo en esta
+ *                                                máquina (e2e local, DEPLOY.md)
  *
  * Qué comprueba `smoke:prod`:
- *   1. /health de las DOS APIs de Cloud Run, directo: status ok, el commit
- *      esperado y el `environment` que les corresponde. `environment: null`
+ *   1. /health de la API de producción en Cloud Run, directo: status ok, el
+ *      commit esperado y `environment: production`. No mira demo: el servicio
+ *      `yacco-api-demo` no existe desde el modo local (2026-09-27). `environment: null`
  *      FALLA: un servicio sin APP_ENV deja sin testigo a P-05.
  *   2. /health a través del dominio de producción de Vercel: tiene que decir
  *      "production". Es la mitad automatizable de la verificación de P-05 —
@@ -39,10 +42,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // URLs deterministas de Cloud Run (formato SERVICE-PROJECT_NUMBER.REGION), las
 // mismas que usa apps/web-nuxt/config/api-proxy.ts: ver D-012 y D-021 en
 // docs/ARQUITECTURA.md. La guardia de deploy-web.mjs las compara contra el build.
+// `demo` queda porque el web sigue mandando ahí los hosts que no son
+// producción (D-011): con el servicio borrado, ese default no llega a ninguna
+// base, que es el sentido del error que D-011 eligió. `local` es la imagen de
+// la API corriendo con `docker run -p 8080:8080` (e2e local, DEPLOY.md).
 export const TARGETS = {
   apis: {
     demo: "https://yacco-api-demo-297699663114.us-east4.run.app",
     production: "https://yacco-api-297699663114.us-east4.run.app",
+    local: "http://localhost:8080",
   },
   web: "https://yacco-web.vercel.app",
 };
@@ -54,8 +62,8 @@ export const SYNTHETIC_LOGIN = {
   password: "smoke-check-not-a-password",
 };
 
-// La demo tiene min-instances=0 (D-008): la primera petición paga un arranque
-// en frío de ~6 s. El margen es para eso, no para tolerar una API lenta.
+// Un servicio recién creado, o uno con min-instances=0 (D-008), paga un
+// arranque en frío de ~6 s. El margen es para eso, no para tolerar una API lenta.
 const REQUEST_TIMEOUT_MS = 30_000;
 
 // Las rutas del web que se cargan. `/customers/new` es una ruta profunda que
@@ -347,7 +355,7 @@ export async function smokeWebScreens(baseUrl) {
   return problems;
 }
 
-/** Una sola API, directo a Cloud Run. Es el gate de CI después de cada deploy. */
+/** Una sola API, directo: Cloud Run (gate de CI después del deploy) o la imagen local. */
 export async function smokeApi(envName, expectedCommit) {
   const baseUrl = TARGETS.apis[envName];
   const label = `api ${envName}`;
@@ -358,7 +366,7 @@ export async function smokeApi(envName, expectedCommit) {
 }
 
 /**
- * Todo: las dos APIs directas, y el web con su rewrite. Con la contraseña de
+ * Todo: la API de producción directa, y el web con su rewrite. Con la contraseña de
  * la cuenta VIEWER (SMOKE_VIEWER_PASSWORD), además un login válido y GETs
  * autenticados por el dominio de producción.
  */
@@ -369,7 +377,6 @@ export async function smokeProduction(expectedCommit, viewerPassword) {
       : await smokeViewerSession("web sesión VIEWER", TARGETS.web, viewerPassword);
   return [
     ...viewer,
-    ...(await smokeHealth("api demo", TARGETS.apis.demo, "demo", expectedCommit)),
     ...(await smokeHealth("api production", TARGETS.apis.production, "production", expectedCommit)),
     // Por Vercel: si el rewrite de host mandara producción a demo, esto lo ve.
     ...(await smokeHealth("web /health", TARGETS.web, "production", expectedCommit)),
@@ -400,7 +407,7 @@ async function main() {
     const envFlag = argv.find((argument) => argument.startsWith("--env="));
     const envName = envFlag?.slice("--env=".length);
     if (TARGETS.apis[envName] === undefined) {
-      console.error("Uso: node scripts/smoke.mjs api --env=demo|production");
+      console.error("Uso: node scripts/smoke.mjs api --env=production|local");
       process.exit(1);
     }
     problems = await smokeApi(envName, expectedCommit);

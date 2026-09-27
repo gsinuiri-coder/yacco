@@ -2,10 +2,24 @@
 name: demo-seed
 description: Seeding realistic demo data and running the demo script. Use
   before every sprint demo, before the pilot, and whenever loading the real
-  customer roster into the demo or production database.
+  customer roster into the local or production database.
 ---
 
 # Demo seed
+
+## Where the demo lives
+
+Since 2026-09-27 (local mode) the demo is the local Docker database, not a
+cloud environment: there is no `yacco-api-demo` service and no Vercel
+previews, and the `demo` branch of Neon is left untouched.
+
+- `pnpm demo:up` — Postgres in Docker, migrations, base seed.
+- `pnpm demo:data` — the realistic scenario on top of it (customers,
+  orders, routes, settlements).
+- `pnpm dev:api` + `pnpm dev:web-nuxt` — the demo, shown from this machine.
+
+Test data (PRUEBA) is loaded by script into this local database only, never
+into Neon. See `docs/ENTORNOS.md`.
 
 ## Realistic Peruvian data
 

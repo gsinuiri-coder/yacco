@@ -20,6 +20,8 @@ import {
   checkRejectedLogin,
   checkViewerSession,
   missingViewerProblem,
+  smokeApi,
+  smokeProduction,
 } from "./smoke.mjs";
 
 const PAGES_DIR = join(REPO_ROOT, "apps", "web-nuxt", "app", "pages");
@@ -299,5 +301,39 @@ describe("checkCatalogs", () => {
       "GET /payment-methods no devolvió una lista",
       "GET /products no devolvió una lista",
     ]);
+  });
+});
+
+// Modo local (2026-09-27): yacco-api-demo no existe hasta el deploy final. El
+// smoke de producción no puede depender de él, y la verificación previa que
+// hacía demo la hace la imagen corriendo en local (DEPLOY.md).
+describe("modo local", () => {
+  test("el smoke de producción no le pega a la API de demo", async (t) => {
+    const urls = [];
+    t.mock.method(globalThis, "fetch", async (url) => {
+      urls.push(String(url));
+      // Lo mínimo que lee request(): todo contesta 503, así cada paso termina rápido.
+      return { status: 503, headers: new Map(), text: async () => "{}" };
+    });
+    await smokeProduction(undefined, undefined);
+    assert.ok(urls.length > 0);
+    assert.deepEqual(
+      urls.filter((url) => url.includes("yacco-api-demo")),
+      [],
+    );
+  });
+
+  test("`api --env=local` le pega a la imagen corriendo en esta máquina", async (t) => {
+    const urls = [];
+    t.mock.method(globalThis, "fetch", async (url) => {
+      urls.push(String(url));
+      return { status: 503, headers: new Map(), text: async () => "{}" };
+    });
+    await smokeApi("local", undefined);
+    assert.ok(urls.length > 0);
+    assert.ok(
+      urls.every((url) => url.startsWith("http://localhost:8080/")),
+      urls.join(", "),
+    );
   });
 });
