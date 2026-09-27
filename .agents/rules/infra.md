@@ -78,15 +78,19 @@ access`, `vercel env pull`).
 
 ## Despliegue
 
-- **Siempre demo antes que producción.** Se despliega el servicio de demo, se
-  verifica, y recién entonces producción.
+- **Modo local (2026-09-27):** no hay servicios en Cloud Run ni entorno de
+  demo; nada se despliega hasta el deploy final, que sigue
+  `docs/infra/README.md`. `deploy.yml` sólo corre a mano.
+- **Siempre una verificación antes que producción.** Hoy es el e2e local de
+  `docs/DEPLOY.md` (la misma imagen en Docker + smoke); si la demo vuelve, es
+  el servicio de demo.
 - Las migraciones corren en un **paso propio de CI**, contra `DIRECT_URL`,
   antes del deploy. **Nunca al arrancar el contenedor**: Cloud Run levanta
   varias instancias y todas correrían `migrate deploy` a la vez.
 - `DATABASE_URL` usa la URL **pooled** de Neon; la directa es sólo para
   migraciones. Cada instancia abre su propio pool.
 - Los deploys de preview **nunca** pegan a la API de producción: apuntan al
-  servicio de demo. Escribir en la base equivocada es el error más caro de esta
+  servicio de demo (hoy borrado, y los previews apagados). Escribir en la base equivocada es el error más caro de esta
   arquitectura.
 - Ningún test que escriba corre contra producción. `pnpm smoke:prod` es de solo
   lectura y no lleva credenciales. Si se agrega rate limiting al login, revisar

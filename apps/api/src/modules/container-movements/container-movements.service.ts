@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { OLDEST_BATCH_ITEM_FIRST } from "../production-batches/oldest-batch-first.js";
 import { isValidContainerTransition } from "./container-movement-transitions.js";
 import {
   assertContainerTypeDeliverable,
@@ -84,7 +85,8 @@ export class ContainerMovementsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Registers one ledger row — append-only, never updated or deleted (spec):
+   * Registers one ledger row (one per batch when fulls leave the plant, see
+   * below) — append-only, never updated or deleted (spec):
    * a mistake is corrected with an inverse movement, never by editing this
    * one. There is deliberately no update()/remove() on this service or its
    * controller. Opens its own transaction; the HTTP controller is the only
@@ -98,10 +100,101 @@ export class ContainerMovementsService {
     if (INTERNAL_ONLY_MOVEMENT_TYPES.has(dto.type)) {
       throw new BadRequestException("Este tipo de movimiento no se registra por esta vía");
     }
-    const movement = await this.prisma.$transaction((tx) =>
-      this.createWithinTransaction(tx, dto, recordedById),
-    );
+    const movement = await this.prisma.$transaction(async (tx) => {
+      if (dto.fromState === ContainerState.FULL_AT_PLANT && (dto.toState ?? null) === null) {
+        // Un lleno que sale de la flota desde la planta (baja por daño, venta
+        // de mostrador) sale de un lote: se descuenta del más viejo, igual que
+        // la carga de una ruta. La transición y el tipo de envase se validan
+        // antes de tocar ningún lote. Si ocupa más de un lote se anota un
+        // movimiento por lote, y la respuesta es el primero.
+        if (!isValidContainerTransition(dto.type, dto.fromState, null)) {
+          throw new BadRequestException(
+            `El movimiento "${dto.type}" no admite pasar de ${dto.fromState} a fuera de la empresa`,
+          );
+        }
+        await assertContainerTypeExists(tx, dto.containerTypeId);
+        const taken = await this.takeFullsFromPlantWithinTransaction(
+          tx,
+          {
+            type: dto.type,
+            containerTypeId: dto.containerTypeId,
+            quantity: dto.quantity,
+            ...(dto.locationId === undefined ? {} : { locationId: dto.locationId }),
+          },
+          recordedById,
+        );
+        return (taken[0] as { movement: MovementWithRelations }).movement;
+      }
+      return this.createWithinTransaction(tx, dto, recordedById);
+    });
     return toMovementResponse(movement);
+  }
+
+  /**
+   * Saca `quantity` llenos de la planta lote por lote, del más viejo al más
+   * nuevo (`OLDEST_BATCH_ITEM_FIRST`, el orden de la carga de una ruta), con
+   * un movimiento por lote que lleva su `batchId`, en la transacción de quien
+   * llama. Así el libro y el `available_qty` de los lotes siguen diciendo lo
+   * mismo. Lo usan la baja o la venta de un lleno en planta y el conteo de la
+   * planta.
+   *
+   * Cada descuento es un UPDATE guardado por `available_qty >= n`: si una carga
+   * se llevó ese lote entre la lectura y la escritura, todo se cancela en vez
+   * de dejar un lote en negativo. Si los lotes no alcanzan, también: no hay
+   * de dónde sacar esos llenos sin inventar un lote.
+   */
+  async takeFullsFromPlantWithinTransaction(
+    client: Prisma.TransactionClient,
+    request: {
+      type: ContainerMovementType;
+      containerTypeId: string;
+      quantity: number;
+      locationId?: string;
+    },
+    recordedById: string,
+  ): Promise<{ movement: MovementWithRelations; batch: { id: string; code: string } }[]> {
+    const items = await client.batchItem.findMany({
+      where: { containerTypeId: request.containerTypeId, availableQty: { gt: 0 } },
+      orderBy: OLDEST_BATCH_ITEM_FIRST,
+      select: { id: true, availableQty: true, batch: { select: { id: true, code: true } } },
+    });
+    const available = items.reduce((sum, item) => sum + item.availableQty, 0);
+    if (available < request.quantity) {
+      throw new ConflictException(
+        `Los lotes tienen ${available} llenos disponibles de este tipo de envase y hacen falta ${request.quantity}. Revise los lotes en Producción.`,
+      );
+    }
+
+    const taken: { movement: MovementWithRelations; batch: { id: string; code: string } }[] = [];
+    let remaining = request.quantity;
+    for (const item of items) {
+      if (remaining === 0) break;
+      const quantity = Math.min(item.availableQty, remaining);
+      const { count } = await client.batchItem.updateMany({
+        where: { id: item.id, availableQty: { gte: quantity } },
+        data: { availableQty: { decrement: quantity } },
+      });
+      if (count === 0) {
+        throw new ConflictException(
+          "Mientras se anotaba cambiaron los llenos de la planta. Intente de nuevo.",
+        );
+      }
+      const movement = await this.createWithinTransaction(
+        client,
+        {
+          type: request.type,
+          containerTypeId: request.containerTypeId,
+          quantity,
+          fromState: ContainerState.FULL_AT_PLANT,
+          ...(request.locationId === undefined ? {} : { locationId: request.locationId }),
+        },
+        recordedById,
+        { batchId: item.batch.id },
+      );
+      taken.push({ movement, batch: item.batch });
+      remaining -= quantity;
+    }
+    return taken;
   }
 
   /**
@@ -172,6 +265,13 @@ export class ContainerMovementsService {
     if (dto.locationId !== undefined) {
       await assertLocationExists(client, dto.locationId);
     }
+    if (touchesCustomer) {
+      // Serializa por ubicación todo lo que mueve su saldo, con el conteo
+      // físico incluido (`ContainerCountsService.create` toma el mismo lock
+      // antes de leer lo esperado): sin él, una entrega que se anota mientras
+      // se registra un conteo deja el ajuste calculado contra un saldo viejo.
+      await lockLocation(client, dto.locationId as string);
+    }
 
     const created = await client.containerMovement.create({
       data: {
@@ -200,7 +300,8 @@ export class ContainerMovementsService {
         locationId_containerTypeId: { locationId, containerTypeId: dto.containerTypeId },
       };
       // Reads the current balance and writes the absolute result inside
-      // this same transaction, rather than upsert's `increment`: with a
+      // this same transaction — safe because `lockLocation` above already
+      // serialized every writer of this location's balance — rather than upsert's `increment`: with a
       // composite (no single-column) id, Prisma's upsert does not apply
       // `increment` against the row already on disk when the ON CONFLICT
       // branch is taken, so a second movement silently overwrote the first
@@ -355,6 +456,18 @@ export class ContainerMovementsService {
       })),
     );
   }
+}
+
+/**
+ * `FOR NO KEY UPDATE` y no `FOR UPDATE`: alcanza para que dos escrituras sobre
+ * el saldo de la misma ubicación vayan de a una, sin frenar las filas que solo
+ * la referencian (una venta, un pedido), que toman `FOR KEY SHARE`.
+ */
+export async function lockLocation(
+  client: Prisma.TransactionClient,
+  locationId: string,
+): Promise<void> {
+  await client.$queryRaw`SELECT id FROM customer_locations WHERE id = ${locationId}::uuid FOR NO KEY UPDATE`;
 }
 
 /**

@@ -514,7 +514,18 @@ agreguen mañana — sin que el test tenga que conocer sus nombres.
 
 ## Sin lock sobre customer_container_balances al leer-y-reescribir
 
-**Estado:** aceptado. **Disparador:** más de dos rutas cargando/entregando al
+**Estado:** resuelta (2026-09-26, cierre final). Todo lo que mueve el saldo de
+una ubicación —cada movimiento que toca `WITH_CUSTOMER` y cada conteo— toma
+antes `FOR NO KEY UPDATE` sobre su fila de `customer_locations`
+(`lockLocation`), así que la lectura y la escritura del saldo van de a una por
+ubicación. Se tomó por ubicación y no por fila de saldo porque la fila puede no
+existir todavía, y porque el conteo lee el saldo antes de decidir el ajuste.
+La carga de ruta no toca `WITH_CUSTOMER` y no bloquea nada.
+`container-balance-concurrency.int.test.ts`: doce entregas simultáneas a la
+misma ubicación dejaban saldo 2 a 4; ahora 12. Lo que sigue es la entrada
+original.
+
+**Disparador original:** más de dos rutas cargando/entregando al
 mismo tiempo, o un descuadre real que `GET /container-reconciliation` reporte
 sin que se le encuentre una causa identificable en el código.
 
@@ -547,7 +558,13 @@ leerla, en ambos servicios.
 
 ## Falta la rutina de cuadre del dinero
 
-**Estado:** abierto. **Disparador:** cuando exista el camino de escritura de
+**Estado:** resuelta (2026-09-26, cierre final). `GET /api/v1/debt-reconciliation`
+(`DebtReconciliationService`, solo ADMIN) y la pantalla «Cuadre de la deuda» en
+Reportes. Una venta no anulada suma, un cobro CONFIRMED no anulado resta, un
+PENDING o REJECTED no cuenta; SQL propio, joins LEFT/FULL, informa y no repara.
+Lo que sigue es la entrada original.
+
+**Disparador original:** cuando exista el camino de escritura de
 ventas y pagos en S4.
 
 `GET /container-reconciliation` (`ContainerReconciliationService`) tiene un
@@ -2242,7 +2259,14 @@ anterior; o una tabla de historial de precios de lista, de solo agregar.
 
 ## Una baja de llenos en planta no descuenta el lote
 
-**Estado:** abierto. **Registrado:** 2026-09-26, con el conteo de la planta
+**Estado:** resuelta (2026-09-26, cierre final). `POST /container-movements` con
+`fromState: FULL_AT_PLANT` (baja por daño, venta de mostrador) descuenta los
+lotes del más viejo al más nuevo, un movimiento por lote con su `batchId`, con
+el mismo `takeFullsFromPlantWithinTransaction` que el conteo de la planta; si
+los lotes no alcanzan, 409 y no se escribe nada. Lo que sigue es la entrada
+original.
+
+**Estado original:** abierto. **Registrado:** 2026-09-26, con el conteo de la planta
 (HU-25), por el `reviewer`. **Disparador:** la primera «Baja por daño» de un
 lleno en planta, o una venta de mostrador si algún día existe.
 
@@ -2255,3 +2279,37 @@ esperado del libro, así que no lo corrige.
 **Para cerrarla:** sin esquema. Que la baja de un lleno en planta descuente
 los lotes igual que el conteo (FIFO, un movimiento por lote con su
 `batchId`, `OLDEST_BATCH_ITEM_FIRST`), en la misma transacción.
+
+## La ruta pública de movimientos acepta llenados y cargas sin lote
+
+**Estado:** abierto. **Registrado:** 2026-09-26, en la revisión de «Una baja de
+llenos en planta no descuenta el lote». **Disparador:** cualquier llamada a
+`POST /container-movements` con `FILLING`, `ROUTE_LOAD` o `FULL_RETURN` fuera
+de los tests.
+
+Esos tres tipos tienen su propio escritor, que mantiene los lotes al día
+(`ProductionBatchesService`, `RoutesService.addLoad`, la liquidación). La ruta
+pública igual los acepta y no toca ningún lote: el libro y el `available_qty`
+dejan de coincidir, y después una baja, un conteo o una carga dan 409 aunque
+el inventario muestre los llenos. El web no los ofrece (`MANUAL_MOVEMENTS`),
+pero los tests de integración los usan para armar escenarios.
+
+**Para cerrarla:** sumarlos a `INTERNAL_ONLY_MOVEMENT_TYPES` y armar esos
+escenarios de test por su escritor real (un lote, una ruta) o con
+`createWithinTransaction`.
+
+## El conteo de la planta no bloquea contra cargas, lotes ni liquidaciones
+
+**Estado:** aceptado. **Registrado:** 2026-09-26, en la revisión del bloqueo de
+saldos de clientes. **Disparador:** un conteo de la planta cuyo resultado no
+coincida con lo que se contó.
+
+`ContainerCountsService.countPlant` bloquea la fila del tipo de envase, así que
+dos conteos a la vez van de a uno. Una carga de ruta, un lote o una
+liquidación que se anoten en el mismo instante no toman ese bloqueo: el conteo
+compara contra el libro de un momento antes. Se acepta porque el conteo se hace
+con el galpón quieto.
+
+**Para cerrarla:** que `addLoad`, `ProductionBatchesService.create` y la
+liquidación tomen el mismo bloqueo del tipo de envase antes de mover llenos o
+vacíos de la planta.

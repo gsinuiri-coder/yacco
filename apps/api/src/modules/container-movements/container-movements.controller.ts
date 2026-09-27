@@ -37,7 +37,16 @@ export class ContainerMovementsController {
   constructor(private readonly containerMovementsService: ContainerMovementsService) {}
 
   @ApiOperation({ summary: "Registra un movimiento en el libro de envases" })
-  @ApiResponse({ status: 201, type: ContainerMovementResponseDto })
+  @ApiResponse({
+    status: 201,
+    type: ContainerMovementResponseDto,
+    description:
+      "El movimiento registrado. Un lleno que sale de la planta se descuenta por lote, del más viejo al más nuevo, con un movimiento por lote: la respuesta es el primero.",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Llenos que salen de la planta: los lotes no tienen tantos disponibles",
+  })
   @ApiBadRequestResponse({
     description:
       "Validation failed, the state pair is not valid for this type, or a reference does not exist",
