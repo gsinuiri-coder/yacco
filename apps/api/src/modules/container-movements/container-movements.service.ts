@@ -85,7 +85,8 @@ export class ContainerMovementsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Registers one ledger row — append-only, never updated or deleted (spec):
+   * Registers one ledger row (one per batch when fulls leave the plant, see
+   * below) — append-only, never updated or deleted (spec):
    * a mistake is corrected with an inverse movement, never by editing this
    * one. There is deliberately no update()/remove() on this service or its
    * controller. Opens its own transaction; the HTTP controller is the only
@@ -100,14 +101,26 @@ export class ContainerMovementsService {
       throw new BadRequestException("Este tipo de movimiento no se registra por esta vía");
     }
     const movement = await this.prisma.$transaction(async (tx) => {
-      if (dto.fromState === ContainerState.FULL_AT_PLANT) {
-        // Un lleno que sale de la planta (baja por daño, venta de mostrador)
-        // sale de un lote: se descuenta del más viejo, igual que la carga de
-        // una ruta. Si ocupa más de un lote, se anota un movimiento por lote;
-        // la respuesta es el primero.
+      if (dto.fromState === ContainerState.FULL_AT_PLANT && (dto.toState ?? null) === null) {
+        // Un lleno que sale de la flota desde la planta (baja por daño, venta
+        // de mostrador) sale de un lote: se descuenta del más viejo, igual que
+        // la carga de una ruta. La transición y el tipo de envase se validan
+        // antes de tocar ningún lote. Si ocupa más de un lote se anota un
+        // movimiento por lote, y la respuesta es el primero.
+        if (!isValidContainerTransition(dto.type, dto.fromState, null)) {
+          throw new BadRequestException(
+            `El movimiento "${dto.type}" no admite pasar de ${dto.fromState} a fuera de la empresa`,
+          );
+        }
+        await assertContainerTypeExists(tx, dto.containerTypeId);
         const taken = await this.takeFullsFromPlantWithinTransaction(
           tx,
-          { type: dto.type, containerTypeId: dto.containerTypeId, quantity: dto.quantity },
+          {
+            type: dto.type,
+            containerTypeId: dto.containerTypeId,
+            quantity: dto.quantity,
+            ...(dto.locationId === undefined ? {} : { locationId: dto.locationId }),
+          },
           recordedById,
         );
         return (taken[0] as { movement: MovementWithRelations }).movement;
@@ -132,7 +145,12 @@ export class ContainerMovementsService {
    */
   async takeFullsFromPlantWithinTransaction(
     client: Prisma.TransactionClient,
-    request: { type: ContainerMovementType; containerTypeId: string; quantity: number },
+    request: {
+      type: ContainerMovementType;
+      containerTypeId: string;
+      quantity: number;
+      locationId?: string;
+    },
     recordedById: string,
   ): Promise<{ movement: MovementWithRelations; batch: { id: string; code: string } }[]> {
     const items = await client.batchItem.findMany({
@@ -143,7 +161,7 @@ export class ContainerMovementsService {
     const available = items.reduce((sum, item) => sum + item.availableQty, 0);
     if (available < request.quantity) {
       throw new ConflictException(
-        `Los lotes tienen ${available} llenos disponibles de este tipo de envase y se quieren sacar ${request.quantity}. Revise los lotes en Producción.`,
+        `Los lotes tienen ${available} llenos disponibles de este tipo de envase y hacen falta ${request.quantity}. Revise los lotes en Producción.`,
       );
     }
 
@@ -158,7 +176,7 @@ export class ContainerMovementsService {
       });
       if (count === 0) {
         throw new ConflictException(
-          "Mientras se anotaba cambiaron los llenos de la planta. Vuelva a abrir el inventario e intente de nuevo.",
+          "Mientras se anotaba cambiaron los llenos de la planta. Intente de nuevo.",
         );
       }
       const movement = await this.createWithinTransaction(
@@ -168,6 +186,7 @@ export class ContainerMovementsService {
           containerTypeId: request.containerTypeId,
           quantity,
           fromState: ContainerState.FULL_AT_PLANT,
+          ...(request.locationId === undefined ? {} : { locationId: request.locationId }),
         },
         recordedById,
         { batchId: item.batch.id },

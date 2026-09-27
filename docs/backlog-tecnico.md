@@ -2262,3 +2262,21 @@ esperado del libro, así que no lo corrige.
 **Para cerrarla:** sin esquema. Que la baja de un lleno en planta descuente
 los lotes igual que el conteo (FIFO, un movimiento por lote con su
 `batchId`, `OLDEST_BATCH_ITEM_FIRST`), en la misma transacción.
+
+## La ruta pública de movimientos acepta llenados y cargas sin lote
+
+**Estado:** abierto. **Registrado:** 2026-09-26, en la revisión de «Una baja de
+llenos en planta no descuenta el lote». **Disparador:** cualquier llamada a
+`POST /container-movements` con `FILLING`, `ROUTE_LOAD` o `FULL_RETURN` fuera
+de los tests.
+
+Esos tres tipos tienen su propio escritor, que mantiene los lotes al día
+(`ProductionBatchesService`, `RoutesService.addLoad`, la liquidación). La ruta
+pública igual los acepta y no toca ningún lote: el libro y el `available_qty`
+dejan de coincidir, y después una baja, un conteo o una carga dan 409 aunque
+el inventario muestre los llenos. El web no los ofrece (`MANUAL_MOVEMENTS`),
+pero los tests de integración los usan para armar escenarios.
+
+**Para cerrarla:** sumarlos a `INTERNAL_ONLY_MOVEMENT_TYPES` y armar esos
+escenarios de test por su escritor real (un lote, una ruta) o con
+`createWithinTransaction`.

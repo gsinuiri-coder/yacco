@@ -361,6 +361,20 @@ describe("a full that leaves the plant comes out of a batch", () => {
     expect(await availableOf(only, containerTypeId)).toBe(2);
   });
 
+  // Un movimiento inválido se rechaza por inválido (400), no por falta de
+  // lotes (409): la transición se valida antes de mirar ningún lote.
+  test("an invalid movement out of the plant is rejected as invalid before looking at batches", async () => {
+    const containerTypeId = await newContainerType();
+
+    const response = await request(server())
+      .post("/api/v1/container-movements")
+      .set("Authorization")
+      .send({ type: "ROUTE_LOAD", fromState: "FULL_AT_PLANT", containerTypeId, quantity: 1 })
+      .expect(400);
+
+    expect(response.body.message).toContain("no admite");
+  });
+
   test("a write-off of empties at the plant touches no batch", async () => {
     const containerTypeId = await newContainerType();
     await fleetEntry(containerTypeId, 5);

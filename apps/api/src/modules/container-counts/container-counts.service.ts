@@ -173,8 +173,11 @@ export class ContainerCountsService {
    * sobre customer_container_balances al leer-y-reescribir» del backlog.
    *
    * Lo esperado de los llenos sale del libro. Coincide con lo disponible en
-   * los lotes porque todo lleno que sale de la planta —carga, baja, venta,
-   * conteo— sale de un lote (`takeFullsFromPlantWithinTransaction`).
+   * los lotes mientras todo lleno entre por un lote y salga de uno (carga,
+   * baja, venta, conteo: `takeFullsFromPlantWithinTransaction`). La ruta
+   * pública de movimientos todavía acepta un FILLING o un FULL_RETURN sueltos,
+   * sin lote («La ruta pública de movimientos acepta llenados y cargas sin
+   * lote», backlog).
    */
   async countPlant(dto: CreatePlantCountDto, countedById: string): Promise<PlantCountResponseDto> {
     return this.prisma.$transaction(async (tx) => {
