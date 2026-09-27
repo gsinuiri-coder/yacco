@@ -20,6 +20,10 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # The longest healthy run took about 15 minutes. The 30-minute cap lets
+    # Testcontainers fail visibly instead of occupying a runner for GitHub's
+    # six-hour default.
+    timeout-minutes: 30
     services:
       # Shadow database used only by the migration drift check below.
       shadow-db:
@@ -170,6 +174,8 @@ jobs:
 
   gitleaks:
     runs-on: ubuntu-latest
+    # Healthy runs take seconds; five minutes leaves ample setup margin.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
