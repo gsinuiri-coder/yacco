@@ -1447,3 +1447,25 @@ usuarios de prueba del e2e, desactivados.
   ponía nada en rojo. Lo vio el `reviewer`.
 - **Probar el rojo que el test dice cubrir, no solo el del goal.** El de R2 se
   corrió en rojo dos veces: sin los `@Roles` de R1 y con la sesión borrada.
+
+## Modo local — 2026-09-27
+
+Decisión de Giancarlo: hasta terminar la app se trabaja y se prueba sólo en
+local. Detalle y receta para volver en [`infra/README.md`](./infra/README.md).
+
+- **#263**: `deploy.yml` sólo a mano, sin demo ni previews; `drift.yml`,
+  `deploy-scope.mjs` y `production-drift.mjs` borrados; e2e local
+  documentado en `DEPLOY.md` como reemplazo de la verificación de demo.
+  Verificado después del merge: el CI de `main` (`17e9c57`) terminó en verde
+  y no disparó ningún Deploy.
+- **Cloud Run**: `yacco-api-demo` y `yacco-api` borrados;
+  `gcloud run services list` vacío. Su configuración exportada está en
+  `docs/infra/`.
+- **Artifact Registry**: borrado único de 90 de 91 imágenes; queda sólo
+  `api:52dc5baf6f17`. El tamaño que informa el repositorio (6.809 MB) no bajó
+  en el momento: Artifact Registry lo recalcula en diferido. La imagen que
+  queda pesa unos 96 MB.
+- **Escaneo de vulnerabilidades**: apagado (API `containerscanning`
+  deshabilitada, repositorio en `SCANNING_DISABLED`).
+- **Sin tocar**: ramas de Neon (`main` y `demo`), secretos, service accounts,
+  WIF, el repositorio de Artifact Registry y el proyecto `yacco-web` de Vercel.
