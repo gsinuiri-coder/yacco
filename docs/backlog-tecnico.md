@@ -547,7 +547,13 @@ leerla, en ambos servicios.
 
 ## Falta la rutina de cuadre del dinero
 
-**Estado:** abierto. **Disparador:** cuando exista el camino de escritura de
+**Estado:** resuelta (2026-09-26, cierre final). `GET /api/v1/debt-reconciliation`
+(`DebtReconciliationService`, solo ADMIN) y la pantalla «Cuadre de la deuda» en
+Reportes. Una venta no anulada suma, un cobro CONFIRMED no anulado resta, un
+PENDING o REJECTED no cuenta; SQL propio, joins LEFT/FULL, informa y no repara.
+Lo que sigue es la entrada original.
+
+**Disparador original:** cuando exista el camino de escritura de
 ventas y pagos en S4.
 
 `GET /container-reconciliation` (`ContainerReconciliationService`) tiene un
