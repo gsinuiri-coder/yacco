@@ -15,8 +15,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.135",
-    "@nuxt/ui": "4.11.1",
+    "@iconify-json/lucide": "^1.2.136",
+    "@nuxt/ui": "4.11.2",
     "@yacco/shared": "workspace:*",
     "nuxt": "4.5.2",
     "tailwindcss": "4.3.3",
@@ -28,16 +28,16 @@
     "@playwright/test": "^1.63.0",
     "@testing-library/user-event": "14.6.7",
     "@testing-library/vue": "8.1.0",
-    "@vitest/coverage-v8": "5.0.1",
+    "@vitest/coverage-v8": "5.0.2",
     "@vue/test-utils": "2.5.1",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-vue": "10.11.0",
+    "eslint-plugin-vue": "10.11.1",
     "h3": "1.15.11",
     "happy-dom": "20.14.5",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.70.1",
-    "vitest": "5.0.1",
+    "vitest": "5.0.2",
     "vue-tsc": "3.3.11"
   }
 }
