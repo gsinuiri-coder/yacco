@@ -10,6 +10,7 @@ import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { SalesService } from "../../src/modules/sales/sales.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
+import { holdContainerTypeLock, startAndCheckBlocked } from "./support/hold-lock.js";
 
 // HU-17 (spec §2.4 Épica C): "Dado una ruta finalizada, cuando la liquido,
 // entonces el sistema concilia: llenos salidos = entregados + vendidos
@@ -742,6 +743,48 @@ describe("liquidar devuelve los llenos al galpón y repone su lote (FULL_RETURN)
     expect(await netInState(typeId, ContainerState.FULL_AT_PLANT)).toBe(1);
   });
 
+  // Backlog «El conteo de la planta no bloquea contra cargas, lotes ni
+  // liquidaciones»: con un conteo en curso de un tipo que la liquidación
+  // devuelve a la planta, la liquidación espera. Dos casos, uno por cada
+  // fuente de tipos: los llenos que cargó la ruta y los vacíos contados.
+  test("la liquidación espera a un conteo de la planta del tipo cuyos llenos vuelven", async () => {
+    const typeId = await createContainerType();
+    const batchItemId = await createBatchItem(6, typeId);
+    const routeId = await finishedRouteOf(typeId, [{ batchItemId, quantity: 6 }], 5);
+
+    const held = await holdContainerTypeLock(prisma, typeId);
+    const { finishedWhileLocked, result } = await startAndCheckBlocked(() =>
+      postSettlement(routeId, {
+        fullReturned: 1,
+        fullReturnedByType: [{ containerTypeId: typeId, quantity: 1 }],
+        emptiesCollected: [],
+      }),
+    );
+    await held.release();
+
+    expect(finishedWhileLocked).toBe(false);
+    expect((await result).status).toBe(201);
+  });
+
+  test("la liquidación espera a un conteo de la planta del tipo cuyos vacíos se contaron", async () => {
+    const typeId = await createContainerType();
+    const emptiesTypeId = await createContainerType();
+    const batchItemId = await createBatchItem(6, typeId);
+    const routeId = await finishedRouteOf(typeId, [{ batchItemId, quantity: 6 }], 6);
+
+    const held = await holdContainerTypeLock(prisma, emptiesTypeId);
+    const { finishedWhileLocked, result } = await startAndCheckBlocked(() =>
+      postSettlement(routeId, {
+        fullReturned: 0,
+        emptiesCollected: [{ containerTypeId: emptiesTypeId, quantity: 0 }],
+      }),
+    );
+    await held.release();
+
+    expect(finishedWhileLocked).toBe(false);
+    expect((await result).status).toBe(201);
+  });
+
   test("repone primero el lote más antiguo del que salió, con tope en lo que la ruta cargó de él", async () => {
     const typeId = await createContainerType();
     // Las fechas de lote van hacia atrás: el segundo creado es el MÁS ANTIGUO.
@@ -844,7 +887,9 @@ describe("idempotency and route state guards", () => {
     const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain("IN_PROGRESS");
+    expect(messagesOf(response)).toContain(
+      "Solo se puede liquidar una ruta terminada; esta está en curso",
+    );
   });
 
   test("a route still PLANNED is rejected with 409", async () => {
@@ -853,7 +898,9 @@ describe("idempotency and route state guards", () => {
     const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain("PLANNED");
+    expect(messagesOf(response)).toContain(
+      "Solo se puede liquidar una ruta terminada; esta está planificada",
+    );
   });
 
   test("an unknown route is rejected with 404 on both GET and POST", async () => {

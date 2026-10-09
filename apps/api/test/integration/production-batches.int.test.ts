@@ -2,6 +2,7 @@ import request from "supertest";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
+import { holdContainerTypeLock, startAndCheckBlocked } from "./support/hold-lock.js";
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
@@ -210,6 +211,19 @@ describe("POST /api/v1/production-batches", () => {
     }).expect(201);
 
     expect(await inventoryOf(adminToken, containerTypeA, "EMPTY_AT_PLANT")).toBe(0);
+  });
+
+  // Backlog «El conteo de la planta no bloquea contra cargas, lotes ni
+  // liquidaciones»: con un conteo en curso del mismo tipo, el lote espera.
+  test("un lote espera a que termine un conteo de la planta del mismo tipo de envase", async () => {
+    const held = await holdContainerTypeLock(ctx.app.get(PrismaService), containerTypeA);
+    const { finishedWhileLocked, result } = await startAndCheckBlocked(() =>
+      createBatch(adminToken),
+    );
+    await held.release();
+
+    expect(finishedWhileLocked).toBe(false);
+    expect((await result).status).toBe(201);
   });
 
   test("un código de lote duplicado da un error en español, no una violación cruda", async () => {

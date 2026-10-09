@@ -443,6 +443,34 @@ describe("SalesService.registerStopDeliveryWithinTransaction", () => {
     expect(tx.sale.create).toHaveBeenCalled();
   });
 
+  // Backlog «Clientes con saldo a favor al cierre del cuaderno»: un
+  // debtBalance negativo es crédito a favor del cliente (abono de apertura),
+  // no deuda. La misma venta de 25.00 contra el mismo límite de 20.00 cae de
+  // un lado o del otro según cuánto crédito traía: si el signo se leyera mal
+  // (valor absoluto, o el negativo tomado como cero), los dos darían true.
+  it("a customer with credit in favour (negative debtBalance) only exceeds the limit by what the sale adds beyond that credit", async () => {
+    const withCredit = (debtBalance: string) =>
+      tx.customerLocation.findUnique.mockResolvedValue({
+        id: LOCATION_ID,
+        customerId: CUSTOMER_ID,
+        customer: {
+          id: CUSTOMER_ID,
+          creditLimit: decimal("20.00"),
+          debtBalance: decimal(debtBalance),
+        },
+      });
+
+    // -10.00 + 25.00 = 15.00, within 20.00.
+    withCredit("-10.00");
+    const covered = await service.registerStopDeliveryWithinTransaction(tx as never, baseParams());
+    expect(covered.sale.creditLimitExceeded).toBe(false);
+
+    // -4.00 + 25.00 = 21.00, over 20.00: the credit is counted, not ignored.
+    withCredit("-4.00");
+    const over = await service.registerStopDeliveryWithinTransaction(tx as never, baseParams());
+    expect(over.sale.creditLimitExceeded).toBe(true);
+  });
+
   it("regression: a sale fully covered by a same-visit CONFIRMED payment is NOT flagged as exceeding the credit limit, however large the total (HU-09 is about credit, not gross total)", async () => {
     tx.customerLocation.findUnique.mockResolvedValue({
       id: LOCATION_ID,

@@ -2,6 +2,7 @@ import { parseCsv } from "./csv.js";
 import type {
   Confidence,
   CustomerStatus,
+  DiscardedNotes,
   RosterContainerRow,
   RosterCustomer,
   RosterFileName,
@@ -82,11 +83,21 @@ function readRecords(
   return records;
 }
 
+/** Rows whose `notes` cell has text: the loader has nowhere to keep it. */
+function countNotes(records: readonly Record_[]): number {
+  return records.filter(({ cells }) => (cells.notes ?? "").trim() !== "").length;
+}
+
 const ROSTER_AMOUNT_PATTERN = /^-?\d{1,8}(\.\d{1,2})?$/;
 
-function parseCustomers(text: string, issues: RosterIssue[]): RosterCustomer[] {
+function parseCustomers(
+  text: string,
+  issues: RosterIssue[],
+  discardedNotes: DiscardedNotes,
+): RosterCustomer[] {
   const file: RosterFileName = "customers.csv";
   const records = readRecords(file, text, CUSTOMERS_HEADER, issues);
+  discardedNotes.customers = countNotes(records);
   const seenCodes = new Map<string, number>();
   const customers: RosterCustomer[] = [];
 
@@ -237,9 +248,11 @@ function parseContainers(
   text: string,
   issues: RosterIssue[],
   locationCodes: ReadonlySet<string>,
+  discardedNotes: DiscardedNotes,
 ): RosterContainerRow[] {
   const file: RosterFileName = "opening_containers.csv";
   const records = readRecords(file, text, CONTAINERS_HEADER, issues);
+  discardedNotes.openingContainers = countNotes(records);
   const seenLocationCodes = new Map<string, number>();
   const rows: RosterContainerRow[] = [];
 
@@ -316,9 +329,11 @@ function parseMoney(
   text: string,
   issues: RosterIssue[],
   customerCodes: ReadonlySet<string>,
+  discardedNotes: DiscardedNotes,
 ): RosterMoneyRow[] {
   const file: RosterFileName = "opening_money.csv";
   const records = readRecords(file, text, MONEY_HEADER, issues);
+  discardedNotes.openingMoney = countNotes(records);
   const seenCustomerCodes = new Map<string, number>();
   const rows: RosterMoneyRow[] = [];
 
@@ -390,8 +405,9 @@ function groupByCustomerCode(locations: readonly RosterLocation[]): Map<string, 
  */
 export function parseAndValidateRoster(files: RosterSourceFiles): RosterParseResult {
   const issues: RosterIssue[] = [];
+  const discardedNotes: DiscardedNotes = { customers: 0, openingContainers: 0, openingMoney: 0 };
 
-  const customers = parseCustomers(files.customersText, issues);
+  const customers = parseCustomers(files.customersText, issues, discardedNotes);
   const customerCodes = new Set(customers.map((customer) => customer.externalCode));
 
   const locations = parseLocations(files.locationsText, issues, customerCodes);
@@ -399,12 +415,12 @@ export function parseAndValidateRoster(files: RosterSourceFiles): RosterParseRes
   validatePrimaryLocations(customers, locationsByCustomerCode, issues);
 
   const locationCodes = new Set(locations.map((location) => location.locationCode));
-  const containers = parseContainers(files.containersText, issues, locationCodes);
+  const containers = parseContainers(files.containersText, issues, locationCodes, discardedNotes);
   const containersByLocationCode = new Map(
     containers.map((row) => [row.locationCode, row] as const),
   );
 
-  const money = parseMoney(files.moneyText, issues, customerCodes);
+  const money = parseMoney(files.moneyText, issues, customerCodes, discardedNotes);
   const moneyByCustomerCode = new Map(money.map((row) => [row.customerCode, row] as const));
 
   if (issues.length > 0) {
@@ -412,6 +428,12 @@ export function parseAndValidateRoster(files: RosterSourceFiles): RosterParseRes
   }
   return {
     issues: [],
-    roster: { customers, locationsByCustomerCode, containersByLocationCode, moneyByCustomerCode },
+    roster: {
+      customers,
+      locationsByCustomerCode,
+      containersByLocationCode,
+      moneyByCustomerCode,
+      discardedNotes,
+    },
   };
 }

@@ -6,7 +6,10 @@ import {
 } from "@nestjs/common";
 import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
+import {
+  ContainerMovementsService,
+  lockContainerTypes,
+} from "../container-movements/container-movements.service.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { CreateProductionBatchDto } from "./dto/create-production-batch.dto.js";
 import type {
@@ -113,6 +116,7 @@ export class ProductionBatchesService {
 
     try {
       const { batch, warnings } = await this.prisma.$transaction(async (tx) => {
+        await lockContainerTypes(tx, requestedIds);
         const created = await tx.productionBatch.create({
           data: {
             code: dto.code,

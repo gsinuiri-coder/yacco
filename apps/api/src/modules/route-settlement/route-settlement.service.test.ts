@@ -187,6 +187,8 @@ function buildPrismaMock() {
       // La última corrección de la ruta, de la que sale `settlementOutdated`.
       findFirst: jest.fn<() => Promise<unknown>>(),
     },
+    // El bloqueo de los tipos de envase (lockContainerTypes): no devuelve nada.
+    $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
 }
@@ -553,7 +555,7 @@ describe("RouteSettlementService", () => {
 
       await expect(
         service.settle(ROUTE_ID, { fullReturned: 0, emptiesCollected: [] }, ADMIN_ID),
-      ).rejects.toThrow(/IN_PROGRESS/);
+      ).rejects.toThrow("Solo se puede liquidar una ruta terminada; esta está en curso");
       expect(prisma.routeSettlement.create).not.toHaveBeenCalled();
     });
 
@@ -563,7 +565,7 @@ describe("RouteSettlementService", () => {
 
       await expect(
         service.settle(ROUTE_ID, { fullReturned: 0, emptiesCollected: [] }, ADMIN_ID),
-      ).rejects.toThrow(/PLANNED/);
+      ).rejects.toThrow("Solo se puede liquidar una ruta terminada; esta está planificada");
       expect(prisma.routeSettlement.create).not.toHaveBeenCalled();
     });
 

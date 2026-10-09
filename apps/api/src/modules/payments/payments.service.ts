@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PaymentStatus, Prisma } from "@prisma/client";
+import { PAYMENT_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type {
   CreateOfficePaymentResponseDto,
@@ -466,6 +467,6 @@ export class PaymentsService {
         "Este cobro fue anulado junto con su entrega: no se puede confirmar ni rechazar",
       );
     }
-    throw new ConflictException(`Este pago ya está en estado ${existing.status}`);
+    throw new ConflictException(`Este pago ya está ${PAYMENT_STATUS_LABELS[existing.status]}`);
   }
 }
