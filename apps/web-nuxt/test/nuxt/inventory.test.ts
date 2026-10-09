@@ -71,7 +71,7 @@ describe("Inventario de envases", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("un negativo se muestra tal cual, con su explicación y un aviso", async () => {
+  it("un negativo en planta muestra su aviso, no el de camión", async () => {
     stubInventory([
       cell("Bidón 20L", "EMPTY_AT_PLANT", -5),
       cell("Bidón 20L", "FULL_AT_PLANT", 20),
@@ -79,12 +79,41 @@ describe("Inventario de envases", () => {
 
     await renderInventory();
 
-    expect(
-      await screen.findAllByText(
-        "-5: hay más envases llenados que vacíos registrados, faltan registrar entradas de envases",
-      ),
-    ).toHaveLength(1);
-    expect((await screen.findByRole("alert")).textContent).toContain("Hay valores negativos");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Hay Bidón 20L en negativo en Vacíos en planta");
+    expect(alert.textContent).toContain("Puede que falten anotar envases");
+    expect(alert.textContent).not.toContain("al liquidar o al corregir una visita");
+    // La celda dice el hecho, sin causa: la causa probable está en el aviso.
+    expect(await screen.findAllByText("-5: en negativo")).toHaveLength(1);
+  });
+
+  it("un aviso por estado afectado, con cada tipo que está en negativo en él", async () => {
+    stubInventory([
+      cell("Bidón 20L", "FULL_AT_PLANT", -1),
+      cell("Bidón 7L", "FULL_AT_PLANT", -3),
+      cell("Bidón 7L", "FULL_ON_ROUTE", -2),
+    ]);
+
+    await renderInventory();
+
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    const [plant, route] = alerts.map((alert) => alert.textContent ?? "");
+    expect(plant).toContain("Hay Bidón 20L, Bidón 7L en negativo en Llenos en planta");
+    expect(plant).toContain("Puede que una salida se haya anotado dos veces");
+    expect(route).toContain("Hay Bidón 7L en negativo en Llenos en camión");
+    expect(route).toContain("al liquidar o al corregir una visita");
+  });
+
+  it("un negativo en camión muestra su aviso, no el de planta", async () => {
+    stubInventory([cell("Bidón 20L", "EMPTY_ON_ROUTE", -2)]);
+
+    await renderInventory();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Hay Bidón 20L en negativo en Vacíos en camión");
+    expect(alert.textContent).toContain("al liquidar o al corregir una visita");
+    expect(alert.textContent).not.toContain("Puede que falten anotar envases");
   });
 
   it("filas que suman cero muestran la matriz, no el vacío real (el bug de producción del React)", async () => {

@@ -51,13 +51,21 @@
   "pnpm": {
     "auditConfig": {
       "ignoreGhsas": [
-        "GHSA-ggr8-5vv4-36mx"
+        "GHSA-ggr8-5vv4-36mx",
+        "GHSA-86w9-cpqp-85rv",
+        "GHSA-vfj7-8cjw-p6xm",
+        "GHSA-x6jw-m9v5-85vh",
+        "GHSA-g4wm-2vf7-vfgr",
+        "GHSA-858h-whjf-mvg5",
+        "GHSA-v5rq-49vh-5v5c"
       ]
     },
     "overrides": {
       "multer": "^2.3.0",
       "js-yaml@3": "^3.15.2",
-      "qs@6": "^6.16.0"
+      "qs@6": "^6.16.0",
+      "fontless>esbuild": "^0.28.1",
+      "@nuxt/nitro-server>devalue": "^5.9.3"
     },
     "packageExtensions": {
       "@testing-library/jest-dom": {

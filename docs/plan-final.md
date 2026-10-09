@@ -63,7 +63,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Devolver llenos al galpón no repone el lote del que salieron                    | Resuelta               | #188                                                                                                                |
 | Regla: los mensajes de error que llegan a pantalla van en español               | Resuelta               | #111, #81                                                                                                           |
 | Los errores de rutas escriben la fecha en formato ISO                           | Resuelta               | #99                                                                                                                 |
-| El aviso de inventario negativo diagnostica una causa que puede no ser la real  | A hacer → cola 6       | Manda a registrar ingresos que no faltan cuando el negativo es de camión                                            |
+| El aviso de inventario negativo diagnostica una causa que puede no ser la real  | Resuelta               | Manda a registrar ingresos que no faltan cuando el negativo es de camión                                            |
 | Los textos de diferencia de la liquidación no concuerdan en singular            | Resuelta               | #184                                                                                                                |
 | La columna «Diferencia» del formulario de conteo se lee al revés sin la palabra | Resuelta               | #184                                                                                                                |
 | 27 suites de integración levantan un Postgres cada una                          | Descartada             | Lento en la máquina local; en CI no falla ni flaquea                                                                |
@@ -91,29 +91,29 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Rotar una credencial de Neon sin validar antes que `secrets:gcp` puede correr   | Resuelta               | #207                                                                                                                |
 | Rama de respaldo de `main` antes del primer dato real del piloto                | Resuelta               | `backup-pre-roster-20260924`, registrada en #205                                                                    |
 | La corrección de una parada no tiene pantalla                                   | Resuelta               | #202                                                                                                                |
-| Retirar el refresh token del cuerpo del login                                   | A hacer → cola 4       | El login todavía devuelve el refresh token en el cuerpo y el refresh acepta el header                               |
+| Retirar el refresh token del cuerpo del login                                   | Resuelta               | #267                                                                                                                |
 | Migración a Prisma 7                                                            | Descartada             | Actualización de dependencia sin efecto en la operación; pide aprobación aparte                                     |
 | TypeScript 6                                                                    | Descartada             | Ídem                                                                                                                |
 | La imagen de la API trae `npm` con dependencias vulnerables                     | Resuelta               | #222                                                                                                                |
 | El cargador del padrón descarta las notas del cliente                           | A hacer → cola 9       | Pierde datos sin avisar: el resumen tiene que decirlo                                                               |
-| Cambiar un precio de lista no deja rastro                                       | A hacer → cola 5       | El precio que paga todo el padrón cambia sin saber quién, cuándo ni desde cuánto (migración expand, de noche)       |
-| Una baja de llenos en planta no descuenta el lote                               | A hacer → cola 3       | El libro baja y los lotes no; una ruta puede cargar llenos que ya no existen                                        |
+| Cambiar un precio de lista no deja rastro                                       | Resuelta               | Historial inmutable `product_price_changes` (2026-09-27)                                                            |
+| Una baja de llenos en planta no descuenta el lote                               | Resuelta               | #261                                                                                                                |
 | El conteo de la planta no bloquea contra cargas, lotes ni liquidaciones         | A hacer → cola 11      | Nueva (revisión de la cola 2): un conteo simultáneo a una carga compara contra un libro viejo                       |
 
 ## Cola, por riesgo para la operación
 
-| #   | Entrada                                               | Estado            |
-| --- | ----------------------------------------------------- | ----------------- |
-| 1   | Falta la rutina de cuadre del dinero                  | PR #259           |
-| 2   | Sin lock sobre customer_container_balances            | PR #260           |
-| 3   | Una baja de llenos en planta no descuenta el lote     | en curso          |
-| 4   | Retirar el refresh token del cuerpo del login         | pendiente         |
-| 5   | Cambiar un precio de lista no deja rastro             | pendiente (noche) |
-| 6   | El aviso de inventario negativo                       | pendiente         |
-| 7   | Mensajes con el estado en inglés                      | pendiente         |
-| 8   | El cargador del padrón descarta las notas del cliente | pendiente         |
-| 9   | Clientes con saldo a favor (test del límite)          | pendiente         |
-| 10  | El conteo de la planta no bloquea contra cargas       | pendiente         |
+| #   | Entrada                                               | Estado    |
+| --- | ----------------------------------------------------- | --------- |
+| 1   | Falta la rutina de cuadre del dinero                  | PR #259   |
+| 2   | Sin lock sobre customer_container_balances            | PR #260   |
+| 3   | Una baja de llenos en planta no descuenta el lote     | PR #261   |
+| 4   | Retirar el refresh token del cuerpo del login         | PR #267   |
+| 5   | Cambiar un precio de lista no deja rastro             | PR #268   |
+| 6   | El aviso de inventario negativo                       | en curso  |
+| 7   | Mensajes con el estado en inglés                      | pendiente |
+| 8   | El cargador del padrón descarta las notas del cliente | pendiente |
+| 9   | Clientes con saldo a favor (test del límite)          | pendiente |
+| 10  | El conteo de la planta no bloquea contra cargas       | pendiente |
 
 ## Pendientes de Giancarlo que salen de acá
 

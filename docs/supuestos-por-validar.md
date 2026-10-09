@@ -72,6 +72,30 @@ una primera línea que dice quién lo decidió y cuándo.
 
 ## Decididos sin el dueño
 
+### El precio de lista conserva cada cambio
+
+- **Decidido por Codex (2026-09-27),** por instrucción de Giancarlo durante el cierre final.
+- **Asumimos:** que, cuando la oficina cambia el precio de lista, necesita ver quién lo cambió,
+  cuándo y de cuánto a cuánto; el historial de precios pactados por cliente queda fuera.
+- **Construido encima:** `product_price_changes`, `ProductsService.update` y el bloque
+  «Cambios de precio» de `products.vue`.
+- **Si resulta que no:** bajo. La tabla es solo aditiva y no modifica ventas ni acuerdos ya escritos;
+  se deja de mostrar o de escribir sin alterar los precios históricos de las ventas.
+
+### El aviso de inventario negativo distingue por estado
+
+- **Decidido por Giancarlo (2026-10-09),** sin reunión posible con el dueño; lo implementó Claude Code.
+- **Asumimos:** que un negativo en el inventario de envases sirve más con una causa probable
+  según el estado que con una frase neutra. Siempre va primero el hecho («Hay <tipo> en negativo
+  en <estado>: el sistema cuenta menos de cero.»). Después, en Vacíos en planta: faltan anotar
+  entradas o el conteo no está al día. En Llenos en planta: una salida anotada dos veces. En
+  camión (vacíos o llenos): una liquidación o una corrección de visita que contó de más.
+- **Construido encima:** `negativeContainerTypesByState` (`apps/web-nuxt/app/utils/container-states.ts`)
+  y los avisos de `apps/web-nuxt/app/pages/inventory.vue`, uno por estado afectado; la celda
+  dice solo «en negativo» para lectores de pantalla.
+- **Si resulta que no:** bajo. Son textos de la interfaz: cambiar a una frase neutra es tocar un
+  solo componente y su test, sin API ni datos.
+
 Decisiones de dominio que se tomaron **sin preguntarle**, en un trabajo
 autónomo donde no había reunión posible. No son respuestas suyas ni preguntas
 agendadas: por eso no llevan **Preguntar** y no están en Pendientes. El día

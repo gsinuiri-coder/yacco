@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Query,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -21,8 +22,10 @@ import { UserRole } from "@prisma/client";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
+import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto.js";
 import { ProductResponseDto } from "./dto/product-response.dto.js";
+import { ProductPriceChangeResponseDto } from "./dto/product-price-change-response.dto.js";
 import { UpdateProductDto } from "./dto/update-product.dto.js";
 import { ProductsService } from "./products.service.js";
 
@@ -49,17 +52,29 @@ export class ProductsController {
     return this.productsService.findAll(query);
   }
 
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: "Lista los cambios de precio de lista de un producto (solo ADMIN)" })
+  @ApiResponse({ status: 200, type: ProductPriceChangeResponseDto, isArray: true })
+  @ApiNotFoundResponse({ description: "Product id does not exist" })
+  @Get(":id/price-changes")
+  findPriceChanges(
+    @Param("id", ParseUUIDPipe) id: string,
+  ): Promise<ProductPriceChangeResponseDto[]> {
+    return this.productsService.findPriceChanges(id);
+  }
+
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: "Cambia el precio de lista de un producto (solo ADMIN)" })
   @ApiResponse({ status: 200, type: ProductResponseDto })
   @ApiNotFoundResponse({ description: "Product id does not exist" })
   @ApiBadRequestResponse({ description: "listPrice is not a 2-decimal amount above 0" })
   @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
-  @Roles(UserRole.ADMIN)
   @Patch(":id")
   update(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateProductDto,
+    @Req() request: AuthenticatedRequest,
   ): Promise<ProductResponseDto> {
-    return this.productsService.update(id, dto);
+    return this.productsService.update(id, dto, request.user.sub);
   }
 }
