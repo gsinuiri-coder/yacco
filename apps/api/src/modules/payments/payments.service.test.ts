@@ -159,7 +159,7 @@ describe("PaymentsService", () => {
       });
 
       await expect(service.confirm(PAYMENT_ID, ADMIN_ID)).rejects.toThrow(
-        /ya está en estado CONFIRMED/,
+        "Este pago ya está confirmado",
       );
       expect(prisma.customer.update).not.toHaveBeenCalled();
     });
@@ -215,7 +215,7 @@ describe("PaymentsService", () => {
       });
 
       await expect(service.reject(PAYMENT_ID, { reason: "otro motivo" }, ADMIN_ID)).rejects.toThrow(
-        /ya está en estado REJECTED/,
+        "Este pago ya está rechazado",
       );
     });
 

@@ -757,15 +757,18 @@ describe("RoutesService", () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
       prisma.route.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.start(ROUTE_ID, adminActor)).rejects.toBeInstanceOf(ConflictException);
-      await expect(service.start(ROUTE_ID, adminActor)).rejects.toThrow(RouteStatus.IN_PROGRESS);
+      await expect(service.start(ROUTE_ID, adminActor)).rejects.toEqual(
+        new ConflictException("Solo se puede iniciar una ruta planificada; esta está en curso"),
+      );
     });
 
     it("refuses to start a FINISHED route", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.FINISHED }));
       prisma.route.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.start(ROUTE_ID, adminActor)).rejects.toThrow(RouteStatus.FINISHED);
+      await expect(service.start(ROUTE_ID, adminActor)).rejects.toThrow(
+        "Solo se puede iniciar una ruta planificada; esta está terminada",
+      );
     });
 
     it("refuses a driver starting a route that isn't theirs", async () => {
@@ -811,7 +814,9 @@ describe("RoutesService", () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.PLANNED }));
       prisma.route.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.finish(ROUTE_ID, adminActor)).rejects.toThrow(RouteStatus.PLANNED);
+      await expect(service.finish(ROUTE_ID, adminActor)).rejects.toThrow(
+        "Solo se puede terminar una ruta en curso; esta está planificada",
+      );
     });
 
     it("refuses to finish an already FINISHED route", async () => {
@@ -1011,7 +1016,9 @@ describe("RoutesService", () => {
           { origin: StopOrigin.VAN_SALE, locationId: LOCATION_ID },
           adminActor,
         ),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toEqual(
+        new ConflictException("No se pueden agregar paradas de una ruta terminada"),
+      );
       expect(prisma.routeStop.create).not.toHaveBeenCalled();
     });
 
@@ -1025,6 +1032,21 @@ describe("RoutesService", () => {
           otherDriverActor,
         ),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe("addOrderStops", () => {
+    it("refuses to batch orders into a route that is no longer PLANNED", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+
+      await expect(
+        service.addOrderStops(ROUTE_ID, { orderIds: [ORDER_ID] }, adminActor),
+      ).rejects.toEqual(
+        new ConflictException(
+          "Solo se agregan pedidos en lote a una ruta planificada; esta está en curso",
+        ),
+      );
+      expect(prisma.routeStop.create).not.toHaveBeenCalled();
     });
   });
 
@@ -1048,8 +1070,8 @@ describe("RoutesService", () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
       prisma.routeStop.findFirst.mockResolvedValue(buildStop({ status: StopStatus.DELIVERED }));
 
-      await expect(service.removeStop(ROUTE_ID, STOP_ID, adminActor)).rejects.toBeInstanceOf(
-        ConflictException,
+      await expect(service.removeStop(ROUTE_ID, STOP_ID, adminActor)).rejects.toEqual(
+        new ConflictException("Solo se puede quitar una parada pendiente; esta está entregada"),
       );
       expect(prisma.routeStop.delete).not.toHaveBeenCalled();
     });
@@ -1057,8 +1079,8 @@ describe("RoutesService", () => {
     it("refuses to remove a stop from a FINISHED route", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.FINISHED }));
 
-      await expect(service.removeStop(ROUTE_ID, STOP_ID, adminActor)).rejects.toBeInstanceOf(
-        ConflictException,
+      await expect(service.removeStop(ROUTE_ID, STOP_ID, adminActor)).rejects.toEqual(
+        new ConflictException("No se pueden quitar paradas de una ruta terminada"),
       );
       expect(prisma.routeStop.delete).not.toHaveBeenCalled();
     });
@@ -1269,7 +1291,11 @@ describe("RoutesService", () => {
 
       await expect(
         service.markStop(ROUTE_ID, STOP_ID, { status: StopStatus.DELIVERED }, driverActor),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toEqual(
+        new ConflictException(
+          "Solo se pueden marcar paradas de una ruta en curso; esta está planificada",
+        ),
+      );
     });
 
     it("refuses to re-mark a stop that is no longer PENDING", async () => {
@@ -1284,7 +1310,7 @@ describe("RoutesService", () => {
           { status: StopStatus.FAILED, failureReason: "x" },
           driverActor,
         ),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toEqual(new ConflictException("Esta parada ya está entregada"));
     });
 
     it("throws NotFoundException for a stop that does not belong to the route", async () => {
@@ -1448,7 +1474,9 @@ describe("RoutesService", () => {
 
       await expect(
         service.reorderStops(ROUTE_ID, { stopIds: [STOP_ID] }, adminActor),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toEqual(
+        new ConflictException("No se pueden reordenar paradas de una ruta terminada"),
+      );
       expect(prisma.routeStop.findMany).not.toHaveBeenCalled();
     });
 
@@ -1537,7 +1565,9 @@ describe("RoutesService", () => {
 
       await expect(
         service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toEqual(
+        new ConflictException("No se pueden cargar unidades de una ruta terminada"),
+      );
       expect(prisma.batchItem.findUnique).not.toHaveBeenCalled();
     });
 
@@ -1644,8 +1674,10 @@ describe("RoutesService", () => {
     it("refuses to correct a load once the route is no longer PLANNED", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
 
-      await expect(service.removeLoad(ROUTE_ID, LOAD_ID, adminActor)).rejects.toBeInstanceOf(
-        ConflictException,
+      await expect(service.removeLoad(ROUTE_ID, LOAD_ID, adminActor)).rejects.toEqual(
+        new ConflictException(
+          "Solo se puede corregir una carga mientras la ruta está planificada; esta está en curso",
+        ),
       );
       expect(prisma.routeLoad.findFirst).not.toHaveBeenCalled();
     });
