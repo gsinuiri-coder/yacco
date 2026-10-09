@@ -7,6 +7,7 @@ import {
 import { OrderStatus, Prisma } from "@prisma/client";
 import { isOffice } from "../../common/viewer.js";
 import type { Viewer } from "../../common/viewer.js";
+import { ORDER_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateOrderDto } from "./dto/create-order.dto.js";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto.js";
@@ -18,33 +19,6 @@ import type { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.
  * order has no direct customer FK any more, only a location one (spec: an
  * order belongs to the location the truck delivers to).
  */
-/**
- * El estado del pedido, en las palabras de la planta y conjugado para caer
- * después de «este está».
- *
- * Existe porque el 409 de `cancel` llega tal cual a la pantalla de pedidos
- * (la web muestra `error.message` sin traducir, a propósito), y hasta ahora
- * decía «este está en ON_ROUTE» — el nombre del enum, que no significa nada
- * para quien lo lee. Ver la regla en docs/backlog-tecnico.md, «los mensajes
- * de error que llegan a pantalla van en español».
- *
- * Las palabras son las mismas que `ORDER_STATUS` en
- * `apps/web-nuxt/app/utils/order-status.ts`: el mensaje de error y el badge
- * de la fila tienen que llamar igual al mismo estado, o el usuario cree que
- * son dos cosas distintas.
- *
- * `RoutesService` tiene el mismo defecto en seis mensajes que interpolan
- * `RouteStatus`/`StopStatus`; queda anotado en el backlog y este mapa es el
- * patrón a seguir.
- */
-const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING: "pendiente",
-  ON_ROUTE: "en ruta",
-  DELIVERED: "entregado",
-  FAILED: "no entregado",
-  CANCELLED: "cancelado",
-};
-
 const ORDER_INCLUDE = {
   location: {
     select: {

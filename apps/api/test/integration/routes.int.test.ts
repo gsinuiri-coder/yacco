@@ -581,7 +581,9 @@ describe("PATCH /api/v1/routes/:id/start and /finish", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain(RouteStatus.PLANNED);
+    expect(messagesOf(response)).toContain(
+      "Solo se puede terminar una ruta en curso; esta está planificada",
+    );
   });
 
   test("refuses to start a route twice", async () => {
@@ -593,7 +595,9 @@ describe("PATCH /api/v1/routes/:id/start and /finish", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain(RouteStatus.IN_PROGRESS);
+    expect(messagesOf(response)).toContain(
+      "Solo se puede iniciar una ruta planificada; esta está en curso",
+    );
   });
 
   test("refuses to finish a route twice", async () => {
@@ -609,7 +613,9 @@ describe("PATCH /api/v1/routes/:id/start and /finish", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain(RouteStatus.FINISHED);
+    expect(messagesOf(response)).toContain(
+      "Solo se puede terminar una ruta en curso; esta está terminada",
+    );
   });
 
   // Terminar exige que las paradas estén resueltas. No es «avisa, no bloquea»
@@ -1954,7 +1960,7 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId — DELIVERED registers the del
     // cobro que ya no existe. Cae al mensaje genérico de estado.
     expect(response.status).toBe(409);
     expect(messagesOf(response)).not.toMatch(/ya fue registrada/);
-    expect(messagesOf(response)).toMatch(/ya está en estado DELIVERED/);
+    expect(messagesOf(response)).toContain("Esta parada ya está entregada");
     // La venta sigue en la tabla, anulada: nada se borró.
     expect(await prisma.sale.count({ where: { stopId } })).toBe(1);
     expect(await prisma.sale.count({ where: { stopId, voidedAt: null } })).toBe(0);

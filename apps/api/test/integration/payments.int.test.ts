@@ -816,7 +816,7 @@ describe("POST /api/v1/payments/:id/confirm", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain("CONFIRMED");
+    expect(messagesOf(response)).toContain("Este pago ya está confirmado");
     expect(await customerDebtBalance(customerId)).toBe(before);
   });
 
@@ -833,7 +833,7 @@ describe("POST /api/v1/payments/:id/confirm", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain("REJECTED");
+    expect(messagesOf(response)).toContain("Este pago ya está rechazado");
   });
 
   test("an unknown payment id is rejected with 404", async () => {
