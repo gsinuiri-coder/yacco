@@ -14,6 +14,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && pnpm test:scripts",
     "test:scripts": "node --test \"scripts/**/*.test.mjs\"",
+    "relay": "node scripts/relay.mjs",
     "test:integration": "pnpm -r test:integration",
     "build": "pnpm -r build",
     "prisma:validate": "pnpm --filter @yacco/api prisma:validate",

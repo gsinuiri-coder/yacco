@@ -39,6 +39,7 @@
     {
       "name": "claude",
       "command": "claude",
+      "npmPackage": "@anthropic-ai/claude-code",
       "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09)",
       "args": ["-p", "{prompt}", "--permission-mode", "auto"],
       "limitPatterns": [

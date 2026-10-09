@@ -58,3 +58,6 @@ docker-compose.override.yml
 # Playwright (apps/web-nuxt/e2e): reportes y trazas de cada corrida.
 test-results/
 playwright-report/
+
+# Estado local de `pnpm relay` (lock, stop, log.jsonl)
+.relay/

@@ -13,7 +13,8 @@
  *   en-curso   corre al agente actual
  *
  * Y sale con 1 si un agente falla por algo que no es la cuota dos veces
- * seguidas, y con 3 si llega a `maxRuns`.
+ * seguidas (una corrida que sale bien sin tocar RELEVO.md cuenta como falla:
+ * no avanzó), con 3 si llega a `maxRuns`, y con 4 si lo paró `.relay/stop`.
  *
  *   pnpm relay              arranca
  *   pnpm relay --dry-run    muestra qué correría, sin correr nada
@@ -34,12 +35,34 @@ import { join } from "node:path";
 import { setTimeout } from "node:timers";
 import { pathToFileURL } from "node:url";
 
-import { REPO_ROOT, readFileOrNull, redact, resolveCli } from "./lib.mjs";
+import {
+  REPO_ROOT,
+  isSecretKey,
+  readFileOrNull,
+  redact,
+  registerSecret,
+  resolveCli,
+} from "./lib.mjs";
 
 export const DEFAULT_WAIT_MINUTES = 60;
 export const DEFAULT_MAX_RUNS = 50;
 
-export const EXIT = { done: 0, error: 1, blocked: 2, maxRuns: 3 };
+export const EXIT = { done: 0, error: 1, blocked: 2, maxRuns: 3, stopped: 4 };
+
+// El aviso de cuota de una CLI sale al final de su corrida. Buscarlo solo en
+// las últimas líneas evita tomar por límite un archivo que el agente leyó a
+// mitad de camino (relay.config.json mismo tiene los patrones adentro).
+export const LIMIT_SCAN_LINES = 20;
+
+// `redact` solo borra valores registrados. Esto atrapa además lo que tiene
+// forma de credencial aunque nadie la haya registrado.
+const TOKEN_SHAPES = [
+  /sk-[A-Za-z0-9_-]{16,}/g,
+  /gh[pousr]_[A-Za-z0-9]{20,}/g,
+  /AIza[0-9A-Za-z_-]{35}/g,
+  /Bearer\s+\S+/gi,
+  /postgres(?:ql)?:\/\/\S+/gi,
+];
 
 const STATES = new Set(["en-curso", "bloqueado", "terminado"]);
 const RELAY_KEYS = new Set([
@@ -94,6 +117,16 @@ function compilePatterns(agentName, patterns) {
  */
 export function readRelayConfig(path = join(REPO_ROOT, "relay.config.json")) {
   const raw = JSON.parse(readFileSync(path, "utf8"));
+  const invalid = (what) => new Error(`relay.config.json: ${what}.`);
+  if (typeof raw.prompt !== "string" || raw.prompt.trim() === "") {
+    throw invalid("falta `prompt` (un texto no vacío)");
+  }
+  if (!Array.isArray(raw.agents)) throw invalid("falta `agents` (una lista)");
+  for (const key of ["waitMinutes", "maxRuns"]) {
+    if (raw[key] !== undefined && !(Number.isInteger(raw[key]) && raw[key] > 0)) {
+      throw invalid(`\`${key}\` tiene que ser un entero mayor que 0`);
+    }
+  }
   return {
     prompt: raw.prompt,
     waitMinutes: raw.waitMinutes ?? DEFAULT_WAIT_MINUTES,
@@ -105,10 +138,22 @@ export function readRelayConfig(path = join(REPO_ROOT, "relay.config.json")) {
   };
 }
 
+/** Registra como secreto cada valor del entorno cuya clave lo parece. */
+export function registerEnvSecrets(env = process.env) {
+  for (const [key, value] of Object.entries(env)) {
+    if (isSecretKey(key)) registerSecret(value);
+  }
+}
+
+/** Una línea sin secretos registrados ni nada con forma de credencial. */
+export function redactLine(line) {
+  return TOKEN_SHAPES.reduce((text, shape) => text.replace(shape, "***"), redact(line));
+}
+
 /**
  * El primer patrón que matchea alguna línea, con las líneas que matchearon
- * (recortadas y sin secretos conocidos). Esas líneas son lo único de la salida
- * de un agente que llega al log.
+ * (sin secretos y recortadas). Esas líneas son lo único de la salida de un
+ * agente que llega al log.
  */
 export function matchLimit(lines, patterns) {
   for (const regex of patterns) {
@@ -118,7 +163,7 @@ export function matchLimit(lines, patterns) {
         pattern: regex.source,
         lines: matched
           .slice(0, MAX_LOGGED_LINES)
-          .map((line) => redact(line.trim()).slice(0, MAX_LOGGED_LINE_LENGTH)),
+          .map((line) => redactLine(line.trim()).slice(0, MAX_LOGGED_LINE_LENGTH)),
       };
     }
   }
@@ -151,13 +196,25 @@ function acquireLock(relayDir, { pid, isAlive, out }) {
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
     const holder = Number.parseInt((readFileOrNull(lockPath) ?? "").trim(), 10);
-    if (Number.isInteger(holder) && holder > 0 && isAlive(holder)) {
+    const valid = Number.isInteger(holder) && holder > 0;
+    if (valid && isAlive(holder)) {
       throw new LockBusyError(
-        `Ya hay un relevo corriendo (pid ${holder}, ${lockPath}). Nunca dos agentes a la vez.`,
+        `Ya hay un relevo corriendo (pid ${holder}, ${lockPath}). Nunca dos agentes a la vez. ` +
+          "Si no hay ninguno corriendo (Windows reusa pids), borrá ese archivo a mano.",
       );
     }
-    out.log(`Lock viejo (pid ${holder} ya no existe): lo reemplazo.`);
-    writeFileSync(lockPath, String(pid));
+    out.log(`Lock viejo (${valid ? `pid ${holder} ya no existe` : "ilegible"}): lo reemplazo.`);
+    // Borrar y volver a crear con `wx`, nunca sobrescribir: si otro relevo vio
+    // el mismo lock viejo al mismo tiempo, solo uno de los dos lo crea.
+    rmSync(lockPath, { force: true });
+    try {
+      writeFileSync(lockPath, String(pid), { flag: "wx" });
+    } catch (retryError) {
+      if (retryError.code !== "EEXIST") throw retryError;
+      throw new LockBusyError(
+        `Otro relevo tomó ${lockPath} al mismo tiempo que yo. Nunca dos agentes a la vez.`,
+      );
+    }
   }
   return () => {
     if ((readFileOrNull(lockPath) ?? "").trim() === String(pid)) unlinkSync(lockPath);
@@ -170,21 +227,21 @@ function commandLine(agent, prompt) {
 
 /**
  * Corre un agente hasta que termina. Su salida pasa tal cual a la terminal
- * (`out.write`) y se revisa línea por línea contra los patrones de límite; no
- * se guarda entera en ningún lado.
+ * (`out.write`); de cada stream se guardan solo las últimas
+ * `LIMIT_SCAN_LINES` líneas, que al terminar se revisan contra los patrones
+ * de límite. Nada se guarda entero en ningún lado.
  */
-function runAgent(agent, { prompt, root, out }) {
+function runAgent(agent, { prompt, root, out, onSpawn }) {
   const args = commandLine(agent, prompt).slice(1);
   return new Promise((resolvePromise) => {
-    const matchedLines = [];
+    const tail = { stdout: [], stderr: [] };
     const pending = { stdout: "", stderr: "" };
     const scan = (stream, chunk, flush = false) => {
       const text = pending[stream] + chunk;
       const lines = text.split(/\r?\n/);
       pending[stream] = flush ? "" : lines.pop();
-      for (const line of lines) {
-        if (agent.limitPatterns.some((regex) => regex.test(line))) matchedLines.push(line);
-      }
+      tail[stream].push(...lines.filter((line) => line.trim() !== ""));
+      tail[stream].splice(0, Math.max(0, tail[stream].length - LIMIT_SCAN_LINES));
     };
 
     const child = spawn(agent.resolved.file, [...agent.resolved.prefixArgs, ...args], {
@@ -193,6 +250,7 @@ function runAgent(agent, { prompt, root, out }) {
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    onSpawn(child);
     for (const stream of ["stdout", "stderr"]) {
       child[stream].setEncoding("utf8");
       child[stream].on("data", (chunk) => {
@@ -206,7 +264,8 @@ function runAgent(agent, { prompt, root, out }) {
     child.on("close", (code) => {
       scan("stdout", "", true);
       scan("stderr", "", true);
-      resolvePromise({ code, error: null, limit: matchLimit(matchedLines, agent.limitPatterns) });
+      const lines = [...tail.stdout, ...tail.stderr];
+      resolvePromise({ code, error: null, limit: matchLimit(lines, agent.limitPatterns) });
     });
   });
 }
@@ -278,7 +337,7 @@ function dryRun(agents, { prompt, relayPath, out }) {
   const code = stopCodeFor(relayPath, out);
   if (code !== null) {
     out.log(`--dry-run: el relevo saldría ahora con código ${code}, sin correr a nadie.`);
-    return EXIT.done;
+    return code;
   }
   for (const agent of agents) {
     const shown = commandLine(agent, prompt)
@@ -317,7 +376,10 @@ export async function runRelay({
   dryRun: isDryRun = false,
   onRun = () => {},
   onLock = () => {},
+  onSpawn = () => {},
+  env = process.env,
 }) {
+  registerEnvSecrets(env);
   const relayPath = join(root, "docs", "RELEVO.md");
   const relayDir = join(root, ".relay");
   const agents = availableAgents(config.agents, { resolve, out });
@@ -338,13 +400,25 @@ export async function runRelay({
   onLock(release);
 
   try {
-    return await relayLoop(agents, { config, clock, out, root, relayPath, relayDir, onRun });
+    return await relayLoop(agents, {
+      config,
+      clock,
+      out,
+      root,
+      relayPath,
+      relayDir,
+      onRun,
+      onSpawn,
+    });
   } finally {
     release();
   }
 }
 
-async function relayLoop(agents, { config, clock, out, root, relayPath, relayDir, onRun }) {
+async function relayLoop(
+  agents,
+  { config, clock, out, root, relayPath, relayDir, onRun, onSpawn },
+) {
   const waitMs = config.waitMinutes * 60 * 1000;
   const exhausted = new Set();
   let current = 0;
@@ -353,7 +427,7 @@ async function relayLoop(agents, { config, clock, out, root, relayPath, relayDir
   for (let runs = 0; runs < config.maxRuns;) {
     if (consumeStopFile(relayDir)) {
       out.log("Encontré .relay/stop: paro acá, entre dos corridas.");
-      return EXIT.done;
+      return EXIT.stopped;
     }
     const stopCode = stopCodeFor(relayPath, out);
     if (stopCode !== null) return stopCode;
@@ -375,12 +449,16 @@ async function relayLoop(agents, { config, clock, out, root, relayPath, relayDir
     current = index;
     const start = clock.now().toISOString();
     out.log(`\n=== Relevo: corrida ${runs + 1}/${config.maxRuns}, ${agent.name} ===`);
-    const result = await runAgent(agent, { prompt: config.prompt, root, out });
+    const before = readFileOrNull(relayPath);
+    const result = await runAgent(agent, { prompt: config.prompt, root, out, onSpawn });
     runs += 1;
 
     let outcome = "ok";
     if (result.limit !== null) outcome = "limit";
     else if (result.code !== 0) outcome = "error";
+    // Salió bien pero no escribió RELEVO.md: no avanzó, y volver a correrlo
+    // igual sería gastar corridas con aprobación automática.
+    else if (readFileOrNull(relayPath) === before) outcome = "no-progress";
     appendFileSync(
       join(relayDir, "log.jsonl"),
       JSON.stringify({
@@ -404,7 +482,10 @@ async function relayLoop(agents, { config, clock, out, root, relayPath, relayDir
       failures = 0;
     } else {
       failures += 1;
-      const reason = result.error ?? `salió con código ${result.code}`;
+      const reason =
+        outcome === "no-progress"
+          ? "salió bien sin actualizar RELEVO.md"
+          : (result.error ?? `salió con código ${result.code}`);
       if (failures >= 2) {
         out.error(`${agent.name} falló dos veces seguidas (${reason}). Paro el relevo.`);
         return EXIT.error;
@@ -425,12 +506,17 @@ async function main(argv) {
     return EXIT.error;
   }
   let release = () => {};
-  // Ctrl+C también le llega al agente (mismo grupo de consola); acá solo hay
-  // que soltar el lock antes de salir.
-  for (const signal of ["SIGINT", "SIGTERM"]) {
+  let child = null;
+  // Ctrl+C le llega al agente solo si comparten consola: se lo mata igual,
+  // y se suelta el lock antes de salir.
+  for (const [signal, code] of [
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ]) {
     process.on(signal, () => {
+      if (child !== null && child.exitCode === null) child.kill();
       release();
-      process.exit(130);
+      process.exit(code);
     });
   }
   return runRelay({
@@ -438,6 +524,9 @@ async function main(argv) {
     dryRun: argv.includes("--dry-run"),
     onLock: (releaseLock) => {
       release = releaseLock;
+    },
+    onSpawn: (spawned) => {
+      child = spawned;
     },
   });
 }

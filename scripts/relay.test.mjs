@@ -16,6 +16,7 @@ import {
   DEFAULT_MAX_RUNS,
   DEFAULT_WAIT_MINUTES,
   EXIT,
+  LIMIT_SCAN_LINES,
   matchLimit,
   parseRelay,
   readRelayConfig,
@@ -23,9 +24,13 @@ import {
 } from "./relay.mjs";
 
 const LIMIT_MESSAGE = "Error: You've hit your usage limit. Try again later.";
+const SECRET_VALUE = "valor-secreto-de-prueba-123";
+const TOKEN_LIKE = "sk-abcdefghijklmnopqrstuvwx";
 
 // Lo que imprime y hace un agente en cada corrida. Escribe su nombre en
-// calls.txt ANTES de actuar: el orden de ese archivo es el orden real.
+// calls.txt ANTES de actuar: el orden de ese archivo es el orden real. Un
+// paso "ok" deja RELEVO.md distinto, como un agente que trabajó; "idle" sale
+// bien sin tocarlo.
 const FAKE_AGENT = `
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -34,19 +39,41 @@ const callsPath = join(root, "calls.txt");
 let calls = [];
 try { calls = readFileSync(callsPath, "utf8").split("\\n").filter(Boolean); } catch {}
 const step = sequence.split(",")[calls.filter((c) => c === name).length] ?? "ok";
+const run = calls.length + 1;
 appendFileSync(callsPath, name + "\\n");
-const relevo = join(root, "docs", "RELEVO.md");
-const setState = (estado, extra = "") =>
-  writeFileSync(relevo, readFileSync(relevo, "utf8").replace(/^estado: .*$/m, "estado: " + estado) + extra);
+const relayPath = join(root, "docs", "RELEVO.md");
+const rewrite = (key, value, extra = "") =>
+  writeFileSync(
+    relayPath,
+    readFileSync(relayPath, "utf8").replace(new RegExp("^" + key + ": .*$", "m"), key + ": " + value) + extra,
+  );
+const touch = () => rewrite("actualizado", "corrida " + run + " por " + name);
 console.log("token-de-prueba-que-no-se-loguea " + name);
 if (step === "limit") { console.error(${JSON.stringify(LIMIT_MESSAGE)}); process.exit(1); }
 if (step === "limit-ok") { console.log(${JSON.stringify(LIMIT_MESSAGE)}); process.exit(0); }
+if (step === "secret-limit") {
+  console.error(${JSON.stringify(`${LIMIT_MESSAGE} ${SECRET_VALUE} ${TOKEN_LIKE}`)});
+  process.exit(1);
+}
+if (step === "split-limit") {
+  process.stderr.write(${JSON.stringify(LIMIT_MESSAGE.slice(0, 20))});
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  process.stderr.write(${JSON.stringify(`${LIMIT_MESSAGE.slice(20)}\n`)});
+  process.exit(1);
+}
+if (step === "noisy") {
+  console.log(${JSON.stringify(LIMIT_MESSAGE)});
+  for (let i = 0; i < 25; i++) console.log("trabajando, paso " + i);
+  touch();
+  process.exit(0);
+}
 if (step === "fail") { console.error("boom"); process.exit(1); }
-if (step === "finish") setState("terminado");
-if (step === "block") setState("bloqueado", "motivo-bloqueo: hace falta un humano\\n");
+if (step === "ok") touch();
+if (step === "finish") rewrite("estado", "terminado");
+if (step === "block") rewrite("estado", "bloqueado", "motivo-bloqueo: hace falta un humano\\n");
 `;
 
-const RELEVO_EN_CURSO = [
+const RELAY_IN_PROGRESS = [
   "# Relevo",
   "",
   "estado: en-curso",
@@ -64,7 +91,7 @@ let fakeAgentPath;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "relay-test-"));
   mkdirSync(join(root, "docs"));
-  writeFileSync(join(root, "docs", "RELEVO.md"), RELEVO_EN_CURSO);
+  writeFileSync(join(root, "docs", "RELEVO.md"), RELAY_IN_PROGRESS);
   fakeAgentPath = join(root, "fake-agent.mjs");
   writeFileSync(fakeAgentPath, FAKE_AGENT);
 });
@@ -144,7 +171,7 @@ function logEntries() {
 
 describe("parseRelay", () => {
   test("lee los campos del formato fijo e ignora lo demás", () => {
-    const state = parseRelay(RELEVO_EN_CURSO);
+    const state = parseRelay(RELAY_IN_PROGRESS);
     assert.equal(state.estado, "en-curso");
     assert.equal(state.rama, "fix/inventory-negative-notice");
     assert.equal(state["siguiente-paso"], "implementar el aviso");
@@ -152,7 +179,7 @@ describe("parseRelay", () => {
   });
 
   test("tolera CRLF: el archivo puede venir de un editor de Windows", () => {
-    assert.equal(parseRelay(RELEVO_EN_CURSO.replaceAll("\n", "\r\n")).estado, "en-curso");
+    assert.equal(parseRelay(RELAY_IN_PROGRESS.replaceAll("\n", "\r\n")).estado, "en-curso");
   });
 });
 
@@ -204,7 +231,7 @@ describe("runRelay", () => {
   test("terminado al arrancar: sale con 0 sin correr a nadie", async () => {
     writeFileSync(
       join(root, "docs", "RELEVO.md"),
-      RELEVO_EN_CURSO.replace("en-curso", "terminado"),
+      RELAY_IN_PROGRESS.replace("en-curso", "terminado"),
     );
     const out = captureOut();
     const code = await relay([agent("a", "ok")], { out });
@@ -236,7 +263,7 @@ describe("runRelay", () => {
   });
 
   test("un estado que no es del formato corta con 1", async () => {
-    writeFileSync(join(root, "docs", "RELEVO.md"), RELEVO_EN_CURSO.replace("en-curso", "listo"));
+    writeFileSync(join(root, "docs", "RELEVO.md"), RELAY_IN_PROGRESS.replace("en-curso", "listo"));
     const code = await relay([agent("a", "ok")]);
     assert.equal(code, EXIT.error);
     assert.deepEqual(calls(), []);
@@ -330,11 +357,64 @@ describe("runRelay", () => {
     assert.match(out.text(), /seguí desde siguiente-paso/);
   });
 
+  test("una corrida que sale bien sin tocar RELEVO.md no avanzó: dos seguidas cortan", async () => {
+    const out = captureOut();
+    const code = await relay([agent("a", "idle,idle,idle")], { out });
+    assert.equal(code, EXIT.error);
+    assert.deepEqual(calls(), ["a", "a"]);
+    assert.match(out.text(), /sin actualizar RELEVO\.md/);
+    assert.deepEqual(
+      logEntries().map((entry) => entry.result),
+      ["no-progress", "no-progress"],
+    );
+  });
+
+  test("un aviso de límite lejos del final no es un límite", async () => {
+    const code = await relay([agent("a", "noisy,finish"), agent("b", "finish")]);
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(calls(), ["a", "a"]);
+  });
+
+  test("un aviso de límite partido en dos escrituras se reconoce igual", async () => {
+    const code = await relay([agent("a", "split-limit"), agent("b", "finish")]);
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(calls(), ["a", "b"]);
+    assert.deepEqual(logEntries()[0].lines, [LIMIT_MESSAGE]);
+  });
+
+  test("al log no llega un secreto del entorno ni algo con forma de credencial", async () => {
+    await relay([agent("a", "secret-limit"), agent("b", "finish")], {
+      env: { RELAY_TEST_TOKEN: SECRET_VALUE, HARMLESS: "no es secreto" },
+    });
+    const log = readFileSync(join(root, ".relay", "log.jsonl"), "utf8");
+    assert.equal(logEntries()[0].result, "limit");
+    assert.doesNotMatch(log, new RegExp(SECRET_VALUE));
+    assert.doesNotMatch(log, new RegExp(TOKEN_LIKE));
+    assert.match(log, /Try again later\. \*\*\* \*\*\*/);
+  });
+
+  test("un lock vacío es viejo: se reemplaza sin decir pid NaN", async () => {
+    mkdirSync(join(root, ".relay"));
+    writeFileSync(join(root, ".relay", "lock"), "");
+    const out = captureOut();
+    const code = await relay([agent("a", "finish")], { out, isAlive: () => true });
+    assert.equal(code, EXIT.done);
+    assert.match(out.text(), /Lock viejo \(ilegible\)/);
+    assert.doesNotMatch(out.text(), /NaN/);
+  });
+
+  test("--dry-run devuelve el código con que saldría la corrida real", async () => {
+    writeFileSync(join(root, "docs", "RELEVO.md"), RELAY_IN_PROGRESS.replace("en-curso", "listo"));
+    const code = await relay([agent("a", "finish")], { dryRun: true });
+    assert.equal(code, EXIT.error);
+  });
+
   test(".relay/stop para el relevo entre corridas y se borra", async () => {
     const code = await relay([agent("a", "ok,finish")], {
       onRun: () => writeFileSync(join(root, ".relay", "stop"), ""),
     });
-    assert.equal(code, EXIT.done);
+    // Un código propio: quien lo opera distingue «lo paré yo» de «terminó».
+    assert.equal(code, EXIT.stopped);
     assert.deepEqual(calls(), ["a"]);
     assert.equal(existsSync(join(root, ".relay", "stop")), false);
   });
@@ -374,7 +454,33 @@ describe("relay.config.json", () => {
 
   test("un patrón que no es una regex válida se rechaza con el agente y el patrón", () => {
     const badPath = join(root, "bad.json");
-    writeFileSync(badPath, JSON.stringify(config([{ ...agent("a", "ok"), limitPatterns: ["("] }])));
-    assert.throws(() => readRelayConfig(badPath), /a.*"\("/);
+    writeFileSync(
+      badPath,
+      JSON.stringify(config([{ ...agent("agente-x", "ok"), limitPatterns: ["("] }])),
+    );
+    assert.throws(() => readRelayConfig(badPath), /"\(" de agente-x/);
+  });
+
+  test("una config sin prompt o con maxRuns inválido se rechaza con un mensaje claro", () => {
+    const badPath = join(root, "bad.json");
+    writeFileSync(badPath, JSON.stringify({ ...config([agent("a", "ok")]), prompt: "" }));
+    assert.throws(() => readRelayConfig(badPath), /falta `prompt`/);
+    writeFileSync(badPath, JSON.stringify(config([agent("a", "ok")], { maxRuns: 0 })));
+    assert.throws(() => readRelayConfig(badPath), /`maxRuns` tiene que ser un entero/);
+  });
+
+  test("los patrones reales no confunden con un límite la config que un agente leyó", () => {
+    const { agents } = readRelayConfig(configPath);
+    const configLines = readFileSync(configPath, "utf8").split("\n");
+    // Leerla a mitad de corrida no cuenta: solo se revisan las últimas
+    // LIMIT_SCAN_LINES líneas, y estas quedan antes.
+    const output = [...configLines, ...Array.from({ length: LIMIT_SCAN_LINES }, () => "listo")];
+    for (const entry of agents) {
+      assert.equal(
+        matchLimit(output.slice(-LIMIT_SCAN_LINES), entry.limitPatterns),
+        null,
+        entry.name,
+      );
+    }
   });
 });
