@@ -58,7 +58,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Un pedido asignado a una parada sigue en PENDING                                | Resuelta               | #114                                                                                                                |
 | Terminar una ruta no exigía sus paradas resueltas                               | Resuelta               | #115                                                                                                                |
 | Los datos de demo no tienen profundidad temporal en el libro                    | Descartada             | Solo la demo                                                                                                        |
-| Seis mensajes de RoutesService interpolan el enum crudo                         | A hacer → cola 7       | Mensajes en pantalla con `PLANNED`, `IN_PROGRESS` y similares (rutas, liquidación, cobros)                          |
+| Seis mensajes de RoutesService interpolan el enum crudo                         | Resuelta               | Mensajes en pantalla con `PLANNED`, `IN_PROGRESS` y similares (rutas, liquidación, cobros)                          |
 | Descargar los vacíos al volver de ruta no tiene camino en la app                | Resuelta               | #116                                                                                                                |
 | Devolver llenos al galpón no repone el lote del que salieron                    | Resuelta               | #188                                                                                                                |
 | Regla: los mensajes de error que llegan a pantalla van en español               | Resuelta               | #111, #81                                                                                                           |
@@ -109,8 +109,8 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | 3   | Una baja de llenos en planta no descuenta el lote     | PR #261   |
 | 4   | Retirar el refresh token del cuerpo del login         | PR #267   |
 | 5   | Cambiar un precio de lista no deja rastro             | PR #268   |
-| 6   | El aviso de inventario negativo                       | en curso  |
-| 7   | Mensajes con el estado en inglés                      | pendiente |
+| 6   | El aviso de inventario negativo                       | PR #275   |
+| 7   | Mensajes con el estado en inglés                      | en curso  |
 | 8   | El cargador del padrón descarta las notas del cliente | pendiente |
 | 9   | Clientes con saldo a favor (test del límite)          | pendiente |
 | 10  | El conteo de la planta no bloquea contra cargas       | pendiente |

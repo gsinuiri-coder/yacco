@@ -1234,7 +1234,26 @@ escrito. Feo —toca un ledger inmutable— pero acotado, y no toca la ruta púb
 
 ## Seis mensajes de RoutesService interpolan el enum crudo
 
-**Estado:** abierto. **Disparador (reescrito el 29/08/2026):** el primer PR que
+**Estado:** RESUELTA el 2026-10-09. Los mapas de estado en palabras de la planta
+viven juntos en `apps/api/src/common/status-labels.ts` (rutas, paradas, pedidos
+y cobros, con el `ORDER_STATUS_LABELS` que ya existía). Usan las mismas
+palabras que los badges de la web. Eran once mensajes, no seis: ocho en
+`RoutesService`, el de `settle` en `RouteSettlementService` y el de
+confirmar/rechazar en `PaymentsService`. Cada texto queda fijado por test
+unitario, y los que tenían test de integración, también ahí.
+
+Quedan dos mensajes fuera, porque no interpolan un estado de ruta, parada ni
+cobro. Cada uno va en su propia entrada si se decide atacarlo:
+
+- `container-movements.service.ts`, en el alta de un movimiento:
+  `El movimiento "${dto.type}" no admite pasar de ${dto.fromState} a fuera de la empresa`,
+  con el tipo de movimiento y el estado del envase como enums crudos.
+- `routes.service.ts`, en `markStop`: `Esta entrega ya fue registrada el
+${sale.soldAt.toISOString()}`, con un instante ISO en UTC en pantalla.
+
+Registro original:
+
+**Estado (original):** abierto. **Disparador (reescrito el 29/08/2026):** el primer PR que
 arme pantallas donde alguno de estos seis errores sea alcanzable a mano, o
 cualquier PR que **cambie el texto** de alguno de los seis.
 

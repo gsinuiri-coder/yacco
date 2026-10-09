@@ -15,6 +15,7 @@ import {
   StopStatus,
   UserRole,
 } from "@prisma/client";
+import { ROUTE_STATUS_LABELS, STOP_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
 import { OLDEST_BATCH_ITEM_FIRST } from "../production-batches/oldest-batch-first.js";
@@ -441,7 +442,7 @@ export class RoutesService {
     });
     if (count === 0) {
       throw new ConflictException(
-        `Solo se puede iniciar una ruta planificada; esta está en ${route.status}`,
+        `Solo se puede iniciar una ruta planificada; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
       );
     }
     return this.findOne(id, actor);
@@ -508,7 +509,7 @@ export class RoutesService {
     }
     if (route.status !== RouteStatus.IN_PROGRESS) {
       throw new ConflictException(
-        `Solo se puede terminar una ruta en curso; esta está en ${route.status}`,
+        `Solo se puede terminar una ruta en curso; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
       );
     }
     throw new ConflictException(unresolvedStopsMessage(pendingStops));
@@ -604,7 +605,7 @@ export class RoutesService {
     const route = await this.getOwnedRouteOrThrow(routeId, actor);
     if (route.status !== RouteStatus.PLANNED) {
       throw new ConflictException(
-        `Solo se agregan pedidos en lote a una ruta planificada; esta está en ${route.status}`,
+        `Solo se agregan pedidos en lote a una ruta planificada; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
       );
     }
 
@@ -758,7 +759,7 @@ export class RoutesService {
     }
     if (stop.status !== StopStatus.PENDING) {
       throw new ConflictException(
-        `Solo se puede quitar una parada pendiente; esta está en ${stop.status}`,
+        `Solo se puede quitar una parada pendiente; esta está ${STOP_STATUS_LABELS[stop.status]}`,
       );
     }
 
@@ -803,7 +804,7 @@ export class RoutesService {
     const route = await this.getOwnedRouteOrThrow(routeId, actor);
     if (route.status !== RouteStatus.IN_PROGRESS) {
       throw new ConflictException(
-        `Solo se pueden marcar paradas de una ruta en curso; esta está en ${route.status}`,
+        `Solo se pueden marcar paradas de una ruta en curso; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
       );
     }
 
@@ -1137,7 +1138,7 @@ export class RoutesService {
         );
       }
     }
-    throw new ConflictException(`Esta parada ya está en estado ${existing.status}`);
+    throw new ConflictException(`Esta parada ya está ${STOP_STATUS_LABELS[existing.status]}`);
   }
 
   /**
@@ -1310,7 +1311,7 @@ export class RoutesService {
     const route = await this.getOwnedRouteOrThrow(routeId, actor);
     if (route.status !== RouteStatus.PLANNED) {
       throw new ConflictException(
-        `Solo se puede corregir una carga mientras la ruta está planificada; esta está en ${route.status}`,
+        `Solo se puede corregir una carga mientras la ruta está planificada; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
       );
     }
 
@@ -1479,7 +1480,9 @@ function limaNoonOfBusinessDate(businessDate: Date, now: Date): Date {
 /** PLANNED and IN_PROGRESS may still be edited; FINISHED never is. */
 function assertRouteIsTouchable(status: RouteStatus, action: string): void {
   if (status !== RouteStatus.PLANNED && status !== RouteStatus.IN_PROGRESS) {
-    throw new ConflictException(`No se pueden ${action} de una ruta en estado ${status}`);
+    throw new ConflictException(
+      `No se pueden ${action} de una ruta ${ROUTE_STATUS_LABELS[status]}`,
+    );
   }
 }
 

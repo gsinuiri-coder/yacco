@@ -553,7 +553,7 @@ describe("RouteSettlementService", () => {
 
       await expect(
         service.settle(ROUTE_ID, { fullReturned: 0, emptiesCollected: [] }, ADMIN_ID),
-      ).rejects.toThrow(/IN_PROGRESS/);
+      ).rejects.toThrow("Solo se puede liquidar una ruta terminada; esta está en curso");
       expect(prisma.routeSettlement.create).not.toHaveBeenCalled();
     });
 
@@ -563,7 +563,7 @@ describe("RouteSettlementService", () => {
 
       await expect(
         service.settle(ROUTE_ID, { fullReturned: 0, emptiesCollected: [] }, ADMIN_ID),
-      ).rejects.toThrow(/PLANNED/);
+      ).rejects.toThrow("Solo se puede liquidar una ruta terminada; esta está planificada");
       expect(prisma.routeSettlement.create).not.toHaveBeenCalled();
     });
 

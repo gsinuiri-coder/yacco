@@ -844,7 +844,9 @@ describe("idempotency and route state guards", () => {
     const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain("IN_PROGRESS");
+    expect(messagesOf(response)).toContain(
+      "Solo se puede liquidar una ruta terminada; esta está en curso",
+    );
   });
 
   test("a route still PLANNED is rejected with 409", async () => {
@@ -853,7 +855,9 @@ describe("idempotency and route state guards", () => {
     const response = await postSettlement(routeId, { fullReturned: 0, emptiesCollected: [] });
 
     expect(response.status).toBe(409);
-    expect(messagesOf(response)).toContain("PLANNED");
+    expect(messagesOf(response)).toContain(
+      "Solo se puede liquidar una ruta terminada; esta está planificada",
+    );
   });
 
   test("an unknown route is rejected with 404 on both GET and POST", async () => {

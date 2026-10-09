@@ -13,6 +13,7 @@ import {
   StopStatus,
 } from "@prisma/client";
 import type { RouteSettlement } from "@prisma/client";
+import { ROUTE_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
 import type { CreateRouteSettlementDto } from "./dto/create-route-settlement.dto.js";
@@ -568,7 +569,7 @@ export class RouteSettlementService {
       });
       if (count === 0) {
         throw new ConflictException(
-          `Solo se puede liquidar una ruta terminada; esta está en ${route.status}`,
+          `Solo se puede liquidar una ruta terminada; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
         );
       }
 
