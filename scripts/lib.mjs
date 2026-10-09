@@ -256,13 +256,14 @@ function resolveGcloud() {
  * run under the current `node` binary — again, no `.cmd`, no shell. The entry
  * comes from the package's own `bin` field rather than a hardcoded `dist/`
  * path, which differs per package (vercel ships `dist/vc.js`, neonctl ships
- * `bin/cli.js`).
+ * `bin/cli.js`). `packageName` is for a CLI whose package is not named like
+ * its binary (`codex` ships in `@openai/codex`).
  */
-function resolveNpmCli(name) {
+function resolveNpmCli(name, packageName = name) {
   const shim = findOnPath(name, IS_WINDOWS ? [".cmd", ""] : [""]);
   if (shim === null) return null;
 
-  const packageRoot = join(dirname(shim), "node_modules", name);
+  const packageRoot = join(dirname(shim), "node_modules", ...packageName.split("/"));
   const manifestPath = join(packageRoot, "package.json");
   if (!existsSync(manifestPath)) return null;
 
@@ -281,6 +282,21 @@ const RESOLVERS = {
   vercel: () => resolveNpmCli("vercel"),
   neonctl: () => resolveNpmCli("neonctl"),
 };
+
+/**
+ * Como `resolveCommand`, pero para `pnpm relay`: una CLI que no está instalada
+ * es un dato ("la salto"), no un error, así que devuelve `null` en vez de
+ * tirar. `npmPackage` es el paquete global de npm del que sale el binario.
+ */
+export function resolveCli(command, npmPackage) {
+  const viaNpm = npmPackage === undefined ? null : resolveNpmCli(command, npmPackage);
+  if (viaNpm !== null) return viaNpm;
+  try {
+    return resolveCommand(command);
+  } catch {
+    return null;
+  }
+}
 
 const resolutionCache = new Map();
 
