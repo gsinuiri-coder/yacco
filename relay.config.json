@@ -1,0 +1,68 @@
+{
+  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. Ningún agente corre sin sandbox ni con aprobación automática que saltee reglas: ver `verifiedWith`.",
+  "prompt": "Sos un agente desatendido de pnpm relay. Leé AGENTS.md y .agents/rules/unattended-agents.md, y seguí .relay/RELEVO.md desde next-step. Al terminar cada paso, actualizá .relay/RELEVO.md (last-step, next-step, updated) y commiteá tu WIP en la rama del ítem. Ante cualquier acción que esas reglas prohíben: status: blocked con blocked-reason, y salí.",
+  "waitMinutes": 60,
+  "maxRuns": 50,
+  "agents": [
+    {
+      "name": "codex",
+      "command": "codex",
+      "npmPackage": "@openai/codex",
+      "verifiedWith": "codex-cli 0.162.0 (`codex exec --help`, 2026-10-09): --sandbox workspace-write; red con -c sandbox_workspace_write.network_access=true (campo del binario 0.162.0). Sin --dangerously-bypass-approvals-and-sandbox.",
+      "args": [
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+        "--color",
+        "never",
+        "{prompt}"
+      ],
+      "limitPatterns": [
+        "you'?ve hit your usage limit",
+        "usage limit (has been )?reached",
+        "exceeded (your|the) (current )?quota",
+        "insufficient_quota"
+      ]
+    },
+    {
+      "name": "gemini",
+      "command": "gemini",
+      "npmPackage": "@google/gemini-cli",
+      "verifiedWith": null,
+      "$comment": "No está instalada (2026-10-09): sin banderas verificadas, el relevo la salta. Antes de activarla, verificar con `gemini --help` que corra con su sandbox y sin --yolo.",
+      "args": null,
+      "limitPatterns": [
+        "quota exceeded",
+        "RESOURCE_EXHAUSTED",
+        "you have exhausted your (daily )?quota",
+        "usage limit (has been )?reached"
+      ]
+    },
+    {
+      "name": "claude",
+      "command": "claude",
+      "npmPackage": "@anthropic-ai/claude-code",
+      "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla.",
+      "args": [
+        "-p",
+        "{prompt}",
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--allowedTools",
+        "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git *),Bash(gh pr *),Bash(gh run *),Bash(gh api *)",
+        "--disallowedTools",
+        "Bash(gcloud *),Bash(neonctl *),Bash(vercel *),Bash(gh workflow *),Bash(gh pr merge * --admin*),Bash(git push --force*),Bash(git push -f*),mcp__neon,mcp__plugin_vercel_vercel"
+      ],
+      "limitPatterns": [
+        "usage limit reached",
+        "you'?ve hit your (usage |weekly |session )?limit",
+        "\\d+-hour limit reached",
+        "weekly limit reached"
+      ]
+    }
+  ]
+}
