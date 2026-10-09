@@ -2308,3 +2308,30 @@ con el galpón quieto.
 **Para cerrarla:** que `addLoad`, `ProductionBatchesService.create` y la
 liquidación tomen el mismo bloqueo del tipo de envase antes de mover llenos o
 vacíos de la planta.
+
+## Advisories ignorados en `pnpm audit` sin parche aplicable
+
+**Estado:** abierto. **Registrado:** 2026-10-09, en `chore(deps): cerrar pnpm
+audit`. **Disparador:** revisar cuando haya parche — que salga una versión
+parcheada, o que `@nuxt/devtools` acepte `simple-git` 4. Entonces, en un PR
+propio, sacar el GHSA de `pnpm.auditConfig.ignoreGhsas` del `package.json`
+raíz y subir la dependencia.
+
+Ninguno llega al runtime de producción de la API: `pnpm why --prod` en
+`apps/api` no los encuentra, y el árbol que arma `pnpm deploy --prod` podado
+por `scripts/prune-runtime-deps.mjs` (lo mismo que copia la imagen) no los
+contiene. Todos entran por `apps/web-nuxt`, en herramientas de desarrollo o de
+build. CI sigue en `--audit-level=high`.
+
+| GHSA                  | Paquete                         | Severidad | Quién lo trae                                                      | Motivo del ignore                                                                                |
+| --------------------- | ------------------------------- | --------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `GHSA-86w9-cpqp-85rv` | `node-forge` 1.4.0              | high      | `nuxt` › `nitropack` › `listhen` (dev server)                      | Sin versión parcheada (`<0.0.0`).                                                                |
+| `GHSA-vfj7-8cjw-p6xm` | `braces` 3.0.3                  | high      | `nuxt` › `nitropack` › `globby`/`fast-glob` › `micromatch` (build) | Sin versión parcheada (`<0.0.0`).                                                                |
+| `GHSA-x6jw-m9v5-85vh` | `simple-git` 3.36.0             | critical  | `nuxt` › `@nuxt/devtools` 3.4.2                                    | Parche en 4.0.1; `@nuxt/devtools` 3.4.2 pide `^3.36.0` y no soporta la 4.                        |
+| `GHSA-g4wm-2vf7-vfgr` | `simple-git` 3.36.0             | high      | ídem                                                               | Parche en 4.0.0; ídem.                                                                           |
+| `GHSA-858h-whjf-mvg5` | `simple-git` 3.36.0             | high      | ídem                                                               | Parche en 4.0.0; ídem.                                                                           |
+| `GHSA-v5rq-49vh-5v5c` | `@simple-git/argv-parser` 1.1.1 | critical  | `@nuxt/devtools` › `simple-git` 3.36.0                             | Parche en 2.0.1, que solo usa `simple-git` 4; `simple-git` 3 pide `^1.1.0`. Cae con el anterior. |
+
+`sprintf-js` (`GHSA-hp3w-g68c-fv3c`, moderate, sin parche, vía `jest` ›
+`babel-plugin-istanbul` › `js-yaml` 3 › `argparse` 1) no se ignora: queda por
+debajo del nivel `high` de CI y sigue a la vista en cada `pnpm audit`.
