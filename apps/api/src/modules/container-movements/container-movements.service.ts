@@ -484,7 +484,7 @@ export async function lockContainerTypes(
   client: Prisma.TransactionClient,
   containerTypeIds: Iterable<string>,
 ): Promise<void> {
-  for (const id of [...new Set(containerTypeIds)].sort()) {
+  for (const id of [...new Set(containerTypeIds)].sort((a, b) => a.localeCompare(b))) {
     await client.$queryRaw`SELECT id FROM container_types WHERE id = ${id}::uuid FOR NO KEY UPDATE`;
   }
 }
