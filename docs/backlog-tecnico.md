@@ -1464,8 +1464,9 @@ servicio que interpole una fecha de negocio dentro de un mensaje de error.
 
 ## El aviso de inventario negativo diagnostica una causa que puede no ser la real
 
-**Estado:** abierto. **Disparador:** la próxima vez que una liquidación deje un
-tipo en negativo y alguien lea el aviso; a más tardar, antes del piloto de campo.
+**Estado:** RESUELTA el 2026-10-09: el aviso distingue por estado, decisión de
+Giancarlo sin el dueño registrada en [`supuestos-por-validar.md`](./supuestos-por-validar.md)
+(«El aviso de inventario negativo distingue por estado»). Registro original:
 
 La página de inventario no se limita a señalar el negativo: le atribuye una
 causa. El banner (`apps/web/src/pages/inventory-page.tsx:89-90`) dice «Hay
