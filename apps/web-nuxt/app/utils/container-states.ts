@@ -46,12 +46,11 @@ export function pivotInventory(items: readonly ContainerInventoryItem[]): Invent
   );
 }
 
-export function hasNegative(rows: readonly InventoryRow[]): boolean {
-  return rows.some(
-    (row) => row.total < 0 || CONTAINER_STATES.some((state) => row.byState[state] < 0),
-  );
-}
-
+/**
+ * Los tipos en negativo, agrupados por estado: un aviso por estado afectado,
+ * porque la causa probable depende del estado (supuesto «El aviso de
+ * inventario negativo distingue por estado», en supuestos-por-validar.md).
+ */
 export function negativeContainerTypesByState(
   rows: readonly InventoryRow[],
 ): Partial<Record<ContainerState, string[]>> {
