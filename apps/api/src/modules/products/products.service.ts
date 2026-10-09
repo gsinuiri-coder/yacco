@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto.js";
 import type { ProductResponseDto } from "./dto/product-response.dto.js";
+import type { ProductPriceChangeResponseDto } from "./dto/product-price-change-response.dto.js";
 import type { UpdateProductDto } from "./dto/update-product.dto.js";
 
 /** Everything the wire shape needs, and nothing else. */
@@ -12,6 +13,14 @@ const PRODUCT_INCLUDE = {
 
 type ProductWithRelations = Prisma.ProductGetPayload<{ include: typeof PRODUCT_INCLUDE }>;
 
+const PRICE_CHANGE_INCLUDE = {
+  changedBy: { select: { id: true, name: true } },
+} satisfies Prisma.ProductPriceChangeInclude;
+
+type PriceChangeWithRelations = Prisma.ProductPriceChangeGetPayload<{
+  include: typeof PRICE_CHANGE_INCLUDE;
+}>;
+
 function toProductResponse(product: ProductWithRelations): ProductResponseDto {
   return {
     id: product.id,
@@ -20,6 +29,16 @@ function toProductResponse(product: ProductWithRelations): ProductResponseDto {
     containerType: product.containerType,
     listPrice: product.listPrice.toFixed(2),
     active: product.active,
+  };
+}
+
+function toPriceChangeResponse(change: PriceChangeWithRelations): ProductPriceChangeResponseDto {
+  return {
+    id: change.id,
+    previousPrice: change.previousPrice?.toFixed(2) ?? null,
+    newPrice: change.newPrice.toFixed(2),
+    changedAt: change.changedAt.toISOString(),
+    changedBy: change.changedBy,
   };
 }
 
@@ -48,7 +67,11 @@ export class ProductsService {
    * Sets the list price. Sales already written keep theirs; a pending order
    * is priced when it is delivered, so it gets the new one (supuesto 17).
    */
-  async update(id: string, dto: UpdateProductDto): Promise<ProductResponseDto> {
+  async update(
+    id: string,
+    dto: UpdateProductDto,
+    changedById: string,
+  ): Promise<ProductResponseDto> {
     // MONEY_PATTERN admits 0. A zero list price is almost always a typo, and
     // it would make every delivery without an agreed price free, silently.
     const listPrice = new Prisma.Decimal(dto.listPrice);
@@ -56,10 +79,25 @@ export class ProductsService {
       throw new BadRequestException("El precio de lista debe ser mayor que 0");
     }
     try {
-      const product = await this.prisma.product.update({
-        where: { id },
-        data: { listPrice },
-        include: PRODUCT_INCLUDE,
+      const product = await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.product.findUniqueOrThrow({ where: { id } });
+        if (current.listPrice.equals(listPrice)) {
+          return transaction.product.findUniqueOrThrow({ where: { id }, include: PRODUCT_INCLUDE });
+        }
+        const updated = await transaction.product.update({
+          where: { id },
+          data: { listPrice },
+          include: PRODUCT_INCLUDE,
+        });
+        await transaction.productPriceChange.create({
+          data: {
+            productId: id,
+            previousPrice: current.listPrice,
+            newPrice: listPrice,
+            changedById,
+          },
+        });
+        return updated;
       });
       return toProductResponse(product);
     } catch (error) {
@@ -68,5 +106,18 @@ export class ProductsService {
       }
       throw error;
     }
+  }
+
+  async findPriceChanges(id: string): Promise<ProductPriceChangeResponseDto[]> {
+    const product = await this.prisma.product.findUnique({ where: { id }, select: { id: true } });
+    if (product === null) {
+      throw new NotFoundException(`El producto "${id}" no existe`);
+    }
+    const changes = await this.prisma.productPriceChange.findMany({
+      where: { productId: id },
+      orderBy: { changedAt: "desc" },
+      include: PRICE_CHANGE_INCLUDE,
+    });
+    return changes.map(toPriceChangeResponse);
   }
 }

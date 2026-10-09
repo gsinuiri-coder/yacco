@@ -93,6 +93,34 @@ describe("Productos", () => {
     expect(screen.queryByLabelText("Precio de lista de Recarga 20L con caño")).toBeNull();
   });
 
+  it("el administrador puede ver los cambios de precio con fecha, quien cambió y ambos importes", async () => {
+    stubList([REFILL]);
+    cleanups.push(
+      registerEndpoint("/api/v1/products/refill-id/price-changes", {
+        method: "GET",
+        handler: () => [
+          {
+            id: "change-1",
+            previousPrice: "8.00",
+            newPrice: "9.50",
+            changedAt: "2026-09-27T15:30:00.000Z",
+            changedBy: { id: "admin-id", name: "Giancarlo" },
+          },
+        ],
+      }),
+    );
+
+    await renderPage();
+    await userEvent.setup().click(
+      within(await rowOf("Recarga 20L con caño")).getByRole("button", {
+        name: "Cambios de precio",
+      }),
+    );
+
+    expect(await screen.findByRole("heading", { name: "Cambios de precio" })).toBeTruthy();
+    expect(screen.getByText(/27\/09\/2026 10:30 · Giancarlo: S\/ 8.00 a S\/ 9.50/)).toBeTruthy();
+  });
+
   it("no envía un precio mal escrito, y dice cómo escribirlo", async () => {
     stubList([REFILL]);
     const bodies = stubWrite(cleanups, "/api/v1/products/refill-id", "PATCH");
