@@ -86,6 +86,12 @@ describe("RosterLoaderService — carga feliz completa (fixtures reales)", () =>
     expect(result.summary.customers.active).toBe(7);
     expect(result.summary.customers.inactive).toBe(1);
     expect(result.summary.locations.total).toBe(9);
+    // El fixture trae notas que el padrón no guarda: el resumen tiene que decirlo.
+    expect(result.summary.discardedNotes).toEqual({
+      customers: 8,
+      openingContainers: 4,
+      openingMoney: 5,
+    });
     expect(await countAll()).toEqual(before);
   });
 

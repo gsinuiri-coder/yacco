@@ -95,7 +95,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Migración a Prisma 7                                                            | Descartada             | Actualización de dependencia sin efecto en la operación; pide aprobación aparte                                     |
 | TypeScript 6                                                                    | Descartada             | Ídem                                                                                                                |
 | La imagen de la API trae `npm` con dependencias vulnerables                     | Resuelta               | #222                                                                                                                |
-| El cargador del padrón descarta las notas del cliente                           | A hacer → cola 9       | Pierde datos sin avisar: el resumen tiene que decirlo                                                               |
+| El cargador del padrón descarta las notas del cliente                           | Resuelta               | Pierde datos sin avisar: el resumen tiene que decirlo                                                               |
 | Cambiar un precio de lista no deja rastro                                       | Resuelta               | Historial inmutable `product_price_changes` (2026-09-27)                                                            |
 | Una baja de llenos en planta no descuenta el lote                               | Resuelta               | #261                                                                                                                |
 | El conteo de la planta no bloquea contra cargas, lotes ni liquidaciones         | A hacer → cola 11      | Nueva (revisión de la cola 2): un conteo simultáneo a una carga compara contra un libro viejo                       |
@@ -110,8 +110,8 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | 4   | Retirar el refresh token del cuerpo del login         | PR #267   |
 | 5   | Cambiar un precio de lista no deja rastro             | PR #268   |
 | 6   | El aviso de inventario negativo                       | PR #275   |
-| 7   | Mensajes con el estado en inglés                      | en curso  |
-| 8   | El cargador del padrón descarta las notas del cliente | pendiente |
+| 7   | Mensajes con el estado en inglés                      | PR #276   |
+| 8   | El cargador del padrón descarta las notas del cliente | en curso  |
 | 9   | Clientes con saldo a favor (test del límite)          | pendiente |
 | 10  | El conteo de la planta no bloquea contra cargas       | pendiente |
 

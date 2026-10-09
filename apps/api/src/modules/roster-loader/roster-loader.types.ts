@@ -58,6 +58,18 @@ export interface RosterMoneyRow {
 }
 
 /**
+ * How many rows of each file came with a non-empty `notes` cell. The
+ * schema has nowhere to keep those notes, so the loader drops them, and the
+ * summary says how many. Only counts: a note is free text about a real
+ * person and never reaches the output.
+ */
+export interface DiscardedNotes {
+  customers: number;
+  openingContainers: number;
+  openingMoney: number;
+}
+
+/**
  * The 4 files, parsed AND cross-validated: every reference resolves, every
  * enum is in range, every "exactly one primary" holds. Only produced when
  * there are zero issues — see `parseAndValidateRoster`. Locations are keyed
@@ -69,6 +81,7 @@ export interface ValidatedRoster {
   locationsByCustomerCode: ReadonlyMap<string, RosterLocation[]>;
   containersByLocationCode: ReadonlyMap<string, RosterContainerRow>;
   moneyByCustomerCode: ReadonlyMap<string, RosterMoneyRow>;
+  discardedNotes: DiscardedNotes;
 }
 
 export type RosterParseResult =
@@ -92,4 +105,5 @@ export interface LoadSummary {
   openingCharges: { created: number; alreadyLoaded: number };
   openingCredits: { created: number; alreadyLoaded: number };
   netDebtTotal: string;
+  discardedNotes: DiscardedNotes;
 }

@@ -105,6 +105,25 @@ describe("parseAndValidateRoster — happy path", () => {
     expect(result.issues).toEqual([]);
     expect(result.roster?.locationsByCustomerCode.get("C-1")).toHaveLength(2);
   });
+
+  // El padrón no tiene dónde guardar `notes`: se cuentan para que el resumen
+  // avise. Una celda con solo espacios no es una nota.
+  it("counts, per file, the rows whose notes cell has text", () => {
+    const result = parseAndValidateRoster(
+      validFiles({
+        customersText: `${CUSTOMERS_HEADER}\nC-1,Cliente Uno,987654321,Surco,ACTIVE,Etiquetas del sistema anterior: VIP\nC-2,Cliente Dos,987654322,Surco,ACTIVE,   \n`,
+        locationsText: `${LOCATIONS_HEADER}\nL-1,C-1,Casa,Jr. Uno 1,Surco,,SI\nL-2,C-2,Casa,Jr. Dos 2,Surco,,SI\n`,
+        containersText: `${CONTAINERS_HEADER}\nL-1,2,0,HIGH,contados el lunes\nL-2,1,0,HIGH,otra nota\n`,
+        moneyText: `${MONEY_HEADER}\nC-1,45.00,\n`,
+      }),
+    );
+    expect(result.issues).toEqual([]);
+    expect(result.roster?.discardedNotes).toEqual({
+      customers: 1,
+      openingContainers: 2,
+      openingMoney: 0,
+    });
+  });
 });
 
 describe("parseAndValidateRoster — every listed validation, and none of them stop the others", () => {
