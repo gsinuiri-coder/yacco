@@ -24,7 +24,7 @@ import {
 } from "./relay.mjs";
 
 const LIMIT_MESSAGE = "Error: You've hit your usage limit. Try again later.";
-const SECRET_VALUE = "valor-secreto-de-prueba-123";
+const REGISTERED_VALUE = "valor-registrado-en-el-entorno";
 const TOKEN_LIKE = "sk-abcdefghijklmnopqrstuvwx";
 
 // Lo que imprime y hace un agente en cada corrida. Escribe su nombre en
@@ -52,7 +52,7 @@ console.log("token-de-prueba-que-no-se-loguea " + name);
 if (step === "limit") { console.error(${JSON.stringify(LIMIT_MESSAGE)}); process.exit(1); }
 if (step === "limit-ok") { console.log(${JSON.stringify(LIMIT_MESSAGE)}); process.exit(0); }
 if (step === "secret-limit") {
-  console.error(${JSON.stringify(`${LIMIT_MESSAGE} ${SECRET_VALUE} ${TOKEN_LIKE}`)});
+  console.error(${JSON.stringify(`${LIMIT_MESSAGE} ${REGISTERED_VALUE} ${TOKEN_LIKE}`)});
   process.exit(1);
 }
 if (step === "split-limit") {
@@ -390,11 +390,11 @@ describe("runRelay", () => {
 
   test("al log no llega un secreto del entorno ni algo con forma de credencial", async () => {
     await relay([agent("a", "secret-limit"), agent("b", "finish")], {
-      env: { RELAY_TEST_TOKEN: SECRET_VALUE, HARMLESS: "no es secreto" },
+      env: { RELAY_TEST_TOKEN: REGISTERED_VALUE, HARMLESS: "no es secreto" },
     });
     const log = readFileSync(join(root, ".relay", "log.jsonl"), "utf8");
     assert.equal(logEntries()[0].result, "limit");
-    assert.doesNotMatch(log, new RegExp(SECRET_VALUE));
+    assert.doesNotMatch(log, new RegExp(REGISTERED_VALUE));
     assert.doesNotMatch(log, new RegExp(TOKEN_LIKE));
     assert.match(log, /Try again later\. \*\*\* \*\*\*/);
   });
