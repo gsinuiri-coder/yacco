@@ -353,15 +353,13 @@ describe("POST /api/v1/routes", () => {
   });
 
   test("rejects a driverId that names a user without the DRIVER role", async () => {
+    // El usuario se crea ANTES de armar la petición: un `await` dentro de
+    // `.send()` corre otra petición mientras la primera ya abrió su servidor.
+    const seller = await createUserAndLogin("no-chofer", "SELLER");
     const response = await request(server())
       .post("/api/v1/routes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send(
-        validRoute({
-          driverId: (await createUserAndLogin("no-chofer", "SELLER")).id,
-          date: "2026-08-30",
-        }),
-      );
+      .send(validRoute({ driverId: seller.id, date: "2026-08-30" }));
 
     expect(response.status).toBe(400);
     expect(messagesOf(response)).toContain("no tiene el rol de chofer");
