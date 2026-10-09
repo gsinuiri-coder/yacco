@@ -178,6 +178,10 @@ extraé lo compartido. Si dispara cobertura, escribí el test que falta.
 - Confirmación humana antes de: `prisma migrate reset` (confirmar que apunta al Postgres local de Docker y nunca a otra base), `git push --force` en cualquiera de sus formas, `rm -rf`, y cualquier escritura a un archivo `.env*`. El guard de Claude Code pregunta, no bloquea; acá pregunta el agente.
 - Dejar la política de permisos del CLI en `request-review`.
 
+## Agentes desatendidos
+
+Lanzado por `pnpm relay`, un agente sigue también `.agents/rules/unattended-agents.md`: sin gcloud, Neon, Vercel, deploys, `auditConfig` ni migraciones no aditivas. Ante cualquiera, `status: blocked` y salir.
+
 ## Infraestructura y secretos
 
 Cloud Run (API, sin servicio hasta el deploy final) + Vercel (web) + Neon. Reglas en `.agents/rules/infra.md`; no
