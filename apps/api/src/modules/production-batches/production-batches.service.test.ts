@@ -50,6 +50,8 @@ function buildPrismaMock() {
     },
     containerType: { findMany: jest.fn<() => Promise<unknown>>() },
     containerMovement: { aggregate: jest.fn<() => Promise<unknown>>() },
+    // El bloqueo de los tipos de envase (lockContainerTypes): no devuelve nada.
+    $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
 }

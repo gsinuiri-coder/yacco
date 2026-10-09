@@ -15,6 +15,7 @@ import { RoutesService } from "../../src/modules/routes/routes.service.js";
 import { SalesService } from "../../src/modules/sales/sales.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
+import { holdContainerTypeLock, startAndCheckBlocked } from "./support/hold-lock.js";
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
@@ -1616,6 +1617,25 @@ describe("POST /api/v1/routes/:id/loads", () => {
 
     const loads = await prisma.routeLoad.findMany({ where: { routeId, batchItemId } });
     expect(loads).toHaveLength(1);
+  });
+
+  // Backlog «El conteo de la planta no bloquea contra cargas, lotes ni
+  // liquidaciones»: con un conteo en curso del mismo tipo, la carga espera.
+  test("a load waits for a plant count of the same container type to finish", async () => {
+    const batchItemId = await createBatchItem(20);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const { containerTypeId } = await prisma.batchItem.findUniqueOrThrow({
+      where: { id: batchItemId },
+    });
+
+    const held = await holdContainerTypeLock(prisma, containerTypeId);
+    const { finishedWhileLocked, result } = await startAndCheckBlocked(() =>
+      addLoad(adminToken, routeId, batchItemId, 5),
+    );
+    await held.release();
+
+    expect(finishedWhileLocked).toBe(false);
+    expect((await result).status).toBe(201);
   });
 });
 
