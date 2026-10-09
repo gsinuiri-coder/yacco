@@ -2342,3 +2342,31 @@ build. CI sigue en `--audit-level=high`.
 `sprintf-js` (`GHSA-hp3w-g68c-fv3c`, moderate, sin parche, vía `jest` ›
 `babel-plugin-istanbul` › `js-yaml` 3 › `argparse` 1) no se ignora: queda por
 debajo del nivel `high` de CI y sigue a la vista en cada `pnpm audit`.
+
+## El test de login que entra al panel falla a veces en local (Windows)
+
+**Estado:** abierto. **Registrado:** 2026-10-09. **Disparador:** que falle una
+vez en CI, o que moleste lo suficiente en local como para no confiar en
+`pnpm test`.
+
+`apps/web-nuxt/test/nuxt/login.test.ts › login › inicia sesión con username (no
+email) y entra al panel` falló cuatro veces seguidas en local (Windows 11,
+Node 24.12.0), y también sobre `main` limpio (bd7da56), así que no lo introdujo
+ningún PR:
+
+```
+FAIL  |nuxt| test/nuxt/login.test.ts > login > inicia sesión con username (no email) y entra al panel
+TestingLibraryElementError: Unable to find role="heading" and name "Panel"
+```
+
+La corrida duró 6,8 a 18,3 s, contra el segundo largo que tarda cuando pasa. Más
+tarde, el mismo día y sin cambios, pasó 7/7 dos veces seguidas. En CI pasa
+siempre. Todo apunta a un tiempo de espera: `findByRole` se rinde antes de que
+la navegación al panel termine cuando la máquina está cargada (en esas corridas
+había `pnpm install` y Testcontainers en paralelo). Es una hipótesis, no está
+verificada.
+
+**Para cerrarla:** reproducirlo con carga (por ejemplo, corriendo el test
+mientras otra suite usa la CPU) y ver si alcanza con esperar la navegación
+(`await` del `navigateTo` o un `timeout` explícito en el `findByRole`) o si hay
+una carrera real entre el login y el guard de la ruta.
