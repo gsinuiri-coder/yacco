@@ -1,0 +1,52 @@
+{
+  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta.",
+  "prompt": "Leé AGENTS.md y docs/RELEVO.md y seguí desde siguiente-paso; actualizá RELEVO.md al terminar cada paso.",
+  "waitMinutes": 60,
+  "maxRuns": 50,
+  "agents": [
+    {
+      "name": "codex",
+      "command": "codex",
+      "npmPackage": "@openai/codex",
+      "verifiedWith": "codex-cli 0.161.0 (`codex exec --help`, 2026-10-09)",
+      "args": [
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--color",
+        "never",
+        "{prompt}"
+      ],
+      "limitPatterns": [
+        "you'?ve hit your usage limit",
+        "usage limit (has been )?reached",
+        "exceeded (your|the) (current )?quota",
+        "insufficient_quota"
+      ]
+    },
+    {
+      "name": "gemini",
+      "command": "gemini",
+      "npmPackage": "@google/gemini-cli",
+      "verifiedWith": null,
+      "args": null,
+      "limitPatterns": [
+        "quota exceeded",
+        "RESOURCE_EXHAUSTED",
+        "you have exhausted your (daily )?quota",
+        "usage limit (has been )?reached"
+      ]
+    },
+    {
+      "name": "claude",
+      "command": "claude",
+      "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09)",
+      "args": ["-p", "{prompt}", "--permission-mode", "auto"],
+      "limitPatterns": [
+        "usage limit reached",
+        "you'?ve hit your (usage |weekly |session )?limit",
+        "\\d+-hour limit reached",
+        "weekly limit reached"
+      ]
+    }
+  ]
+}
