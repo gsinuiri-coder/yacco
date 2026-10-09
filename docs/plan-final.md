@@ -63,7 +63,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Devolver llenos al galpón no repone el lote del que salieron                    | Resuelta               | #188                                                                                                                |
 | Regla: los mensajes de error que llegan a pantalla van en español               | Resuelta               | #111, #81                                                                                                           |
 | Los errores de rutas escriben la fecha en formato ISO                           | Resuelta               | #99                                                                                                                 |
-| El aviso de inventario negativo diagnostica una causa que puede no ser la real  | A hacer → cola 6       | Manda a registrar ingresos que no faltan cuando el negativo es de camión                                            |
+| El aviso de inventario negativo diagnostica una causa que puede no ser la real  | Resuelta               | Manda a registrar ingresos que no faltan cuando el negativo es de camión                                            |
 | Los textos de diferencia de la liquidación no concuerdan en singular            | Resuelta               | #184                                                                                                                |
 | La columna «Diferencia» del formulario de conteo se lee al revés sin la palabra | Resuelta               | #184                                                                                                                |
 | 27 suites de integración levantan un Postgres cada una                          | Descartada             | Lento en la máquina local; en CI no falla ni flaquea                                                                |
@@ -108,8 +108,8 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | 2   | Sin lock sobre customer_container_balances            | PR #260   |
 | 3   | Una baja de llenos en planta no descuenta el lote     | PR #261   |
 | 4   | Retirar el refresh token del cuerpo del login         | PR #267   |
-| 5   | Cambiar un precio de lista no deja rastro             | en curso  |
-| 6   | El aviso de inventario negativo                       | pendiente |
+| 5   | Cambiar un precio de lista no deja rastro             | PR #268   |
+| 6   | El aviso de inventario negativo                       | en curso  |
 | 7   | Mensajes con el estado en inglés                      | pendiente |
 | 8   | El cargador del padrón descarta las notas del cliente | pendiente |
 | 9   | Clientes con saldo a favor (test del límite)          | pendiente |
