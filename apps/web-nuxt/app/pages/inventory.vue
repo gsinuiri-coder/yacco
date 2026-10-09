@@ -55,13 +55,13 @@ function onCounted(count: PlantCount): void {
 
       <div v-else class="space-y-4">
         <UAlert
-          v-for="(types, state) in negativesByState"
+          v-for="{ state, containerTypeNames } in negativesByState"
           :key="state"
           role="alert"
           color="warning"
           variant="subtle"
           icon="i-lucide-triangle-alert"
-          :title="`Hay ${types.join(', ')} en negativo en ${CONTAINER_STATE_LABEL[state]}: el sistema cuenta menos de cero.`"
+          :title="`Hay ${containerTypeNames.join(', ')} en negativo en ${CONTAINER_STATE_LABEL[state]}: el sistema cuenta menos de cero.`"
         >
           <template #description>
             <template v-if="state === 'EMPTY_AT_PLANT'">

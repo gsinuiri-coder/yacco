@@ -51,13 +51,16 @@ export function pivotInventory(items: readonly ContainerInventoryItem[]): Invent
  * porque la causa probable depende del estado (supuesto «El aviso de
  * inventario negativo distingue por estado», en supuestos-por-validar.md).
  */
-export function negativeContainerTypesByState(
-  rows: readonly InventoryRow[],
-): Partial<Record<ContainerState, string[]>> {
-  const negatives: Partial<Record<ContainerState, string[]>> = {};
-  for (const state of CONTAINER_STATES) {
-    const names = rows.filter((row) => row.byState[state] < 0).map((row) => row.containerTypeName);
-    if (names.length > 0) negatives[state] = names;
-  }
-  return negatives;
+export interface NegativeState {
+  state: ContainerState;
+  containerTypeNames: string[];
+}
+
+export function negativeContainerTypesByState(rows: readonly InventoryRow[]): NegativeState[] {
+  return CONTAINER_STATES.map((state) => ({
+    state,
+    containerTypeNames: rows
+      .filter((row) => row.byState[state] < 0)
+      .map((row) => row.containerTypeName),
+  })).filter((negative) => negative.containerTypeNames.length > 0);
 }
