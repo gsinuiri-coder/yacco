@@ -5,6 +5,7 @@ useHead({ title: "Inventario de envases · Yacco" });
 
 const resource = useApiResource<ContainerInventoryItem[]>("/container-movements/inventory");
 const rows = computed(() => pivotInventory(resource.data.value ?? []));
+const negativesByState = computed(() => negativeContainerTypesByState(rows.value));
 const grandTotal = computed(() => rows.value.reduce((sum, row) => sum + row.total, 0));
 /**
  * Vacío es que el libro no tiene filas, NUNCA que las cantidades sumen cero:
@@ -54,13 +55,32 @@ function onCounted(count: PlantCount): void {
 
       <div v-else class="space-y-4">
         <UAlert
-          v-if="hasNegative(rows)"
+          v-for="(types, state) in negativesByState"
+          :key="state"
           role="alert"
           color="warning"
           variant="subtle"
           icon="i-lucide-triangle-alert"
-          title="Hay valores negativos: se registraron más envases llenados que vacíos disponibles. Faltan registrar entradas de envases."
-        />
+          :title="`Hay ${types.join(', ')} en negativo en ${CONTAINER_STATE_LABEL[state]}: el sistema cuenta menos de cero.`"
+        >
+          <template #description>
+            <template v-if="state === 'EMPTY_AT_PLANT'">
+              Puede que falten anotar envases que entraron a la planta, o que el conteo no esté al
+              día. Revise
+              <ULink to="/container-movements" class="underline">Movimientos de envases</ULink> o
+              <a href="#conteo-planta" class="underline">Conteo de la planta</a>.
+            </template>
+            <template v-else-if="state === 'FULL_AT_PLANT'">
+              Puede que una salida se haya anotado dos veces. Revise el
+              <a href="#conteo-planta" class="underline">Conteo de la planta</a>.
+            </template>
+            <template v-else>
+              Puede que al liquidar o al corregir una visita se hayan contado más envases de los que
+              el sistema tenía en el camión. Revise
+              <ULink to="/routes" class="underline">Rutas</ULink>.
+            </template>
+          </template>
+        </UAlert>
 
         <UCard :ui="{ body: 'p-0 sm:p-0' }">
           <div class="overflow-x-auto">
@@ -112,6 +132,7 @@ function onCounted(count: PlantCount): void {
 
         <SectionCard
           v-if="isAdmin"
+          id="conteo-planta"
           title="Conteo de la planta"
           description="Cuente en el galpón los vacíos o los llenos de un tipo de envase: el inventario pasa a decir lo contado."
         >

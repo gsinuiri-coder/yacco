@@ -51,3 +51,14 @@ export function hasNegative(rows: readonly InventoryRow[]): boolean {
     (row) => row.total < 0 || CONTAINER_STATES.some((state) => row.byState[state] < 0),
   );
 }
+
+export function negativeContainerTypesByState(
+  rows: readonly InventoryRow[],
+): Partial<Record<ContainerState, string[]>> {
+  const negatives: Partial<Record<ContainerState, string[]>> = {};
+  for (const state of CONTAINER_STATES) {
+    const names = rows.filter((row) => row.byState[state] < 0).map((row) => row.containerTypeName);
+    if (names.length > 0) negatives[state] = names;
+  }
+  return negatives;
+}
