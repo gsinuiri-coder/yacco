@@ -91,6 +91,7 @@ function buildRoster(overrides: Partial<ValidatedRoster> = {}): ValidatedRoster 
       ["C-1", { customerCode: "C-1", amount: "45.00", line: 2 }],
       ["C-2", { customerCode: "C-2", amount: "-60.00", line: 3 }],
     ]),
+    discardedNotes: { customers: 0, openingContainers: 0, openingMoney: 0 },
     ...overrides,
   };
 }
@@ -139,6 +140,7 @@ describe("computeRosterAggregates", () => {
       locationsByCustomerCode: new Map(),
       containersByLocationCode: new Map(),
       moneyByCustomerCode: new Map(),
+      discardedNotes: { customers: 0, openingContainers: 0, openingMoney: 0 },
     });
     expect(aggregates).toEqual({
       customers: { total: 0, active: 0, inactive: 0 },
@@ -147,6 +149,14 @@ describe("computeRosterAggregates", () => {
       containerTotalsByType: new Map(),
       pendingToCount: 0,
       netDebtTotal: "0.00",
+      discardedNotes: { customers: 0, openingContainers: 0, openingMoney: 0 },
     });
+  });
+
+  it("carries the discarded-notes counts through to the summary", () => {
+    const discardedNotes = { customers: 4, openingContainers: 1, openingMoney: 2 };
+    expect(computeRosterAggregates(buildRoster({ discardedNotes })).discardedNotes).toEqual(
+      discardedNotes,
+    );
   });
 });

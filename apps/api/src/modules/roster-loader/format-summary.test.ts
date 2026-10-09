@@ -20,6 +20,7 @@ function buildSummary(overrides: Partial<LoadSummary> = {}): LoadSummary {
     openingCharges: { created: 0, alreadyLoaded: 0 },
     openingCredits: { created: 0, alreadyLoaded: 0 },
     netDebtTotal: "450.00",
+    discardedNotes: { customers: 0, openingContainers: 0, openingMoney: 0 },
     ...overrides,
   };
 }
@@ -83,5 +84,22 @@ describe("formatSummary", () => {
 
     expect(lines).toContain("(ninguna)");
     expect(lines).toContain("(ninguno)");
+  });
+
+  it("warns, per file, how many rows came with notes that are not saved", () => {
+    const lines = formatSummary(
+      buildSummary({ discardedNotes: { customers: 3, openingContainers: 0, openingMoney: 1 } }),
+    );
+    const output = lines.join("\n");
+
+    expect(output).toContain("AVISO: estas notas NO se guardan");
+    expect(lines).toContain("  customers.csv: 3 fila(s) con notas");
+    expect(lines).toContain("  opening_money.csv: 1 fila(s) con notas");
+    expect(output).not.toContain("opening_containers.csv");
+  });
+
+  it("says nothing about notes when no row brought any", () => {
+    const output = formatSummary(buildSummary()).join("\n");
+    expect(output).not.toMatch(/notas/i);
   });
 });

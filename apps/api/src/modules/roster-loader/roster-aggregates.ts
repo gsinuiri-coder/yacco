@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { CONTAINER_TYPE_COLUMNS } from "./container-type-columns.js";
 import type { ContainerTypeColumn } from "./container-type-columns.js";
-import type { ValidatedRoster } from "./roster-loader.types.js";
+import type { DiscardedNotes, ValidatedRoster } from "./roster-loader.types.js";
 
 export interface RosterAggregates {
   customers: { total: number; active: number; inactive: number };
@@ -10,6 +10,7 @@ export interface RosterAggregates {
   containerTotalsByType: Map<string, number>;
   pendingToCount: number;
   netDebtTotal: string;
+  discardedNotes: DiscardedNotes;
 }
 
 const NO_ZONE_LABEL = "(sin zona)";
@@ -73,5 +74,6 @@ export function computeRosterAggregates(roster: ValidatedRoster): RosterAggregat
     containerTotalsByType,
     pendingToCount,
     netDebtTotal: netDebt.toFixed(2),
+    discardedNotes: roster.discardedNotes,
   };
 }
