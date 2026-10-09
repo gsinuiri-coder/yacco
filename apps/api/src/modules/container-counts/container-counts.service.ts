@@ -3,6 +3,7 @@ import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import {
   ContainerMovementsService,
+  lockContainerTypes,
   lockLocation,
 } from "../container-movements/container-movements.service.js";
 import {
@@ -189,7 +190,7 @@ export class ContainerCountsService {
   async countPlant(dto: CreatePlantCountDto, countedById: string): Promise<PlantCountResponseDto> {
     return this.prisma.$transaction(async (tx) => {
       const containerType = await assertContainerTypeExists(tx, dto.containerTypeId);
-      await tx.$queryRaw`SELECT id FROM container_types WHERE id = ${dto.containerTypeId}::uuid FOR UPDATE`;
+      await lockContainerTypes(tx, [dto.containerTypeId]);
 
       const expectedQuantity = await this.containerMovementsService.getStateBalance(
         tx,

@@ -289,6 +289,8 @@ function buildPrismaMock() {
     // already-DELIVERED stop; defaults to "no sale on file" so every markStop
     // test not concerned with that message keeps working unmodified.
     sale: { findFirst: jest.fn<() => Promise<unknown>>() },
+    // El bloqueo de los tipos de envase (lockContainerTypes): no devuelve nada.
+    $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
 }

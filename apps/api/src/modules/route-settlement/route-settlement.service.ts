@@ -15,7 +15,10 @@ import {
 import type { RouteSettlement } from "@prisma/client";
 import { ROUTE_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
+import {
+  ContainerMovementsService,
+  lockContainerTypes,
+} from "../container-movements/container-movements.service.js";
 import type { CreateRouteSettlementDto } from "./dto/create-route-settlement.dto.js";
 import type {
   ContainerDifferenceLineDto,
@@ -572,6 +575,17 @@ export class RouteSettlementService {
           `Solo se puede liquidar una ruta terminada; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
         );
       }
+
+      // Los tipos que vuelven a la planta: los vacíos contados y los llenos
+      // que cargó la ruta.
+      const loadedTypes = await tx.routeLoad.findMany({
+        where: { routeId },
+        select: { batchItem: { select: { containerTypeId: true } } },
+      });
+      await lockContainerTypes(tx, [
+        ...dto.emptiesCollected.map((line) => line.containerTypeId),
+        ...loadedTypes.map((load) => load.batchItem.containerTypeId),
+      ]);
 
       const expected = await this.computeExpected(tx, routeId);
 

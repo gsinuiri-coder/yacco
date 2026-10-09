@@ -187,6 +187,8 @@ function buildPrismaMock() {
       // La última corrección de la ruta, de la que sale `settlementOutdated`.
       findFirst: jest.fn<() => Promise<unknown>>(),
     },
+    // El bloqueo de los tipos de envase (lockContainerTypes): no devuelve nada.
+    $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
 }

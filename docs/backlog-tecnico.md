@@ -2321,7 +2321,27 @@ escenarios de test por su escritor real (un lote, una ruta) o con
 
 ## El conteo de la planta no bloquea contra cargas, lotes ni liquidaciones
 
-**Estado:** aceptado. **Registrado:** 2026-09-26, en la revisión del bloqueo de
+**Estado:** RESUELTA el 2026-10-09.
+
+- `lockContainerTypes` (`container-movements.service.ts`) bloquea las filas de
+  `container_types` con `FOR NO KEY UPDATE`, en orden de id y antes que
+  cualquier otro bloqueo de la transacción.
+- La usan `countPlant`, `RoutesService.addLoad`, `ProductionBatchesService.create`
+  y `RouteSettlementService.settle`. La liquidación bloquea los tipos de los
+  vacíos contados y los de los llenos que cargó la ruta.
+- Cada camino tiene un test de integración. Con el bloqueo tomado desde otra
+  transacción, como un conteo en curso, la escritura espera y termina recién
+  cuando se suelta. Sin el bloqueo, el test se pone en rojo.
+
+Quedan fuera, porque el «Para cerrarla» no los nombraba:
+
+- quitar una carga (`removeLoad`);
+- la baja de llenos en planta;
+- los movimientos manuales de envases.
+
+Mueven stock de planta igual, y van en su propia entrada si hace falta.
+
+**Estado (original):** aceptado. **Registrado:** 2026-09-26, en la revisión del bloqueo de
 saldos de clientes. **Disparador:** un conteo de la planta cuyo resultado no
 coincida con lo que se contó.
 

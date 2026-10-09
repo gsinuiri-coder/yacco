@@ -98,7 +98,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | El cargador del padrón descarta las notas del cliente                           | A hacer → cola 9       | Pierde datos sin avisar: el resumen tiene que decirlo                                                               |
 | Cambiar un precio de lista no deja rastro                                       | Resuelta               | Historial inmutable `product_price_changes` (2026-09-27)                                                            |
 | Una baja de llenos en planta no descuenta el lote                               | Resuelta               | #261                                                                                                                |
-| El conteo de la planta no bloquea contra cargas, lotes ni liquidaciones         | A hacer → cola 11      | Nueva (revisión de la cola 2): un conteo simultáneo a una carga compara contra un libro viejo                       |
+| El conteo de la planta no bloquea contra cargas, lotes ni liquidaciones         | Resuelta               | Nueva (revisión de la cola 2): un conteo simultáneo a una carga compara contra un libro viejo                       |
 
 ## Cola, por riesgo para la operación
 
@@ -113,7 +113,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | 7   | Mensajes con el estado en inglés                      | en curso  |
 | 8   | El cargador del padrón descarta las notas del cliente | pendiente |
 | 9   | Clientes con saldo a favor (test del límite)          | pendiente |
-| 10  | El conteo de la planta no bloquea contra cargas       | pendiente |
+| 10  | El conteo de la planta no bloquea contra cargas       | en curso  |
 
 ## Pendientes de Giancarlo que salen de acá
 

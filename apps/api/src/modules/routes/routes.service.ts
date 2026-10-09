@@ -17,7 +17,10 @@ import {
 } from "@prisma/client";
 import { ROUTE_STATUS_LABELS, STOP_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
+import {
+  ContainerMovementsService,
+  lockContainerTypes,
+} from "../container-movements/container-movements.service.js";
 import { OLDEST_BATCH_ITEM_FIRST } from "../production-batches/oldest-batch-first.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { RegisterStopDeliveryResult } from "../sales/sales.service.js";
@@ -1225,6 +1228,7 @@ export class RoutesService {
     }
 
     const load = await this.prisma.$transaction(async (tx) => {
+      await lockContainerTypes(tx, [batchItem.containerTypeId]);
       await assertIsOldestBatchItemWithStock(tx, batchItem);
 
       const { count } = await tx.batchItem.updateMany({

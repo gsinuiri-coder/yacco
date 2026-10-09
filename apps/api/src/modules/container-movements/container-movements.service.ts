@@ -471,6 +471,25 @@ export async function lockLocation(
 }
 
 /**
+ * Bloquea los tipos de envase cuyo stock de planta se va a leer o mover, para
+ * que un conteo de la planta y una carga, un lote o una liquidación del mismo
+ * tipo vayan de a uno: sin esto, el conteo compara contra el libro de un
+ * momento antes. Se toma ANTES que cualquier otro bloqueo de la transacción, y
+ * en orden de id, para que dos escrituras sobre varios tipos no se crucen en
+ * un deadlock. `FOR NO KEY UPDATE`, como `lockLocation`: choca con otra
+ * escritura del mismo tipo, pero no frena a un movimiento que solo lo
+ * referencia (`FOR KEY SHARE` de su FK).
+ */
+export async function lockContainerTypes(
+  client: Prisma.TransactionClient,
+  containerTypeIds: Iterable<string>,
+): Promise<void> {
+  for (const id of [...new Set(containerTypeIds)].sort()) {
+    await client.$queryRaw`SELECT id FROM container_types WHERE id = ${id}::uuid FOR NO KEY UPDATE`;
+  }
+}
+
+/**
  * Lo que entró a `state` menos lo que salió, entre los movimientos que
  * cumplen `where`. Una sola cuenta para el camión de una ruta y para una
  * celda del inventario.
