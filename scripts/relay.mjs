@@ -5,12 +5,13 @@
  * empezar por el primero.
  *
  * El traspaso entre agentes no pasa por acá: cada agente lee y actualiza
- * docs/RELEVO.md (sección «Relevo entre agentes» de AGENTS.md). Este script
- * solo lee de ese archivo el `estado`, para saber cuándo parar:
+ * .relay/RELEVO.md (formato en docs/RELEVO-USO.md; reglas en
+ * .agents/rules/unattended-agents.md). Este script solo lee de ese archivo el
+ * `status`, para saber cuándo parar:
  *
- *   terminado  sale con 0
- *   bloqueado  sale con 2 e imprime `motivo-bloqueo`
- *   en-curso   corre al agente actual
+ *   done         sale con 0
+ *   blocked      sale con 2 e imprime `blocked-reason`
+ *   in-progress  corre al agente actual
  *
  * Y sale con 1 si un agente falla por algo que no es la cuota dos veces
  * seguidas (una corrida que sale bien sin tocar RELEVO.md cuenta como falla:
@@ -19,8 +20,9 @@
  *   pnpm relay              arranca
  *   pnpm relay --dry-run    muestra qué correría, sin correr nada
  *
- * Uso, cómo pararlo y cómo leer el log: docs/RELEVO-USO.md. Los agentes corren
- * con aprobación automática: leé la advertencia de ese archivo antes.
+ * Uso, cómo pararlo y cómo leer el log: docs/RELEVO-USO.md. Cada agente corre
+ * con el entorno en lista blanca (`AGENT_ENV_KEYS`) y su propio sandbox:
+ * leé la advertencia de ese archivo antes.
  */
 import { spawn } from "node:child_process";
 import {
@@ -64,16 +66,68 @@ const TOKEN_SHAPES = [
   /postgres(?:ql)?:\/\/\S+/gi,
 ];
 
-const STATES = new Set(["en-curso", "bloqueado", "terminado"]);
+// Claves y valores en inglés: son un enum de máquina, como cualquier otro
+// identificador. El texto libre de cada campo va en español.
+const STATES = new Set(["in-progress", "blocked", "done"]);
 const RELAY_KEYS = new Set([
-  "estado",
+  "status",
   "item",
-  "rama",
-  "ultimo-paso",
-  "siguiente-paso",
-  "motivo-bloqueo",
-  "actualizado",
+  "branch",
+  "last-step",
+  "next-step",
+  "blocked-reason",
+  "updated",
 ]);
+
+/**
+ * Las únicas variables del entorno que recibe un agente: lo que necesitan el
+ * sistema, node y pnpm para correr, y GH_TOKEN para abrir y mergear PRs. Nada
+ * de credenciales de nube (gcloud, Neon, Vercel) ni de la base: aunque una
+ * regla falle, el agente no tiene con qué usarlas.
+ */
+export const AGENT_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "PATHEXT",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+  "USER",
+  "USERNAME",
+  "LOGNAME",
+  "SHELL",
+  "TERM",
+  "LANG",
+  "LC_ALL",
+  "XDG_CONFIG_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_DATA_HOME",
+  "PNPM_HOME",
+  "COREPACK_HOME",
+  "NODE_EXTRA_CA_CERTS",
+  "GH_TOKEN",
+];
+
+/**
+ * El entorno de un agente: solo las claves de `AGENT_ENV_KEYS`, comparadas
+ * sin distinguir mayúsculas porque Windows tampoco las distingue (`Path`).
+ */
+export function buildAgentEnv(env) {
+  const allowed = new Set(AGENT_ENV_KEYS);
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([key, value]) => allowed.has(key.toUpperCase()) && value !== undefined,
+    ),
+  );
+}
 
 // Una línea que matchea puede ser larga (un JSON de error entero): al log va
 // recortada, y como mucho estas pocas.
@@ -231,7 +285,7 @@ function commandLine(agent, prompt) {
  * `LIMIT_SCAN_LINES` líneas, que al terminar se revisan contra los patrones
  * de límite. Nada se guarda entero en ningún lado.
  */
-function runAgent(agent, { prompt, root, out, onSpawn }) {
+function runAgent(agent, { prompt, root, out, onSpawn, env }) {
   const args = commandLine(agent, prompt).slice(1);
   return new Promise((resolvePromise) => {
     const tail = { stdout: [], stderr: [] };
@@ -246,7 +300,7 @@ function runAgent(agent, { prompt, root, out, onSpawn }) {
 
     const child = spawn(agent.resolved.file, [...agent.resolved.prefixArgs, ...args], {
       cwd: root,
-      env: { ...process.env, ...agent.resolved.env },
+      env: { ...buildAgentEnv(env), ...agent.resolved.env },
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -304,22 +358,25 @@ function availableAgents(agents, { resolve, out }) {
 function stopCodeFor(relayPath, out) {
   const text = readFileOrNull(relayPath);
   if (text === null) {
-    out.error(`No existe ${relayPath}: sin él ningún agente sabe por dónde seguir.`);
+    out.error(
+      `No existe ${relayPath}: sin él ningún agente sabe por dónde seguir. ` +
+        "Crealo con la plantilla de docs/RELEVO-USO.md.",
+    );
     return EXIT.error;
   }
   const state = parseRelay(text);
-  if (state.estado === "terminado") {
-    out.log("RELEVO.md dice terminado: la cola está cerrada.");
+  if (state.status === "done") {
+    out.log("RELEVO.md dice done: la cola está cerrada.");
     return EXIT.done;
   }
-  if (state.estado === "bloqueado") {
-    out.log(`RELEVO.md dice bloqueado: ${state["motivo-bloqueo"] ?? "(sin motivo-bloqueo)"}`);
+  if (state.status === "blocked") {
+    out.log(`RELEVO.md dice blocked: ${state["blocked-reason"] ?? "(sin blocked-reason)"}`);
     return EXIT.blocked;
   }
-  if (!STATES.has(state.estado)) {
+  if (!STATES.has(state.status)) {
     out.error(
-      `RELEVO.md tiene estado ${JSON.stringify(state.estado ?? null)}; ` +
-        "se esperaba en-curso, bloqueado o terminado.",
+      `RELEVO.md tiene status ${JSON.stringify(state.status ?? null)}; ` +
+        "se esperaba in-progress, blocked o done.",
     );
     return EXIT.error;
   }
@@ -380,8 +437,9 @@ export async function runRelay({
   env = process.env,
 }) {
   registerEnvSecrets(env);
-  const relayPath = join(root, "docs", "RELEVO.md");
   const relayDir = join(root, ".relay");
+  // Fuera de docs/ y sin versionar: no cambia con cada checkout del agente.
+  const relayPath = join(relayDir, "RELEVO.md");
   const agents = availableAgents(config.agents, { resolve, out });
   if (agents.length === 0) {
     out.error("Ningún agente disponible: no hay a quién correr.");
@@ -409,6 +467,7 @@ export async function runRelay({
       relayDir,
       onRun,
       onSpawn,
+      env,
     });
   } finally {
     release();
@@ -417,7 +476,7 @@ export async function runRelay({
 
 async function relayLoop(
   agents,
-  { config, clock, out, root, relayPath, relayDir, onRun, onSpawn },
+  { config, clock, out, root, relayPath, relayDir, onRun, onSpawn, env },
 ) {
   const waitMs = config.waitMinutes * 60 * 1000;
   const exhausted = new Set();
@@ -450,7 +509,7 @@ async function relayLoop(
     const start = clock.now().toISOString();
     out.log(`\n=== Relevo: corrida ${runs + 1}/${config.maxRuns}, ${agent.name} ===`);
     const before = readFileOrNull(relayPath);
-    const result = await runAgent(agent, { prompt: config.prompt, root, out, onSpawn });
+    const result = await runAgent(agent, { prompt: config.prompt, root, out, onSpawn, env });
     runs += 1;
 
     let outcome = "ok";

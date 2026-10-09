@@ -2,7 +2,7 @@
  * Tests de `pnpm relay` con agentes falsos: un script de node que, en cada
  * corrida, hace lo que le toca de una secuencia ("limit,finish" = la primera
  * vez imprime un mensaje de límite, la segunda marca RELEVO.md como
- * terminado). Nada de esto lanza codex, gemini ni claude, y la espera entre
+ * done). Nada de esto lanza codex, gemini ni claude, y la espera entre
  * vueltas usa un reloj inyectado: ningún test duerme de verdad.
  */
 import assert from "node:assert/strict";
@@ -41,13 +41,13 @@ try { calls = readFileSync(callsPath, "utf8").split("\\n").filter(Boolean); } ca
 const step = sequence.split(",")[calls.filter((c) => c === name).length] ?? "ok";
 const run = calls.length + 1;
 appendFileSync(callsPath, name + "\\n");
-const relayPath = join(root, "docs", "RELEVO.md");
+const relayPath = join(root, ".relay", "RELEVO.md");
 const rewrite = (key, value, extra = "") =>
   writeFileSync(
     relayPath,
     readFileSync(relayPath, "utf8").replace(new RegExp("^" + key + ": .*$", "m"), key + ": " + value) + extra,
   );
-const touch = () => rewrite("actualizado", "corrida " + run + " por " + name);
+const touch = () => rewrite("updated", "corrida " + run + " por " + name);
 console.log("token-de-prueba-que-no-se-loguea " + name);
 if (step === "limit") { console.error(${JSON.stringify(LIMIT_MESSAGE)}); process.exit(1); }
 if (step === "limit-ok") { console.log(${JSON.stringify(LIMIT_MESSAGE)}); process.exit(0); }
@@ -67,21 +67,26 @@ if (step === "noisy") {
   touch();
   process.exit(0);
 }
+if (step === "env") {
+  writeFileSync(join(root, "env.json"), JSON.stringify(Object.keys(process.env)));
+  touch();
+  process.exit(0);
+}
 if (step === "fail") { console.error("boom"); process.exit(1); }
 if (step === "ok") touch();
-if (step === "finish") rewrite("estado", "terminado");
-if (step === "block") rewrite("estado", "bloqueado", "motivo-bloqueo: hace falta un humano\\n");
+if (step === "finish") rewrite("status", "done");
+if (step === "block") rewrite("status", "blocked", "blocked-reason: hace falta un humano\\n");
 `;
 
 const RELAY_IN_PROGRESS = [
   "# Relevo",
   "",
-  "estado: en-curso",
+  "status: in-progress",
   "item: 6 — El aviso de inventario negativo",
-  "rama: fix/inventory-negative-notice",
-  "ultimo-paso: tests en rojo",
-  "siguiente-paso: implementar el aviso",
-  "actualizado: 2026-10-09 10:00 por claude",
+  "branch: fix/inventory-negative-notice",
+  "last-step: tests en rojo",
+  "next-step: implementar el aviso",
+  "updated: 2026-10-09 10:00 por claude",
   "",
 ].join("\n");
 
@@ -90,8 +95,8 @@ let fakeAgentPath;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "relay-test-"));
-  mkdirSync(join(root, "docs"));
-  writeFileSync(join(root, "docs", "RELEVO.md"), RELAY_IN_PROGRESS);
+  mkdirSync(join(root, ".relay"));
+  writeFileSync(join(root, ".relay", "RELEVO.md"), RELAY_IN_PROGRESS);
   fakeAgentPath = join(root, "fake-agent.mjs");
   writeFileSync(fakeAgentPath, FAKE_AGENT);
 });
@@ -111,7 +116,7 @@ function agent(name, sequence) {
 
 function config(agents, overrides = {}) {
   return {
-    prompt: "seguí desde siguiente-paso",
+    prompt: "seguí desde next-step",
     waitMinutes: 60,
     maxRuns: 50,
     agents,
@@ -172,14 +177,14 @@ function logEntries() {
 describe("parseRelay", () => {
   test("lee los campos del formato fijo e ignora lo demás", () => {
     const state = parseRelay(RELAY_IN_PROGRESS);
-    assert.equal(state.estado, "en-curso");
-    assert.equal(state.rama, "fix/inventory-negative-notice");
-    assert.equal(state["siguiente-paso"], "implementar el aviso");
+    assert.equal(state.status, "in-progress");
+    assert.equal(state.branch, "fix/inventory-negative-notice");
+    assert.equal(state["next-step"], "implementar el aviso");
     assert.equal(state["#"], undefined);
   });
 
   test("tolera CRLF: el archivo puede venir de un editor de Windows", () => {
-    assert.equal(parseRelay(RELAY_IN_PROGRESS.replaceAll("\n", "\r\n")).estado, "en-curso");
+    assert.equal(parseRelay(RELAY_IN_PROGRESS.replaceAll("\n", "\r\n")).status, "in-progress");
   });
 });
 
@@ -228,19 +233,19 @@ describe("runRelay", () => {
     assert.deepEqual(clock.sleeps, [5 * 60 * 1000]);
   });
 
-  test("terminado al arrancar: sale con 0 sin correr a nadie", async () => {
+  test("done al arrancar: sale con 0 sin correr a nadie", async () => {
     writeFileSync(
-      join(root, "docs", "RELEVO.md"),
-      RELAY_IN_PROGRESS.replace("en-curso", "terminado"),
+      join(root, ".relay", "RELEVO.md"),
+      RELAY_IN_PROGRESS.replace("in-progress", "done"),
     );
     const out = captureOut();
     const code = await relay([agent("a", "ok")], { out });
     assert.equal(code, EXIT.done);
     assert.deepEqual(calls(), []);
-    assert.match(out.text(), /terminado/);
+    assert.match(out.text(), /done/);
   });
 
-  test("bloqueado: sale con 2 e imprime el motivo", async () => {
+  test("blocked: sale con 2 e imprime el motivo", async () => {
     const out = captureOut();
     const code = await relay([agent("a", "block")], { out });
     assert.equal(code, EXIT.blocked);
@@ -262,8 +267,11 @@ describe("runRelay", () => {
     assert.deepEqual(calls(), ["a", "a"]);
   });
 
-  test("un estado que no es del formato corta con 1", async () => {
-    writeFileSync(join(root, "docs", "RELEVO.md"), RELAY_IN_PROGRESS.replace("en-curso", "listo"));
+  test("un status que no es del formato corta con 1", async () => {
+    writeFileSync(
+      join(root, ".relay", "RELEVO.md"),
+      RELAY_IN_PROGRESS.replace("in-progress", "listo"),
+    );
     const code = await relay([agent("a", "ok")]);
     assert.equal(code, EXIT.error);
     assert.deepEqual(calls(), []);
@@ -301,7 +309,6 @@ describe("runRelay", () => {
   });
 
   test("un lock con un pid vivo impide arrancar", async () => {
-    mkdirSync(join(root, ".relay"));
     writeFileSync(join(root, ".relay", "lock"), "4242");
     const out = captureOut();
     const code = await relay([agent("a", "finish")], { out, isAlive: (pid) => pid === 4242 });
@@ -312,7 +319,6 @@ describe("runRelay", () => {
   });
 
   test("un lock con un pid muerto es viejo: se reemplaza y se libera al salir", async () => {
-    mkdirSync(join(root, ".relay"));
     writeFileSync(join(root, ".relay", "lock"), "4242");
     const out = captureOut();
     const code = await relay([agent("a", "finish")], { out, isAlive: () => false });
@@ -354,7 +360,7 @@ describe("runRelay", () => {
     assert.deepEqual(calls(), []);
     assert.equal(existsSync(join(root, ".relay", "lock")), false);
     assert.match(out.text(), /Correría a: /);
-    assert.match(out.text(), /seguí desde siguiente-paso/);
+    assert.match(out.text(), /seguí desde next-step/);
   });
 
   test("una corrida que sale bien sin tocar RELEVO.md no avanzó: dos seguidas cortan", async () => {
@@ -394,7 +400,6 @@ describe("runRelay", () => {
   });
 
   test("un lock vacío es viejo: se reemplaza sin decir pid NaN", async () => {
-    mkdirSync(join(root, ".relay"));
     writeFileSync(join(root, ".relay", "lock"), "");
     const out = captureOut();
     const code = await relay([agent("a", "finish")], { out, isAlive: () => true });
@@ -404,9 +409,34 @@ describe("runRelay", () => {
   });
 
   test("--dry-run devuelve el código con que saldría la corrida real", async () => {
-    writeFileSync(join(root, "docs", "RELEVO.md"), RELAY_IN_PROGRESS.replace("en-curso", "listo"));
+    writeFileSync(
+      join(root, ".relay", "RELEVO.md"),
+      RELAY_IN_PROGRESS.replace("in-progress", "listo"),
+    );
     const code = await relay([agent("a", "finish")], { dryRun: true });
     assert.equal(code, EXIT.error);
+  });
+
+  test("el agente recibe solo el entorno en lista blanca: sin credenciales de nube ni de la base", async () => {
+    await relay([agent("a", "env,finish")], {
+      env: {
+        PATH: process.env.PATH,
+        SystemRoot: process.env.SystemRoot,
+        GH_TOKEN: "token-de-gh",
+        CLOUDSDK_CONFIG: "/home/x/.gcloud",
+        NEON_API_KEY: "clave-neon",
+        VERCEL_TOKEN: "token-vercel",
+        DATABASE_URL: "postgres://u:p@h/db",
+      },
+    });
+    const keys = JSON.parse(readFileSync(join(root, "env.json"), "utf8")).map((key) =>
+      key.toUpperCase(),
+    );
+    assert.ok(keys.includes("PATH"));
+    assert.ok(keys.includes("GH_TOKEN"));
+    for (const forbidden of ["CLOUDSDK_CONFIG", "NEON_API_KEY", "VERCEL_TOKEN", "DATABASE_URL"]) {
+      assert.ok(!keys.includes(forbidden), `${forbidden} llegó al agente`);
+    }
   });
 
   test(".relay/stop para el relevo entre corridas y se borra", async () => {
@@ -431,7 +461,7 @@ describe("relay.config.json", () => {
     );
     assert.equal(parsed.waitMinutes, DEFAULT_WAIT_MINUTES);
     assert.equal(parsed.maxRuns, DEFAULT_MAX_RUNS);
-    assert.match(parsed.prompt, /docs\/RELEVO\.md/);
+    assert.match(parsed.prompt, /\.relay\/RELEVO\.md/);
   });
 
   test("cada agente con banderas dice de qué versión salen y pasa el prompt", () => {
@@ -439,6 +469,33 @@ describe("relay.config.json", () => {
       if (entry.args === null) continue;
       assert.ok(entry.verifiedWith, `${entry.name} sin verifiedWith`);
       assert.ok(entry.args.includes("{prompt}"), `${entry.name} no recibe el prompt`);
+    }
+  });
+
+  test("ningún agente corre sin sandbox ni con un modo que apruebe solo", () => {
+    const forbidden = [
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--dangerously-skip-permissions",
+      "--allow-dangerously-skip-permissions",
+      "bypassPermissions",
+      "auto",
+      "danger-full-access",
+      "--yolo",
+    ];
+    const byName = Object.fromEntries(
+      readRelayConfig(configPath).agents.map((entry) => [entry.name, entry.args]),
+    );
+    for (const [name, args] of Object.entries(byName)) {
+      for (const flag of forbidden) {
+        assert.ok(!(args ?? []).includes(flag), `${name} usa ${flag}`);
+      }
+    }
+    assert.deepEqual(byName.codex.slice(1, 3), ["--sandbox", "workspace-write"]);
+    const claudeMode = byName.claude[byName.claude.indexOf("--permission-mode") + 1];
+    assert.equal(claudeMode, "dontAsk");
+    const denied = byName.claude[byName.claude.indexOf("--disallowedTools") + 1];
+    for (const cli of ["gcloud", "neonctl", "vercel", "gh workflow"]) {
+      assert.match(denied, new RegExp(`Bash\\(${cli} \\*\\)`), `claude no deniega ${cli}`);
     }
   });
 
