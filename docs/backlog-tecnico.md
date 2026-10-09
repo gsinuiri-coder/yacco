@@ -2234,7 +2234,16 @@ con el paso «API image» de CI y comparar el escaneo antes y después.
 
 ## El cargador del padrón descarta las notas del cliente
 
-**Estado:** abierto. **Registrado:** 2026-09-25, al preparar las zonas del
+**Estado:** RESUELTA el 2026-10-09 por la segunda vía, la que no toca esquema
+(`plan-final.md`: «el resumen tiene que decirlo»). El cargador sigue sin
+guardar las notas, pero ya no las tira en silencio. Cuenta, por archivo
+(`customers.csv`, `opening_containers.csv`, `opening_money.csv`), las filas con
+una nota no vacía, y el resumen imprime un AVISO con esos números antes de
+cargar. Solo números: el texto de una nota nunca llega a la salida. Si un día
+hay que guardarlas, la otra vía —una columna en `customers`— sigue abierta y
+pide migración. Registro original:
+
+**Estado (original):** abierto. **Registrado:** 2026-09-25, al preparar las zonas del
 padrón (ítem 2 de `plan-piloto.md`). **Disparador:** la próxima carga de un
 padrón que traiga notas.
 
