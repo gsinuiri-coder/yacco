@@ -596,7 +596,14 @@ suficiente superficie para que la rutina demuestre nada.
 
 ## Clientes con saldo a favor al cierre del cuaderno
 
-**Estado:** resuelto (diseño); pendiente de código en S4.
+**Estado:** RESUELTA el 2026-10-09. El control de límite (`SalesService`,
+`debtBalance + debtDelta > creditLimit`) ya leía bien el signo. Ahora lo fija
+un test (`sales.service.test.ts`, «a customer with credit in favour…»): la
+misma venta de S/ 25.00 contra un límite de S/ 20.00 no excede con
+S/ −10.00 a favor y sí excede con S/ −4.00. Si el negativo se leyera como
+deuda (valor absoluto), como cero o se ignorara, el test se pone en rojo.
+
+**Estado (original):** resuelto (diseño); pendiente de código en S4.
 
 Consultado con el dueño: existen clientes con saldo a favor al cierre del
 cuaderno, y son adelantos puntuales o vueltos no devueltos, NO un modelo de
