@@ -117,7 +117,7 @@ describe("Productos", () => {
       }),
     );
 
-    expect(await screen.findByText("Cambios de precio")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Cambios de precio" })).toBeTruthy();
     expect(screen.getByText(/27\/09\/2026 10:30 · Giancarlo: S\/ 8.00 a S\/ 9.50/)).toBeTruthy();
   });
 

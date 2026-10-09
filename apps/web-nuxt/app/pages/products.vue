@@ -222,7 +222,7 @@ async function togglePriceChanges(productId: string): Promise<void> {
                 </tr>
                 <tr v-if="historyProductId === product.id">
                   <td :colspan="5" class="bg-elevated px-4 py-3">
-                    <p class="mb-2 font-medium text-highlighted">Cambios de precio</p>
+                    <h2 class="mb-2 font-medium text-highlighted">Cambios de precio</h2>
                     <p v-if="loadingPriceChanges" role="status">Cargando cambios…</p>
                     <p v-else-if="priceChanges.length === 0" class="text-muted">
                       Todavía no hay cambios de precio registrados.
