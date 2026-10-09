@@ -2237,10 +2237,11 @@ no vacía que no va a guardar. Mientras tanto, las zonas del padrón salen de
 
 ## Cambiar un precio de lista no deja rastro
 
-**Estado:** abierto. **Registrado:** 2026-09-25, con la pantalla «Productos»
-(ítem 4a de `plan-piloto.md`). **Disparador:** que el dueño pregunte quién
-cambió un precio o cuánto valía antes, o una diferencia de cobro que dependa
-de eso.
+**Estado:** resuelta (2026-09-27, historial inmutable). `product_price_changes`
+guarda cada cambio de precio de lista con el anterior, el nuevo, cuándo y quién;
+la fila se escribe en la misma transacción que `products.list_price`. Repetir el
+mismo importe no deja fila, y los productos existentes no reciben fechas
+inventadas: el primer cambio futuro registra el precio que tenían.
 
 `PATCH /products/:id` pisa `list_price` en su lugar. `products` no tiene
 `updated_at` ni `updated_by`, así que después de un cambio no se sabe el
@@ -2248,9 +2249,14 @@ valor anterior, ni quién lo cambió, ni cuándo. No rompe ningún invariante (u
 catálogo no es una fila operativa, y cada venta guarda su `unit_price`),
 pero es el precio que paga por defecto todo el padrón.
 
-**Para cerrarla:** toca esquema, así que se pregunta antes. O dos columnas
-(`updated_at`, `updated_by`), que dicen quién tocó último pero no el valor
-anterior; o una tabla de historial de precios de lista, de solo agregar.
+Los precios pactados por cliente quedan fuera y tienen su pendiente propio.
+
+## El precio pactado por cliente no tiene historial
+
+**Estado:** pendiente aparte (2026-09-27). `customer_prices` queda fuera del
+historial de precios de lista: un acuerdo de un cliente o de uno de sus locales
+no es el catálogo que paga todo el padrón. Si se necesita auditarlo, requiere
+su propio historial inmutable, con el nivel (cliente o local) y quién lo cambió.
 
 ## Una baja de llenos en planta no descuenta el lote
 
@@ -2308,3 +2314,30 @@ con el galpón quieto.
 **Para cerrarla:** que `addLoad`, `ProductionBatchesService.create` y la
 liquidación tomen el mismo bloqueo del tipo de envase antes de mover llenos o
 vacíos de la planta.
+
+## Advisories ignorados en `pnpm audit` sin parche aplicable
+
+**Estado:** abierto. **Registrado:** 2026-10-09, en `chore(deps): cerrar pnpm
+audit`. **Disparador:** revisar cuando haya parche — que salga una versión
+parcheada, o que `@nuxt/devtools` acepte `simple-git` 4. Entonces, en un PR
+propio, sacar el GHSA de `pnpm.auditConfig.ignoreGhsas` del `package.json`
+raíz y subir la dependencia.
+
+Ninguno llega al runtime de producción de la API: `pnpm why --prod` en
+`apps/api` no los encuentra, y el árbol que arma `pnpm deploy --prod` podado
+por `scripts/prune-runtime-deps.mjs` (lo mismo que copia la imagen) no los
+contiene. Todos entran por `apps/web-nuxt`, en herramientas de desarrollo o de
+build. CI sigue en `--audit-level=high`.
+
+| GHSA                  | Paquete                         | Severidad | Quién lo trae                                                      | Motivo del ignore                                                                                |
+| --------------------- | ------------------------------- | --------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `GHSA-86w9-cpqp-85rv` | `node-forge` 1.4.0              | high      | `nuxt` › `nitropack` › `listhen` (dev server)                      | Sin versión parcheada (`<0.0.0`).                                                                |
+| `GHSA-vfj7-8cjw-p6xm` | `braces` 3.0.3                  | high      | `nuxt` › `nitropack` › `globby`/`fast-glob` › `micromatch` (build) | Sin versión parcheada (`<0.0.0`).                                                                |
+| `GHSA-x6jw-m9v5-85vh` | `simple-git` 3.36.0             | critical  | `nuxt` › `@nuxt/devtools` 3.4.2                                    | Parche en 4.0.1; `@nuxt/devtools` 3.4.2 pide `^3.36.0` y no soporta la 4.                        |
+| `GHSA-g4wm-2vf7-vfgr` | `simple-git` 3.36.0             | high      | ídem                                                               | Parche en 4.0.0; ídem.                                                                           |
+| `GHSA-858h-whjf-mvg5` | `simple-git` 3.36.0             | high      | ídem                                                               | Parche en 4.0.0; ídem.                                                                           |
+| `GHSA-v5rq-49vh-5v5c` | `@simple-git/argv-parser` 1.1.1 | critical  | `@nuxt/devtools` › `simple-git` 3.36.0                             | Parche en 2.0.1, que solo usa `simple-git` 4; `simple-git` 3 pide `^1.1.0`. Cae con el anterior. |
+
+`sprintf-js` (`GHSA-hp3w-g68c-fv3c`, moderate, sin parche, vía `jest` ›
+`babel-plugin-istanbul` › `js-yaml` 3 › `argparse` 1) no se ignora: queda por
+debajo del nivel `high` de CI y sigue a la vista en cada `pnpm audit`.

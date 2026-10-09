@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.135",
-    "@nuxt/ui": "4.11.1",
+    "@nuxt/ui": "4.11.3",
     "@yacco/shared": "workspace:*",
     "nuxt": "4.5.2",
     "tailwindcss": "4.3.3",

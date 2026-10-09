@@ -12,3 +12,12 @@ export interface Product {
   listPrice: string;
   active: boolean;
 }
+
+/** ProductPriceChangeResponseDto. Every monetary value is a 2-decimal string. */
+export interface ProductPriceChange {
+  id: string;
+  previousPrice: string | null;
+  newPrice: string;
+  changedAt: string;
+  changedBy: { id: string; name: string };
+}
