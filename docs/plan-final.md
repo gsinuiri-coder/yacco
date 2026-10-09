@@ -44,7 +44,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Lista fija de migraciones en customer-locations-migration.int.test.ts           | Resuelta               | #49                                                                                                                 |
 | Sin lock sobre customer_container_balances al leer-y-reescribir                 | A hacer → cola 2       | Lectura y escritura del saldo sin bloqueo: doce entregas simultáneas daban saldo 2 a 4                              |
 | Falta la rutina de cuadre del dinero                                            | A hacer → cola 1       | No existía ninguna comparación de `debt_balance` contra ventas y cobros                                             |
-| Clientes con saldo a favor al cierre del cuaderno                               | A hacer → cola 10      | El código está bien; falta el test que su «Para cerrarla» pide (límite de crédito con deuda negativa)               |
+| Clientes con saldo a favor al cierre del cuaderno                               | Resuelta               | El código está bien; falta el test que su «Para cerrarla» pide (límite de crédito con deuda negativa)               |
 | CHECK de no negatividad en customer_container_balances                          | Resuelta               | #51                                                                                                                 |
 | El auto-deploy de yacco-api puede no dispararse sin error visible               | Descartada: modo local | No hay auto-deploy; el único deploy es final y manual                                                               |
 | Producción puede tener catálogos desincronizados del seed y nada lo detecta     | Resuelta               | #231                                                                                                                |
@@ -111,8 +111,8 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | 5   | Cambiar un precio de lista no deja rastro             | PR #268   |
 | 6   | El aviso de inventario negativo                       | PR #275   |
 | 7   | Mensajes con el estado en inglés                      | PR #276   |
-| 8   | El cargador del padrón descarta las notas del cliente | en curso  |
-| 9   | Clientes con saldo a favor (test del límite)          | pendiente |
+| 8   | El cargador del padrón descarta las notas del cliente | PR #279   |
+| 9   | Clientes con saldo a favor (test del límite)          | PR #280   |
 | 10  | El conteo de la planta no bloquea contra cargas       | pendiente |
 
 ## Pendientes de Giancarlo que salen de acá
