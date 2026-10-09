@@ -44,7 +44,7 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Lista fija de migraciones en customer-locations-migration.int.test.ts           | Resuelta               | #49                                                                                                                 |
 | Sin lock sobre customer_container_balances al leer-y-reescribir                 | A hacer → cola 2       | Lectura y escritura del saldo sin bloqueo: doce entregas simultáneas daban saldo 2 a 4                              |
 | Falta la rutina de cuadre del dinero                                            | A hacer → cola 1       | No existía ninguna comparación de `debt_balance` contra ventas y cobros                                             |
-| Clientes con saldo a favor al cierre del cuaderno                               | A hacer → cola 10      | El código está bien; falta el test que su «Para cerrarla» pide (límite de crédito con deuda negativa)               |
+| Clientes con saldo a favor al cierre del cuaderno                               | Resuelta               | El código está bien; falta el test que su «Para cerrarla» pide (límite de crédito con deuda negativa)               |
 | CHECK de no negatividad en customer_container_balances                          | Resuelta               | #51                                                                                                                 |
 | El auto-deploy de yacco-api puede no dispararse sin error visible               | Descartada: modo local | No hay auto-deploy; el único deploy es final y manual                                                               |
 | Producción puede tener catálogos desincronizados del seed y nada lo detecta     | Resuelta               | #231                                                                                                                |
@@ -95,25 +95,25 @@ El loop termina cuando esta tabla no tiene filas «a hacer».
 | Migración a Prisma 7                                                            | Descartada             | Actualización de dependencia sin efecto en la operación; pide aprobación aparte                                     |
 | TypeScript 6                                                                    | Descartada             | Ídem                                                                                                                |
 | La imagen de la API trae `npm` con dependencias vulnerables                     | Resuelta               | #222                                                                                                                |
-| El cargador del padrón descarta las notas del cliente                           | A hacer → cola 9       | Pierde datos sin avisar: el resumen tiene que decirlo                                                               |
+| El cargador del padrón descarta las notas del cliente                           | Resuelta               | Pierde datos sin avisar: el resumen tiene que decirlo                                                               |
 | Cambiar un precio de lista no deja rastro                                       | Resuelta               | Historial inmutable `product_price_changes` (2026-09-27)                                                            |
 | Una baja de llenos en planta no descuenta el lote                               | Resuelta               | #261                                                                                                                |
 | El conteo de la planta no bloquea contra cargas, lotes ni liquidaciones         | Resuelta               | Nueva (revisión de la cola 2): un conteo simultáneo a una carga compara contra un libro viejo                       |
 
 ## Cola, por riesgo para la operación
 
-| #   | Entrada                                               | Estado    |
-| --- | ----------------------------------------------------- | --------- |
-| 1   | Falta la rutina de cuadre del dinero                  | PR #259   |
-| 2   | Sin lock sobre customer_container_balances            | PR #260   |
-| 3   | Una baja de llenos en planta no descuenta el lote     | PR #261   |
-| 4   | Retirar el refresh token del cuerpo del login         | PR #267   |
-| 5   | Cambiar un precio de lista no deja rastro             | PR #268   |
-| 6   | El aviso de inventario negativo                       | PR #275   |
-| 7   | Mensajes con el estado en inglés                      | en curso  |
-| 8   | El cargador del padrón descarta las notas del cliente | pendiente |
-| 9   | Clientes con saldo a favor (test del límite)          | pendiente |
-| 10  | El conteo de la planta no bloquea contra cargas       | en curso  |
+| #   | Entrada                                               | Estado  |
+| --- | ----------------------------------------------------- | ------- |
+| 1   | Falta la rutina de cuadre del dinero                  | PR #259 |
+| 2   | Sin lock sobre customer_container_balances            | PR #260 |
+| 3   | Una baja de llenos en planta no descuenta el lote     | PR #261 |
+| 4   | Retirar el refresh token del cuerpo del login         | PR #267 |
+| 5   | Cambiar un precio de lista no deja rastro             | PR #268 |
+| 6   | El aviso de inventario negativo                       | PR #275 |
+| 7   | Mensajes con el estado en inglés                      | PR #276 |
+| 8   | El cargador del padrón descarta las notas del cliente | PR #279 |
+| 9   | Clientes con saldo a favor (test del límite)          | PR #280 |
+| 10  | El conteo de la planta no bloquea contra cargas       | PR #281 |
 
 ## Pendientes de Giancarlo que salen de acá
 

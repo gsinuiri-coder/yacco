@@ -596,7 +596,14 @@ suficiente superficie para que la rutina demuestre nada.
 
 ## Clientes con saldo a favor al cierre del cuaderno
 
-**Estado:** resuelto (diseño); pendiente de código en S4.
+**Estado:** RESUELTA el 2026-10-09. El control de límite (`SalesService`,
+`debtBalance + debtDelta > creditLimit`) ya leía bien el signo. Ahora lo fija
+un test (`sales.service.test.ts`, «a customer with credit in favour…»): la
+misma venta de S/ 25.00 contra un límite de S/ 20.00 no excede con
+S/ −10.00 a favor y sí excede con S/ −4.00. Si el negativo se leyera como
+deuda (valor absoluto), como cero o se ignorara, el test se pone en rojo.
+
+**Estado (original):** resuelto (diseño); pendiente de código en S4.
 
 Consultado con el dueño: existen clientes con saldo a favor al cierre del
 cuaderno, y son adelantos puntuales o vueltos no devueltos, NO un modelo de
@@ -2234,7 +2241,16 @@ con el paso «API image» de CI y comparar el escaneo antes y después.
 
 ## El cargador del padrón descarta las notas del cliente
 
-**Estado:** abierto. **Registrado:** 2026-09-25, al preparar las zonas del
+**Estado:** RESUELTA el 2026-10-09 por la segunda vía, la que no toca esquema
+(`plan-final.md`: «el resumen tiene que decirlo»). El cargador sigue sin
+guardar las notas, pero ya no las tira en silencio. Cuenta, por archivo
+(`customers.csv`, `opening_containers.csv`, `opening_money.csv`), las filas con
+una nota no vacía, y el resumen imprime un AVISO con esos números antes de
+cargar. Solo números: el texto de una nota nunca llega a la salida. Si un día
+hay que guardarlas, la otra vía —una columna en `customers`— sigue abierta y
+pide migración. Registro original:
+
+**Estado (original):** abierto. **Registrado:** 2026-09-25, al preparar las zonas del
 padrón (ítem 2 de `plan-piloto.md`). **Disparador:** la próxima carga de un
 padrón que traiga notas.
 
@@ -2381,3 +2397,31 @@ build. CI sigue en `--audit-level=high`.
 `sprintf-js` (`GHSA-hp3w-g68c-fv3c`, moderate, sin parche, vía `jest` ›
 `babel-plugin-istanbul` › `js-yaml` 3 › `argparse` 1) no se ignora: queda por
 debajo del nivel `high` de CI y sigue a la vista en cada `pnpm audit`.
+
+## El test de login que entra al panel falla a veces en local (Windows)
+
+**Estado:** abierto. **Registrado:** 2026-10-09. **Disparador:** que falle una
+vez en CI, o que moleste lo suficiente en local como para no confiar en
+`pnpm test`.
+
+`apps/web-nuxt/test/nuxt/login.test.ts › login › inicia sesión con username (no
+email) y entra al panel` falló cuatro veces seguidas en local (Windows 11,
+Node 24.12.0), y también sobre `main` limpio (bd7da56), así que no lo introdujo
+ningún PR:
+
+```
+FAIL  |nuxt| test/nuxt/login.test.ts > login > inicia sesión con username (no email) y entra al panel
+TestingLibraryElementError: Unable to find role="heading" and name "Panel"
+```
+
+La corrida duró 6,8 a 18,3 s, contra el segundo largo que tarda cuando pasa. Más
+tarde, el mismo día y sin cambios, pasó 7/7 dos veces seguidas. En CI pasa
+siempre. Todo apunta a un tiempo de espera: `findByRole` se rinde antes de que
+la navegación al panel termine cuando la máquina está cargada (en esas corridas
+había `pnpm install` y Testcontainers en paralelo). Es una hipótesis, no está
+verificada.
+
+**Para cerrarla:** reproducirlo con carga (por ejemplo, corriendo el test
+mientras otra suite usa la CPU) y ver si alcanza con esperar la navegación
+(`await` del `navigateTo` o un `timeout` explícito en el `findByRole`) o si hay
+una carrera real entre el login y el guard de la ruta.

@@ -1,4 +1,4 @@
-import type { LoadSummary } from "./roster-loader.types.js";
+import type { DiscardedNotes, LoadSummary } from "./roster-loader.types.js";
 
 /**
  * Renders the aggregate-only summary to lines of text. This is the ENTIRE
@@ -57,5 +57,26 @@ export function formatSummary(summary: LoadSummary): string[] {
       `${summary.openingCredits.alreadyLoaded} ya existían`,
   );
   lines.push(`Deuda neta total: S/ ${summary.netDebtTotal}`);
+  lines.push(...discardedNotesWarning(summary.discardedNotes));
   return lines;
+}
+
+/**
+ * El padrón no tiene dónde guardar la columna `notes`: se descarta. Antes
+ * pasaba sin aviso, y en la carga real se perdieron así las etiquetas del
+ * sistema viejo. Solo cuenta filas; el texto de una nota nunca se imprime.
+ */
+function discardedNotesWarning(notes: DiscardedNotes): string[] {
+  const byFile: Array<[string, number]> = [
+    ["customers.csv", notes.customers],
+    ["opening_containers.csv", notes.openingContainers],
+    ["opening_money.csv", notes.openingMoney],
+  ];
+  const withNotes = byFile.filter(([, count]) => count > 0);
+  if (withNotes.length === 0) return [];
+  return [
+    "",
+    "AVISO: estas notas NO se guardan (el sistema no tiene dónde). Si importan, guárdelas aparte antes de cargar:",
+    ...withNotes.map(([file, count]) => `  ${file}: ${count} fila(s) con notas`),
+  ];
 }
