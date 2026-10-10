@@ -127,6 +127,8 @@ describe("Liquidación de la ruta", () => {
     expect(within(libro).getByText("S/ 320.00")).toBeTruthy();
     expect(within(libro).getByText("S/ 40.30")).toBeTruthy();
     expect(screen.getByText(/Según el libro deberían volver 6./)).toBeTruthy();
+    // «Parque» es una zona: el bidón vendido se explica sin esa palabra.
+    expect(within(libro).getByText("El cliente se quedó con el bidón: no vuelve.")).toBeTruthy();
   });
 
   it("la hoja de vacíos va por tipo, con el libro al lado y la diferencia mientras se escribe", async () => {

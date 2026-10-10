@@ -79,8 +79,8 @@ function describeDifference(discrepancy: ContainerReconciliationDiscrepancy): st
     <div v-if="!isAdmin" class="rounded-lg border border-default bg-default p-6">
       <p class="font-medium text-highlighted">Este cuadre es solo para administradores</p>
       <p class="mt-1 text-muted">
-        Revisa el parque entero de envases y sirve para decidir si un saldo es confiable, así que lo
-        corre el dueño de la planta.
+        Revisa todos los envases de la planta y sirve para decidir si un saldo es confiable, así que
+        lo corre el dueño de la planta.
       </p>
     </div>
 
@@ -137,7 +137,7 @@ function describeDifference(discrepancy: ContainerReconciliationDiscrepancy): st
           />
         </div>
         <p v-else-if="loading" role="status" class="p-6 text-muted">
-          Revisando el parque de envases…
+          Revisando los envases de la planta…
         </p>
         <div
           v-else-if="result && result.discrepancies.length === 0"

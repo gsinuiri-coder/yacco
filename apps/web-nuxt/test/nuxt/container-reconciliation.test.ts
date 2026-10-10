@@ -222,6 +222,8 @@ describe("Cuadre de envases", () => {
     await renderPage(["SELLER"]);
 
     expect(await screen.findByText("Este cuadre es solo para administradores")).toBeTruthy();
+    // «Parque» es una zona: la flota de envases se nombra sin esa palabra.
+    expect(screen.getByText(/Revisa todos los envases de la planta/)).toBeTruthy();
     expect(counter.calls).toBe(0);
     expect(screen.queryByRole("button", { name: "Volver a revisar" })).toBeNull();
   });
