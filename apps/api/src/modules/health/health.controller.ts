@@ -3,8 +3,16 @@ import { ApiResponse, ApiServiceUnavailableResponse, ApiTags } from "@nestjs/swa
 import { HealthService } from "./health.service.js";
 import type { AppEnvironment } from "../../config/env.validation.js";
 
+/**
+ * Con qué se reconoce esta API. El proxy de `nuxt dev` lo mira antes de
+ * reenviar: en una máquina con varios proyectos, otro backend puede contestar
+ * en el mismo puerto, y sin esto el web le hablaba sin avisar.
+ */
+export const HEALTH_SERVICE_NAME = "yacco-api";
+
 export interface HealthResponse {
   status: "ok";
+  service: typeof HEALTH_SERVICE_NAME;
   /** Commit sha of the running build, or null where the host injects none. */
   commit: string | null;
   /**
@@ -34,6 +42,7 @@ export class HealthController {
   check(): HealthResponse {
     return {
       status: "ok",
+      service: HEALTH_SERVICE_NAME,
       commit: this.healthService.deployedCommit(),
       environment: this.healthService.appEnvironment(),
     };

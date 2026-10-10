@@ -30,7 +30,7 @@ export const DEMO_API_ORIGIN = "https://yacco-api-demo-297699663114.us-east4.run
  * `nuxt dev` le pega a la API local (PORT de .env.example). Es sólo el
  * servidor de desarrollo: en build esta regla no existe.
  */
-export const LOCAL_API_ORIGIN = "http://localhost:3100";
+export const LOCAL_API_ORIGIN = "http://localhost:3200";
 
 /**
  * `/health` está fuera del prefijo `api/v1` en la API (configure-app.ts), así

@@ -17,8 +17,16 @@ servicios de Cloud Run se borraron; producción se recrea con el deploy final
 
 | Entorno        | Web                           | API                                      | Base de datos      | Escribe datos reales |
 | -------------- | ----------------------------- | ---------------------------------------- | ------------------ | -------------------- |
-| **local**      | `nuxt dev`                    | `:3100`                                  | Postgres en Docker | no                   |
+| **local**      | `nuxt dev` en `:3201`         | `:3200`                                  | Postgres en Docker | no                   |
 | **producción** | Vercel, dominio de producción | Cloud Run `yacco-api` — **sin servicio** | Neon, rama `main`  | **sí**               |
+
+**Puertos locales: API en 3200, web en 3201** (desde 2026-10-10). Antes eran
+3100 y 3000, y en la máquina de desarrollo otro proyecto escucha en
+`127.0.0.1:3100`: el proxy de `nuxt dev` le reenviaba todo a esa API sin
+avisar. Además del cambio de puerto, `nuxt dev` mira `/health` antes de
+reenviar y, si no contesta la API de Yacco (`service: "yacco-api"`), responde
+502 con el porqué (`apps/web-nuxt/config/local-api-guard.ts`). El `PORT` del
+`.env` local manda sobre el default: tiene que decir 3200, como `.env.example`.
 
 Producción está **congelada**: la base `main` de Neon conserva el padrón real
 tal como está, nada la migra ni la escribe, y el web de `yacco-web` sigue
@@ -110,7 +118,7 @@ mostrar ninguno.
 | `JWT_REFRESH_SECRET`    | `.env` local | Secret Manager       | —      | —                       |
 | `JWT_*_EXPIRES_IN`      | `.env` local | variable en claro    | —      | —                       |
 | `WEB_ORIGIN`            | `.env` local | variable en claro    | —      | —                       |
-| `PORT`                  | 3100         | lo inyecta Cloud Run | —      | —                       |
+| `PORT`                  | 3200         | lo inyecta Cloud Run | —      | —                       |
 | `VERCEL_TOKEN`          | `.env.setup` | —                    | —      | Secret Manager, por WIF |
 
 El web (`apps/web-nuxt`) no tiene ninguna variable: le pide todo a `/api/v1`

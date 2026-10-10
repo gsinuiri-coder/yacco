@@ -56,7 +56,7 @@ import {
  * reset` already resets it in one command.
  */
 
-const DEFAULT_BASE_URL = "http://localhost:3100/api/v1";
+const DEFAULT_BASE_URL = "http://localhost:3200/api/v1";
 
 // SonarCloud (S8476/S7044): a base URL taken from an env var, spliced into
 // every fetch() call this script makes, is exactly the "tainted URL" shape

@@ -29,7 +29,12 @@ test("GET /health is public, unversioned, returns 200 without a token and echoes
   // environment: null here — APP_ENV is never set for this suite, and that
   // absence is itself the case health.controller.test.ts covers in isolation
   // (the safe default, never a guess of "production").
-  expect(response.body).toEqual({ status: "ok", commit: DEPLOYED_COMMIT, environment: null });
+  expect(response.body).toEqual({
+    status: "ok",
+    service: "yacco-api",
+    commit: DEPLOYED_COMMIT,
+    environment: null,
+  });
 });
 
 test("GET /health/db is public, unversioned, and confirms the database is reachable", async () => {
