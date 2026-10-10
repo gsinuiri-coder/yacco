@@ -1,42 +1,22 @@
 {
-  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. Ningún agente corre sin sandbox ni con aprobación automática que saltee reglas: ver `verifiedWith`.",
+  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. Ningún agente corre sin sandbox salvo el que lo declara con `unsandboxed: true` y su motivo (hoy codex en Windows; el relevo lo avisa al arrancar), y ninguno con --dangerously-bypass-approvals-and-sandbox: ver `verifiedWith`.",
   "prompt": "Sos un agente desatendido de pnpm relay. Leé AGENTS.md y .agents/rules/unattended-agents.md, y seguí .relay/RELEVO.md desde next-step. Al terminar cada paso, actualizá .relay/RELEVO.md (last-step, next-step, updated) y commiteá tu WIP en la rama del ítem. Ante cualquier acción que esas reglas prohíben: status: blocked con blocked-reason, y salí.",
   "waitMinutes": 60,
   "maxRuns": 50,
   "agents": [
     {
-      "name": "claude",
-      "command": "claude",
-      "npmPackage": "@anthropic-ai/claude-code",
-      "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla.",
-      "args": [
-        "-p",
-        "{prompt}",
-        "--permission-mode",
-        "dontAsk",
-        "--permission-prompts",
-        "none",
-        "--allowedTools",
-        "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git *),Bash(gh pr *),Bash(gh run *),Bash(gh api *)",
-        "--disallowedTools",
-        "Bash(gcloud *),Bash(neonctl *),Bash(vercel *),Bash(gh workflow *),Bash(gh pr merge * --admin*),Bash(git push --force*),Bash(git push -f*),mcp__neon,mcp__plugin_vercel_vercel"
-      ],
-      "limitPatterns": [
-        "usage limit reached",
-        "you'?ve hit your (usage |weekly |session )?limit",
-        "\\d+-hour limit reached",
-        "weekly limit reached"
-      ]
-    },
-    {
       "name": "codex",
       "command": "codex",
       "npmPackage": "@openai/codex",
-      "verifiedWith": "codex-cli 0.162.0 (`codex exec --help`, 2026-10-09): --sandbox workspace-write; red con -c sandbox_workspace_write.network_access=true (campo del binario 0.162.0). Sin --dangerously-bypass-approvals-and-sandbox.",
+      "unsandboxed": true,
+      "unsandboxedReason": "Decisión de Giancarlo (2026-10-10): en Windows el sandbox workspace-write de codex deja .git de solo lectura (openai/codex #18918) y sin crear la rama del ítem no puede trabajar. Riesgo y lo que hay que cerrar antes de correr: docs/RELEVO-USO.md.",
+      "verifiedWith": "codex-cli 0.162.0 (`codex exec --help` y corridas reales sin TTY, 2026-10-10): --sandbox danger-full-access; `exec` no acepta -a/--ask-for-approval, y su política por defecto es never (el encabezado dice `approval: never`); se fija igual con -c approval_policy=\"never\" para que ninguna config.toml la cambie. Termina sola. Sin --dangerously-bypass-approvals-and-sandbox.",
       "args": [
         "exec",
         "--sandbox",
-        "workspace-write",
+        "danger-full-access",
+        "-c",
+        "approval_policy=\"never\"",
         "-c",
         "sandbox_workspace_write.network_access=true",
         "--color",
@@ -62,6 +42,30 @@
         "credits balance is too low",
         "QUOTA_EXHAUSTED",
         "RESOURCE_EXHAUSTED"
+      ]
+    },
+    {
+      "name": "claude",
+      "command": "claude",
+      "npmPackage": "@anthropic-ai/claude-code",
+      "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla.",
+      "args": [
+        "-p",
+        "{prompt}",
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--allowedTools",
+        "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git *),Bash(gh pr *),Bash(gh run *),Bash(gh api *)",
+        "--disallowedTools",
+        "Bash(gcloud *),Bash(neonctl *),Bash(vercel *),Bash(gh workflow *),Bash(gh pr merge * --admin*),Bash(git push --force*),Bash(git push -f*),mcp__neon,mcp__plugin_vercel_vercel"
+      ],
+      "limitPatterns": [
+        "usage limit reached",
+        "you'?ve hit your (usage |weekly |session )?limit",
+        "\\d+-hour limit reached",
+        "weekly limit reached"
       ]
     }
   ]
