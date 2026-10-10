@@ -82,6 +82,8 @@ describe("Inventario de envases", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Hay Bidón 20L en negativo en Vacíos en planta");
     expect(alert.textContent).toContain("Puede que falten anotar envases");
+    // Tuteo, como el resto de la aplicación.
+    expect(alert.textContent).toContain("Revisa Movimientos de envases");
     expect(alert.textContent).not.toContain("al liquidar o al corregir una visita");
     // La celda dice el hecho, sin causa: la causa probable está en el aviso.
     expect(await screen.findAllByText("-5: en negativo")).toHaveLength(1);
@@ -188,6 +190,18 @@ describe("Inventario de envases", () => {
 
       await screen.findByRole("rowheader", { name: "Bidón 20L" });
       expect(screen.queryByRole("region", { name: "Conteo de la planta" })).toBeNull();
+    });
+
+    it("le habla al administrador de tú, como el resto de la aplicación", async () => {
+      stubInventory([cell("Bidón 20L", "EMPTY_AT_PLANT", 4)]);
+
+      await renderInventory();
+
+      expect(
+        await within(await screen.findByRole("region", { name: "Conteo de la planta" })).findByText(
+          /^Cuenta en el galpón/,
+        ),
+      ).toBeTruthy();
     });
 
     it("vacíos desde un saldo negativo: muestra lo que había, pide confirmar la diferencia y manda el conteo", async () => {

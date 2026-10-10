@@ -262,7 +262,7 @@ const settledEmpties = computed(() =>
             <StatTile
               label="Vendidos completos"
               :value="view.expected.fullSold"
-              note="Esos envases salieron del parque."
+              note="El cliente se quedó con el bidón: no vuelve."
             />
             <StatTile
               label="Deberían volver"
