@@ -179,3 +179,36 @@ describe("Mi ruta", () => {
     expect(await screen.findByText("Hoy no tienes rutas asignadas.")).toBeTruthy();
   });
 });
+
+describe("Mi ruta — quien además de chofer es oficina", () => {
+  beforeEach(async () => {
+    resetSession();
+    cleanups.push(signIn(["ADMIN"], "admin"));
+    await navigateTo("/login");
+  });
+
+  afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+
+  it("un administrador ve solo las rutas donde él es el chofer, no las de todos", async () => {
+    // Como la API: a un administrador, sin `driverId`, le devuelve las de todos.
+    const otherDriversRoute = buildRoute({ status: "IN_PROGRESS", stops: [pending] });
+    cleanups.push(
+      registerEndpoint("/api/v1/routes", {
+        method: "GET",
+        handler: (event) => {
+          const driverId = new URL(event.path, "http://x").searchParams.get("driverId");
+          return pageOf(
+            [otherDriversRoute].filter((route) => driverId === null || route.driverId === driverId),
+          );
+        },
+      }),
+    );
+
+    await renderMyRoute();
+
+    expect(await screen.findByText("Hoy no tienes rutas asignadas.")).toBeTruthy();
+    expect(screen.queryByRole("article", { name: "Parada 1: Bodega Central" })).toBeNull();
+  });
+});
