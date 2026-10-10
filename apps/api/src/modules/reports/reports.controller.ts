@@ -16,6 +16,7 @@ import {
   CustomerDebtsReportDto,
   LoanedContainersReportDto,
   ProductionReportDto,
+  SetupChecklistDto,
 } from "./dto/report-response.dto.js";
 import { ReportsService } from "./reports.service.js";
 
@@ -51,5 +52,14 @@ export class ReportsController {
   @Get("production")
   production(@Query() query: ProductionReportQueryDto): Promise<ProductionReportDto> {
     return this.reportsService.production(query);
+  }
+
+  @ApiOperation({
+    summary: "Lo que le falta a la planta para operar con datos reales (tarjeta del Panel)",
+  })
+  @ApiResponse({ status: 200, type: SetupChecklistDto })
+  @Get("setup-checklist")
+  setupChecklist(): Promise<SetupChecklistDto> {
+    return this.reportsService.setupChecklist();
   }
 }
