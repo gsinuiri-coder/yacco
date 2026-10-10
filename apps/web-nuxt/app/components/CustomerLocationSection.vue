@@ -96,6 +96,11 @@ async function save(draft: LocationDraft): Promise<void> {
   }
 }
 
+function markDirty(draft: LocationDraft): void {
+  draft.saved = false;
+  draft.submitError = null;
+}
+
 function mapsUrl(draft: LocationDraft): string | null {
   const { latitude, longitude } = draft.location;
   return latitude === null || longitude === null
@@ -152,6 +157,7 @@ function mapsUrl(draft: LocationDraft): string | null {
                 placeholder="Ej. Rosa Quispe"
                 :disabled="draft.submitting"
                 class="w-full"
+                @update:model-value="markDirty(draft)"
               />
             </UFormField>
             <UFormField
@@ -163,6 +169,7 @@ function mapsUrl(draft: LocationDraft): string | null {
                 placeholder="-12.046374, -77.042793"
                 :disabled="draft.submitting"
                 class="w-full"
+                @update:model-value="markDirty(draft)"
               />
             </UFormField>
           </div>

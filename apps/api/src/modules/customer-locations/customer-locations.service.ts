@@ -46,7 +46,7 @@ function googleMapsUrl(value: string, shortOnly = false): URL {
   const allowedHost = shortOnly
     ? url.hostname === "maps.app.goo.gl"
     : GOOGLE_MAPS_REDIRECT_HOSTS.has(url.hostname);
-  if (url.protocol !== "https:" || !allowedHost) {
+  if (url.protocol !== "https:" || url.port !== "" || !allowedHost) {
     throw new BadRequestException("Solo se aceptan enlaces seguros de Google Maps");
   }
   if (url.hostname !== "maps.app.goo.gl" && !url.pathname.startsWith("/maps")) {

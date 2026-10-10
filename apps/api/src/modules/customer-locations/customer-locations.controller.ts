@@ -32,10 +32,10 @@ import { UpdateCustomerLocationDto } from "./dto/update-customer-location.dto.js
 
 /**
  * Nested under the customer: a location is never a standalone resource.
- * Read-only in this phase — no create/update/delete route — mirroring
- * container-types: the primary location is created with the customer
- * (CustomersService), a second one is still inserted by hand until a
- * management UI exists. ADMIN and SELLER: both register container
+ * The primary location is created with the customer (CustomersService),
+ * while this controller lists locations, updates their delivery details,
+ * and resolves Google Maps short links. Creating and deleting locations
+ * remain outside this module. ADMIN and SELLER both register container
  * movements and pact prices against a customer's location.
  */
 @ApiTags("customer-locations")

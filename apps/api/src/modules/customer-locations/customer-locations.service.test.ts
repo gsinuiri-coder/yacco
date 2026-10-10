@@ -214,18 +214,20 @@ describe("CustomerLocationsService", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it.each(["no-es-url", "http://maps.app.goo.gl/AbC123", "https://example.com/private"])(
-    "rejects a non-allowlisted short link without fetching it: %s",
-    async (url) => {
-      prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-      const fetchSpy = jest.spyOn(globalThis, "fetch");
+  it.each([
+    "no-es-url",
+    "http://maps.app.goo.gl/AbC123",
+    "https://maps.app.goo.gl:444/AbC123",
+    "https://example.com/private",
+  ])("rejects a non-allowlisted short link without fetching it: %s", async (url) => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    const fetchSpy = jest.spyOn(globalThis, "fetch");
 
-      await expect(service.resolveGoogleMapsLink(CUSTOMER_ID, url)).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
-      expect(fetchSpy).not.toHaveBeenCalled();
-    },
-  );
+    await expect(service.resolveGoogleMapsLink(CUSTOMER_ID, url)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 
   it("rejects a short link whose redirect leaves Google Maps", async () => {
     prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });

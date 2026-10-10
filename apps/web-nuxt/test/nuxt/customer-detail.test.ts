@@ -244,6 +244,9 @@ describe("Ficha del cliente", () => {
       expect(screen.getByRole("link", { name: "Abrir en Maps" }).getAttribute("href")).toBe(
         "https://www.google.com/maps/search/?api=1&query=-12.046374%2C-77.042793",
       );
+
+      await u.type(screen.getByLabelText("Persona que recibe (opcional)"), " editada");
+      expect(screen.queryByText("Contacto y ubicación guardados.")).toBeNull();
     });
 
     it("permite completar cada local del cliente, no solo el principal", async () => {
