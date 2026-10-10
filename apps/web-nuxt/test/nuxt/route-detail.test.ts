@@ -568,6 +568,9 @@ describe("Detalle de ruta", () => {
       address: "Jr. Unión 100",
       addressReference: "Esquina",
       phone: "987000111",
+      contactName: null,
+      latitude: null,
+      longitude: null,
       isPrimary: true,
       active: true,
     };

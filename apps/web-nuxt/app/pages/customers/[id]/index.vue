@@ -16,6 +16,10 @@ function paymentRegistered(debtBalance: string): void {
   if (customer.value) customer.value = { ...customer.value, debtBalance };
   statementRefresh.value++;
 }
+
+function locationUpdated(updated: Customer): void {
+  customer.value = updated;
+}
 </script>
 
 <template>
@@ -104,6 +108,8 @@ function paymentRegistered(debtBalance: string): void {
               </div>
             </dl>
           </section>
+
+          <CustomerLocationSection :customer="customer" @updated="locationUpdated" />
 
           <CustomerPaymentSection :customer-id="customer.id" @registered="paymentRegistered" />
           <CustomerPricesSection :customer-id="customer.id" :is-admin="session.hasRole('ADMIN')" />
