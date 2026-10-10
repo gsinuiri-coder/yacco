@@ -82,9 +82,29 @@ describe("GET /api/v1/customers/:customerId/locations", () => {
       address: "Av. Los Alamos 452",
       addressReference: "Portón azul",
       phone: "987654321",
+      contactName: null,
+      latitude: null,
+      longitude: null,
       isPrimary: true,
       active: true,
     });
+  });
+
+  test("la base rechaza coordenadas fuera del rango aunque se saltee la API", async () => {
+    const prisma = ctx.app.get(PrismaService);
+
+    await expect(
+      prisma.$executeRawUnsafe(
+        'UPDATE "customer_locations" SET "latitude" = 90.000001 WHERE "id" = $1::uuid',
+        primaryLocationId,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      prisma.$executeRawUnsafe(
+        'UPDATE "customer_locations" SET "longitude" = -180.000001 WHERE "id" = $1::uuid',
+        primaryLocationId,
+      ),
+    ).rejects.toThrow();
   });
 
   test("una segunda ubicación del mismo cliente también aparece, ordenada tras la principal", async () => {
@@ -184,6 +204,83 @@ describe("GET /api/v1/customers/:customerId/locations", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/v1/customers/:customerId/locations/:locationId", () => {
+  test("ADMIN completa un local secundario y recibe coordenadas como texto fijo", async () => {
+    const prisma = ctx.app.get(PrismaService);
+    const second = await prisma.customerLocation.create({
+      data: {
+        customerId,
+        name: "Sucursal para ubicar",
+        address: "Jr. Norte 200",
+        addressReference: "Puerta roja",
+        phone: "987654325",
+      },
+    });
+
+    const response = await request(server())
+      .patch(`/api/v1/customers/${customerId}/locations/${second.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        contactName: "  Rosa Quispe  ",
+        latitude: "-12.046374",
+        longitude: "-77.042793",
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      id: second.id,
+      contactName: "Rosa Quispe",
+      latitude: "-12.046374",
+      longitude: "-77.042793",
+    });
+  });
+
+  test("SELLER puede completar un local y DRIVER no", async () => {
+    await request(server())
+      .patch(`/api/v1/customers/${customerId}/locations/${primaryLocationId}`)
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({ contactName: "Encargada" })
+      .expect(200);
+
+    await request(server())
+      .patch(`/api/v1/customers/${customerId}/locations/${primaryLocationId}`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({ contactName: "No autorizado" })
+      .expect(403);
+  });
+
+  test("no permite editar un local a través de un cliente distinto", async () => {
+    const otherCustomer = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        name: "Cliente ajeno para ubicaciones",
+        phone: "987654326",
+        address: "Jr. Ajeno 1",
+        addressReference: "Puerta azul",
+      })
+      .expect(201);
+
+    await request(server())
+      .patch(`/api/v1/customers/${otherCustomer.body.id}/locations/${primaryLocationId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ contactName: "No corresponde" })
+      .expect(404);
+  });
+});
+
+describe("POST /api/v1/customers/:customerId/locations/google-maps-link-resolutions", () => {
+  test("rechaza un host ajeno sin intentar resolverlo", async () => {
+    const response = await request(server())
+      .post(`/api/v1/customers/${customerId}/locations/google-maps-link-resolutions`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ url: "https://example.com/private" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain("Google Maps");
   });
 });
 

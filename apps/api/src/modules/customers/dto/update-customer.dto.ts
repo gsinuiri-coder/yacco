@@ -8,6 +8,7 @@ import {
   MaxLength,
   MinLength,
 } from "class-validator";
+import { CustomerLocationFieldsDto } from "../../../common/dto/customer-location-fields.dto.js";
 import { MONEY_MESSAGE, MONEY_PATTERN } from "./create-customer.dto.js";
 
 /**
@@ -21,7 +22,7 @@ import { MONEY_MESSAGE, MONEY_PATTERN } from "./create-customer.dto.js";
  * Customer's relations are all onDelete: Restrict, so a hard delete would
  * fail as soon as the customer had an order, a sale or a movement.
  */
-export class UpdateCustomerDto {
+export class UpdateCustomerDto extends CustomerLocationFieldsDto {
   @ApiPropertyOptional({ example: "Bodega Santa Rosa" })
   @IsOptional()
   @IsString()

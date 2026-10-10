@@ -96,6 +96,9 @@ const STOP_INCLUDE = {
       // avisar que llega («Mi ruta»).
       addressReference: true,
       phone: true,
+      contactName: true,
+      latitude: true,
+      longitude: true,
       customer: { select: { id: true, name: true } },
     },
   },
@@ -231,7 +234,11 @@ function toStopResponse(
     position: stop.position,
     origin: stop.origin,
     locationId: stop.locationId,
-    location: stop.location,
+    location: {
+      ...stop.location,
+      latitude: stop.location.latitude?.toFixed(6) ?? null,
+      longitude: stop.location.longitude?.toFixed(6) ?? null,
+    },
     orderId: stop.orderId,
     status: stop.status,
     failureReason: stop.failureReason,

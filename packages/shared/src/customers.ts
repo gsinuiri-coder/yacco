@@ -14,6 +14,9 @@ export interface Customer {
   phone: string;
   address: string;
   addressReference: string;
+  contactName: string | null;
+  latitude: string | null;
+  longitude: string | null;
   zoneId: string | null;
   zone: { id: string; name: string } | null;
   creditLimit: string | null;
@@ -45,6 +48,9 @@ export interface CreateCustomerBody {
 
 /** UpdateCustomerDto: every field optional, plus deactivation. */
 export interface UpdateCustomerBody extends Partial<CreateCustomerBody> {
+  contactName?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
   active?: boolean;
 }
 

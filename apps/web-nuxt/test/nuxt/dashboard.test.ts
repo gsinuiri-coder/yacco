@@ -176,11 +176,12 @@ describe("Panel", () => {
 });
 
 describe("Panel — Puesta en marcha", () => {
-  const PENDING: SetupChecklist = {
+  const PENDING: SetupChecklist & { locationsWithoutCoordinates: number } = {
     zonesWithoutDeliveryDays: [{ id: "z1", name: "Surco" }],
     activeDrivers: 0,
     activeSellers: 1,
     uncountedLocations: 4,
+    locationsWithoutCoordinates: 3,
     activeTestUsers: 0,
     activeTestCustomers: 0,
     productsWithInitialListPrice: [],
@@ -190,6 +191,7 @@ describe("Panel — Puesta en marcha", () => {
     zonesWithoutDeliveryDays: [],
     activeDrivers: 1,
     uncountedLocations: 0,
+    locationsWithoutCoordinates: 0,
   };
 
   function stubChecklist(checklist: SetupChecklist) {
@@ -224,6 +226,7 @@ describe("Panel — Puesta en marcha", () => {
     expect(
       within(card).getByText("Falta contar los bidones de 4 ubicaciones de clientes."),
     ).toBeTruthy();
+    expect(within(card).getByText("Falta cargar la ubicación de 3 locales.")).toBeTruthy();
     expect(
       within(card).getByRole("link", { name: "Envases en poder de clientes" }).getAttribute("href"),
     ).toBe("/container-counts?uncountedOnly=true");

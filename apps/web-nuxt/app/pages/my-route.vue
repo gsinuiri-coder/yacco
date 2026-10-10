@@ -167,6 +167,9 @@ async function marked(): Promise<void> {
               <p class="text-sm text-muted">
                 <LinkedText :text="stop.location.addressReference" />
               </p>
+              <p v-if="stop.location.contactName" class="mt-1 text-sm font-medium text-highlighted">
+                Recibe: {{ stop.location.contactName }}
+              </p>
             </div>
             <UBadge
               :color="STOP_STATUS[stop.status].color"
@@ -186,6 +189,17 @@ async function marked(): Promise<void> {
               variant="outline"
               icon="i-lucide-phone"
               :label="`Llamar al ${stop.location.phone}`"
+            />
+            <UButton
+              v-if="stop.location.latitude !== null && stop.location.longitude !== null"
+              :to="googleMapsDirectionsUrl(stop.location.latitude, stop.location.longitude)"
+              target="_blank"
+              rel="noopener noreferrer"
+              external
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-navigation"
+              label="Cómo llegar"
             />
             <UButton
               v-if="

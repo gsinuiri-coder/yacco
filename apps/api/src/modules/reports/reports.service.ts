@@ -260,6 +260,7 @@ export class ReportsService {
       activeDrivers,
       activeSellers,
       uncountedLocations,
+      locationsWithoutCoordinates,
       activeTestUsers,
       activeTestCustomers,
       productsWithInitialListPrice,
@@ -274,6 +275,13 @@ export class ReportsService {
       this.prisma.customerLocation.count({
         where: { active: true, customer: { active: true }, counts: { none: {} } },
       }),
+      this.prisma.customerLocation.count({
+        where: {
+          active: true,
+          customer: { active: true },
+          OR: [{ latitude: null }, { longitude: null }],
+        },
+      }),
       this.prisma.user.count({ where: { active: true, name: testName } }),
       this.prisma.customer.count({ where: { active: true, name: testName } }),
       this.prisma.product.findMany({
@@ -287,6 +295,7 @@ export class ReportsService {
       activeDrivers,
       activeSellers,
       uncountedLocations,
+      locationsWithoutCoordinates,
       activeTestUsers,
       activeTestCustomers,
       productsWithInitialListPrice,

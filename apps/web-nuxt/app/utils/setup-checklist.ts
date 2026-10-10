@@ -68,6 +68,16 @@ export function setupChecklistItems(checklist: SetupChecklist): SetupChecklistIt
       to: "/container-counts?uncountedOnly=true",
     });
   }
+  if (checklist.locationsWithoutCoordinates > 0) {
+    items.push({
+      text:
+        checklist.locationsWithoutCoordinates === 1
+          ? "Falta cargar la ubicación de 1 local."
+          : `Falta cargar la ubicación de ${checklist.locationsWithoutCoordinates} locales.`,
+      linkLabel: "Clientes",
+      to: "/customers",
+    });
+  }
   if (checklist.activeTestCustomers > 0) {
     items.push({
       text:

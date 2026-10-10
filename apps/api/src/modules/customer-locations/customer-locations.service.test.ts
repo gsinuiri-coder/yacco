@@ -1,18 +1,23 @@
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { jest } from "@jest/globals";
+import { afterEach, jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { CustomerLocationsService } from "./customer-locations.service.js";
+import { GoogleMapsLinkRequester } from "./google-maps-link-requester.js";
 
 const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
+const LOCATION_ID = "22222222-2222-4222-8222-222222222222";
 
 function buildLocation(overrides: Record<string, unknown> = {}) {
   return {
-    id: "22222222-2222-4222-8222-222222222222",
+    id: LOCATION_ID,
     name: "Principal",
     address: "Av. Los Alamos 452",
     addressReference: "Portón azul",
     phone: "987654321",
+    contactName: null,
+    latitude: null,
+    longitude: null,
     isPrimary: true,
     active: true,
     ...overrides,
@@ -22,22 +27,38 @@ function buildLocation(overrides: Record<string, unknown> = {}) {
 function buildPrismaMock() {
   return {
     customer: { findUnique: jest.fn<() => Promise<unknown>>() },
-    customerLocation: { findMany: jest.fn<() => Promise<unknown>>() },
+    customerLocation: {
+      findMany: jest.fn<() => Promise<unknown>>(),
+      updateMany: jest.fn<() => Promise<unknown>>(),
+      findFirstOrThrow: jest.fn<() => Promise<unknown>>(),
+    },
   };
 }
 
 describe("CustomerLocationsService", () => {
   let service: CustomerLocationsService;
   let prisma: ReturnType<typeof buildPrismaMock>;
+  let googleMapsLinkRequester: {
+    getRedirect: jest.Mock<GoogleMapsLinkRequester["getRedirect"]>;
+  };
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
+    googleMapsLinkRequester = { getRedirect: jest.fn<GoogleMapsLinkRequester["getRedirect"]>() };
 
     const moduleRef = await Test.createTestingModule({
-      providers: [CustomerLocationsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CustomerLocationsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: GoogleMapsLinkRequester, useValue: googleMapsLinkRequester },
+      ],
     }).compile();
 
     service = moduleRef.get(CustomerLocationsService);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("returns the customer's locations as-is", async () => {
@@ -49,6 +70,20 @@ describe("CustomerLocationsService", () => {
     expect(result).toEqual([buildLocation()]);
   });
 
+  it("serializes stored coordinates with exactly six decimals", async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    prisma.customerLocation.findMany.mockResolvedValue([
+      buildLocation({
+        latitude: { toFixed: () => "-12.000000" },
+        longitude: { toFixed: () => "-77.500000" },
+      }),
+    ]);
+
+    await expect(service.findAll(CUSTOMER_ID, {})).resolves.toEqual([
+      expect.objectContaining({ latitude: "-12.000000", longitude: "-77.500000" }),
+    ]);
+  });
+
   it("selects externalCode, read-only: the loader writes it, this route only reads it", async () => {
     prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
     prisma.customerLocation.findMany.mockResolvedValue([]);
@@ -57,6 +92,23 @@ describe("CustomerLocationsService", () => {
 
     expect(prisma.customerLocation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ select: expect.objectContaining({ externalCode: true }) }),
+    );
+  });
+
+  it("selects the contact and coordinates needed by the customer record and route", async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    prisma.customerLocation.findMany.mockResolvedValue([]);
+
+    await service.findAll(CUSTOMER_ID, {});
+
+    expect(prisma.customerLocation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          contactName: true,
+          latitude: true,
+          longitude: true,
+        }),
+      }),
     );
   });
 
@@ -87,5 +139,131 @@ describe("CustomerLocationsService", () => {
 
     await expect(service.findAll(CUSTOMER_ID, {})).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.customerLocation.findMany).not.toHaveBeenCalled();
+  });
+
+  it("updates a location scoped to its customer and normalizes the contact", async () => {
+    prisma.customerLocation.updateMany.mockResolvedValue({ count: 1 });
+    prisma.customerLocation.findFirstOrThrow.mockResolvedValue(
+      buildLocation({
+        contactName: "Rosa Quispe",
+        latitude: { toFixed: () => "-12.046374" },
+        longitude: { toFixed: () => "-77.042793" },
+      }),
+    );
+
+    const result = await service.update(CUSTOMER_ID, LOCATION_ID, {
+      contactName: "  Rosa Quispe  ",
+      latitude: "-12.046374",
+      longitude: "-77.042793",
+    });
+
+    expect(prisma.customerLocation.updateMany).toHaveBeenCalledWith({
+      where: { id: LOCATION_ID, customerId: CUSTOMER_ID },
+      data: {
+        contactName: "Rosa Quispe",
+        latitude: expect.objectContaining({ toString: expect.any(Function) }),
+        longitude: expect.objectContaining({ toString: expect.any(Function) }),
+      },
+    });
+    expect(result).toMatchObject({
+      contactName: "Rosa Quispe",
+      latitude: "-12.046374",
+      longitude: "-77.042793",
+    });
+  });
+
+  it("rejects a location that does not belong to the customer", async () => {
+    prisma.customerLocation.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.update(CUSTOMER_ID, LOCATION_ID, {})).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(prisma.customerLocation.findFirstOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a blank contact to null and can clear coordinates", async () => {
+    prisma.customerLocation.updateMany.mockResolvedValue({ count: 1 });
+    prisma.customerLocation.findFirstOrThrow.mockResolvedValue(buildLocation());
+
+    await service.update(CUSTOMER_ID, LOCATION_ID, {
+      contactName: "   ",
+      latitude: null,
+      longitude: null,
+    });
+
+    expect(prisma.customerLocation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { contactName: null, latitude: null, longitude: null },
+      }),
+    );
+  });
+
+  it("resolves only allowlisted Google Maps short links", async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    googleMapsLinkRequester.getRedirect.mockResolvedValueOnce({
+      status: 302,
+      location: "https://www.google.com/maps/place/Local/data=!3d-12.046374!4d-77.042793",
+    });
+
+    await expect(
+      service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/AbC123"),
+    ).resolves.toEqual({
+      url: "https://www.google.com/maps/place/Local/data=!3d-12.046374!4d-77.042793",
+    });
+    expect(googleMapsLinkRequester.getRedirect).toHaveBeenCalledWith("/AbC123");
+    await expect(
+      service.resolveGoogleMapsLink(CUSTOMER_ID, "https://example.com/private"),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it.each([
+    "no-es-url",
+    "http://maps.app.goo.gl/AbC123",
+    "https://maps.app.goo.gl:444/AbC123",
+    "https://example.com/private",
+  ])("rejects a non-allowlisted short link without fetching it: %s", async (url) => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+
+    await expect(service.resolveGoogleMapsLink(CUSTOMER_ID, url)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(googleMapsLinkRequester.getRedirect).not.toHaveBeenCalled();
+  });
+
+  it("rejects a short link whose redirect leaves Google Maps", async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    googleMapsLinkRequester.getRedirect.mockResolvedValueOnce({
+      status: 302,
+      location: "https://example.com/private",
+    });
+
+    await expect(
+      service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/AbC123"),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("explains an unreachable or non-redirecting short link", async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    googleMapsLinkRequester.getRedirect.mockRejectedValueOnce(new Error("offline"));
+    await expect(
+      service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/Offline"),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    googleMapsLinkRequester.getRedirect.mockResolvedValueOnce({ status: 200, location: null });
+    await expect(
+      service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/NoRedirect"),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("stops a redirect loop after five hops", async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    googleMapsLinkRequester.getRedirect.mockResolvedValue({
+      status: 302,
+      location: "https://maps.app.goo.gl/StillShort",
+    });
+
+    await expect(
+      service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/Loop"),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

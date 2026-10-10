@@ -3,17 +3,20 @@ import { describe, expect, it } from "vitest";
 import { setupChecklistItems } from "../../app/utils/setup-checklist";
 
 /** Una planta lista para operar: ningún pendiente. */
-const READY: SetupChecklist = {
+const READY: SetupChecklist & { locationsWithoutCoordinates: number } = {
   zonesWithoutDeliveryDays: [],
   activeDrivers: 2,
   activeSellers: 1,
   uncountedLocations: 0,
+  locationsWithoutCoordinates: 0,
   activeTestUsers: 0,
   activeTestCustomers: 0,
   productsWithInitialListPrice: [],
 };
 
-function textsOf(overrides: Partial<SetupChecklist>): string[] {
+function textsOf(
+  overrides: Partial<SetupChecklist & { locationsWithoutCoordinates: number }>,
+): string[] {
   return setupChecklistItems({ ...READY, ...overrides }).map((item) => item.text);
 }
 
@@ -63,6 +66,24 @@ describe("setupChecklistItems", () => {
     ]);
     expect(textsOf({ uncountedLocations: 1 })).toEqual([
       "Falta contar los bidones de 1 ubicación de cliente.",
+    ]);
+  });
+
+  it("locales sin ubicación enlazan al padrón de clientes", () => {
+    expect(
+      setupChecklistItems({
+        ...READY,
+        locationsWithoutCoordinates: 12,
+      }),
+    ).toEqual([
+      {
+        text: "Falta cargar la ubicación de 12 locales.",
+        linkLabel: "Clientes",
+        to: "/customers",
+      },
+    ]);
+    expect(textsOf({ locationsWithoutCoordinates: 1 })).toEqual([
+      "Falta cargar la ubicación de 1 local.",
     ]);
   });
 

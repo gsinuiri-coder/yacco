@@ -26,6 +26,9 @@ function buildPrimaryLocation(overrides: Partial<CustomerLocation> = {}) {
     address: "Av. Los Alamos 452",
     addressReference: "Porton azul frente al parque",
     phone: "987654321",
+    contactName: null,
+    latitude: null,
+    longitude: null,
     isPrimary: true,
     active: true,
     createdAt: new Date("2026-08-21T15:00:00.000Z"),
@@ -390,6 +393,9 @@ describe("CustomersService", () => {
         phone: "912345678",
         address: "Jr. Nuevo 100",
         addressReference: "Al lado del grifo",
+        contactName: "Rosa Quispe",
+        latitude: "-12.046374",
+        longitude: "-77.042793",
         zoneId: ZONE_ID,
       });
 
@@ -401,8 +407,30 @@ describe("CustomersService", () => {
             data: {
               address: "Jr. Nuevo 100",
               addressReference: "Al lado del grifo",
+              contactName: "Rosa Quispe",
+              latitude: new Prisma.Decimal("-12.046374"),
+              longitude: new Prisma.Decimal("-77.042793"),
               phone: "912345678",
             },
+          },
+        },
+      });
+    });
+
+    it("clears nullable contact and coordinates without touching the address", async () => {
+      prisma.customer.update.mockResolvedValue(buildCustomer());
+
+      await service.update("customer-1", {
+        contactName: null,
+        latitude: null,
+        longitude: null,
+      });
+
+      expect(firstCallData(prisma.customer.update)).toEqual({
+        locations: {
+          updateMany: {
+            where: { isPrimary: true },
+            data: { contactName: null, latitude: null, longitude: null },
           },
         },
       });

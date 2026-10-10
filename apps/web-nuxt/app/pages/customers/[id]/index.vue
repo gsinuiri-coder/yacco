@@ -105,6 +105,8 @@ function paymentRegistered(debtBalance: string): void {
             </dl>
           </section>
 
+          <CustomerLocationSection :customer-id="customer.id" />
+
           <CustomerPaymentSection :customer-id="customer.id" @registered="paymentRegistered" />
           <CustomerPricesSection :customer-id="customer.id" :is-admin="session.hasRole('ADMIN')" />
           <CustomerContainersSection

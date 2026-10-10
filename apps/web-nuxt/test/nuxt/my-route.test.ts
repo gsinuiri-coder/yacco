@@ -102,6 +102,29 @@ describe("Mi ruta", () => {
     expect(within(truck).getByText("7 × Bidón 20L")).toBeTruthy();
   });
 
+  it("muestra quién recibe y abre Cómo llegar cuando el local tiene coordenadas", async () => {
+    const stop = buildStop({
+      location: {
+        ...pending.location,
+        contactName: "Rosa Quispe",
+        latitude: "-12.046374",
+        longitude: "-77.042793",
+      },
+    });
+    stubMyRoute([buildRoute({ status: "IN_PROGRESS", stops: [stop] })]);
+
+    await renderMyRoute();
+
+    const card = await screen.findByRole("article", { name: "Parada 1: Bodega Central" });
+    expect(within(card).getByText("Recibe: Rosa Quispe")).toBeTruthy();
+    const directions = within(card).getByRole("link", { name: "Cómo llegar" });
+    expect(directions.getAttribute("href")).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=-12.046374%2C-77.042793",
+    );
+    expect(directions.getAttribute("target")).toBe("_blank");
+    expect(directions.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
   it("un enlace en la referencia se abre aparte, y un intento de HTML se ve como texto", async () => {
     const maps = "https://maps.app.goo.gl/AbC123xYz";
     const stop = buildStop({
