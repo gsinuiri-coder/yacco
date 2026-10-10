@@ -1506,8 +1506,10 @@ Descartados de la revisión (I), con su razón:
 - **Contraseñas de `demo:prueba` impresas en la consola.** Lo pide el ítem K;
   CodeQL lo marcó (`js/clear-text-logging`, alerta 4) y se descartó como
   «won't fix» con el motivo escrito: el script se niega a conectarse a una base
-  que no esté en esta máquina. Si Giancarlo prefiere otra salida (un archivo
-  ignorado por git, o sin contraseñas), es un cambio chico.
+  que no esté en esta máquina. **Revisado por Giancarlo el 2026-10-10:** las
+  contraseñas van a `.local/credenciales-prueba.txt` (ignorado por git) y la
+  consola solo dice la ruta, para que no queden en logs de terminal ni de
+  agentes; la alerta se cerró como resuelta.
 - **Qué es «de prueba»:** un usuario o cliente cuyo nombre empieza con
   «PRUEBA», sin distinguir mayúsculas. Sin columna nueva (H pide sin esquema).
 - **«Precio sin cambios desde la carga»:** un producto activo sin ninguna fila
@@ -1545,6 +1547,5 @@ Descartados de la revisión (I), con su razón:
 | A1                                      | Team propio de Vercel para Yacco: el token de CI alcanza a todo el team                                                                                                                                                                                                                                                                                                                                                                                 |
 | App de Render en GitHub                 | Confirmar que la desinstalación terminó                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | GHSA ignorados                          | Revisar los siete de `pnpm.auditConfig.ignoreGhsas` (tabla en «Advisories ignorados en `pnpm audit` sin parche aplicable», [`backlog-tecnico.md`](./backlog-tecnico.md)) cuando haya parche                                                                                                                                                                                                                                                             |
-| Contraseñas de `demo:prueba` impresas   | Confirmar o cambiar la decisión de arriba                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Base local con restos de e2e (opcional) | `prisma migrate reset` en Docker y `pnpm demo:up && pnpm demo:prueba`                                                                                                                                                                                                                                                                                                                                                                                   |
 | Tabla de endpoints de la spec (§4.3)    | Está rotulada «previstos» y difiere del código (rutas de saldos de envases, precios pactados, inventario, ingresos y bajas; `PUT /customers/:id/credit-limit` y `GET /reports/collections` no existen; `POST /routes` y sus cargas admiten SELLER; faltan los endpoints de cuadre, puesta en marcha, historial de precios, conteo de la planta y `/auth/me`). Por la regla «código y spec no coinciden: preguntar», no se tocó: decidir si se actualiza |
