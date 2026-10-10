@@ -40,7 +40,8 @@ const route = useRoute();
 const customerFilter = ref(
   typeof route.query.customerId === "string" ? route.query.customerId : undefined,
 );
-const uncountedOnly = ref(false);
+// Abierta desde «Puesta en marcha» del Panel (`?uncountedOnly=true`): solo las que faltan contar.
+const uncountedOnly = ref(route.query.uncountedOnly === "true");
 const withDiscrepancies = ref(false);
 const countedBeforeDay = ref("");
 
