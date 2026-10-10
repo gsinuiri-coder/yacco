@@ -2,7 +2,7 @@
 
 `pnpm relay` corre la cola de Yacco con un agente a la vez. Cuando uno se queda
 sin cuota, sigue con el siguiente, en el orden de `relay.config.json` (hoy:
-codex, gemini, claude). Si todos están sin cuota, espera `waitMinutes` y vuelve
+codex, antigravity, claude). Si todos están sin cuota, espera `waitMinutes` y vuelve
 a empezar por el primero. El traspaso entre agentes es `.relay/RELEVO.md`.
 
 Las reglas que sigue cada agente están en `.agents/rules/unattended-agents.md`.
@@ -41,9 +41,18 @@ puede escaparse. La única garantía es que no haya credencial que usar:
   en todos los modos, y `--disallowedTools` agrega gcloud, neonctl, vercel,
   `gh workflow`, `--admin` y force-push. No `auto`: su clasificador aprueba lo
   que ninguna regla nombra.
-- **gemini**: no está instalada, así que `args: null` y el relevo la salta.
-  Antes de activarla, verificá con `gemini --help` que corra con su sandbox y
-  sin `--yolo`, y anotá la versión en `verifiedWith`.
+- **antigravity** (`agy`): tiene modo no interactivo (`-p`, sin TTY, termina
+  solo), pero queda en `args: null` y el relevo la salta. Su `--sandbox` en
+  Windows pide Windows 11 24H2 con la actualización de agosto 2026, y esta
+  máquina tiene 22H2: todo comando sale del sandbox, pide la aprobación
+  «unsandboxed», el modo headless la deniega sola y la corrida termina con
+  código 0 sin hacer nada. Sin sandbox quedarían las allow-rules de
+  `~/.gemini/antigravity-cli/settings.json` (globales, compartidas con otros
+  proyectos) o `--dangerously-skip-permissions`: ninguna reemplaza al
+  sandbox. Para activarla: actualizar Windows, volver a verificar con
+  `agy --help` y una corrida `-p ... --sandbox` que ejecute un comando, y
+  anotar la versión. Ojo: `agy` se actualiza sola, así que la versión de
+  `verifiedWith` puede no ser la instalada.
 
 Las banderas de cada agente salen de su `--help` en la versión anotada en
 `verifiedWith`. Al subir de versión una CLI, se vuelven a verificar. Un test

@@ -27,17 +27,17 @@
       ]
     },
     {
-      "name": "gemini",
-      "command": "gemini",
-      "npmPackage": "@google/gemini-cli",
-      "verifiedWith": null,
-      "$comment": "No está instalada (2026-10-09): sin banderas verificadas, el relevo la salta. Antes de activarla, verificar con `gemini --help` que corra con su sandbox y sin --yolo.",
+      "name": "antigravity",
+      "command": "agy",
+      "verifiedWith": "agy 1.3.3 (`agy --help` y corridas reales sin TTY, 2026-10-10): `-p {prompt}` corre sin TTY y termina solo. `--sandbox` NO anda en esta máquina: «sandboxing on Windows requires Windows 11 24H2 or later with the August 2026 or later update» (acá: 22H2, build 22621). Sin sandbox, cada comando cae a la aprobación «unsandboxed», que el modo headless deniega solo: la corrida termina con código 0 y sin salida. Lo único que quedaría son las allow-rules de ~/.gemini/antigravity-cli/settings.json (global, compartido con otros proyectos) o --dangerously-skip-permissions: ninguna es un sandbox.",
+      "$comment": "args: null: sin sandbox que funcione, el relevo la salta. Para activarla: Windows 11 24H2 con la actualización de agosto 2026, volver a verificar con `agy --help` y una corrida `-p ... --sandbox` que ejecute un comando, y anotar la versión. agy se actualiza sola (pasó de 1.2.8 a 1.3.3 durante la verificación): la versión de verifiedWith puede no ser la instalada. Los patrones salen de los mensajes del binario 1.3.3.",
       "args": null,
       "limitPatterns": [
-        "quota exceeded",
-        "RESOURCE_EXHAUSTED",
-        "you have exhausted your (daily )?quota",
-        "usage limit (has been )?reached"
+        "you have exhausted your quota",
+        "individual quota reached",
+        "credits balance is too low",
+        "QUOTA_EXHAUSTED",
+        "RESOURCE_EXHAUSTED"
       ]
     },
     {

@@ -1,6 +1,6 @@
 /**
  * `pnpm relay` — corre la cola de Yacco con un agente a la vez y, cuando uno
- * se queda sin cuota, sigue con el siguiente (codex → gemini → claude, en el
+ * se queda sin cuota, sigue con el siguiente (codex → antigravity → claude, en el
  * orden de relay.config.json). Si todos están sin cuota, espera y vuelve a
  * empezar por el primero.
  *
