@@ -65,7 +65,9 @@ de Neon se ensaya en esta base. Nunca se cargan datos de prueba en Neon.
 `pnpm demo:prueba` carga, sobre la misma base, lo que la planta tendría el
 primer día (choferes, oficina, días de reparto, envases y un día completo de
 «PRUEBA Planta»); se puede correr varias veces y se niega a correr contra una
-base que no esté en esta máquina.
+base que no esté en esta máquina. Cada corrida pone contraseñas nuevas a los
+usuarios PRUEBA y las escribe en `.local/credenciales-prueba.txt` (ignorado por
+git); la consola solo muestra la ruta.
 
 La imagen de la API también se prueba acá antes del deploy final: la misma
 imagen que va a Cloud Run, corriendo en Docker contra esta base, y el smoke de

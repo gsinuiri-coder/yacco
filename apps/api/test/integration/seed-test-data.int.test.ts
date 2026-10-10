@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { jest } from "@jest/globals";
+import request from "supertest";
 import { main } from "../../src/cli/seed-test-data.js";
 import { TestDataSeeder } from "../../src/cli/test-data-seeder.js";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
@@ -22,6 +23,27 @@ afterAll(async () => {
   rmSync(credentialsDir, { recursive: true, force: true });
   await stopTestApp(ctx);
 });
+
+/** Corre main() sin ensuciar la salida del test y devuelve lo que imprimió. */
+async function runMain(credentialsPath: string): Promise<string> {
+  const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+  try {
+    await main(credentialsPath);
+    return log.mock.calls.map((call) => String(call[0])).join("\n");
+  } finally {
+    log.mockRestore();
+  }
+}
+
+/** Las filas del archivo de credenciales, sin el encabezado: [nombre, usuario, contraseña]. */
+function readCredentials(credentialsPath: string): string[][] {
+  const rows = readFileSync(credentialsPath, "utf8").trim().split("\n").slice(1);
+  return rows.map((row) => row.split("\t"));
+}
+
+function login(username: string, password: string) {
+  return request(ctx.app.getHttpServer()).post("/api/v1/auth/login").send({ username, password });
+}
 
 /** Todo lo que la carga escribe, contado: dos corridas tienen que dar lo mismo. */
 async function snapshot() {
@@ -76,18 +98,10 @@ async function snapshot() {
 
 describe("pnpm demo:prueba — datos de prueba en local (ítem K)", () => {
   test("carga el día completo de PRUEBA Planta; las contraseñas van a un archivo, no a la consola", async () => {
-    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const credentialsPath = path.join(credentialsDir, "credenciales-prueba.txt");
-    let printed: string;
-    try {
-      await main(credentialsPath);
-      printed = log.mock.calls.map((call) => String(call[0])).join("\n");
-    } finally {
-      log.mockRestore();
-    }
+    const printed = await runMain(credentialsPath);
 
-    const rows = readFileSync(credentialsPath, "utf8").trim().split("\n").slice(1);
-    const credentials = rows.map((row) => row.split("\t"));
+    const credentials = readCredentials(credentialsPath);
     expect(credentials.map(([name, username]) => [name, username])).toEqual([
       ["PRUEBA Chofer 1", "prueba.chofer1"],
       ["PRUEBA Chofer 2", "prueba.chofer2"],
@@ -97,7 +111,7 @@ describe("pnpm demo:prueba — datos de prueba en local (ítem K)", () => {
       expect(password?.length).toBeGreaterThanOrEqual(12);
       expect(printed).not.toContain(password);
     }
-    expect(printed).toContain(`Las contraseñas de los usuarios nuevos están en ${credentialsPath}`);
+    expect(printed).toContain(`Las contraseñas de los usuarios PRUEBA están en ${credentialsPath}`);
 
     const zones = await prisma.zone.findMany({ orderBy: { name: "asc" } });
     expect(zones.map((zone) => [zone.name, zone.deliveryDays])).toEqual([
@@ -172,12 +186,47 @@ describe("pnpm demo:prueba — datos de prueba en local (ítem K)", () => {
     expect(byType).toEqual({ "Con caño": 1, "Sin caño": 0 });
   });
 
-  test("una segunda corrida no duplica nada ni cambia contraseñas", async () => {
+  test("dos corridas seguidas: los mismos usuarios, y el archivo trae contraseñas que entran", async () => {
+    const credentialsPath = path.join(credentialsDir, "credenciales-prueba.txt");
+    const userRows = () =>
+      prisma.user.findMany({
+        where: { name: { startsWith: "PRUEBA" } },
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          active: true,
+          roles: { select: { role: { select: { name: true } } } },
+        },
+        orderBy: { username: "asc" },
+      });
+    const usersBefore = await userRows();
+    const previous = readCredentials(credentialsPath);
+
+    const printed = await runMain(credentialsPath);
+
+    expect(await userRows()).toEqual(usersBefore);
+    expect(usersBefore).toHaveLength(3);
+    const current = readCredentials(credentialsPath);
+    expect(current.map(([name, username]) => [name, username])).toEqual(
+      previous.map(([name, username]) => [name, username]),
+    );
+    for (const [index, [, username, password]] of current.entries()) {
+      const [, , oldPassword] = previous[index] as string[];
+      expect(password).not.toBe(oldPassword);
+      expect(printed).not.toContain(password);
+      await login(username as string, password as string).expect(200);
+      await login(username as string, oldPassword as string).expect(401);
+    }
+    expect(printed).toContain("Usuario PRUEBA Chofer 1: ya existía, contraseña nueva.");
+  });
+
+  test("una segunda corrida no duplica nada", async () => {
     const before = await snapshot();
 
     const report = await new TestDataSeeder(ctx.app, "admin").run();
 
-    expect(report.createdUsers).toEqual([]);
+    expect(report.credentials).toHaveLength(3);
     expect(await snapshot()).toEqual(before);
   });
 
@@ -201,20 +250,15 @@ describe("pnpm demo:prueba — datos de prueba en local (ítem K)", () => {
   });
 
   test("main() imprime lo que hizo y termina sin error contra la base local", async () => {
-    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const previousExitCode = process.exitCode;
-    try {
-      await main(path.join(credentialsDir, "segunda-corrida.txt"));
+    const credentialsPath = path.join(credentialsDir, "otra-ruta", "credenciales.txt");
 
-      const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
-      expect(printed).toContain("Datos de prueba en la base local:");
-      expect(printed).toContain("Liquidación: ya estaba.");
-      expect(printed).not.toContain("Las contraseñas de los usuarios nuevos");
-      expect(existsSync(path.join(credentialsDir, "segunda-corrida.txt"))).toBe(false);
-      expect(process.exitCode).toBe(previousExitCode);
-    } finally {
-      log.mockRestore();
-    }
+    const printed = await runMain(credentialsPath);
+
+    expect(printed).toContain("Datos de prueba en la base local:");
+    expect(printed).toContain("Liquidación: ya estaba.");
+    expect(existsSync(credentialsPath)).toBe(true);
+    expect(process.exitCode).toBe(previousExitCode);
   });
 
   test("main() se niega a correr contra una base que no es local", async () => {

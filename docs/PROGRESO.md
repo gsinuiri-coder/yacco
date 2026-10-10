@@ -1509,7 +1509,9 @@ Descartados de la revisión (I), con su razón:
   que no esté en esta máquina. **Revisado por Giancarlo el 2026-10-10:** las
   contraseñas van a `.local/credenciales-prueba.txt` (ignorado por git) y la
   consola solo dice la ruta, para que no queden en logs de terminal ni de
-  agentes; la alerta se cerró como resuelta.
+  agentes; la alerta se cerró como resuelta. Desde ese mismo día, cada corrida
+  pone contraseñas nuevas a los usuarios PRUEBA que ya existen y reescribe el
+  archivo, así siempre trae las que entran.
 - **Qué es «de prueba»:** un usuario o cliente cuyo nombre empieza con
   «PRUEBA», sin distinguir mayúsculas. Sin columna nueva (H pide sin esquema).
 - **«Precio sin cambios desde la carga»:** un producto activo sin ninguna fila
