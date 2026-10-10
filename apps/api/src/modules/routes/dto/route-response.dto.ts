@@ -47,6 +47,15 @@ export class RouteStopLocationDto {
   @ApiProperty({ example: "987654321" })
   phone!: string;
 
+  @ApiPropertyOptional({ nullable: true })
+  contactName!: string | null;
+
+  @ApiPropertyOptional({ type: String, example: "-12.046374", nullable: true })
+  latitude!: string | null;
+
+  @ApiPropertyOptional({ type: String, example: "-77.042793", nullable: true })
+  longitude!: string | null;
+
   @ApiProperty({ type: RouteStopCustomerDto })
   customer!: RouteStopCustomerDto;
 }

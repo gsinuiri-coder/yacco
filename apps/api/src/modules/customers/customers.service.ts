@@ -79,6 +79,9 @@ function toCustomerResponse(customer: CustomerWithRelations): CustomerResponseDt
     phone: primaryLocation.phone,
     address: primaryLocation.address,
     addressReference: primaryLocation.addressReference,
+    contactName: primaryLocation.contactName,
+    latitude: primaryLocation.latitude?.toFixed(6) ?? null,
+    longitude: primaryLocation.longitude?.toFixed(6) ?? null,
     zoneId: customer.zoneId,
     zone: customer.zone,
     creditLimit: customer.creditLimit === null ? null : customer.creditLimit.toFixed(2),
@@ -380,6 +383,13 @@ export class CustomersService {
       ...(dto.address !== undefined ? { address: dto.address } : {}),
       ...(dto.addressReference !== undefined ? { addressReference: dto.addressReference } : {}),
       ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+      ...(dto.contactName !== undefined ? { contactName: dto.contactName } : {}),
+      ...(dto.latitude !== undefined
+        ? { latitude: dto.latitude === null ? null : new Prisma.Decimal(dto.latitude) }
+        : {}),
+      ...(dto.longitude !== undefined
+        ? { longitude: dto.longitude === null ? null : new Prisma.Decimal(dto.longitude) }
+        : {}),
     };
 
     try {

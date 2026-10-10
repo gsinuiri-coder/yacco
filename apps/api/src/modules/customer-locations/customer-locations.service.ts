@@ -22,7 +22,7 @@ export class CustomerLocationsService {
   ): Promise<CustomerLocationResponseDto[]> {
     await this.assertCustomerExists(customerId);
 
-    return this.prisma.customerLocation.findMany({
+    const locations = await this.prisma.customerLocation.findMany({
       where: { customerId, active: query.active ?? true },
       orderBy: [{ isPrimary: "desc" }, { name: "asc" }],
       select: {
@@ -31,11 +31,19 @@ export class CustomerLocationsService {
         address: true,
         addressReference: true,
         phone: true,
+        contactName: true,
+        latitude: true,
+        longitude: true,
         isPrimary: true,
         active: true,
         externalCode: true,
       },
     });
+    return locations.map((location) => ({
+      ...location,
+      latitude: location.latitude?.toFixed(6) ?? null,
+      longitude: location.longitude?.toFixed(6) ?? null,
+    }));
   }
 
   private async assertCustomerExists(customerId: string): Promise<void> {

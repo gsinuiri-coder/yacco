@@ -127,6 +127,9 @@ export class SetupChecklistDto {
   })
   uncountedLocations!: number;
 
+  @ApiProperty({ example: 35, description: "Locales activos sin latitud o longitud" })
+  locationsWithoutCoordinates!: number;
+
   @ApiProperty({ example: 0, description: "Usuarios activos cuyo nombre empieza con PRUEBA" })
   activeTestUsers!: number;
 

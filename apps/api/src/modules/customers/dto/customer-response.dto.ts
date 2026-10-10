@@ -25,6 +25,15 @@ export class CustomerResponseDto {
   @ApiProperty()
   addressReference!: string;
 
+  @ApiPropertyOptional({ nullable: true })
+  contactName!: string | null;
+
+  @ApiPropertyOptional({ type: String, example: "-12.046374", nullable: true })
+  latitude!: string | null;
+
+  @ApiPropertyOptional({ type: String, example: "-77.042793", nullable: true })
+  longitude!: string | null;
+
   @ApiPropertyOptional({ format: "uuid", nullable: true })
   zoneId!: string | null;
 

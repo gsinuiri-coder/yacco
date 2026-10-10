@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsBoolean,
+  IsLatitude,
+  IsLongitude,
   IsOptional,
   IsString,
   IsUUID,
@@ -9,6 +11,8 @@ import {
   MinLength,
 } from "class-validator";
 import { MONEY_MESSAGE, MONEY_PATTERN } from "./create-customer.dto.js";
+
+const COORDINATE_PATTERN = /^-?\d{1,3}(?:\.\d{1,6})?$/;
 
 /**
  * Every field is optional (PATCH semantics). `debtBalance` is deliberately
@@ -49,6 +53,26 @@ export class UpdateCustomerDto {
   @MinLength(1, { message: "La referencia de dirección es obligatoria" })
   @MaxLength(255, { message: "La referencia no puede superar los 255 caracteres" })
   addressReference?: string;
+
+  @ApiPropertyOptional({ example: "Rosa Quispe", nullable: true })
+  @IsOptional()
+  @IsString({ message: "La persona que recibe debe ser un texto" })
+  @MaxLength(160, { message: "La persona que recibe no puede superar los 160 caracteres" })
+  contactName?: string | null;
+
+  @ApiPropertyOptional({ type: String, example: "-12.046374", nullable: true })
+  @IsOptional()
+  @IsString({ message: "La latitud debe ser un texto decimal" })
+  @Matches(COORDINATE_PATTERN, { message: "La latitud admite hasta 6 decimales" })
+  @IsLatitude({ message: "La latitud debe estar entre -90 y 90" })
+  latitude?: string | null;
+
+  @ApiPropertyOptional({ type: String, example: "-77.042793", nullable: true })
+  @IsOptional()
+  @IsString({ message: "La longitud debe ser un texto decimal" })
+  @Matches(COORDINATE_PATTERN, { message: "La longitud admite hasta 6 decimales" })
+  @IsLongitude({ message: "La longitud debe estar entre -180 y 180" })
+  longitude?: string | null;
 
   @ApiPropertyOptional({ format: "uuid", nullable: true })
   @IsOptional()

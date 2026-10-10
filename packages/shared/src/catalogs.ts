@@ -31,6 +31,9 @@ export interface CustomerLocation {
   address: string;
   addressReference: string;
   phone: string;
+  contactName: string | null;
+  latitude: string | null;
+  longitude: string | null;
   isPrimary: boolean;
   active: boolean;
 }

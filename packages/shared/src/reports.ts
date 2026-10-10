@@ -64,6 +64,7 @@ export interface SetupChecklist {
   activeDrivers: number;
   activeSellers: number;
   uncountedLocations: number;
+  locationsWithoutCoordinates: number;
   activeTestUsers: number;
   activeTestCustomers: number;
   productsWithInitialListPrice: NamedReference[];
