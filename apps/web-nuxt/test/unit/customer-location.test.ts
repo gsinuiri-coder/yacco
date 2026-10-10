@@ -17,6 +17,17 @@ describe("parseLocationCoordinates", () => {
     });
   });
 
+  it("prioriza el punto marcado sobre el centro de cámara de un enlace largo", () => {
+    expect(
+      parseLocationCoordinates(
+        "https://www.google.com/maps/place/Local/@-12.100000,-77.100000,17z/data=!3d-12.046374!4d-77.042793",
+      ),
+    ).toEqual({
+      latitude: "-12.046374",
+      longitude: "-77.042793",
+    });
+  });
+
   it.each(["texto sin coordenadas", "91, -77", "-12, 181"])(
     "rechaza una ubicación inválida: %s",
     (input) => {

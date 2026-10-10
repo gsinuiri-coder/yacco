@@ -6,6 +6,7 @@ import type { H3Event } from "h3";
 import type {
   AccountStatementEntry,
   ContainerBalanceRow,
+  CustomerLocation,
   CustomerPrice,
   EffectivePrice,
   PaymentMethod,
@@ -84,6 +85,7 @@ interface Setup {
     latitude: string | null;
     longitude: string | null;
   };
+  locations?: CustomerLocation[];
 }
 
 /** Lo que la ficha le pidió a /container-balances, en orden. */
@@ -107,6 +109,24 @@ function stubCustomerPage(setup: Setup = {}) {
     }),
   });
   endpoint("/api/v1/payment-methods", () => setup.methods ?? [CASH, YAPE]);
+  endpoint(`${BASE}/locations`, {
+    method: "GET",
+    handler: () =>
+      setup.locations ?? [
+        {
+          id: "location-primary",
+          name: "Principal",
+          address: "Av. Los Alamos 452",
+          addressReference: "Portón azul",
+          phone: "987654321",
+          contactName: setup.location?.contactName ?? null,
+          latitude: setup.location?.latitude ?? null,
+          longitude: setup.location?.longitude ?? null,
+          isPrimary: true,
+          active: true,
+        },
+      ],
+  });
   endpoint("/api/v1/products", () => [BIDON]);
   endpoint(`${BASE}/prices`, { method: "GET", handler: () => setup.prices ?? [] });
   endpoint(`${BASE}/effective-prices`, () => setup.effective ?? []);
@@ -182,12 +202,21 @@ describe("Ficha del cliente", () => {
     it("guarda quién recibe y extrae las coordenadas de un enlace de Google Maps", async () => {
       stubCustomerPage({ location: { contactName: null, latitude: null, longitude: null } });
       const bodies: Array<Record<string, unknown>> = [];
-      endpoint(BASE, {
+      endpoint(`${BASE}/locations/location-primary`, {
         method: "PATCH",
         handler: async (event: H3Event) => {
           const body = (await readBody(event)) as Record<string, unknown>;
           bodies.push(body);
-          return { ...buildCustomer({ id: ID }), ...body };
+          return {
+            id: "location-primary",
+            name: "Principal",
+            address: "Av. Los Alamos 452",
+            addressReference: "Portón azul",
+            phone: "987654321",
+            isPrimary: true,
+            active: true,
+            ...body,
+          };
         },
       });
       const u = user();
@@ -215,10 +244,103 @@ describe("Ficha del cliente", () => {
       );
     });
 
+    it("permite completar cada local del cliente, no solo el principal", async () => {
+      stubCustomerPage({
+        locations: [
+          {
+            id: "location-primary",
+            name: "Principal",
+            address: "Av. Los Alamos 452",
+            addressReference: "Portón azul",
+            phone: "987654321",
+            contactName: null,
+            latitude: null,
+            longitude: null,
+            isPrimary: true,
+            active: true,
+          },
+          {
+            id: "location-north",
+            name: "Sucursal Norte",
+            address: "Jr. Norte 200",
+            addressReference: "Puerta roja",
+            phone: "987654322",
+            contactName: null,
+            latitude: null,
+            longitude: null,
+            isPrimary: false,
+            active: true,
+          },
+        ],
+      });
+      const bodies: unknown[] = [];
+      endpoint(`${BASE}/locations/location-north`, {
+        method: "PATCH",
+        handler: async (event: H3Event) => {
+          const body = await readBody(event);
+          bodies.push(body);
+          return body;
+        },
+      });
+      await renderCustomerPage();
+
+      const branch = await screen.findByRole("group", { name: "Sucursal Norte" });
+      await user().type(within(branch).getByLabelText("Persona que recibe (opcional)"), "Elena");
+      await user().type(
+        within(branch).getByLabelText("Enlace de Google Maps o coordenadas"),
+        "-12.010000, -77.020000",
+      );
+      await user().click(
+        within(branch).getByRole("button", {
+          name: "Guardar contacto y ubicación de Sucursal Norte",
+        }),
+      );
+
+      await waitFor(() =>
+        expect(bodies).toEqual([
+          { contactName: "Elena", latitude: "-12.010000", longitude: "-77.020000" },
+        ]),
+      );
+    });
+
+    it("expande un enlace abreviado de Google Maps antes de guardar", async () => {
+      stubCustomerPage();
+      endpoint(`${BASE}/locations/google-maps-link-resolutions`, {
+        method: "POST",
+        handler: () => ({
+          url: "https://www.google.com/maps/place/Local/data=!3d-12.046374!4d-77.042793",
+        }),
+      });
+      const bodies: unknown[] = [];
+      endpoint(`${BASE}/locations/location-primary`, {
+        method: "PATCH",
+        handler: async (event: H3Event) => {
+          const body = await readBody(event);
+          bodies.push(body);
+          return body;
+        },
+      });
+      await renderCustomerPage();
+
+      await user().type(
+        await screen.findByLabelText("Enlace de Google Maps o coordenadas"),
+        "https://maps.app.goo.gl/AbC123",
+      );
+      await user().click(
+        screen.getByRole("button", { name: "Guardar contacto y ubicación de Principal" }),
+      );
+
+      await waitFor(() =>
+        expect(bodies).toEqual([
+          { contactName: null, latitude: "-12.046374", longitude: "-77.042793" },
+        ]),
+      );
+    });
+
     it("no envía un texto sin coordenadas y explica cómo corregirlo", async () => {
       stubCustomerPage({ location: { contactName: null, latitude: null, longitude: null } });
       const bodies: unknown[] = [];
-      endpoint(BASE, {
+      endpoint(`${BASE}/locations/location-primary`, {
         method: "PATCH",
         handler: async (event: H3Event) => {
           bodies.push(await readBody(event));

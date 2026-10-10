@@ -481,6 +481,33 @@ describe("GET /api/v1/routes/:id", () => {
     );
   });
 
+  test("each stop serializes the saved contact and coordinates for Mi ruta", async () => {
+    const prisma = ctx.app.get(PrismaService);
+    await prisma.customerLocation.update({
+      where: { id: locationId },
+      data: {
+        contactName: "Rosa Quispe",
+        latitude: "-12.046374",
+        longitude: "-77.042793",
+      },
+    });
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await addVanSaleStop(adminToken, routeId);
+
+    const response = await request(server())
+      .get(`/api/v1/routes/${routeId}`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .expect(200);
+
+    expect(response.body.stops[0].location).toEqual(
+      expect.objectContaining({
+        contactName: "Rosa Quispe",
+        latitude: "-12.046374",
+        longitude: "-77.042793",
+      }),
+    );
+  });
+
   test("returns the route with its stops ordered by position", async () => {
     const routeId = await createRoute(adminToken, { date: "2026-09-15" });
     await addVanSaleStop(adminToken, routeId);
