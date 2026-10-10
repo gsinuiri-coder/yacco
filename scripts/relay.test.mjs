@@ -303,6 +303,27 @@ describe("runRelay", () => {
     assert.match(out.text(), /Salto g: sus banderas no están verificadas/);
   });
 
+  test("un agente declarado sin sandbox se avisa al arrancar, con su motivo", async () => {
+    const out = captureOut();
+    const unsandboxed = {
+      ...agent("codex", "finish"),
+      unsandboxed: true,
+      unsandboxedReason: "prueba",
+    };
+    const code = await relay([unsandboxed], { out });
+    assert.equal(code, EXIT.done);
+    assert.match(
+      out.text(),
+      /AVISO: codex corre sin sandbox: tiene acceso completo a esta cuenta. Motivo: prueba/,
+    );
+  });
+
+  test("un agente con sandbox no lleva el aviso", async () => {
+    const out = captureOut();
+    await relay([agent("codex", "finish")], { out });
+    assert.doesNotMatch(out.text(), /corre sin sandbox/);
+  });
+
   test("sin ningún agente disponible sale con 1", async () => {
     const code = await relay([agent("a", "ok")], { resolve: () => null });
     assert.equal(code, EXIT.error);
@@ -453,12 +474,13 @@ describe("runRelay", () => {
 describe("relay.config.json", () => {
   const configPath = join(REPO_ROOT, "relay.config.json");
 
-  test("el orden es claude, codex, antigravity, con los defaults pedidos", () => {
+  test("el orden es codex, antigravity, claude (siempre último), con los defaults pedidos", () => {
     const parsed = readRelayConfig(configPath);
     assert.deepEqual(
       parsed.agents.map((a) => a.name),
-      ["claude", "codex", "antigravity"],
+      ["codex", "antigravity", "claude"],
     );
+    assert.equal(parsed.agents.at(-1).name, "claude");
     assert.equal(parsed.waitMinutes, DEFAULT_WAIT_MINUTES);
     assert.equal(parsed.maxRuns, DEFAULT_MAX_RUNS);
     assert.match(parsed.prompt, /\.relay\/RELEVO\.md/);
@@ -472,25 +494,32 @@ describe("relay.config.json", () => {
     }
   });
 
-  test("ningún agente corre sin sandbox ni con un modo que apruebe solo", () => {
+  test("sin sandbox solo con la clave explícita, y nunca un bypass ni un modo que apruebe solo", () => {
     const forbidden = [
       "--dangerously-bypass-approvals-and-sandbox",
       "--dangerously-skip-permissions",
       "--allow-dangerously-skip-permissions",
       "bypassPermissions",
       "auto",
-      "danger-full-access",
       "--yolo",
     ];
-    const byName = Object.fromEntries(
-      readRelayConfig(configPath).agents.map((entry) => [entry.name, entry.args]),
-    );
-    for (const [name, args] of Object.entries(byName)) {
+    const entries = readRelayConfig(configPath).agents;
+    for (const entry of entries) {
       for (const flag of forbidden) {
-        assert.ok(!(args ?? []).includes(flag), `${name} usa ${flag}`);
+        assert.ok(!(entry.args ?? []).includes(flag), `${entry.name} usa ${flag}`);
+      }
+      if ((entry.args ?? []).includes("danger-full-access")) {
+        assert.equal(entry.unsandboxed, true, `${entry.name} sin unsandboxed: true`);
+        assert.ok(entry.unsandboxedReason, `${entry.name} sin unsandboxedReason`);
+      } else {
+        assert.notEqual(entry.unsandboxed, true, `${entry.name} declara unsandboxed sin serlo`);
       }
     }
-    assert.deepEqual(byName.codex.slice(1, 3), ["--sandbox", "workspace-write"]);
+    const byName = Object.fromEntries(entries.map((entry) => [entry.name, entry.args]));
+    // codex en Windows: sin sandbox por decisión explícita, con la política de
+    // aprobación fijada para que `exec` no espere a nadie.
+    assert.deepEqual(byName.codex.slice(1, 3), ["--sandbox", "danger-full-access"]);
+    assert.ok(byName.codex.includes('approval_policy="never"'), "codex sin approval_policy never");
     const claudeMode = byName.claude[byName.claude.indexOf("--permission-mode") + 1];
     assert.equal(claudeMode, "dontAsk");
     const denied = byName.claude[byName.claude.indexOf("--disallowedTools") + 1];
@@ -530,6 +559,36 @@ describe("relay.config.json", () => {
     }
     assert.equal(matchLimit(["Antigravity: 3 archivos editados"], byName.antigravity), null);
     assert.equal(matchLimit(["agregar rate limiting al login"], byName.claude), null);
+  });
+
+  test("danger-full-access sin la clave explícita se rechaza al leer la config", () => {
+    const badPath = join(root, "bad.json");
+    const unsandboxed = {
+      ...agent("agente-x", "ok"),
+      args: ["exec", "--sandbox", "danger-full-access"],
+    };
+    writeFileSync(badPath, JSON.stringify(config([unsandboxed])));
+    assert.throws(
+      () => readRelayConfig(badPath),
+      /agente-x usa danger-full-access sin `unsandboxed: true`/,
+    );
+    writeFileSync(badPath, JSON.stringify(config([{ ...unsandboxed, unsandboxed: true }])));
+    assert.throws(() => readRelayConfig(badPath), /unsandboxedReason/);
+    const declared = { ...unsandboxed, unsandboxed: true, unsandboxedReason: "motivo" };
+    writeFileSync(badPath, JSON.stringify(config([declared])));
+    assert.equal(readRelayConfig(badPath).agents[0].name, "agente-x");
+  });
+
+  test("--dangerously-bypass-approvals-and-sandbox se rechaza siempre, aun declarado", () => {
+    const badPath = join(root, "bad.json");
+    const bypass = {
+      ...agent("agente-x", "ok"),
+      args: ["exec", "--dangerously-bypass-approvals-and-sandbox"],
+      unsandboxed: true,
+      unsandboxedReason: "motivo",
+    };
+    writeFileSync(badPath, JSON.stringify(config([bypass])));
+    assert.throws(() => readRelayConfig(badPath), /nunca se acepta/);
   });
 
   test("un patrón que no es una regex válida se rechaza con el agente y el patrón", () => {

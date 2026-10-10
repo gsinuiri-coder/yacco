@@ -172,6 +172,13 @@ cuándo, y tres líneas:
 - **Construido encima:** nada todavía. Se construye el libro `maquila_container_movements` (recibido, llenado, devuelto, y sus anulaciones) con saldos «en la planta sin llenar» y «llenos por devolver», el precio por cliente con historial, el cargo al devolver y la pantalla «Maquila».
 - **Si resulta que no:** caro. Si el cobro nace en otro momento (al recibir, o al llenar) cambia de dónde sale la venta; si los envases sí deben contarse como propios, el diseño entero cambia. Conviene preguntárselo antes del UAT.
 
+### En Windows, codex corre en el relevo sin sandbox
+
+- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño. No es una decisión de la planta sino de cómo se construye su sistema, y se anota acá porque cambia el riesgo sobre sus datos.
+- **Asumimos:** que la cuenta que corre `pnpm relay` no tiene credenciales de nube, de la base ni de otros servicios (gcloud, vercel, neonctl, el MCP de Neon de codex, Sanity), que `GH_TOKEN` está limitado a este repo y que `main` exige los checks también a los admins. Con eso, que codex corra sin sandbox (`danger-full-access`, porque el sandbox de Windows no deja escribir `.git`, openai/codex #18918) no alcanza producción ni los datos reales.
+- **Construido encima:** la entrada de codex en `relay.config.json` (`unsandboxed: true` con su motivo), la validación y el aviso de `scripts/relay.mjs`, y la lista de lo que hay que cerrar en [`RELEVO-USO.md`](./RELEVO-USO.md).
+- **Si resulta que no:** bajo de cambiar, alto si pasa. Volver a `workspace-write` es una línea de la config (codex vuelve a no poder crear ramas). Si la cuenta tenía una credencial abierta, lo que codex hizo con ella no se deshace con la config.
+
 ## Validados
 
 ### 1. El buscador del Panel muestra clientes desactivados — 25/09/2026

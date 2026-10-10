@@ -2,10 +2,53 @@
 
 `pnpm relay` corre la cola de Yacco con un agente a la vez. Cuando uno se queda
 sin cuota, sigue con el siguiente, en el orden de `relay.config.json` (hoy:
-claude, codex, antigravity). Si todos están sin cuota, espera `waitMinutes` y vuelve
-a empezar por el primero. El traspaso entre agentes es `.relay/RELEVO.md`.
+codex, antigravity, claude; claude siempre último). Si todos están sin cuota,
+espera `waitMinutes` y vuelve a empezar por el primero. El traspaso entre
+agentes es `.relay/RELEVO.md`.
 
 Las reglas que sigue cada agente están en `.agents/rules/unattended-agents.md`.
+
+## codex corre sin sandbox en Windows
+
+**Decisión de Giancarlo (2026-10-10).** En Windows, el sandbox
+`workspace-write` de codex deja `.git` de solo lectura (openai/codex #18918):
+`.git` es una ruta protegida, y ni `--add-dir` ni `writable_roots` la vuelven
+escribible (probado con codex-cli 0.162.0). Sin crear la rama del ítem, codex
+no puede trabajar. Por eso corre con `--sandbox danger-full-access` y
+`-c approval_policy="never"`: `exec` no acepta `-a`, su política ya es
+`never`, y la bandera la fija para que ninguna `config.toml` la cambie. Nunca
+con `--dangerously-bypass-approvals-and-sandbox`.
+
+Es una opción explícita: `"unsandboxed": true` y `unsandboxedReason` en su
+entrada de `relay.config.json`. `danger-full-access` sin esa clave hace fallar
+la lectura de la config, y el bypass falla siempre. Al arrancar, el relevo
+imprime «AVISO: codex corre sin sandbox: tiene acceso completo a esta
+cuenta».
+
+**El riesgo.** Sin sandbox, codex puede leer y escribir todo lo que puede la
+cuenta que corre el relevo, y ejecutar cualquier comando con su red. Las
+reglas de `unattended-agents.md` siguen valiendo, pero son instrucciones, no
+un límite: lo único que lo acota de verdad es que la cuenta no tenga nada que
+usar. El entorno en lista blanca no cambia, pero no alcanza: una CLI logueada
+guarda su sesión en el HOME, que el relevo sí pasa.
+
+**Antes de correrlo, cerrar en la cuenta que lo corre:**
+
+- [ ] **gcloud:** sin sesión (`gcloud auth list` vacío) ni `~/.config/gcloud`
+      con credenciales.
+- [ ] **vercel:** sin `vercel login` (sin `auth.json` en su carpeta de
+      config).
+- [ ] **neonctl:** sin `neonctl auth`, y sin el MCP de Neon en
+      `~/.codex/config.toml` (hoy está configurado; falla solo porque no
+      tiene token).
+- [ ] **Sanity:** sin el token de su MCP en `~/.gemini/settings.json` (y
+      rotado, porque quedó en un transcript el 2026-10-10).
+- [ ] **`GH_TOKEN` limitado:** fine-grained, solo este repo, Contents, Pull
+      requests y Checks; sin Actions ni Administration.
+- [ ] **Protección de `main`:** hoy `enforce_admins` está apagado, así que una
+      cuenta admin puede saltearse los checks; encenderlo. Los checks
+      requeridos son cuatro (`ci`, `gitleaks`, `CodeQL`, SonarCloud):
+      sumar `analyze` para que sean los cinco.
 
 ## Antes de correrlo: dónde y con qué cuenta
 
@@ -33,13 +76,10 @@ puede escaparse. La única garantía es que no haya credencial que usar:
   no llega al agente. Si una CLI de agente se autentica por una variable (por
   ejemplo, `OPENAI_API_KEY`), hay que loguearla por archivo en vez de
   agregarla a la lista.
-- **codex** va segundo hasta que su sandbox pueda escribir `.git`. En
-  `workspace-write`, `.git` es una ruta protegida: ni `--add-dir` ni
-  `writable_roots` la vuelven escribible (verificado con codex-cli 0.162.0,
-  2026-10-10), y sin crear la rama del ítem no puede trabajar.
-- **codex**: `exec --sandbox workspace-write` con red habilitada
-  (`-c sandbox_workspace_write.network_access=true`), sin
-  `--dangerously-bypass-approvals-and-sandbox`. Escribe solo en el workspace.
+- **codex**: `exec --sandbox danger-full-access -c approval_policy="never"`,
+  **sin sandbox** por la decisión de arriba, sin
+  `--dangerously-bypass-approvals-and-sandbox`. Lo acota solo lo que la
+  cuenta no tenga.
 - **claude**: `-p --permission-mode dontAsk --permission-prompts none`. Lo que
   pediría aprobación se deniega. Los deny de `.claude/settings.json` aplican
   en todos los modos, y `--disallowedTools` agrega gcloud, neonctl, vercel,

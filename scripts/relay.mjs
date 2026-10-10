@@ -1,6 +1,6 @@
 /**
  * `pnpm relay` — corre la cola de Yacco con un agente a la vez y, cuando uno
- * se queda sin cuota, sigue con el siguiente (claude → codex → antigravity, en el
+ * se queda sin cuota, sigue con el siguiente (codex → antigravity → claude, en el
  * orden de relay.config.json). Si todos están sin cuota, espera y vuelve a
  * empezar por el primero.
  *
@@ -21,8 +21,9 @@
  *   pnpm relay --dry-run    muestra qué correría, sin correr nada
  *
  * Uso, cómo pararlo y cómo leer el log: docs/RELEVO-USO.md. Cada agente corre
- * con el entorno en lista blanca (`AGENT_ENV_KEYS`) y su propio sandbox:
- * leé la advertencia de ese archivo antes.
+ * con el entorno en lista blanca (`AGENT_ENV_KEYS`) y su propio sandbox,
+ * salvo el que la config declara `unsandboxed` (hoy codex en Windows): leé la
+ * advertencia de ese archivo antes.
  */
 import { spawn } from "node:child_process";
 import {
@@ -164,10 +165,35 @@ function compilePatterns(agentName, patterns) {
   });
 }
 
+// Saltea aprobaciones y sandbox a la vez: nunca, ni con `unsandboxed`.
+const FORBIDDEN_FLAG = "--dangerously-bypass-approvals-and-sandbox";
+const NO_SANDBOX = "danger-full-access";
+
+/**
+ * Correr sin sandbox es una decisión explícita de la config, nunca un
+ * default: `danger-full-access` solo vale con `unsandboxed: true` y su
+ * `unsandboxedReason`.
+ */
+function checkSandboxPolicy(agent) {
+  const args = agent.args ?? [];
+  if (args.includes(FORBIDDEN_FLAG)) {
+    throw new Error(`relay.config.json: ${agent.name} usa ${FORBIDDEN_FLAG}, que nunca se acepta.`);
+  }
+  const reason = agent.unsandboxedReason;
+  const declared = agent.unsandboxed === true && typeof reason === "string" && reason.trim() !== "";
+  if (args.includes(NO_SANDBOX) && !declared) {
+    throw new Error(
+      `relay.config.json: ${agent.name} usa ${NO_SANDBOX} sin \`unsandboxed: true\` ` +
+        "y su `unsandboxedReason`.",
+    );
+  }
+}
+
 /**
  * Lee relay.config.json, con los defaults puestos y los patrones de límite ya
  * compilados (sin distinguir mayúsculas). Un patrón inválido corta acá, antes
- * de lanzar a nadie, y no a mitad de la noche.
+ * de lanzar a nadie, y no a mitad de la noche. Lo mismo un agente sin sandbox
+ * que no lo declara.
  */
 export function readRelayConfig(path = join(REPO_ROOT, "relay.config.json")) {
   const raw = JSON.parse(readFileSync(path, "utf8"));
@@ -181,6 +207,7 @@ export function readRelayConfig(path = join(REPO_ROOT, "relay.config.json")) {
       throw invalid(`\`${key}\` tiene que ser un entero mayor que 0`);
     }
   }
+  raw.agents.forEach(checkSandboxPolicy);
   return {
     prompt: raw.prompt,
     waitMinutes: raw.waitMinutes ?? DEFAULT_WAIT_MINUTES,
@@ -341,6 +368,12 @@ function availableAgents(agents, { resolve, out }) {
     if (resolved === null) {
       out.log(`Salto ${agent.name}: no está instalada (no encuentro "${agent.command}").`);
       continue;
+    }
+    if (agent.unsandboxed === true) {
+      out.error(
+        `AVISO: ${agent.name} corre sin sandbox: tiene acceso completo a esta cuenta. ` +
+          `Motivo: ${agent.unsandboxedReason}`,
+      );
     }
     available.push({
       ...agent,
