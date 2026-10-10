@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import nuxtConfig from "../../nuxt.config";
 import { LOCAL_API_ORIGIN } from "../../config/api-proxy";
 import {
   VERIFIED_FOR_MS,
@@ -31,6 +32,8 @@ const yacco = () =>
 describe("guardia del proxy de desarrollo", () => {
   it("los defaults de desarrollo de Yacco no chocan con el 3100 de otros proyectos", () => {
     expect(LOCAL_API_ORIGIN).toBe("http://localhost:3200");
+    // `pnpm dev:web-nuxt` es `nuxt dev` a secas: el puerto sale de acá, no de un flag.
+    expect(nuxtConfig.devServer?.port).toBe(3201);
   });
 
   it("con la API de Yacco del otro lado, deja pasar", async () => {

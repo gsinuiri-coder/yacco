@@ -64,6 +64,10 @@ export default defineNuxtConfig({
     },
   },
 
+  // `nuxt dev` en el 3201, al lado de la API en el 3200: el 3000 de Nuxt por
+  // defecto lo comparten todos los proyectos de la máquina (docs/ENTORNOS.md).
+  devServer: { port: 3201 },
+
   $development: {
     routeRules: apiRouteRules(LOCAL_API_ORIGIN),
     nitro: { devHandlers: [{ route: "/", handler: localApiGuardHandler }] },
