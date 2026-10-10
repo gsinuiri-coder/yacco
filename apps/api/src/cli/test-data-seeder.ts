@@ -42,6 +42,7 @@ import type { RouteResponseDto } from "../modules/routes/dto/route-response.dto.
 import { RoutesService } from "../modules/routes/routes.service.js";
 import type { RouteActor } from "../modules/routes/routes.service.js";
 import { CreateUserDto } from "../modules/users/dto/create-user.dto.js";
+import { UpdateUserDto } from "../modules/users/dto/update-user.dto.js";
 import { UsersService } from "../modules/users/users.service.js";
 import { ListZonesQueryDto } from "../modules/zones/dto/list-zones-query.dto.js";
 import { CreateZoneDto } from "../modules/zones/dto/create-zone.dto.js";
@@ -70,10 +71,13 @@ import {
 
 const CONTAINER_KEYS: readonly TestContainerKey[] = ["CON_CANO", "SIN_CANO"];
 
-/** Lo que la corrida hizo, para imprimirlo. `password` solo en usuarios recién creados. */
+/**
+ * Lo que la corrida hizo, para imprimirlo. `credentials` trae la contraseña
+ * vigente de cada usuario PRUEBA: en cada corrida se pone una nueva.
+ */
 export interface TestDataReport {
   lines: string[];
-  createdUsers: { name: string; username: string; password: string }[];
+  credentials: { name: string; username: string; password: string }[];
 }
 
 /**
@@ -100,7 +104,7 @@ async function validated<T extends object>(metatype: Type<T>, value: object): Pr
  */
 export class TestDataSeeder {
   private readonly lines: string[] = [];
-  private readonly createdUsers: TestDataReport["createdUsers"] = [];
+  private readonly credentials: TestDataReport["credentials"] = [];
   private actor!: RouteActor;
   private productsByName = new Map<string, ProductResponseDto>();
 
@@ -123,7 +127,7 @@ export class TestDataSeeder {
       { customerId, driverId: userIds.get(TEST_DRIVER_1.username) as string, zoneId: parqueZoneId },
       containerTypeIds,
     );
-    return { lines: this.lines, createdUsers: this.createdUsers };
+    return { lines: this.lines, credentials: this.credentials };
   }
 
   private async resolveActor(): Promise<void> {
@@ -163,28 +167,39 @@ export class TestDataSeeder {
     return product;
   }
 
+  /**
+   * Crea los que faltan y a los que ya existen les pone una contraseña nueva:
+   * así el archivo de credenciales siempre sirve para entrar, aunque el de la
+   * corrida anterior se haya perdido. Cambiar la contraseña corta las sesiones
+   * abiertas de ese usuario (D-024), igual que desde «Usuarios».
+   */
   private async ensureUsers(): Promise<Map<string, string>> {
     const users = this.app.get(UsersService);
     const idByUsername = new Map<string, string>();
     for (const plan of TEST_USERS) {
-      const existing = await users.findByUsername(plan.username);
-      if (existing !== null) {
-        idByUsername.set(plan.username, existing.id);
-        this.lines.push(`Usuario ${plan.name}: ya existía (su contraseña no cambia).`);
-        continue;
-      }
       const password = randomBytes(12).toString("base64url");
-      const created = await users.create(
-        await validated(CreateUserDto, {
-          name: plan.name,
-          username: plan.username,
-          password,
-          roles: [plan.role],
-        }),
-      );
-      idByUsername.set(plan.username, created.id);
-      this.createdUsers.push({ name: plan.name, username: plan.username, password });
-      this.lines.push(`Usuario ${plan.name}: creado.`);
+      const existing = await users.findByUsername(plan.username);
+      if (existing === null) {
+        const created = await users.create(
+          await validated(CreateUserDto, {
+            name: plan.name,
+            username: plan.username,
+            password,
+            roles: [plan.role],
+          }),
+        );
+        idByUsername.set(plan.username, created.id);
+        this.lines.push(`Usuario ${plan.name}: creado.`);
+      } else {
+        await users.update(
+          existing.id,
+          await validated(UpdateUserDto, { password }),
+          this.actor.id,
+        );
+        idByUsername.set(plan.username, existing.id);
+        this.lines.push(`Usuario ${plan.name}: ya existía, contraseña nueva.`);
+      }
+      this.credentials.push({ name: plan.name, username: plan.username, password });
     }
     return idByUsername;
   }

@@ -23,7 +23,8 @@ export const DEFAULT_CREDENTIALS_PATH = resolve(
  * prueba en la base LOCAL de Docker por los servicios de la app, en proceso,
  * igual que load-roster.ts. Idempotente: ver TestDataSeeder.
  *
- * Las contraseñas de los usuarios que crea van a un archivo, nunca a la
+ * En cada corrida pone contraseñas nuevas a los usuarios PRUEBA y reescribe
+ * el archivo de credenciales. Las contraseñas van a ese archivo, nunca a la
  * consola: así no quedan en el historial de la terminal ni en los registros
  * de un agente. Y antes de abrir una sola conexión rechaza cualquier base que
  * no esté en esta máquina: nunca corre contra Neon ni producción.
@@ -66,10 +67,8 @@ export async function main(credentialsPath = DEFAULT_CREDENTIALS_PATH): Promise<
     const report = await new TestDataSeeder(app, "admin").run();
     console.log("Datos de prueba en la base local:");
     for (const line of report.lines) console.log(`  ${line}`);
-    if (report.createdUsers.length > 0) {
-      writeCredentials(credentialsPath, report.createdUsers);
-      console.log(`\nLas contraseñas de los usuarios nuevos están en ${credentialsPath}`);
-    }
+    writeCredentials(credentialsPath, report.credentials);
+    console.log(`\nLas contraseñas de los usuarios PRUEBA están en ${credentialsPath}`);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
@@ -79,11 +78,10 @@ export async function main(credentialsPath = DEFAULT_CREDENTIALS_PATH): Promise<
 }
 
 /**
- * Reescribe el archivo: los usuarios solo se crean en la primera corrida, y
- * después sus contraseñas no cambian. Permisos de solo su dueño donde el
- * sistema los respeta.
+ * Reescribe el archivo entero con las contraseñas de esta corrida, las únicas
+ * que sirven. Permisos de solo su dueño donde el sistema los respeta.
  */
-function writeCredentials(path: string, users: TestDataReport["createdUsers"]): void {
+function writeCredentials(path: string, users: TestDataReport["credentials"]): void {
   mkdirSync(dirname(path), { recursive: true });
   const lines = users.map((user) => `${user.name}\t${user.username}\t${user.password}`);
   writeFileSync(path, `nombre\tusuario\tcontraseña\n${lines.join("\n")}\n`, { mode: 0o600 });
