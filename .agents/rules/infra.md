@@ -14,6 +14,12 @@ Neon. El porqué está en `docs/ARQUITECTURA.md`, qué entorno mira qué base en
 - **Ningún valor secreto se imprime nunca.** Ni en un log, ni en un mensaje de
   error, ni en el resumen de un agente. Se reporta el método y el resultado, no
   el valor. `pnpm env:check` es el modelo: dice qué falta sin mostrar nada.
+- **Un archivo de configuración que puede tener credenciales no se imprime
+  entero.** El `settings.json` de cualquier CLI, `.npmrc`, `~/.config/*`
+  y parecidos: se leen solo las claves que hacen falta (`jq '.permissions'`),
+  o se muestran con todos los valores enmascarados. Un filtro por nombre de
+  clave (`token`, `key`, `secret`) no alcanza: el token de Sanity se
+  escapó como `headers.Authorization` (2026-10-10).
 - **Ninguna credencial viaja por argv.** `--token` nunca: `gh`, `vercel` y
   `neonctl` leen el suyo del entorno del proceso hijo, y un valor secreto llega
   a un CLI por stdin. Los argumentos son visibles en `ps` y quedan en el

@@ -1537,6 +1537,13 @@ Descartados de la revisión (I), con su razón:
   proyectos.** El proxy de Nuxt busca la API en `localhost:3100` y le pega a
   la de otro proyecto. Para la revisión se levantó la API en otro puerto y
   Playwright redirigió `/api/v1`; nada del repo cambió.
+- **Un `settings.json` también es un secreto (2026-10-10).** Verificando
+  `agy` para el relevo (#297) se listó `~/.gemini/settings.json` con un
+  filtro por nombre de clave que no tapó `mcpServers.Sanity.headers.Authorization`:
+  el bearer de Sanity quedó en el transcript. Regla nueva en
+  [`.agents/rules/infra.md`](../.agents/rules/infra.md): esos archivos no se
+  imprimen enteros, se leen solo las claves necesarias o con los valores
+  enmascarados.
 
 ### Pendientes de Giancarlo
 
