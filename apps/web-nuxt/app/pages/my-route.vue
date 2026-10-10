@@ -12,6 +12,7 @@ import type { Page, Route, RouteStop, RouteTruckStockLine } from "@yacco/shared"
 useHead({ title: "Mi ruta · Yacco" });
 
 const api = useApi();
+const session = useSession();
 const today = limaToday();
 
 const routes = ref<Route[]>([]);
@@ -27,7 +28,11 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    const page = await api.request<Page<Route>>("/routes", { query: { date: today } });
+    // Con `driverId`, también para quien no es solo chofer: a un administrador
+    // la API le devuelve las rutas de todos, y «Mi ruta» son las suyas.
+    const page = await api.request<Page<Route>>("/routes", {
+      query: { date: today, driverId: session.user.value?.id },
+    });
     const stocks = await Promise.all(
       page.data.map((route) =>
         api
