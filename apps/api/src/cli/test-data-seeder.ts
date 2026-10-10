@@ -120,8 +120,7 @@ export class TestDataSeeder {
     await this.ensureBatch(containerTypeIds);
     const customerId = await this.ensureCustomer(parqueZoneId);
     await this.ensureDay(
-      customerId,
-      userIds.get(TEST_DRIVER_1.username) as string,
+      { customerId, driverId: userIds.get(TEST_DRIVER_1.username) as string, zoneId: parqueZoneId },
       containerTypeIds,
     );
     return { lines: this.lines, createdUsers: this.createdUsers };
@@ -312,13 +311,12 @@ export class TestDataSeeder {
    * retoma desde ahí y una ruta ya liquidada no se toca.
    */
   private async ensureDay(
-    customerId: string,
-    driverId: string,
+    { customerId, driverId, zoneId }: { customerId: string; driverId: string; zoneId: string },
     containerTypeIds: Record<TestContainerKey, string>,
   ): Promise<void> {
     const orderId = await this.ensureOrder(customerId);
     const order = await this.app.get(OrdersService).findOne(orderId);
-    let route = await this.ensureRoute(driverId, order.deliveryDate);
+    let route = await this.ensureRoute(driverId, order.deliveryDate, zoneId);
 
     if (route.status === RouteStatus.PLANNED) {
       route = await this.planRoute(route, orderId, containerTypeIds);
@@ -328,7 +326,7 @@ export class TestDataSeeder {
     }
     await this.ensureYape(customerId);
     if (route.status === RouteStatus.FINISHED) {
-      await this.settle(route.id);
+      await this.settle(route.id, containerTypeIds);
     } else {
       this.lines.push("Liquidación: ya estaba.");
     }
@@ -361,7 +359,11 @@ export class TestDataSeeder {
     return created.id;
   }
 
-  private async ensureRoute(driverId: string, date: string): Promise<RouteResponseDto> {
+  private async ensureRoute(
+    driverId: string,
+    date: string,
+    zoneId: string,
+  ): Promise<RouteResponseDto> {
     const routes = this.app.get(RoutesService);
     const found = await routes.findAll(
       await validated(ListRoutesQueryDto, { driverId, date }),
@@ -373,7 +375,7 @@ export class TestDataSeeder {
       return routes.findOne(existing.id, this.actor);
     }
     const created = await routes.create(
-      await validated(CreateRouteDto, { driverId, date }),
+      await validated(CreateRouteDto, { driverId, date, zoneId }),
       this.actor.id,
     );
     this.lines.push(`Ruta de ${TEST_DRIVER_1.name} del ${date}: creada.`);
@@ -467,8 +469,16 @@ export class TestDataSeeder {
     );
   }
 
-  /** Liquida con lo que la propia vista espera: cuadra por construcción. */
-  private async settle(routeId: string): Promise<void> {
+  /**
+   * Liquida con lo que la propia vista espera: cuadra por construcción. Los
+   * llenos que vuelven van por tipo, como los manda la pantalla: con dos
+   * tipos en el camión, un total solo no se puede atribuir y la API no
+   * los baja a la planta.
+   */
+  private async settle(
+    routeId: string,
+    containerTypeIds: Record<TestContainerKey, string>,
+  ): Promise<void> {
     const settlements = this.app.get(RouteSettlementService);
     const view = await settlements.getSettlementView(routeId);
     const { fullOut, fullDelivered, fullSold, emptiesPickedUpByType } = view.expected;
@@ -476,6 +486,10 @@ export class TestDataSeeder {
       routeId,
       await validated(CreateRouteSettlementDto, {
         fullReturned: fullOut - fullDelivered - fullSold,
+        fullReturnedByType: CONTAINER_KEYS.map((key) => ({
+          containerTypeId: containerTypeIds[key],
+          quantity: TEST_TRUCK_LOAD[key] - TEST_ORDER[key],
+        })),
         emptiesCollected: emptiesPickedUpByType.map((line) => ({
           containerTypeId: line.containerTypeId,
           quantity: line.quantity,

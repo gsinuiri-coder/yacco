@@ -106,8 +106,19 @@ describe("pnpm demo:prueba — datos de prueba en local (ítem K)", () => {
 
     const route = await prisma.route.findFirstOrThrow({
       where: { driver: { name: "PRUEBA Chofer 1" } },
+      include: { zone: true },
     });
     expect(route.status).toBe("SETTLED");
+    expect(route.zone?.name).toBe("Parque");
+
+    // Liquidada, el camión queda vacío: el lleno sobrante de cada tipo volvió
+    // a la planta. Con dos tipos cargados, eso exige mandarlos por tipo.
+    const onTruck = await prisma.containerMovement.groupBy({
+      by: ["containerTypeId"],
+      where: { routeId: route.id, fromState: "FULL_ON_ROUTE", type: "FULL_RETURN" },
+      _sum: { quantity: true },
+    });
+    expect(onTruck.map((line) => line._sum.quantity)).toEqual([1, 1]);
 
     const order = await prisma.order.findFirstOrThrow({
       where: { location: { customerId: customer.id } },
