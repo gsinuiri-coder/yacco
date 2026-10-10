@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { jest } from "@jest/globals";
 import { main } from "../../src/cli/seed-test-data.js";
 import { TestDataSeeder } from "../../src/cli/test-data-seeder.js";
@@ -6,6 +9,8 @@ import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 
 let ctx: TestAppContext;
+// Nunca el archivo real de .local/: un test no pisa las contraseñas de quien lo corre.
+const credentialsDir = mkdtempSync(path.join(tmpdir(), "demo-prueba-"));
 let prisma: PrismaService;
 
 beforeAll(async () => {
@@ -14,6 +19,7 @@ beforeAll(async () => {
 }, 180000);
 
 afterAll(async () => {
+  rmSync(credentialsDir, { recursive: true, force: true });
   await stopTestApp(ctx);
 });
 
@@ -69,15 +75,29 @@ async function snapshot() {
 }
 
 describe("pnpm demo:prueba — datos de prueba en local (ítem K)", () => {
-  test("carga el día completo de PRUEBA Planta por los servicios", async () => {
-    const report = await new TestDataSeeder(ctx.app, "admin").run();
+  test("carga el día completo de PRUEBA Planta; las contraseñas van a un archivo, no a la consola", async () => {
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const credentialsPath = path.join(credentialsDir, "credenciales-prueba.txt");
+    let printed: string;
+    try {
+      await main(credentialsPath);
+      printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+    } finally {
+      log.mockRestore();
+    }
 
-    expect(report.createdUsers.map((user) => user.name)).toEqual([
-      "PRUEBA Chofer 1",
-      "PRUEBA Chofer 2",
-      "PRUEBA Oficina",
+    const rows = readFileSync(credentialsPath, "utf8").trim().split("\n").slice(1);
+    const credentials = rows.map((row) => row.split("\t"));
+    expect(credentials.map(([name, username]) => [name, username])).toEqual([
+      ["PRUEBA Chofer 1", "prueba.chofer1"],
+      ["PRUEBA Chofer 2", "prueba.chofer2"],
+      ["PRUEBA Oficina", "prueba.oficina"],
     ]);
-    expect(report.createdUsers.every((user) => user.password.length >= 12)).toBe(true);
+    for (const [, , password] of credentials) {
+      expect(password?.length).toBeGreaterThanOrEqual(12);
+      expect(printed).not.toContain(password);
+    }
+    expect(printed).toContain(`Las contraseñas de los usuarios nuevos están en ${credentialsPath}`);
 
     const zones = await prisma.zone.findMany({ orderBy: { name: "asc" } });
     expect(zones.map((zone) => [zone.name, zone.deliveryDays])).toEqual([
@@ -184,12 +204,13 @@ describe("pnpm demo:prueba — datos de prueba en local (ítem K)", () => {
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const previousExitCode = process.exitCode;
     try {
-      await main();
+      await main(path.join(credentialsDir, "segunda-corrida.txt"));
 
       const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
       expect(printed).toContain("Datos de prueba en la base local:");
       expect(printed).toContain("Liquidación: ya estaba.");
-      expect(printed).not.toContain("Contraseñas de los usuarios nuevos");
+      expect(printed).not.toContain("Las contraseñas de los usuarios nuevos");
+      expect(existsSync(path.join(credentialsDir, "segunda-corrida.txt"))).toBe(false);
       expect(process.exitCode).toBe(previousExitCode);
     } finally {
       log.mockRestore();

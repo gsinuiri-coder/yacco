@@ -1,23 +1,37 @@
 import "reflect-metadata";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
 import { isEntryPointMatch } from "./load-roster.js";
+import type { TestDataReport } from "./test-data-seeder.js";
 import { assertLocalDatabaseUrl } from "./test-data-plan.js";
+
+/**
+ * Donde quedan las contraseñas de los usuarios PRUEBA: `.local/` en la raíz
+ * del repo, ignorada por git. Desde `src/cli` o `dist/cli` de apps/api, la
+ * raíz está cuatro niveles arriba.
+ */
+export const DEFAULT_CREDENTIALS_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../..",
+  ".local/credenciales-prueba.txt",
+);
 
 /**
  * `pnpm demo:prueba` (ítem K de docs/plan-final.md): carga los datos de
  * prueba en la base LOCAL de Docker por los servicios de la app, en proceso,
  * igual que load-roster.ts. Idempotente: ver TestDataSeeder.
  *
- * Imprime las contraseñas de los usuarios que crea. Puede hacerlo porque
- * antes de abrir una sola conexión rechaza cualquier base que no esté en
- * esta máquina: nunca corre contra Neon ni producción.
+ * Las contraseñas de los usuarios que crea van a un archivo, nunca a la
+ * consola: así no quedan en el historial de la terminal ni en los registros
+ * de un agente. Y antes de abrir una sola conexión rechaza cualquier base que
+ * no esté en esta máquina: nunca corre contra Neon ni producción.
  *
  * Nunca rechaza: reporta y deja `process.exitCode`, así un test de
  * integración puede llamar a `main()` y mirar la salida.
  */
-export async function main(): Promise<void> {
+export async function main(credentialsPath = DEFAULT_CREDENTIALS_PATH): Promise<void> {
   try {
     // El mismo .env que lee ConfigModule al arrancar la app, cargado acá para
     // que la barrera mire la base de verdad. No pisa lo que ya venga del
@@ -53,10 +67,8 @@ export async function main(): Promise<void> {
     console.log("Datos de prueba en la base local:");
     for (const line of report.lines) console.log(`  ${line}`);
     if (report.createdUsers.length > 0) {
-      console.log("\nContraseñas de los usuarios nuevos (solo se muestran esta vez):");
-      for (const user of report.createdUsers) {
-        console.log(`  ${user.name} — usuario ${user.username} — contraseña ${user.password}`);
-      }
+      writeCredentials(credentialsPath, report.createdUsers);
+      console.log(`\nLas contraseñas de los usuarios nuevos están en ${credentialsPath}`);
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -64,6 +76,17 @@ export async function main(): Promise<void> {
   } finally {
     await app.close();
   }
+}
+
+/**
+ * Reescribe el archivo: los usuarios solo se crean en la primera corrida, y
+ * después sus contraseñas no cambian. Permisos de solo su dueño donde el
+ * sistema los respeta.
+ */
+function writeCredentials(path: string, users: TestDataReport["createdUsers"]): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const lines = users.map((user) => `${user.name}\t${user.username}\t${user.password}`);
+  writeFileSync(path, `nombre\tusuario\tcontraseña\n${lines.join("\n")}\n`, { mode: 0o600 });
 }
 
 function loadDotEnv(): void {

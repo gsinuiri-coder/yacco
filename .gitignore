@@ -61,3 +61,6 @@ playwright-report/
 
 # Estado local de `pnpm relay` (lock, stop, log.jsonl)
 .relay/
+
+# Archivos locales que escriben los scripts (contraseñas de pnpm demo:prueba).
+.local/
