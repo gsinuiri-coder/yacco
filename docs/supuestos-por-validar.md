@@ -123,6 +123,55 @@ cuándo, y tres líneas:
   MinIO local) y una tabla de evidencias por parada: migración expand y una
   pantalla.
 
+### Fase 2: un local guarda contacto y coordenadas
+
+- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 1 de «Fase 2 en local» en [`plan-final.md`](./plan-final.md).
+- **Asumimos:** que cada local necesita el nombre de quien recibe y su ubicación; que la oficina la carga pegando un enlace de Google Maps o «lat, lng», y que el chofer llega con «Cómo llegar». El padrón actual queda sin coordenadas hasta que se carguen.
+- **Construido encima:** nada todavía. Se construye `contact_name`, `latitude` y `longitude` en `customer_locations`, y «locales sin ubicación» en «Puesta en marcha».
+- **Si resulta que no:** bajo. Son columnas nullable y botones; se dejan de mostrar sin tocar datos.
+
+### Fase 2: el código de lote se genera solo si queda vacío
+
+- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 2 de «Fase 2 en local».
+- **Asumimos:** que la planta no tiene una numeración de lotes propia y le sirve `L-DDMMYYYY` (día de Lima), con `-2`, `-3`… para el segundo lote del día. El campo viene precargado y se puede cambiar.
+- **Construido encima:** nada todavía. Se construye en el registro de lotes.
+- **Si resulta que no:** bajo. Cambiar el formato es tocar el generador; los códigos ya guardados no cambian.
+
+### Fase 2: a una ruta en curso se le puede agregar carga
+
+- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 3 de «Fase 2 en local».
+- **Asumimos:** que el camión vuelve a la planta a recargar en medio del reparto, y que la oficina (ADMIN o SELLER) lo anota en la misma ruta, con salida de lotes FIFO como al planificar. Quitar carga sigue siendo solo antes de salir.
+- **Construido encima:** nada todavía. Se construye en la carga de rutas, sin cambiar la liquidación.
+- **Si resulta que no:** bajo. Se vuelve a exigir `PLANNED` para cargar; lo ya cargado queda en el libro.
+
+### Fase 2: el orden por cercanía se propone, no se impone
+
+- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 4 de «Fase 2 en local».
+- **Asumimos:** que a la oficina le sirve un orden sugerido por vecino más cercano desde la planta (paradas sin coordenadas al final), que confirma o no, y un recorrido para abrir en Google Maps, partido en tramos si es largo.
+- **Construido encima:** nada todavía. Se construye con `PLANT_LATITUDE`/`PLANT_LONGITUDE` en configuración y dos botones en la ruta.
+- **Si resulta que no:** bajo. Es una propuesta que nadie está obligado a aceptar; se quitan los botones.
+
+### Fase 2: la parada guarda dónde se marcó, una sola vez
+
+- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 5 de «Fase 2 en local».
+- **Asumimos:** que la oficina quiere ver dónde marcó el chofer una entrega, y que los choferes aceptan que se pida la ubicación al marcar. Si la niega o no hay señal, se guarda igual. No hay seguimiento continuo.
+- **Construido encima:** nada todavía. Se construye `marked_latitude`, `marked_longitude` y `marked_accuracy_m` en `route_stops`, y «Ver dónde se marcó».
+- **Si resulta que no:** bajo. Se deja de pedir la ubicación; las columnas quedan en NULL.
+
+### Fase 2: los accesorios tienen stock propio y no mueven envases
+
+- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 6 de «Fase 2 en local».
+- **Asumimos:** que la planta vende accesorios (sin envase) que se cobran como cualquier producto, y que necesita saber cuántos tiene: ingreso, venta, anulación y conteo, en un libro propio. Vender sin stock avisa y no bloquea.
+- **Construido encima:** nada todavía. Se construye `ACCESSORY` en `product_type`, `products.container_type_id` nullable solo para accesorios, el libro `accessory_movements` con su saldo y la pantalla «Accesorios».
+- **Si resulta que no:** medio. Si el dueño no lleva stock de accesorios, se deja de mostrar el saldo; si no los vende, se dejan de crear. El libro y el enum quedan.
+
+### Fase 2: la maquila es un libro aparte, que nunca toca los envases propios
+
+- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 7 de «Fase 2 en local».
+- **Asumimos:** que la planta llena envases de otra marca que trae el cliente, cobra por unidad llenada a un precio pactado por cliente, y cobra al devolverlos llenos. Esos envases no son de la planta: no entran a `container_movements` ni a la deuda de envases. La deuda en S/ del cliente es la de siempre.
+- **Construido encima:** nada todavía. Se construye el libro `maquila_container_movements` (recibido, llenado, devuelto, y sus anulaciones) con saldos «en la planta sin llenar» y «llenos por devolver», el precio por cliente con historial, el cargo al devolver y la pantalla «Maquila».
+- **Si resulta que no:** caro. Si el cobro nace en otro momento (al recibir, o al llenar) cambia de dónde sale la venta; si los envases sí deben contarse como propios, el diseño entero cambia. Conviene preguntárselo antes del UAT.
+
 ## Validados
 
 ### 1. El buscador del Panel muestra clientes desactivados — 25/09/2026

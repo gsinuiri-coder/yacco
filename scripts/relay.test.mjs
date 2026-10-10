@@ -2,7 +2,7 @@
  * Tests de `pnpm relay` con agentes falsos: un script de node que, en cada
  * corrida, hace lo que le toca de una secuencia ("limit,finish" = la primera
  * vez imprime un mensaje de límite, la segunda marca RELEVO.md como
- * done). Nada de esto lanza codex, gemini ni claude, y la espera entre
+ * done). Nada de esto lanza codex, antigravity ni claude, y la espera entre
  * vueltas usa un reloj inyectado: ningún test duerme de verdad.
  */
 import assert from "node:assert/strict";
@@ -285,14 +285,14 @@ describe("runRelay", () => {
 
   test("una CLI que no está instalada se salta y se dice", async () => {
     const out = captureOut();
-    const missing = { ...agent("gemini", "ok"), command: "gemini" };
+    const missing = { ...agent("antigravity", "ok"), command: "agy" };
     const code = await relay([missing, agent("b", "finish")], {
       out,
-      resolve: (command) => (command === "gemini" ? null : resolveDirect(command)),
+      resolve: (command) => (command === "agy" ? null : resolveDirect(command)),
     });
     assert.equal(code, EXIT.done);
     assert.deepEqual(calls(), ["b"]);
-    assert.match(out.text(), /Salto gemini: no está instalada/);
+    assert.match(out.text(), /Salto antigravity: no está instalada \(no encuentro "agy"\)/);
   });
 
   test("un agente sin banderas verificadas (args null) se salta", async () => {
@@ -453,11 +453,11 @@ describe("runRelay", () => {
 describe("relay.config.json", () => {
   const configPath = join(REPO_ROOT, "relay.config.json");
 
-  test("el orden es codex, gemini, claude, con los defaults pedidos", () => {
+  test("el orden es codex, antigravity, claude, con los defaults pedidos", () => {
     const parsed = readRelayConfig(configPath);
     assert.deepEqual(
       parsed.agents.map((a) => a.name),
-      ["codex", "gemini", "claude"],
+      ["codex", "antigravity", "claude"],
     );
     assert.equal(parsed.waitMinutes, DEFAULT_WAIT_MINUTES);
     assert.equal(parsed.maxRuns, DEFAULT_MAX_RUNS);
@@ -499,13 +499,36 @@ describe("relay.config.json", () => {
     }
   });
 
+  test("antigravity no corre sin --sandbox, y mientras no ande queda en null con el motivo", () => {
+    const entry = readRelayConfig(configPath).agents.find((a) => a.name === "antigravity");
+    assert.equal(entry.command, "agy");
+    // Sin sandbox, agy solo avanza con allow-rules globales o con el bypass:
+    // ninguna de las dos reemplaza al sandbox.
+    if (entry.args !== null) {
+      assert.ok(entry.args.includes("--sandbox"), "antigravity sin --sandbox");
+      return;
+    }
+    assert.match(entry.verifiedWith, /agy \d+\.\d+\.\d+/);
+    assert.match(entry.verifiedWith, /--sandbox` NO anda/);
+  });
+
   test("los patrones de límite reconocen los mensajes conocidos", () => {
     const { agents } = readRelayConfig(configPath);
     const byName = Object.fromEntries(agents.map((a) => [a.name, a.limitPatterns]));
     assert.notEqual(matchLimit(["You've hit your usage limit."], byName.codex), null);
     assert.notEqual(matchLimit(["Claude AI usage limit reached|1760040000"], byName.claude), null);
     assert.notEqual(matchLimit(["You've hit your limit · resets 3pm"], byName.claude), null);
-    assert.notEqual(matchLimit(["[API Error: RESOURCE_EXHAUSTED]"], byName.gemini), null);
+    // Mensajes tal como están en el binario de agy 1.3.3.
+    for (const line of [
+      "You have exhausted your quota on this model.",
+      'AGY_ERROR: {"short_error":"individual quota reached"}',
+      "Your AI credits balance is too low to continue.",
+      "stop_reason: STOP_REASON_QUOTA_EXHAUSTED",
+      "[API Error: RESOURCE_EXHAUSTED]",
+    ]) {
+      assert.notEqual(matchLimit([line], byName.antigravity), null, line);
+    }
+    assert.equal(matchLimit(["Antigravity: 3 archivos editados"], byName.antigravity), null);
     assert.equal(matchLimit(["agregar rate limiting al login"], byName.claude), null);
   });
 
