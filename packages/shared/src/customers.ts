@@ -44,13 +44,13 @@ export interface CreateCustomerBody {
   addressReference: string;
   zoneId?: string;
   creditLimit?: string;
-  contactName?: string | null;
-  latitude?: string | null;
-  longitude?: string | null;
 }
 
 /** UpdateCustomerDto: every field optional, plus deactivation. */
 export interface UpdateCustomerBody extends Partial<CreateCustomerBody> {
+  contactName?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
   active?: boolean;
 }
 
