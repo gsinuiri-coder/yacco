@@ -105,3 +105,37 @@ export class ProductionReportDto {
   @ApiProperty({ example: 18 })
   total!: number;
 }
+
+/**
+ * Lo que la tarjeta «Puesta en marcha» del Panel necesita para saber qué le
+ * falta a la planta antes de operar con datos reales. Son hechos, no textos:
+ * el web decide qué ítem mostrar y con qué palabras.
+ */
+export class SetupChecklistDto {
+  @ApiProperty({ type: [ReportNamedDto], description: "Zonas activas sin días de reparto" })
+  zonesWithoutDeliveryDays!: ReportNamedDto[];
+
+  @ApiProperty({ example: 2, description: "Usuarios activos con rol Chofer" })
+  activeDrivers!: number;
+
+  @ApiProperty({ example: 1, description: "Usuarios activos con rol Vendedor" })
+  activeSellers!: number;
+
+  @ApiProperty({
+    example: 120,
+    description: "Ubicaciones activas de clientes activos que nunca se contaron",
+  })
+  uncountedLocations!: number;
+
+  @ApiProperty({ example: 0, description: "Usuarios activos cuyo nombre empieza con PRUEBA" })
+  activeTestUsers!: number;
+
+  @ApiProperty({ example: 0, description: "Clientes activos cuyo nombre empieza con PRUEBA" })
+  activeTestCustomers!: number;
+
+  @ApiProperty({
+    type: [ReportNamedDto],
+    description: "Productos activos cuyo precio de lista nunca cambió desde la carga",
+  })
+  productsWithInitialListPrice!: ReportNamedDto[];
+}
