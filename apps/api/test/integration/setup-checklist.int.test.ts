@@ -143,6 +143,23 @@ describe("GET /reports/setup-checklist — Puesta en marcha", () => {
     expect((await checklist()).uncountedLocations).toBe(start + 1);
   });
 
+  test("cuenta locales activos sin coordenadas de clientes activos", async () => {
+    const start = (await checklist()).locationsWithoutCoordinates;
+    const located = await createCustomer("Bodega Ubicada");
+    await createCustomer("Bodega Sin Ubicación");
+    const inactive = await createCustomer("Bodega Inactiva Sin Ubicación");
+
+    await send(
+      "patch",
+      `/customers/${located.id}`,
+      { latitude: "-12.046374", longitude: "-77.042793" },
+      200,
+    );
+    await send("patch", `/customers/${inactive.id}`, { active: false }, 200);
+
+    expect((await checklist()).locationsWithoutCoordinates).toBe(start + 1);
+  });
+
   test("usuarios y clientes PRUEBA activos aparecen y se van al darlos de baja", async () => {
     const start = await checklist();
     const testUser = await createUser("PRUEBA Chofer", "DRIVER");

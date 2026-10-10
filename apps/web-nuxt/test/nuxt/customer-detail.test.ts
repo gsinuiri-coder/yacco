@@ -79,6 +79,11 @@ interface Setup {
   debtBalance?: string;
   addressReference?: string;
   balances?: ContainerBalanceRow[];
+  location?: {
+    contactName: string | null;
+    latitude: string | null;
+    longitude: string | null;
+  };
 }
 
 /** Lo que la ficha le pidió a /container-balances, en orden. */
@@ -89,8 +94,8 @@ function stubCustomerPage(setup: Setup = {}) {
   cleanups.push(signIn(setup.roles ?? ["ADMIN"]));
   endpoint(BASE, {
     method: "GET",
-    handler: () =>
-      buildCustomer({
+    handler: () => ({
+      ...buildCustomer({
         id: ID,
         debtBalance: setup.debtBalance ?? "98.00",
         creditLimit: "150.00",
@@ -98,6 +103,8 @@ function stubCustomerPage(setup: Setup = {}) {
           ? {}
           : { addressReference: setup.addressReference }),
       }),
+      ...(setup.location ?? {}),
+    }),
   });
   endpoint("/api/v1/payment-methods", () => setup.methods ?? [CASH, YAPE]);
   endpoint("/api/v1/products", () => [BIDON]);
@@ -170,6 +177,64 @@ describe("Ficha del cliente", () => {
       expect(link.getAttribute("rel")).toBe("noopener noreferrer");
       expect(within(details).getByText(/Portón azul <img src=x onerror=alert\(1\)>/)).toBeTruthy();
       expect(details.querySelector("img")).toBeNull();
+    });
+
+    it("guarda quién recibe y extrae las coordenadas de un enlace de Google Maps", async () => {
+      stubCustomerPage({ location: { contactName: null, latitude: null, longitude: null } });
+      const bodies: Array<Record<string, unknown>> = [];
+      endpoint(BASE, {
+        method: "PATCH",
+        handler: async (event: H3Event) => {
+          const body = (await readBody(event)) as Record<string, unknown>;
+          bodies.push(body);
+          return { ...buildCustomer({ id: ID }), ...body };
+        },
+      });
+      const u = user();
+      await renderCustomerPage();
+
+      await u.type(screen.getByLabelText("Persona que recibe (opcional)"), "Rosa Quispe");
+      await u.type(
+        screen.getByLabelText("Enlace de Google Maps o coordenadas"),
+        "https://www.google.com/maps/place/Lima/@-12.046374,-77.042793,17z",
+      );
+      await u.click(screen.getByRole("button", { name: "Guardar contacto y ubicación" }));
+
+      await waitFor(() =>
+        expect(bodies).toEqual([
+          {
+            contactName: "Rosa Quispe",
+            latitude: "-12.046374",
+            longitude: "-77.042793",
+          },
+        ]),
+      );
+      expect(await screen.findByText("Contacto y ubicación guardados.")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Abrir en Maps" }).getAttribute("href")).toBe(
+        "https://www.google.com/maps/search/?api=1&query=-12.046374%2C-77.042793",
+      );
+    });
+
+    it("no envía un texto sin coordenadas y explica cómo corregirlo", async () => {
+      stubCustomerPage({ location: { contactName: null, latitude: null, longitude: null } });
+      const bodies: unknown[] = [];
+      endpoint(BASE, {
+        method: "PATCH",
+        handler: async (event: H3Event) => {
+          bodies.push(await readBody(event));
+          return buildCustomer({ id: ID });
+        },
+      });
+      const u = user();
+      await renderCustomerPage();
+
+      await u.type(screen.getByLabelText("Enlace de Google Maps o coordenadas"), "Plaza Mayor");
+      await u.click(screen.getByRole("button", { name: "Guardar contacto y ubicación" }));
+
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "Pega un enlace de Google Maps con coordenadas o escribe latitud, longitud",
+      );
+      expect(bodies).toHaveLength(0);
     });
 
     it("un saldo negativo es plata a favor del cliente: «A favor S/ x.xx», no «-S/ x.xx»", async () => {

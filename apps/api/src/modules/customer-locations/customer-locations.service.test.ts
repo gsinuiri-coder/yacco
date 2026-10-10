@@ -13,6 +13,9 @@ function buildLocation(overrides: Record<string, unknown> = {}) {
     address: "Av. Los Alamos 452",
     addressReference: "Portón azul",
     phone: "987654321",
+    contactName: null,
+    latitude: null,
+    longitude: null,
     isPrimary: true,
     active: true,
     ...overrides,
@@ -57,6 +60,23 @@ describe("CustomerLocationsService", () => {
 
     expect(prisma.customerLocation.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ select: expect.objectContaining({ externalCode: true }) }),
+    );
+  });
+
+  it("selects the contact and coordinates needed by the customer record and route", async () => {
+    prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
+    prisma.customerLocation.findMany.mockResolvedValue([]);
+
+    await service.findAll(CUSTOMER_ID, {});
+
+    expect(prisma.customerLocation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          contactName: true,
+          latitude: true,
+          longitude: true,
+        }),
+      }),
     );
   });
 

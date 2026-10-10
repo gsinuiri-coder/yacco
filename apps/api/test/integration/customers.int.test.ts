@@ -367,6 +367,65 @@ describe("GET /api/v1/customers/:id", () => {
 });
 
 describe("PATCH /api/v1/customers/:id", () => {
+  test("guarda contacto y coordenadas en el local principal y permite limpiarlos", async () => {
+    const created = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validCustomer({ name: "Con Ubicación", phone: "922000010" }))
+      .expect(201);
+
+    const patched = await request(server())
+      .patch(`/api/v1/customers/${created.body.id}`)
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        contactName: "Rosa Quispe",
+        latitude: "-12.046374",
+        longitude: "-77.042793",
+      })
+      .expect(200);
+    expect(patched.body).toMatchObject({
+      contactName: "Rosa Quispe",
+      latitude: "-12.046374",
+      longitude: "-77.042793",
+    });
+
+    const locations = await request(server())
+      .get(`/api/v1/customers/${created.body.id}/locations`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(locations.body[0]).toMatchObject({
+      contactName: "Rosa Quispe",
+      latitude: "-12.046374",
+      longitude: "-77.042793",
+    });
+
+    const cleared = await request(server())
+      .patch(`/api/v1/customers/${created.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ contactName: null, latitude: null, longitude: null })
+      .expect(200);
+    expect(cleared.body).toMatchObject({ contactName: null, latitude: null, longitude: null });
+  });
+
+  test.each([
+    ["latitude", "90.000001", "922000011"],
+    ["latitude", "-90.000001", "922000012"],
+    ["longitude", "180.000001", "922000013"],
+    ["longitude", "-180.000001", "922000014"],
+  ])("rechaza %s fuera de rango", async (field, value, phone) => {
+    const created = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(validCustomer({ name: `Rango ${field} ${value}`, phone }))
+      .expect(201);
+
+    await request(server())
+      .patch(`/api/v1/customers/${created.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ [field]: value })
+      .expect(400);
+  });
+
   test("deactivating keeps the row and leaves debtBalance untouched", async () => {
     const created = await request(server())
       .post("/api/v1/customers")

@@ -82,9 +82,29 @@ describe("GET /api/v1/customers/:customerId/locations", () => {
       address: "Av. Los Alamos 452",
       addressReference: "Portón azul",
       phone: "987654321",
+      contactName: null,
+      latitude: null,
+      longitude: null,
       isPrimary: true,
       active: true,
     });
+  });
+
+  test("la base rechaza coordenadas fuera del rango aunque se saltee la API", async () => {
+    const prisma = ctx.app.get(PrismaService);
+
+    await expect(
+      prisma.$executeRawUnsafe(
+        'UPDATE "customer_locations" SET "latitude" = 90.000001 WHERE "id" = $1::uuid',
+        primaryLocationId,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      prisma.$executeRawUnsafe(
+        'UPDATE "customer_locations" SET "longitude" = -180.000001 WHERE "id" = $1::uuid',
+        primaryLocationId,
+      ),
+    ).rejects.toThrow();
   });
 
   test("una segunda ubicación del mismo cliente también aparece, ordenada tras la principal", async () => {
