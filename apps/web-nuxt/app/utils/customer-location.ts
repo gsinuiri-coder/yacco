@@ -38,7 +38,7 @@ export function parseLocationCoordinates(input: string): LocationCoordinates | n
     // El texto sin codificación sigue siendo una entrada válida para buscar.
   }
 
-  for (const pattern of [COORDINATE_PAIR, MAPS_DATA_PAIR]) {
+  for (const pattern of [MAPS_DATA_PAIR, COORDINATE_PAIR]) {
     pattern.lastIndex = 0;
     for (const match of decoded.matchAll(pattern)) {
       const coordinates = coordinatesIfValid(match[1]!, match[2]!);
@@ -46,6 +46,15 @@ export function parseLocationCoordinates(input: string): LocationCoordinates | n
     }
   }
   return null;
+}
+
+export function isGoogleMapsShortUrl(input: string): boolean {
+  try {
+    const url = new URL(input.trim());
+    return url.protocol === "https:" && url.hostname === "maps.app.goo.gl";
+  } catch {
+    return false;
+  }
 }
 
 function coordinateQuery(latitude: string, longitude: string): string {

@@ -383,7 +383,9 @@ export class CustomersService {
       ...(dto.address !== undefined ? { address: dto.address } : {}),
       ...(dto.addressReference !== undefined ? { addressReference: dto.addressReference } : {}),
       ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
-      ...(dto.contactName !== undefined ? { contactName: dto.contactName } : {}),
+      ...(dto.contactName !== undefined
+        ? { contactName: dto.contactName === null ? null : dto.contactName.trim() || null }
+        : {}),
       ...(dto.latitude !== undefined
         ? { latitude: dto.latitude === null ? null : new Prisma.Decimal(dto.latitude) }
         : {}),

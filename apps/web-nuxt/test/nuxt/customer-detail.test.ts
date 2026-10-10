@@ -222,12 +222,14 @@ describe("Ficha del cliente", () => {
       const u = user();
       await renderCustomerPage();
 
-      await u.type(screen.getByLabelText("Persona que recibe (opcional)"), "Rosa Quispe");
+      await u.type(await screen.findByLabelText("Persona que recibe (opcional)"), "Rosa Quispe");
       await u.type(
-        screen.getByLabelText("Enlace de Google Maps o coordenadas"),
+        await screen.findByLabelText("Enlace de Google Maps o coordenadas"),
         "https://www.google.com/maps/place/Lima/@-12.046374,-77.042793,17z",
       );
-      await u.click(screen.getByRole("button", { name: "Guardar contacto y ubicación" }));
+      await u.click(
+        screen.getByRole("button", { name: "Guardar contacto y ubicación de Principal" }),
+      );
 
       await waitFor(() =>
         expect(bodies).toEqual([
@@ -350,8 +352,13 @@ describe("Ficha del cliente", () => {
       const u = user();
       await renderCustomerPage();
 
-      await u.type(screen.getByLabelText("Enlace de Google Maps o coordenadas"), "Plaza Mayor");
-      await u.click(screen.getByRole("button", { name: "Guardar contacto y ubicación" }));
+      await u.type(
+        await screen.findByLabelText("Enlace de Google Maps o coordenadas"),
+        "Plaza Mayor",
+      );
+      await u.click(
+        screen.getByRole("button", { name: "Guardar contacto y ubicación de Principal" }),
+      );
 
       expect((await screen.findByRole("alert")).textContent).toContain(
         "Pega un enlace de Google Maps con coordenadas o escribe latitud, longitud",

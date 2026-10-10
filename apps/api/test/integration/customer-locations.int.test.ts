@@ -272,6 +272,18 @@ describe("PATCH /api/v1/customers/:customerId/locations/:locationId", () => {
   });
 });
 
+describe("POST /api/v1/customers/:customerId/locations/google-maps-link-resolutions", () => {
+  test("rechaza un host ajeno sin intentar resolverlo", async () => {
+    const response = await request(server())
+      .post(`/api/v1/customers/${customerId}/locations/google-maps-link-resolutions`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ url: "https://example.com/private" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain("Google Maps");
+  });
+});
+
 describe("role guard", () => {
   test("DRIVER is refused on the customer-locations route", async () => {
     const response = await request(server())

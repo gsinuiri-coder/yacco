@@ -38,6 +38,16 @@ export interface CustomerLocation {
   active: boolean;
 }
 
+export interface UpdateCustomerLocationBody {
+  contactName?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
+}
+
+export interface GoogleMapsLinkResolution {
+  url: string;
+}
+
 interface Named {
   id: string;
   name: string;
