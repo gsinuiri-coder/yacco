@@ -5,6 +5,30 @@
   "maxRuns": 50,
   "agents": [
     {
+      "name": "claude",
+      "command": "claude",
+      "npmPackage": "@anthropic-ai/claude-code",
+      "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla.",
+      "args": [
+        "-p",
+        "{prompt}",
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--allowedTools",
+        "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git *),Bash(gh pr *),Bash(gh run *),Bash(gh api *)",
+        "--disallowedTools",
+        "Bash(gcloud *),Bash(neonctl *),Bash(vercel *),Bash(gh workflow *),Bash(gh pr merge * --admin*),Bash(git push --force*),Bash(git push -f*),mcp__neon,mcp__plugin_vercel_vercel"
+      ],
+      "limitPatterns": [
+        "usage limit reached",
+        "you'?ve hit your (usage |weekly |session )?limit",
+        "\\d+-hour limit reached",
+        "weekly limit reached"
+      ]
+    },
+    {
       "name": "codex",
       "command": "codex",
       "npmPackage": "@openai/codex",
@@ -38,30 +62,6 @@
         "credits balance is too low",
         "QUOTA_EXHAUSTED",
         "RESOURCE_EXHAUSTED"
-      ]
-    },
-    {
-      "name": "claude",
-      "command": "claude",
-      "npmPackage": "@anthropic-ai/claude-code",
-      "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla.",
-      "args": [
-        "-p",
-        "{prompt}",
-        "--permission-mode",
-        "dontAsk",
-        "--permission-prompts",
-        "none",
-        "--allowedTools",
-        "Read,Edit,Write,Glob,Grep,Bash(pnpm *),Bash(node *),Bash(git *),Bash(gh pr *),Bash(gh run *),Bash(gh api *)",
-        "--disallowedTools",
-        "Bash(gcloud *),Bash(neonctl *),Bash(vercel *),Bash(gh workflow *),Bash(gh pr merge * --admin*),Bash(git push --force*),Bash(git push -f*),mcp__neon,mcp__plugin_vercel_vercel"
-      ],
-      "limitPatterns": [
-        "usage limit reached",
-        "you'?ve hit your (usage |weekly |session )?limit",
-        "\\d+-hour limit reached",
-        "weekly limit reached"
       ]
     }
   ]
