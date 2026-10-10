@@ -2,7 +2,7 @@
 
 `pnpm relay` corre la cola de Yacco con un agente a la vez. Cuando uno se queda
 sin cuota, sigue con el siguiente, en el orden de `relay.config.json` (hoy:
-codex, antigravity, claude). Si todos están sin cuota, espera `waitMinutes` y vuelve
+claude, codex, antigravity). Si todos están sin cuota, espera `waitMinutes` y vuelve
 a empezar por el primero. El traspaso entre agentes es `.relay/RELEVO.md`.
 
 Las reglas que sigue cada agente están en `.agents/rules/unattended-agents.md`.
@@ -33,6 +33,10 @@ puede escaparse. La única garantía es que no haya credencial que usar:
   no llega al agente. Si una CLI de agente se autentica por una variable (por
   ejemplo, `OPENAI_API_KEY`), hay que loguearla por archivo en vez de
   agregarla a la lista.
+- **codex** va segundo hasta que su sandbox pueda escribir `.git`. En
+  `workspace-write`, `.git` es una ruta protegida: ni `--add-dir` ni
+  `writable_roots` la vuelven escribible (verificado con codex-cli 0.162.0,
+  2026-10-10), y sin crear la rama del ítem no puede trabajar.
 - **codex**: `exec --sandbox workspace-write` con red habilitada
   (`-c sandbox_workspace_write.network_access=true`), sin
   `--dangerously-bypass-approvals-and-sandbox`. Escribe solo en el workspace.

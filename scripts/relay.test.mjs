@@ -453,11 +453,11 @@ describe("runRelay", () => {
 describe("relay.config.json", () => {
   const configPath = join(REPO_ROOT, "relay.config.json");
 
-  test("el orden es codex, antigravity, claude, con los defaults pedidos", () => {
+  test("el orden es claude, codex, antigravity, con los defaults pedidos", () => {
     const parsed = readRelayConfig(configPath);
     assert.deepEqual(
       parsed.agents.map((a) => a.name),
-      ["codex", "antigravity", "claude"],
+      ["claude", "codex", "antigravity"],
     );
     assert.equal(parsed.waitMinutes, DEFAULT_WAIT_MINUTES);
     assert.equal(parsed.maxRuns, DEFAULT_MAX_RUNS);
