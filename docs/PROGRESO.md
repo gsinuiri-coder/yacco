@@ -1469,3 +1469,82 @@ local. Detalle y receta para volver en [`infra/README.md`](./infra/README.md).
   deshabilitada, repositorio en `SCANNING_DISABLED`).
 - **Sin tocar**: ramas de Neon (`main` y `demo`), secretos, service accounts,
   WIF, el repositorio de Artifact Registry y el proyecto `yacco-web` de Vercel.
+
+## Cierre final — 2026-10-09
+
+Goal «Terminar Yacco en local»: los ítems K, H, I y J de
+[`plan-final.md`](./plan-final.md), en modo local. Nada se desplegó: el
+deploy final es manual y de Giancarlo (abajo).
+
+### Ítems y PRs
+
+| Ítem | Qué quedó                                                                                                                                                                                                                                                          | PR                    |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| —    | Filas K/H/I/J en `plan-final.md`; `guion-piloto.md` ya no dice que K escribe en producción                                                                                                                                                                         | #285                  |
+| K    | `pnpm demo:prueba`: datos de prueba por los servicios de la app, idempotente, solo contra una base en esta máquina. `docs/carga-datos-reales.md`: qué carga la planta en el deploy final y en qué pantalla                                                         | #287 (reemplaza #286) |
+| H    | Tarjeta «Puesta en marcha» en el Panel (solo ADMIN), de `GET /reports/setup-checklist`, sin esquema nuevo                                                                                                                                                          | #288                  |
+| I    | Revisión con Playwright de 26 pantallas × ADMIN, SELLER y DRIVER con los datos de K. Hallazgos: liquidación de K que dejaba llenos arriba y ruta sin zona (arreglado en #287), tuteo y «parque» (#289), «Mi ruta» de un administrador mostraba rutas ajenas (#290) | #287, #289, #290      |
+| J    | Este cierre y `estado-por-modulo.md` rederivado del código                                                                                                                                                                                                         | este PR               |
+
+Descartados de la revisión (I), con su razón:
+
+- **El saludo del Panel usa el usuario de entrada** («Hola, prueba.oficina»): el
+  nombre no viaja en el token y `/auth/me` no lo devuelve; cambiarlo pide tocar
+  la API y no cambia la operación.
+- **Aviso de hidratación al entrar un chofer por `/`**: solo en la consola del
+  navegador, durante la redirección a «Mi ruta». Cosmético.
+- **`pnpm demo:data` liquida los llenos solo por total**: con dos tipos de
+  envase en el camión, deja llenos arriba de rutas liquidadas en la demo. Solo
+  la demo (mismo criterio que «Los datos de demo no tienen profundidad
+  temporal»); `demo:prueba` ya los manda por tipo.
+- **La base local tiene restos de corridas de e2e** («Chofer A …», «Menú
+  DRIVER …»): no es producto. Se limpia con `prisma migrate reset` en Docker,
+  con confirmación de Giancarlo.
+
+### Decisiones tomadas sin el dueño
+
+- **Contraseñas de `demo:prueba` impresas en la consola.** Lo pide el ítem K;
+  CodeQL lo marcó (`js/clear-text-logging`, alerta 4) y se descartó como
+  «won't fix» con el motivo escrito: el script se niega a conectarse a una base
+  que no esté en esta máquina. Si Giancarlo prefiere otra salida (un archivo
+  ignorado por git, o sin contraseñas), es un cambio chico.
+- **Qué es «de prueba»:** un usuario o cliente cuyo nombre empieza con
+  «PRUEBA», sin distinguir mayúsculas. Sin columna nueva (H pide sin esquema).
+- **«Precio sin cambios desde la carga»:** un producto activo sin ninguna fila
+  en `product_price_changes`. Los precios de `demo:prueba` (8 / 8 / 30 / 28)
+  son los del seed, así que la tarjeta los sigue marcando: es lo correcto,
+  porque no son los precios reales.
+- **Ubicaciones sin contar:** solo las activas de clientes activos; la lista
+  enlazada muestra también las de baja, marcadas, como siempre.
+- **«Mi ruta» de un administrador:** muestra solo las rutas donde él es el
+  chofer. Antes mostraba las de todos.
+
+### Lecciones
+
+- **Gitleaks lee el nombre, no el valor.** Un UUID fijo en una constante
+  `..._IDEMPOTENCY_KEY` es un «generic-api-key». Sin force-push no hay forma de
+  sacarlo del historial de un PR: hubo que cerrar #286 y abrir #287. Nombrar
+  las constantes por lo que son (un identificador de pedido) evita el ciclo.
+- **El total de llenos no alcanza con dos tipos en el camión.** La API lo
+  acepta por compatibilidad y no lo atribuye; solo la pantalla lo manda bien.
+  La revisión con Playwright lo encontró por «Queda arriba» en una ruta
+  liquidada, no los tests: el test de K ahora mira el `FULL_RETURN` por tipo.
+- **En esta máquina el 3100 y el 3101 de `127.0.0.1` los ocupan otros
+  proyectos.** El proxy de Nuxt busca la API en `localhost:3100` y le pega a
+  la de otro proyecto. Para la revisión se levantó la API en otro puerto y
+  Playwright redirigió `/api/v1`; nada del repo cambió.
+
+### Pendientes de Giancarlo
+
+| Pendiente                               | Qué hacer                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deploy final                            | Recrear `yacco-api` según [`docs/infra/README.md`](./infra/README.md) («Recrear `yacco-api` en el deploy final»): antes, una rama de respaldo de Neon (D-006); migraciones fuera de 08:00–20:00 America/Lima; decidir `min-instances` (D-008)                                                                                                                                                                                                           |
+| Carga de los datos reales               | Después del deploy, según [`carga-datos-reales.md`](./carga-datos-reales.md). La tarjeta «Puesta en marcha» dice qué falta                                                                                                                                                                                                                                                                                                                              |
+| Contraseña del admin de producción      | Rotarla desde «Usuarios» y destruir la versión de `yacco-admin-initial-password`                                                                                                                                                                                                                                                                                                                                                                        |
+| Token de Vercel                         | Rotarlo antes del 2026-10-16, con vencimiento de 30–90 días y alcance solo al proyecto                                                                                                                                                                                                                                                                                                                                                                  |
+| A1                                      | Team propio de Vercel para Yacco: el token de CI alcanza a todo el team                                                                                                                                                                                                                                                                                                                                                                                 |
+| App de Render en GitHub                 | Confirmar que la desinstalación terminó                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| GHSA ignorados                          | Revisar los siete de `pnpm.auditConfig.ignoreGhsas` (tabla en «Advisories ignorados en `pnpm audit` sin parche aplicable», [`backlog-tecnico.md`](./backlog-tecnico.md)) cuando haya parche                                                                                                                                                                                                                                                             |
+| Contraseñas de `demo:prueba` impresas   | Confirmar o cambiar la decisión de arriba                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Base local con restos de e2e (opcional) | `prisma migrate reset` en Docker y `pnpm demo:up && pnpm demo:prueba`                                                                                                                                                                                                                                                                                                                                                                                   |
+| Tabla de endpoints de la spec (§4.3)    | Está rotulada «previstos» y difiere del código (rutas de saldos de envases, precios pactados, inventario, ingresos y bajas; `PUT /customers/:id/credit-limit` y `GET /reports/collections` no existen; `POST /routes` y sus cargas admiten SELLER; faltan los endpoints de cuadre, puesta en marcha, historial de precios, conteo de la planta y `/auth/me`). Por la regla «código y spec no coinciden: preguntar», no se tocó: decidir si se actualiza |

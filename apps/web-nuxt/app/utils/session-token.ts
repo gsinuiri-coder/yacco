@@ -4,7 +4,7 @@ import type { SessionUser } from "@yacco/shared";
  * Lee el payload de un JWT SIN verificar la firma. Verificar es trabajo de la
  * API, que valida firma y vencimiento en cada petición: un token alterado en
  * el navegador sólo consigue un 401. Acá sólo sirve para pintar quién está
- * conectado, porque la API no expone `/auth/me`.
+ * conectado sin otra petición: `/auth/me` existe, pero el token ya trae lo mismo.
  */
 export function readSessionUser(token: string): SessionUser | null {
   const segments = token.split(".");
