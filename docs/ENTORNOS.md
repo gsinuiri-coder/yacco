@@ -54,6 +54,10 @@ la demo lo necesita; si alguna vez hace falta, se levanta a mano con
 Docker un escenario con profundidad (clientes, pedidos, rutas, liquidaciones).
 Es «la demo» desde el modo local: lo que antes se ensayaba en la rama `demo`
 de Neon se ensaya en esta base. Nunca se cargan datos de prueba en Neon.
+`pnpm demo:prueba` carga, sobre la misma base, lo que la planta tendría el
+primer día (choferes, oficina, días de reparto, envases y un día completo de
+«PRUEBA Planta»); se puede correr varias veces y se niega a correr contra una
+base que no esté en esta máquina.
 
 La imagen de la API también se prueba acá antes del deploy final: la misma
 imagen que va a Cloud Run, corriendo en Docker contra esta base, y el smoke de

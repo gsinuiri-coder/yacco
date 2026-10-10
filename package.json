@@ -23,6 +23,7 @@
     "db:deploy": "pnpm --filter @yacco/api db:deploy",
     "demo:up": "docker compose up -d --wait postgres && pnpm db:deploy && pnpm db:seed",
     "demo:data": "pnpm --filter @yacco/api demo:data",
+    "demo:prueba": "pnpm --filter @yacco/api demo:prueba",
     "env:check": "node scripts/env-check.mjs",
     "env:local": "node scripts/env-local.mjs",
     "secrets:generate": "node scripts/secrets-generate.mjs",
