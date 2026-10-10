@@ -44,7 +44,7 @@ export async function bootstrap(): Promise<INestApplication> {
     SwaggerModule.setup("api/docs", app, swaggerDocument);
   }
 
-  const port = process.env.PORT ?? 3000;
+  const port = process.env.PORT ?? 3200;
   // Cloud Run injects PORT and only routes to a container bound on 0.0.0.0.
   await app.listen(port, "0.0.0.0");
 

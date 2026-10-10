@@ -2,14 +2,14 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Tests de navegador contra el stack real: la API compilada (`apps/api/dist`)
- * en el 3100, que es donde el proxy de desarrollo de Nuxt la busca
- * (`config/api-proxy.ts`, LOCAL_API_ORIGIN), y `nuxt dev` en el 3000.
+ * en el 3200, que es donde el proxy de desarrollo de Nuxt la busca
+ * (`config/api-proxy.ts`, LOCAL_API_ORIGIN), y `nuxt dev` en el 3201.
  *
  * `nuxt dev` y no un build: el build de producción apunta el proxy a la demo
  * de Cloud Run (D-011), y estos tests escriben datos.
  *
  * Fuera de CI se reutiliza lo que ya esté corriendo (`pnpm dev:api` con
- * PORT=3100 y el dev de Nuxt). En CI el job levanta los dos con la base `e2e`
+ * PORT=3200 y el dev de Nuxt en el 3201). En CI el job levanta los dos con la base `e2e`
  * del Postgres de servicio (.github/workflows/ci.yml).
  */
 const CI = Boolean(process.env.CI);
@@ -28,21 +28,21 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "http://localhost:3201",
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
       command: "node ../api/dist/main.js",
-      url: "http://localhost:3100/health",
-      env: { PORT: "3100" },
+      url: "http://localhost:3200/health",
+      env: { PORT: "3200" },
       reuseExistingServer: !CI,
       timeout: 60_000,
     },
     {
-      command: "pnpm exec nuxt dev --port 3000",
-      url: "http://localhost:3000/login",
+      command: "pnpm exec nuxt dev --port 3201",
+      url: "http://localhost:3201/login",
       reuseExistingServer: !CI,
       timeout: 240_000,
     },

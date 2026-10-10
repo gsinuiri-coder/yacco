@@ -20,8 +20,8 @@ import { REPO_ROOT, loadConfig, readFileOrNull, run } from "./lib.mjs";
 const COMPOSE_SERVICE = "postgres";
 const COMPOSE_INTERNAL_PORT = "5432";
 const DEFAULT_PORT = "5432";
-const API_PORT = "3100";
-const WEB_DEV_ORIGIN = "http://localhost:3000";
+const API_PORT = "3200";
+const WEB_DEV_ORIGIN = "http://localhost:3201";
 
 /**
  * Pregunta primero a Docker, que es la única fuente que ya resolvió el

@@ -52,6 +52,10 @@ describe("proxy de la API por host", () => {
     expect(nuxtConfig.$development?.routeRules?.["/api/**"]).toEqual({
       proxy: `${LOCAL_API_ORIGIN}/api/**`,
     });
+    // Antes del proxy local, la guardia que rechaza la API de otro proyecto.
+    expect(nuxtConfig.$development?.nitro?.devHandlers?.map((handler) => handler.route)).toEqual([
+      "/",
+    ]);
   });
 
   it("los íconos no quedan debajo de /api, que se reenvía entero a Cloud Run", () => {

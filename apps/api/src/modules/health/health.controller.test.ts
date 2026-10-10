@@ -38,7 +38,12 @@ describe("GET /health", () => {
     app = await bootApp({});
 
     const response = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(response.body).toEqual({ status: "ok", commit: null, environment: null });
+    expect(response.body).toEqual({
+      status: "ok",
+      service: "yacco-api",
+      commit: null,
+      environment: null,
+    });
   });
 
   it("answers 200 with the injected commit when DEPLOYED_COMMIT is set", async () => {
@@ -47,6 +52,7 @@ describe("GET /health", () => {
     const response = await request(app.getHttpServer()).get("/health").expect(200);
     expect(response.body).toEqual({
       status: "ok",
+      service: "yacco-api",
       commit: "89deab1aaeda3eb6de53ecdce57e820ff054abf6",
       environment: null,
     });
@@ -56,6 +62,11 @@ describe("GET /health", () => {
     app = await bootApp({ APP_ENV: "demo" });
 
     const response = await request(app.getHttpServer()).get("/health").expect(200);
-    expect(response.body).toEqual({ status: "ok", commit: null, environment: "demo" });
+    expect(response.body).toEqual({
+      status: "ok",
+      service: "yacco-api",
+      commit: null,
+      environment: "demo",
+    });
   });
 });

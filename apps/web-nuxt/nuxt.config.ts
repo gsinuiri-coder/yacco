@@ -1,3 +1,4 @@
+import { eventHandler, setResponseStatus } from "h3";
 import { defineNuxtConfig } from "nuxt/config";
 import {
   DEMO_API_ORIGIN,
@@ -5,6 +6,22 @@ import {
   apiRouteRules,
   vercelProxyRoutes,
 } from "./config/api-proxy";
+import { createLocalApiGuard, foreignApiResponse } from "./config/local-api-guard";
+
+/**
+ * Solo en `nuxt dev`: antes del proxy a LOCAL_API_ORIGIN, comprobar que ahí
+ * conteste la API de Yacco y no la de otro proyecto (config/local-api-guard.ts).
+ * Un devHandler corre antes que la app de Nitro y sus routeRules; si no
+ * responde nada, el pedido sigue al proxy de siempre.
+ */
+const localApiGuard = createLocalApiGuard(LOCAL_API_ORIGIN, (url) => fetch(url));
+const localApiGuardHandler = eventHandler(async (event) => {
+  const response = await foreignApiResponse(event.path, localApiGuard);
+  if (response === null) return;
+  console.error(`[yacco] ${response.message}`);
+  setResponseStatus(event, response.statusCode);
+  return response;
+});
 
 export default defineNuxtConfig({
   compatibilityDate: "2026-09-17",
@@ -49,6 +66,7 @@ export default defineNuxtConfig({
 
   $development: {
     routeRules: apiRouteRules(LOCAL_API_ORIGIN),
+    nitro: { devHandlers: [{ route: "/", handler: localApiGuardHandler }] },
   },
 
   nitro: {

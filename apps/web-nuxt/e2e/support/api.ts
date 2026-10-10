@@ -9,7 +9,7 @@ import { ADMIN } from "./session";
  * prueban la pantalla, no cómo se siembra. Cada corrida usa nombres propios
  * (un sufijo único), así una base local ya usada no choca con la anterior.
  */
-const API = "http://localhost:3100/api/v1/";
+const API = "http://localhost:3200/api/v1/";
 
 export async function adminApi(): Promise<APIRequestContext> {
   const anonymous = await request.newContext({ baseURL: API });
