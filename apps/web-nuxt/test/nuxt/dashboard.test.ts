@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { getQuery, setResponseStatus } from "h3";
 import type { H3Event } from "h3";
-import type { Customer } from "@yacco/shared";
+import type { Customer, SetupChecklist } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
 import { buildCustomer, pageOf } from "../support/fixtures";
@@ -172,5 +172,83 @@ describe("Panel", () => {
 
     expect(await screen.findByRole("option", { name: /Panadería Aurora/ })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("Panel — Puesta en marcha", () => {
+  const PENDING: SetupChecklist = {
+    zonesWithoutDeliveryDays: [{ id: "z1", name: "Surco" }],
+    activeDrivers: 0,
+    activeSellers: 1,
+    uncountedLocations: 4,
+    activeTestUsers: 0,
+    activeTestCustomers: 0,
+    productsWithInitialListPrice: [],
+  };
+  const READY: SetupChecklist = {
+    ...PENDING,
+    zonesWithoutDeliveryDays: [],
+    activeDrivers: 1,
+    uncountedLocations: 0,
+  };
+
+  function stubChecklist(checklist: SetupChecklist) {
+    let calls = 0;
+    cleanups.push(
+      registerEndpoint("/api/v1/reports/setup-checklist", () => {
+        calls += 1;
+        return checklist;
+      }),
+    );
+    return () => calls;
+  }
+
+  beforeEach(async () => {
+    resetSession();
+    await navigateTo("/login");
+  });
+
+  afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+
+  it("el administrador ve cada pendiente con el enlace a su pantalla", async () => {
+    cleanups.push(signIn(["ADMIN"]));
+    stubChecklist(PENDING);
+
+    await renderSuspended(App, { route: "/" });
+
+    const card = await screen.findByRole("region", { name: "Puesta en marcha" });
+    expect(within(card).getByText("No hay ningún chofer activo.")).toBeTruthy();
+    expect(within(card).getByText("La zona Surco no tiene días de reparto.")).toBeTruthy();
+    expect(
+      within(card).getByText("Falta contar los bidones de 4 ubicaciones de clientes."),
+    ).toBeTruthy();
+    expect(
+      within(card).getByRole("link", { name: "Envases en poder de clientes" }).getAttribute("href"),
+    ).toBe("/container-counts?uncountedOnly=true");
+    expect(within(card).getByRole("link", { name: "Zonas" }).getAttribute("href")).toBe("/zones");
+  });
+
+  it("sin pendientes la tarjeta no está", async () => {
+    cleanups.push(signIn(["ADMIN"]));
+    const calls = stubChecklist(READY);
+
+    await renderSuspended(App, { route: "/" });
+    await screen.findByLabelText("Buscar cliente");
+
+    await waitFor(() => expect(calls()).toBe(1));
+    expect(screen.queryByRole("region", { name: "Puesta en marcha" })).toBeNull();
+  });
+
+  it("quien no es administrador no la ve ni la pide", async () => {
+    cleanups.push(signIn(["SELLER"]));
+    const calls = stubChecklist(PENDING);
+
+    await renderSuspended(App, { route: "/" });
+    await screen.findByLabelText("Buscar cliente");
+
+    expect(screen.queryByRole("region", { name: "Puesta en marcha" })).toBeNull();
+    expect(calls()).toBe(0);
   });
 });

@@ -54,3 +54,17 @@ export interface ProductionReport {
   byType: ProducedByType[];
   total: number;
 }
+
+/**
+ * SetupChecklistDto: los hechos detrás de la tarjeta «Puesta en marcha» del
+ * Panel (solo ADMIN). El web arma los ítems y sus textos.
+ */
+export interface SetupChecklist {
+  zonesWithoutDeliveryDays: NamedReference[];
+  activeDrivers: number;
+  activeSellers: number;
+  uncountedLocations: number;
+  activeTestUsers: number;
+  activeTestCustomers: number;
+  productsWithInitialListPrice: NamedReference[];
+}

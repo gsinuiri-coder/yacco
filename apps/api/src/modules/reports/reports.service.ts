@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { PaymentStatus, Prisma } from "@prisma/client";
+import { PaymentStatus, Prisma, UserRole } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { ProductionReportQueryDto } from "./dto/production-report-query.dto.js";
@@ -12,7 +12,11 @@ import type {
   ProducedByTypeDto,
   ProductionReportDto,
   ReportNamedDto,
+  SetupChecklistDto,
 } from "./dto/report-response.dto.js";
+
+/** Lo que nombra a un usuario o cliente de prueba (pnpm demo:prueba). */
+export const TEST_DATA_PREFIX = "PRUEBA";
 
 /** El día calendario de Lima de un instante: "en-CA" imprime AAAA-MM-DD. */
 const LIMA_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" });
@@ -238,5 +242,60 @@ export class ReportsService {
       byType,
       total: byType.reduce((sum, line) => sum + line.producedQty, 0),
     };
+  }
+
+  /**
+   * La tarjeta «Puesta en marcha» del Panel: lo que le falta a la planta
+   * para operar con datos reales (docs/carga-datos-reales.md), leído de lo
+   * que ya existe. Sin esquema propio: cuando la planta termina de cargar,
+   * cada número llega solo a cero y la tarjeta desaparece.
+   *
+   * Lo de baja no cuenta: una zona retirada no necesita días, ni una
+   * ubicación de baja un conteo, ni un usuario «PRUEBA» desactivado molesta.
+   */
+  async setupChecklist(): Promise<SetupChecklistDto> {
+    const testName = { startsWith: TEST_DATA_PREFIX, mode: "insensitive" } as const;
+    const [
+      zonesWithoutDeliveryDays,
+      activeDrivers,
+      activeSellers,
+      uncountedLocations,
+      activeTestUsers,
+      activeTestCustomers,
+      productsWithInitialListPrice,
+    ] = await Promise.all([
+      this.prisma.zone.findMany({
+        where: { active: true, deliveryDays: { isEmpty: true } },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      this.countActiveUsersWithRole(UserRole.DRIVER),
+      this.countActiveUsersWithRole(UserRole.SELLER),
+      this.prisma.customerLocation.count({
+        where: { active: true, customer: { active: true }, counts: { none: {} } },
+      }),
+      this.prisma.user.count({ where: { active: true, name: testName } }),
+      this.prisma.customer.count({ where: { active: true, name: testName } }),
+      this.prisma.product.findMany({
+        where: { active: true, priceChanges: { none: {} } },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+    return {
+      zonesWithoutDeliveryDays,
+      activeDrivers,
+      activeSellers,
+      uncountedLocations,
+      activeTestUsers,
+      activeTestCustomers,
+      productsWithInitialListPrice,
+    };
+  }
+
+  private countActiveUsersWithRole(role: UserRole): Promise<number> {
+    return this.prisma.user.count({
+      where: { active: true, roles: { some: { role: { name: role } } } },
+    });
   }
 }

@@ -447,3 +447,28 @@ describe("Envases en poder de clientes", () => {
     expect(await screen.findByText("Todavía no hay ubicaciones")).toBeTruthy();
   });
 });
+
+describe("Envases en poder de clientes — desde «Puesta en marcha»", () => {
+  beforeEach(async () => {
+    resetSession();
+    stubTypes();
+    await navigateTo("/login");
+  });
+
+  afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+
+  it("?uncountedOnly=true abre con «Solo sin contar» marcado", async () => {
+    const seen = stubBalances(() => [buildRow(), UNTOUCHED]);
+
+    await renderPage("/container-counts?uncountedOnly=true");
+
+    expect(await screen.findByText("Kiosko Sin Tocar")).toBeTruthy();
+    expect(screen.queryByText("Bodega Santa Rosa")).toBeNull();
+    expect(
+      screen.getByRole("checkbox", { name: "Solo sin contar" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(seen.filter((query) => query.limit === "20").at(-1)?.uncountedOnly).toBe("true");
+  });
+});
