@@ -3,6 +3,7 @@ import { Test } from "@nestjs/testing";
 import { afterEach, jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { CustomerLocationsService } from "./customer-locations.service.js";
+import { GoogleMapsLinkRequester } from "./google-maps-link-requester.js";
 
 const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
 const LOCATION_ID = "22222222-2222-4222-8222-222222222222";
@@ -37,12 +38,20 @@ function buildPrismaMock() {
 describe("CustomerLocationsService", () => {
   let service: CustomerLocationsService;
   let prisma: ReturnType<typeof buildPrismaMock>;
+  let googleMapsLinkRequester: {
+    getRedirect: jest.Mock<GoogleMapsLinkRequester["getRedirect"]>;
+  };
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
+    googleMapsLinkRequester = { getRedirect: jest.fn<GoogleMapsLinkRequester["getRedirect"]>() };
 
     const moduleRef = await Test.createTestingModule({
-      providers: [CustomerLocationsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CustomerLocationsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: GoogleMapsLinkRequester, useValue: googleMapsLinkRequester },
+      ],
     }).compile();
 
     service = moduleRef.get(CustomerLocationsService);
@@ -191,24 +200,17 @@ describe("CustomerLocationsService", () => {
 
   it("resolves only allowlisted Google Maps short links", async () => {
     prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-    const fetchSpy = jest.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(null, {
-        status: 302,
-        headers: {
-          location: "https://www.google.com/maps/place/Local/data=!3d-12.046374!4d-77.042793",
-        },
-      }),
-    );
+    googleMapsLinkRequester.getRedirect.mockResolvedValueOnce({
+      status: 302,
+      location: "https://www.google.com/maps/place/Local/data=!3d-12.046374!4d-77.042793",
+    });
 
     await expect(
       service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/AbC123"),
     ).resolves.toEqual({
       url: "https://www.google.com/maps/place/Local/data=!3d-12.046374!4d-77.042793",
     });
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://maps.app.goo.gl/AbC123",
-      expect.objectContaining({ redirect: "manual" }),
-    );
+    expect(googleMapsLinkRequester.getRedirect).toHaveBeenCalledWith("/AbC123");
     await expect(
       service.resolveGoogleMapsLink(CUSTOMER_ID, "https://example.com/private"),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -221,21 +223,19 @@ describe("CustomerLocationsService", () => {
     "https://example.com/private",
   ])("rejects a non-allowlisted short link without fetching it: %s", async (url) => {
     prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-    const fetchSpy = jest.spyOn(globalThis, "fetch");
 
     await expect(service.resolveGoogleMapsLink(CUSTOMER_ID, url)).rejects.toBeInstanceOf(
       BadRequestException,
     );
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(googleMapsLinkRequester.getRedirect).not.toHaveBeenCalled();
   });
 
   it("rejects a short link whose redirect leaves Google Maps", async () => {
     prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-    jest
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(null, { status: 302, headers: { location: "https://example.com/private" } }),
-      );
+    googleMapsLinkRequester.getRedirect.mockResolvedValueOnce({
+      status: 302,
+      location: "https://example.com/private",
+    });
 
     await expect(
       service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/AbC123"),
@@ -244,13 +244,12 @@ describe("CustomerLocationsService", () => {
 
   it("explains an unreachable or non-redirecting short link", async () => {
     prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-    const fetchSpy = jest.spyOn(globalThis, "fetch");
-    fetchSpy.mockRejectedValueOnce(new Error("offline"));
+    googleMapsLinkRequester.getRedirect.mockRejectedValueOnce(new Error("offline"));
     await expect(
       service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/Offline"),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    googleMapsLinkRequester.getRedirect.mockResolvedValueOnce({ status: 200, location: null });
     await expect(
       service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/NoRedirect"),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -258,12 +257,10 @@ describe("CustomerLocationsService", () => {
 
   it("stops a redirect loop after five hops", async () => {
     prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID });
-    jest.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(null, {
-        status: 302,
-        headers: { location: "https://maps.app.goo.gl/StillShort" },
-      }),
-    );
+    googleMapsLinkRequester.getRedirect.mockResolvedValue({
+      status: 302,
+      location: "https://maps.app.goo.gl/StillShort",
+    });
 
     await expect(
       service.resolveGoogleMapsLink(CUSTOMER_ID, "https://maps.app.goo.gl/Loop"),

@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CustomerLocationResponseDto } from "./dto/customer-location-response.dto.js";
 import type { ListCustomerLocationsQueryDto } from "./dto/list-customer-locations-query.dto.js";
 import type { UpdateCustomerLocationDto } from "./dto/update-customer-location.dto.js";
+import { GoogleMapsLinkRequester } from "./google-maps-link-requester.js";
 
 const LOCATION_SELECT = {
   id: true,
@@ -57,7 +58,10 @@ function googleMapsUrl(value: string, shortOnly = false): URL {
 
 @Injectable()
 export class CustomerLocationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly googleMapsLinkRequester: GoogleMapsLinkRequester,
+  ) {}
 
   /** Active locations only by default; there are only a handful per customer. */
   async findAll(
@@ -108,18 +112,15 @@ export class CustomerLocationsService {
     let current = googleMapsUrl(value, true);
 
     for (let redirect = 0; redirect < 5; redirect++) {
-      let response: Response;
+      let response: { status: number; location: string | null };
       try {
-        response = await fetch(current.toString(), {
-          method: "GET",
-          redirect: "manual",
-          signal: AbortSignal.timeout(5_000),
-          headers: { "user-agent": "Yacco Google Maps link resolver" },
-        });
+        response = await this.googleMapsLinkRequester.getRedirect(
+          `${current.pathname}${current.search}`,
+        );
       } catch {
         throw new BadRequestException("No se pudo abrir el enlace abreviado de Google Maps");
       }
-      const location = response.headers.get("location");
+      const { location } = response;
       if (response.status < 300 || response.status >= 400 || location === null) {
         throw new BadRequestException("El enlace abreviado de Google Maps no se pudo expandir");
       }
