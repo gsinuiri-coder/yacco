@@ -1231,6 +1231,24 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId", () => {
     expect(messagesOf(response)).toContain("ubicación");
   });
 
+  test("rejects a null marked location instead of treating it as coordinates", async () => {
+    const { routeId, stopId } = await inProgressRouteWithStop();
+
+    const response = await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({
+        status: StopStatus.FAILED,
+        failureReason: "Cliente cerrado",
+        markedLatitude: null,
+        markedLongitude: null,
+        markedAccuracyM: null,
+      });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("latitud");
+  });
+
   test("FAILED with no reason is rejected", async () => {
     const { routeId, stopId } = await inProgressRouteWithStop();
 

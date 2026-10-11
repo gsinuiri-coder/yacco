@@ -14,6 +14,7 @@ import {
   Matches,
   Max,
   Min,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 import { StopStatus } from "@prisma/client";
@@ -134,7 +135,7 @@ export class MarkRouteStopDto {
   priceOverrideAuthorizedById?: string;
 
   @ApiPropertyOptional({ type: String, example: "-12.046374" })
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "La latitud donde se marcó debe ser un texto decimal" })
   @Matches(COORDINATE_PATTERN, {
     message: "La latitud donde se marcó admite hasta 6 decimales",
@@ -143,7 +144,7 @@ export class MarkRouteStopDto {
   markedLatitude?: string;
 
   @ApiPropertyOptional({ type: String, example: "-77.042793" })
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "La longitud donde se marcó debe ser un texto decimal" })
   @Matches(COORDINATE_PATTERN, {
     message: "La longitud donde se marcó admite hasta 6 decimales",
@@ -156,7 +157,7 @@ export class MarkRouteStopDto {
     example: "8.40",
     description: "Precisión informada por el celular, en metros",
   })
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "La precisión de la ubicación debe ser un texto decimal" })
   @Matches(ACCURACY_PATTERN, {
     message: "La precisión de la ubicación admite hasta 8 enteros y 2 decimales",
