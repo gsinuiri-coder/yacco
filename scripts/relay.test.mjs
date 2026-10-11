@@ -24,6 +24,7 @@ import {
   parseRelay,
   readRelayConfig,
   runRelay,
+  stopCurrentRun,
 } from "./relay.mjs";
 
 const LIMIT_MESSAGE = "Error: You've hit your usage limit. Try again later.";
@@ -72,6 +73,13 @@ if (step === "noisy") {
 }
 if (step === "env") {
   writeFileSync(join(root, "env.json"), JSON.stringify(Object.keys(process.env)));
+  touch();
+  process.exit(0);
+}
+if (step === "current" || step === "current-fail") {
+  const current = readFileSync(join(root, ".relay", "current.json"), "utf8");
+  writeFileSync(join(root, "current-" + run + ".json"), current);
+  if (step === "current-fail") { console.error("boom current"); process.exit(1); }
   touch();
   process.exit(0);
 }
@@ -244,6 +252,27 @@ describe("matchLimit", () => {
 
   test("sin coincidencias devuelve null", () => {
     assert.equal(matchLimit(["todo bien"], [/usage limit/i]), null);
+  });
+});
+
+describe("stopCurrentRun", () => {
+  test("una señal mata al agente, borra current.json y recién después libera el lock", () => {
+    const currentPath = join(root, ".relay", "current.json");
+    writeFileSync(currentPath, "corrida activa\n");
+    const events = [];
+    const child = {
+      exitCode: null,
+      kill: () => events.push("agente detenido"),
+    };
+
+    stopCurrentRun({
+      child,
+      root,
+      release: () => events.push(`lock liberado; current existe: ${existsSync(currentPath)}`),
+    });
+
+    assert.deepEqual(events, ["agente detenido", "lock liberado; current existe: false"]);
+    assert.equal(existsSync(currentPath), false);
   });
 });
 
@@ -456,6 +485,34 @@ describe("runRelay", () => {
     });
     assert.equal(code, EXIT.done);
     assert.equal(seen, "777");
+  });
+
+  test("current.json describe la corrida real y se borra cuando termina bien", async () => {
+    const withModel = {
+      ...agent("a", "current,finish"),
+      model: "modelo-prueba",
+      modelFlag: "--model",
+    };
+    const code = await relay([withModel], { overrides: { maxRuns: 3 } });
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(JSON.parse(readFileSync(join(root, "current-1.json"), "utf8")), {
+      agent: "a",
+      model: "modelo-prueba",
+      run: 1,
+      maxRuns: 3,
+      start: "2026-10-09T15:00:00.000Z",
+    });
+    assert.equal(existsSync(join(root, ".relay", "current.json")), false);
+  });
+
+  test("current.json también se borra cuando la corrida falla", async () => {
+    const currentAfterRuns = [];
+    const code = await relay([agent("a", "current-fail,finish")], {
+      onRun: () => currentAfterRuns.push(existsSync(join(root, ".relay", "current.json"))),
+    });
+    assert.equal(code, EXIT.done);
+    assert.equal(JSON.parse(readFileSync(join(root, "current-1.json"), "utf8")).run, 1);
+    assert.deepEqual(currentAfterRuns, [false, false]);
   });
 
   test("el log tiene una línea por corrida y solo las líneas que matchearon", async () => {

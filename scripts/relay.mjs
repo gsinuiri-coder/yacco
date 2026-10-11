@@ -722,7 +722,23 @@ async function relayLoop(
     const start = clock.now().toISOString();
     out.log(`\n=== Relevo: corrida ${runs + 1}/${config.maxRuns}, ${agent.name} ===`);
     const before = readFileOrNull(relayPath);
-    const result = await runAgent(agent, { prompt: config.prompt, root, out, onSpawn, env });
+    const currentPath = join(relayDir, "current.json");
+    writeFileSync(
+      currentPath,
+      JSON.stringify({
+        agent: agent.name,
+        model: agent.model ?? null,
+        run: runs + 1,
+        maxRuns: config.maxRuns,
+        start,
+      }) + "\n",
+    );
+    let result;
+    try {
+      result = await runAgent(agent, { prompt: config.prompt, root, out, onSpawn, env });
+    } finally {
+      rmSync(currentPath, { force: true });
+    }
     runs += 1;
 
     let outcome = "ok";
@@ -783,6 +799,15 @@ async function relayLoop(
   return EXIT.maxRuns;
 }
 
+/** Limpieza síncrona antes de que una señal termine el proceso del relevo. */
+export function stopCurrentRun({ child, release, root = REPO_ROOT }) {
+  if (child !== null && child.exitCode === null) child.kill();
+  // Antes de soltar el lock: otro relevo podría arrancar apenas se libera y
+  // crear su propio current.json, que este proceso nunca debe borrar.
+  rmSync(join(root, ".relay", "current.json"), { force: true });
+  release();
+}
+
 async function main(argv) {
   const known = new Set(["--dry-run"]);
   const unknown = argv.filter((arg) => !known.has(arg));
@@ -799,8 +824,7 @@ async function main(argv) {
     ["SIGTERM", 143],
   ]) {
     process.on(signal, () => {
-      if (child !== null && child.exitCode === null) child.kill();
-      release();
+      stopCurrentRun({ child, release });
       process.exit(code);
     });
   }
