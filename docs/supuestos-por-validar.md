@@ -141,7 +141,7 @@ cuándo, y tres líneas:
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 3 de «Fase 2 en local».
 - **Asumimos:** que el camión vuelve a la planta a recargar en medio del reparto, y que la oficina (ADMIN o SELLER) lo anota en la misma ruta, con salida de lotes FIFO como al planificar. Quitar carga sigue siendo solo antes de salir.
-- **Construido encima:** `POST /api/v1/routes/:id/loads` admite `PLANNED` e `IN_PROGRESS` para ADMIN y SELLER, conserva el movimiento `ROUTE_LOAD` y el consumo FIFO; el detalle permite registrar la recarga y solo ofrece quitar cargas en `PLANNED`. La prueba de integración recorre planificar, salir, recargar, entregar y liquidar, y confirma que la liquidación suma ambas cargas sin una rama especial.
+- **Construido encima:** `POST /api/v1/routes/:id/loads` admitió transitoriamente `IN_PROGRESS`. El 2026-10-11 Giancarlo retiró la recarga libre en ruta (Fase 3, fila 1): «no se puede agregar carga a una ruta que ya salió» (la carga a mitad de reparto entrará por la parada en planta / pit en la fila 2). `POST /api/v1/routes/:id/loads` y la pantalla exigen `PLANNED` de nuevo; lo cargado previamente en el libro de pruebas locales se conserva.
 - **Si resulta que no:** bajo. Se vuelve a exigir `PLANNED` para cargar; lo ya cargado queda en el libro.
 
 ### Fase 3: un formulario crea pedidos enlazados para varios locales

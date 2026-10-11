@@ -279,33 +279,15 @@ describe("Carga del camión", () => {
     expect(screen.queryByRole("button", { name: /Corregir la carga/ })).toBeNull();
   });
 
-  it("con la ruta en curso permite agregar otra carga y explica cuándo hacerlo", async () => {
-    stubSection(
-      "IN_PROGRESS",
-      [[], [load("l-recarga", 5, "LOTE-RECARGA")]],
-      [batch("LOTE-RECARGA", "2026-08-01", 5, "item-recarga")],
-    );
-    const posted: unknown[] = [];
-    cleanups.push(
-      registerEndpoint(LOADS, {
-        method: "POST",
-        handler: async (event: H3Event) => {
-          posted.push(await readBody(event));
-          return load("l-recarga", 5, "LOTE-RECARGA");
-        },
-      }),
-    );
+  it("con la ruta en curso no ofrece el formulario para cargar", async () => {
+    stubSection("IN_PROGRESS", [[load("l-1", 30)]]);
 
     await renderSection();
-    expect(
-      await screen.findByText(/Si el camión vuelve por más bidones, agrega aquí la nueva carga/),
-    ).toBeTruthy();
-    expect(screen.getByRole("form", { name: "Cargar el camión" })).toBeTruthy();
-    await fill("Bidón 20L", "5");
 
-    expect(posted).toEqual([{ batchItemId: "item-recarga", quantity: 5 }]);
-    expect(await screen.findByText("5 × Bidón 20L")).toBeTruthy();
+    expect(await screen.findByText("30 × Bidón 20L")).toBeTruthy();
+    expect(screen.queryByRole("form", { name: "Cargar el camión" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Corregir la carga/ })).toBeNull();
+    expect(await screen.findByText(/una carga mal ingresada no se borra/)).toBeTruthy();
   });
 
   it("sin rol de oficina no muestra acciones para cargar ni corregir", async () => {

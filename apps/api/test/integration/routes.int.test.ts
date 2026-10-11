@@ -1774,6 +1774,19 @@ describe("POST /api/v1/routes/:id/loads", () => {
     expect(messagesOf(response)).toContain(MISSING_UUID);
   });
 
+  test("refuses to load an IN_PROGRESS route", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await startRoute(adminToken, routeId);
+
+    const response = await addLoad(adminToken, routeId, batchItemId, 10);
+
+    expect(response.status).toBe(409);
+    expect(messagesOf(response)).toContain(
+      "Solo se puede cargar unidades mientras la ruta está planificada; esta está en curso",
+    );
+  });
+
   test("refuses to load a FINISHED route", async () => {
     const batchItemId = await createBatchItem(100);
     const routeId = await createRoute(adminToken, { date: nextDate() });

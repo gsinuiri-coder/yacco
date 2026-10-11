@@ -1215,7 +1215,11 @@ export class RoutesService {
     actor: RouteActor,
   ): Promise<RouteLoadResponseDto> {
     const route = await this.getOwnedRouteOrThrow(routeId, actor);
-    assertRouteIsTouchable(route.status, "cargar unidades");
+    if (route.status !== RouteStatus.PLANNED) {
+      throw new ConflictException(
+        `Solo se puede cargar unidades mientras la ruta está planificada; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
+      );
+    }
 
     const batchItem = await this.prisma.batchItem.findUnique({
       where: { id: dto.batchItemId },
@@ -1227,7 +1231,11 @@ export class RoutesService {
 
     const load = await this.prisma.$transaction(async (tx) => {
       const lockedStatus = await lockRouteAndReadStatus(tx, routeId);
-      assertRouteIsTouchable(lockedStatus, "cargar unidades");
+      if (lockedStatus !== RouteStatus.PLANNED) {
+        throw new ConflictException(
+          `Solo se puede cargar unidades mientras la ruta está planificada; esta está ${ROUTE_STATUS_LABELS[lockedStatus]}`,
+        );
+      }
       await lockContainerTypes(tx, [batchItem.containerTypeId]);
       await assertIsOldestBatchItemWithStock(tx, batchItem);
 

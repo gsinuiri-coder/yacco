@@ -1602,13 +1602,28 @@ describe("RoutesService", () => {
       expect(prisma.batchItem.updateMany).not.toHaveBeenCalled();
     });
 
+    it("refuses to load an IN_PROGRESS route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+
+      await expect(
+        service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor),
+      ).rejects.toEqual(
+        new ConflictException(
+          "Solo se puede cargar unidades mientras la ruta está planificada; esta está en curso",
+        ),
+      );
+      expect(prisma.batchItem.findUnique).not.toHaveBeenCalled();
+    });
+
     it("refuses to load a FINISHED route", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.FINISHED }));
 
       await expect(
         service.addLoad(ROUTE_ID, { batchItemId: BATCH_ITEM_ID, quantity: 10 }, adminActor),
       ).rejects.toEqual(
-        new ConflictException("No se pueden cargar unidades de una ruta terminada"),
+        new ConflictException(
+          "Solo se puede cargar unidades mientras la ruta está planificada; esta está terminada",
+        ),
       );
       expect(prisma.batchItem.findUnique).not.toHaveBeenCalled();
     });
