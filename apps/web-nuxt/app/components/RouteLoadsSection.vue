@@ -23,6 +23,7 @@ import type { LoadPlanLine } from "../utils/fifo-load";
 const props = defineProps<{ route: Route }>();
 
 const api = useApi();
+const session = useSession();
 const loadsPath = computed(() => `/routes/${props.route.id}/loads`);
 
 const loads = ref<RouteLoad[]>([]);
@@ -68,12 +69,24 @@ async function reload(): Promise<void> {
 }
 onMounted(reload);
 
+const canManageLoads = computed(() => session.hasRole("ADMIN") || session.hasRole("SELLER"));
 const editable = computed(
-  () => props.route.status === "PLANNED" || props.route.status === "IN_PROGRESS",
+  () =>
+    canManageLoads.value &&
+    (props.route.status === "PLANNED" || props.route.status === "IN_PROGRESS"),
 );
 // La API sólo deja corregir una carga con la ruta PLANNED: con el camión en la
 // calle, un error de carga se resuelve en la liquidación.
-const canRemove = computed(() => props.route.status === "PLANNED");
+const canRemove = computed(() => canManageLoads.value && props.route.status === "PLANNED");
+const sectionDescription = computed(() => {
+  if (canRemove.value) {
+    return "Lo que sube sale siempre del lote más antiguo con unidades. Mientras la ruta no arranque se puede corregir; después ya no.";
+  }
+  if (props.route.status === "IN_PROGRESS" && canManageLoads.value) {
+    return "Si el camión vuelve por más bidones, agrega aquí la nueva carga. Sale siempre del lote más antiguo con unidades.";
+  }
+  return "Lo que subió salió siempre del lote más antiguo con unidades.";
+});
 
 const containerTypeId = ref<string | undefined>(undefined);
 const quantity = ref("");
@@ -172,14 +185,7 @@ async function remove(load: RouteLoad): Promise<void> {
 </script>
 
 <template>
-  <SectionCard
-    title="Carga del camión"
-    :description="
-      canRemove
-        ? 'Lo que sube sale siempre del lote más antiguo con unidades. Mientras la ruta no arranque se puede corregir; después ya no.'
-        : 'Lo que sube sale siempre del lote más antiguo con unidades.'
-    "
-  >
+  <SectionCard title="Carga del camión" :description="sectionDescription">
     <div class="space-y-5">
       <div
         v-if="loadedByType.length > 0"

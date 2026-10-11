@@ -141,7 +141,7 @@ cuándo, y tres líneas:
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 3 de «Fase 2 en local».
 - **Asumimos:** que el camión vuelve a la planta a recargar en medio del reparto, y que la oficina (ADMIN o SELLER) lo anota en la misma ruta, con salida de lotes FIFO como al planificar. Quitar carga sigue siendo solo antes de salir.
-- **Construido encima:** nada todavía. Se construye en la carga de rutas, sin cambiar la liquidación.
+- **Construido encima:** `POST /api/v1/routes/:id/loads` admite `PLANNED` e `IN_PROGRESS` para ADMIN y SELLER, conserva el movimiento `ROUTE_LOAD` y el consumo FIFO; el detalle permite registrar la recarga y solo ofrece quitar cargas en `PLANNED`. La prueba de integración recorre planificar, salir, recargar, entregar y liquidar, y confirma que la liquidación suma ambas cargas sin una rama especial.
 - **Si resulta que no:** bajo. Se vuelve a exigir `PLANNED` para cargar; lo ya cargado queda en el libro.
 
 ### Fase 2: el orden por cercanía se propone, no se impone
