@@ -162,13 +162,13 @@ function sameOrderItems(
   if (persisted.length !== requested.length) return false;
   const persistedLines = persisted
     .map((item) => `${item.productId}|${item.quantity}|${item.unitPrice.toFixed(2)}`)
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
   const requestedLines = requested
     .map(
       (item) =>
         `${item.productId}|${item.quantity}|${new Prisma.Decimal(item.unitPrice).toFixed(2)}`,
     )
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
   return persistedLines.every((line, index) => line === requestedLines[index]);
 }
 
