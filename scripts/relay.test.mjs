@@ -75,6 +75,13 @@ if (step === "env") {
   touch();
   process.exit(0);
 }
+if (step === "current" || step === "current-fail") {
+  const current = readFileSync(join(root, ".relay", "current.json"), "utf8");
+  writeFileSync(join(root, "current-" + run + ".json"), current);
+  if (step === "current-fail") { console.error("boom current"); process.exit(1); }
+  touch();
+  process.exit(0);
+}
 if (step === "fail") { console.error("boom"); process.exit(1); }
 if (step === "fail-noisy") {
   for (let i = 1; i <= 6; i++) console.error("error línea " + i);
@@ -456,6 +463,34 @@ describe("runRelay", () => {
     });
     assert.equal(code, EXIT.done);
     assert.equal(seen, "777");
+  });
+
+  test("current.json describe la corrida real y se borra cuando termina bien", async () => {
+    const withModel = {
+      ...agent("a", "current,finish"),
+      model: "modelo-prueba",
+      modelFlag: "--model",
+    };
+    const code = await relay([withModel], { overrides: { maxRuns: 3 } });
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(JSON.parse(readFileSync(join(root, "current-1.json"), "utf8")), {
+      agent: "a",
+      model: "modelo-prueba",
+      run: 1,
+      maxRuns: 3,
+      start: "2026-10-09T15:00:00.000Z",
+    });
+    assert.equal(existsSync(join(root, ".relay", "current.json")), false);
+  });
+
+  test("current.json también se borra cuando la corrida falla", async () => {
+    const currentAfterRuns = [];
+    const code = await relay([agent("a", "current-fail,finish")], {
+      onRun: () => currentAfterRuns.push(existsSync(join(root, ".relay", "current.json"))),
+    });
+    assert.equal(code, EXIT.done);
+    assert.equal(JSON.parse(readFileSync(join(root, "current-1.json"), "utf8")).run, 1);
+    assert.deepEqual(currentAfterRuns, [false, false]);
   });
 
   test("el log tiene una línea por corrida y solo las líneas que matchearon", async () => {
