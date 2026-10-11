@@ -43,6 +43,7 @@ const busyId = ref<string | null>(null);
 const stopError = ref<string | null>(null);
 const plantLocation = ref<PlantLocation | null>(null);
 const plantLocationLoaded = ref(false);
+const plantLocationFailure = ref<string | null>(null);
 const routeToolsError = ref<string | null>(null);
 const proposedStopIds = ref<string[] | null>(null);
 const ordering = ref(false);
@@ -79,7 +80,7 @@ async function loadPlantLocation(): Promise<void> {
     try {
       plantLocation.value = await api.request<PlantLocation>("/settings/plant-location");
     } catch (error) {
-      routeToolsError.value = `No se pudo cargar la ubicación de la planta. ${describeApiFailure(error)}`;
+      plantLocationFailure.value = `No se pudo cargar la ubicación de la planta. ${describeApiFailure(error)}`;
     } finally {
       plantLocationLoaded.value = true;
       plantLocationRequest = null;
@@ -94,7 +95,15 @@ onMounted(() => {
 
 async function proposeNearbyOrder(): Promise<void> {
   routeToolsError.value = null;
+  if (plantLocationFailure.value !== null) {
+    plantLocationLoaded.value = false;
+    plantLocationFailure.value = null;
+  }
   await loadPlantLocation();
+  if (plantLocationFailure.value !== null) {
+    routeToolsError.value = plantLocationFailure.value;
+    return;
+  }
   const origin = plantLocation.value;
   if (origin?.latitude === null || origin?.longitude === null || origin === null) {
     routeToolsError.value =
