@@ -2,8 +2,8 @@
  * `pnpm relay:status` — tablero de solo lectura del relevo.
  *
  * Sin banderas imprime una vez. `--watch` vuelve a leer y redibuja cada cinco
- * segundos. No toma el lock, no escribe en `.relay/` y no llama a Git ni a un
- * agente.
+ * segundos. También muestra si un agente espera confirmación. No toma el lock,
+ * no escribe en `.relay/` y no llama a Git ni a un agente.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";

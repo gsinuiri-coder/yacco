@@ -16,8 +16,8 @@
  * Un agente que falla por algo que no es la cuota dos veces seguidas (una
  * corrida que sale bien sin tocar RELEVO.md cuenta como falla: no avanzó)
  * queda fuera por el resto del relevo, y se sigue con el siguiente. Sale con
- * 1 solo si quedaron fuera todos, con 3 si llega a `maxRuns`, y con 4 si lo
- * paró `.relay/stop`.
+ * 1 solo si quedaron fuera todos, con 3 si llega a `maxRuns`, con 4 si lo
+ * paró `.relay/stop`, y con 5 si el siguiente agente requiere confirmación.
  *
  * Red de seguridad: después de cada corrida, si el árbol quedó con cambios,
  * el relevo los commitea como WIP en la rama actual y hace push. En main (o
@@ -25,6 +25,7 @@
  *
  *   pnpm relay              arranca
  *   pnpm relay --dry-run    muestra qué correría, sin correr nada
+ *   pnpm relay --confirm claude  confirma ese agente para esta ejecución
  *
  * Uso, cómo pararlo y cómo leer el log: docs/RELEVO-USO.md. Cada agente corre
  * con el entorno en lista blanca (`AGENT_ENV_KEYS`) y su propio sandbox,
