@@ -559,16 +559,19 @@ model RouteLoad {
 }
 
 model RouteStop {
-  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  routeId       String     @map("route_id") @db.Uuid
-  locationId    String     @map("location_id") @db.Uuid
-  position      Int
-  origin        StopOrigin
-  orderId       String?    @unique @map("order_id") @db.Uuid
-  status        StopStatus @default(PENDING)
-  failureReason String?    @map("failure_reason")
-  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  addedById     String     @map("added_by") @db.Uuid
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  routeId         String     @map("route_id") @db.Uuid
+  locationId      String     @map("location_id") @db.Uuid
+  position        Int
+  origin          StopOrigin
+  orderId         String?    @unique @map("order_id") @db.Uuid
+  status          StopStatus @default(PENDING)
+  failureReason   String?    @map("failure_reason")
+  markedLatitude  Decimal?   @map("marked_latitude") @db.Decimal(9, 6)
+  markedLongitude Decimal?   @map("marked_longitude") @db.Decimal(9, 6)
+  markedAccuracyM Decimal?   @map("marked_accuracy_m") @db.Decimal(10, 2)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  addedById       String     @map("added_by") @db.Uuid
 
   /// Las tres guardan SOLO LA ÚLTIMA corrección de esta parada: una segunda
   /// corrección las pisa. Es deliberado — la historia completa vive en las

@@ -89,6 +89,9 @@ export function buildStop(overrides: Partial<RouteStop> = {}): RouteStop {
     orderId: null,
     status: "PENDING",
     failureReason: null,
+    markedLatitude: null,
+    markedLongitude: null,
+    markedAccuracyM: null,
     correction: null,
     ...overrides,
   };

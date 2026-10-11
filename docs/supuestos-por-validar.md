@@ -155,7 +155,7 @@ cuándo, y tres líneas:
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 5 de «Fase 2 en local».
 - **Asumimos:** que la oficina quiere ver dónde marcó el chofer una entrega, y que los choferes aceptan que se pida la ubicación al marcar. Si la niega o no hay señal, se guarda igual. No hay seguimiento continuo.
-- **Construido encima:** nada todavía. Se construye `marked_latitude`, `marked_longitude` y `marked_accuracy_m` en `route_stops`, y «Ver dónde se marcó».
+- **Construido encima:** `route_stops` guarda `marked_latitude`, `marked_longitude` y `marked_accuracy_m` juntas o las tres en NULL. «Mi ruta» pide una sola lectura de ubicación al confirmar y, si el navegador no la entrega por rechazo, timeout o falta de soporte, registra igual sin esos campos. La corrección administrativa conserva el punto original y la oficina abre «Ver dónde se marcó» en Google Maps.
 - **Si resulta que no:** bajo. Se deja de pedir la ubicación; las columnas quedan en NULL.
 
 ### Fase 2: los accesorios tienen stock propio y no mueven envases

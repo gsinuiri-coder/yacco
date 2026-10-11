@@ -207,6 +207,15 @@ export class RouteStopResponseDto {
   @ApiPropertyOptional({ nullable: true })
   failureReason!: string | null;
 
+  @ApiPropertyOptional({ type: String, example: "-12.046374", nullable: true })
+  markedLatitude!: string | null;
+
+  @ApiPropertyOptional({ type: String, example: "-77.042793", nullable: true })
+  markedLongitude!: string | null;
+
+  @ApiPropertyOptional({ type: String, example: "8.40", nullable: true })
+  markedAccuracyM!: string | null;
+
   @ApiProperty({ type: RouteStopCorrectionDto, nullable: true })
   correction!: RouteStopCorrectionDto | null;
 

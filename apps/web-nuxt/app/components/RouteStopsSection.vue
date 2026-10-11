@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatInstantInLima } from "@yacco/shared";
 import type { PlantLocation, Route, RouteStop } from "@yacco/shared";
+import { googleMapsLocationUrl } from "~/utils/customer-location";
 import { buildGoogleMapsRouteLegs, proposeNearbyStopIds } from "~/utils/route-planning";
 
 const props = defineProps<{ route: Route }>();
@@ -491,6 +492,19 @@ function markDone(result: RouteStop): void {
                 <p v-if="stop.status === 'FAILED' && stop.failureReason" class="text-muted">
                   {{ stop.failureReason }}
                 </p>
+                <UButton
+                  v-if="isOffice && stop.markedLatitude !== null && stop.markedLongitude !== null"
+                  :to="googleMapsLocationUrl(stop.markedLatitude, stop.markedLongitude)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  external
+                  color="neutral"
+                  variant="link"
+                  size="sm"
+                  icon="i-lucide-map-pin"
+                  label="Ver dónde se marcó"
+                  class="px-0"
+                />
                 <template v-if="stop.correction !== null">
                   <p class="text-muted">
                     Corregida el {{ formatInstantInLima(stop.correction.correctedAt) }} por

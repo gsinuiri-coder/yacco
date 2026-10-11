@@ -242,6 +242,9 @@ function toStopResponse(
     orderId: stop.orderId,
     status: stop.status,
     failureReason: stop.failureReason,
+    markedLatitude: stop.markedLatitude?.toFixed(6) ?? null,
+    markedLongitude: stop.markedLongitude?.toFixed(6) ?? null,
+    markedAccuracyM: stop.markedAccuracyM?.toFixed(2) ?? null,
     correction: toCorrectionResponse(stop),
   };
   if (delivery !== undefined) {
@@ -819,10 +822,11 @@ export class RoutesService {
     }
 
     assertMarkPayloadMatchesStatus(dto);
+    const markedLocation = markedLocationData(dto);
     if (dto.status === StopStatus.FAILED) {
-      return this.markStopFailed(routeId, stopId, dto.failureReason as string);
+      return this.markStopFailed(routeId, stopId, dto.failureReason as string, markedLocation);
     }
-    return this.markStopDelivered(routeId, stopId, dto, actor);
+    return this.markStopDelivered(routeId, stopId, dto, actor, markedLocation);
   }
 
   /**
@@ -840,11 +844,12 @@ export class RoutesService {
     routeId: string,
     stopId: string,
     failureReason: string,
+    markedLocation: StopMarkedLocationData,
   ): Promise<RouteStopResponseDto> {
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.routeStop.updateMany({
         where: { id: stopId, routeId, status: StopStatus.PENDING },
-        data: { status: StopStatus.FAILED, failureReason },
+        data: { status: StopStatus.FAILED, failureReason, ...markedLocation },
       });
       if (count === 0) {
         await this.throwAlreadyMarkedConflict(tx, routeId, stopId);
@@ -884,11 +889,12 @@ export class RoutesService {
     stopId: string,
     dto: MarkRouteStopDto,
     actor: RouteActor,
+    markedLocation: StopMarkedLocationData,
   ): Promise<RouteStopResponseDto> {
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.routeStop.updateMany({
         where: { id: stopId, routeId, status: StopStatus.PENDING },
-        data: { status: StopStatus.DELIVERED },
+        data: { status: StopStatus.DELIVERED, ...markedLocation },
       });
       if (count === 0) {
         await this.throwAlreadyMarkedConflict(tx, routeId, stopId);
@@ -1479,6 +1485,35 @@ function assertMarkPayloadMatchesStatus(dto: MarkRouteStopDto): void {
   if (dto.items === undefined || dto.items.length === 0) {
     throw new BadRequestException("La entrega debe indicar los ítems vendidos (items)");
   }
+}
+
+type StopMarkedLocationData = {
+  markedLatitude?: Prisma.Decimal;
+  markedLongitude?: Prisma.Decimal;
+  markedAccuracyM?: Prisma.Decimal;
+};
+
+function markedLocationData(dto: MarkRouteStopDto): StopMarkedLocationData {
+  const { markedLatitude, markedLongitude, markedAccuracyM } = dto;
+  const present = [markedLatitude, markedLongitude, markedAccuracyM].filter(
+    (value) => value !== undefined,
+  ).length;
+  if (present === 0) return {};
+  if (
+    present !== 3 ||
+    markedLatitude === undefined ||
+    markedLongitude === undefined ||
+    markedAccuracyM === undefined
+  ) {
+    throw new BadRequestException(
+      "La ubicación donde se marcó requiere latitud, longitud y precisión juntas",
+    );
+  }
+  return {
+    markedLatitude: new Prisma.Decimal(markedLatitude),
+    markedLongitude: new Prisma.Decimal(markedLongitude),
+    markedAccuracyM: new Prisma.Decimal(markedAccuracyM),
+  };
 }
 
 /**
