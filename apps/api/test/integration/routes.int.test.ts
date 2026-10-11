@@ -1173,11 +1173,24 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId", () => {
     const response = await request(server())
       .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
       .set("Authorization", `Bearer ${driverToken}`)
-      .send({ status: StopStatus.DELIVERED, items: oneItem() });
+      .send({
+        status: StopStatus.DELIVERED,
+        items: oneItem(),
+        markedLatitude: "-12.046374",
+        markedLongitude: "-77.042793",
+        markedAccuracyM: "8.40",
+      });
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe(StopStatus.DELIVERED);
     expect(response.body.failureReason).toBeNull();
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        markedLatitude: "-12.046374",
+        markedLongitude: "-77.042793",
+        markedAccuracyM: "8.40",
+      }),
+    );
   });
 
   test("marks a stop FAILED with a reason", async () => {
@@ -1186,11 +1199,36 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId", () => {
     const response = await request(server())
       .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
       .set("Authorization", `Bearer ${driverToken}`)
-      .send({ status: StopStatus.FAILED, failureReason: "Cliente cerrado" });
+      .send({
+        status: StopStatus.FAILED,
+        failureReason: "Cliente cerrado",
+        markedLatitude: "-12.100000",
+        markedLongitude: "-77.100000",
+        markedAccuracyM: "15.25",
+      });
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe(StopStatus.FAILED);
     expect(response.body.failureReason).toBe("Cliente cerrado");
+    expect(response.body.markedLatitude).toBe("-12.100000");
+    expect(response.body.markedLongitude).toBe("-77.100000");
+    expect(response.body.markedAccuracyM).toBe("15.25");
+  });
+
+  test("rejects a partial marked location", async () => {
+    const { routeId, stopId } = await inProgressRouteWithStop();
+
+    const response = await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stopId}`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({
+        status: StopStatus.FAILED,
+        failureReason: "Cliente cerrado",
+        markedLatitude: "-12.100000",
+      });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("ubicación");
   });
 
   test("FAILED with no reason is rejected", async () => {
