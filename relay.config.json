@@ -53,6 +53,7 @@
       "command": "claude",
       "npmPackage": "@anthropic-ai/claude-code",
       "model": "claude-opus-5-5",
+      "confirmBeforeRun": true,
       "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla. `--model` verificado en Claude Code 2.1.296 (acepta id o alias; se fija el id para que no cambie solo).",
       "args": [
         "-p",

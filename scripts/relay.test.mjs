@@ -302,6 +302,7 @@ describe("runRelay", () => {
   });
 
   test("la confirmación permite correr al agente durante esa ejecución", async () => {
+    writeFileSync(join(root, ".relay", "waiting-confirmation.json"), "marca anterior\n");
     const code = await runRelay({
       root,
       config: config([agent("a", "limit"), { ...agent("b", "finish"), confirmBeforeRun: true }]),
@@ -314,6 +315,7 @@ describe("runRelay", () => {
 
     assert.equal(code, EXIT.done);
     assert.deepEqual(calls(), ["a", "b"]);
+    assert.equal(existsSync(join(root, ".relay", "waiting-confirmation.json")), false);
   });
 
   test("explica cuando llega al agente por dos fallas del anterior", async () => {

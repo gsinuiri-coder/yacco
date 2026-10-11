@@ -57,7 +57,14 @@ import {
 export const DEFAULT_WAIT_MINUTES = 60;
 export const DEFAULT_MAX_RUNS = 50;
 
-export const EXIT = { done: 0, error: 1, blocked: 2, maxRuns: 3, stopped: 4 };
+export const EXIT = {
+  done: 0,
+  error: 1,
+  blocked: 2,
+  maxRuns: 3,
+  stopped: 4,
+  confirmation: 5,
+};
 
 // El aviso de cuota de una CLI sale al final de su corrida. Buscarlo solo en
 // las últimas líneas evita tomar por límite un archivo que el agente leyó a
@@ -242,6 +249,11 @@ export function readRelayConfig(path = join(REPO_ROOT, "relay.config.json")) {
   for (const key of ["waitMinutes", "maxRuns"]) {
     if (raw[key] !== undefined && !(Number.isInteger(raw[key]) && raw[key] > 0)) {
       throw invalid(`\`${key}\` tiene que ser un entero mayor que 0`);
+    }
+  }
+  for (const agent of raw.agents) {
+    if (agent.confirmBeforeRun !== undefined && typeof agent.confirmBeforeRun !== "boolean") {
+      throw invalid(`\`confirmBeforeRun\` de ${agent.name} tiene que ser booleano`);
     }
   }
   raw.agents.forEach(checkSandboxPolicy);
@@ -488,6 +500,9 @@ function dryRun(agents, { prompt, relayPath, out }) {
       .join(" ");
     const model = agent.model ?? "el default de su CLI";
     out.log(`Correría ${agent.name} (modelo: ${model}): ${shown}`);
+    if (agent.confirmBeforeRun === true) {
+      out.log(`${agent.name} requiere confirmación antes de correr.`);
+    }
   }
   out.log("--dry-run: no corrí nada ni tomé el lock.");
   return EXIT.done;
@@ -639,6 +654,7 @@ export async function runRelay({
   onSpawn = () => {},
   env = process.env,
   git = gitIn(root),
+  confirmedAgents = new Set(),
 }) {
   registerEnvSecrets(env);
   const relayDir = join(root, ".relay");
@@ -660,6 +676,7 @@ export async function runRelay({
     return EXIT.error;
   }
   onLock(release);
+  rmSync(join(relayDir, "waiting-confirmation.json"), { force: true });
 
   try {
     return await relayLoop(agents, {
@@ -673,6 +690,7 @@ export async function runRelay({
       onSpawn,
       env,
       git,
+      confirmedAgents,
     });
   } finally {
     release();
@@ -681,7 +699,7 @@ export async function runRelay({
 
 async function relayLoop(
   agents,
-  { config, clock, out, root, relayPath, relayDir, onRun, onSpawn, env, git },
+  { config, clock, out, root, relayPath, relayDir, onRun, onSpawn, env, git, confirmedAgents },
 ) {
   const waitMs = config.waitMinutes * 60 * 1000;
   // Sin cuota: vuelven después de la espera.
@@ -719,6 +737,34 @@ async function relayLoop(
 
     const agent = agents[index];
     current = index;
+    if (agent.confirmBeforeRun === true && !confirmedAgents.has(agent.name)) {
+      const reasons = agents.slice(0, index).flatMap((previousAgent, previousIndex) => {
+        if (exhausted.has(previousIndex)) return [`${previousAgent.name} quedó sin cuota`];
+        if (broken.has(previousIndex)) return [`${previousAgent.name} falló dos veces seguidas`];
+        return [];
+      });
+      const reason =
+        reasons.length > 0
+          ? reasons.join("; ")
+          : `${agent.name} es el próximo agente disponible en la cola`;
+      writeFileSync(
+        join(relayDir, "waiting-confirmation.json"),
+        JSON.stringify(
+          {
+            agent: agent.name,
+            reason,
+            createdAt: clock.now().toISOString(),
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+      out.log(
+        `Esperando confirmación para ${agent.name}: ${reason}. ` +
+          `Continuá con \`pnpm relay --confirm ${agent.name}\`.`,
+      );
+      return EXIT.confirmation;
+    }
     const start = clock.now().toISOString();
     out.log(`\n=== Relevo: corrida ${runs + 1}/${config.maxRuns}, ${agent.name} ===`);
     const before = readFileOrNull(relayPath);
@@ -808,12 +854,46 @@ export function stopCurrentRun({ child, release, root = REPO_ROOT }) {
   release();
 }
 
+function parseMainOptions(argv) {
+  const confirmedAgents = new Set();
+  let dryRun = false;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (argument === "--confirm") {
+      const agentName = argv[index + 1];
+      if (agentName === undefined || agentName.startsWith("--")) {
+        throw new Error("Falta el nombre del agente después de --confirm.");
+      }
+      confirmedAgents.add(agentName);
+      index += 1;
+      continue;
+    }
+    throw new Error(
+      `Argumento desconocido: ${argument}. Uso: pnpm relay [--dry-run] [--confirm <agente>]`,
+    );
+  }
+  return { dryRun, confirmedAgents };
+}
+
 async function main(argv) {
-  const known = new Set(["--dry-run"]);
-  const unknown = argv.filter((arg) => !known.has(arg));
-  if (unknown.length > 0) {
-    console.error(`Argumento desconocido: ${unknown.join(" ")}. Uso: pnpm relay [--dry-run]`);
+  let options;
+  try {
+    options = parseMainOptions(argv);
+  } catch (error) {
+    console.error(error.message);
     return EXIT.error;
+  }
+  const config = readRelayConfig();
+  const configuredNames = new Set(config.agents.map((agent) => agent.name));
+  for (const agentName of options.confirmedAgents) {
+    if (!configuredNames.has(agentName)) {
+      console.error(`No existe el agente "${agentName}" en relay.config.json.`);
+      return EXIT.error;
+    }
   }
   let release = () => {};
   let child = null;
@@ -829,8 +909,9 @@ async function main(argv) {
     });
   }
   return runRelay({
-    config: readRelayConfig(),
-    dryRun: argv.includes("--dry-run"),
+    config,
+    dryRun: options.dryRun,
+    confirmedAgents: options.confirmedAgents,
     onLock: (releaseLock) => {
       release = releaseLock;
     },

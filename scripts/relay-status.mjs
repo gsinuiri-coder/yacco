@@ -78,6 +78,7 @@ export function readStatusState(root = REPO_ROOT, { isAlive = isPidAlive } = {})
   }
 
   const current = readJson(join(relayDir, "current.json"));
+  const confirmation = readJson(join(relayDir, "waiting-confirmation.json"));
   const relayText = readText(join(relayDir, "RELEVO.md"));
   const relay = relayText.error === null ? parseRelay(relayText.value) : null;
   const log = readLog(join(relayDir, "log.jsonl"));
@@ -86,6 +87,8 @@ export function readStatusState(root = REPO_ROOT, { isAlive = isPidAlive } = {})
     lock,
     current: current.value,
     currentError: current.error,
+    confirmation: confirmation.value,
+    confirmationError: confirmation.error,
     relay,
     relayError: relayText.error,
     runs: log.value,
@@ -156,6 +159,17 @@ export function renderStatus(state, now = new Date(), useColor = false) {
     lines.push(`Modelo: ${state.current.model ?? "default de la CLI"}`);
     lines.push(`Corrida: ${state.current.run}/${state.current.maxRuns}`);
     lines.push(`Hace: ${formatDuration(now.getTime() - started.getTime())}`);
+  }
+
+  if (state.confirmation !== null) {
+    lines.push("");
+    lines.push(`Esperando confirmación para ${state.confirmation.agent}`);
+    lines.push(`Motivo: ${state.confirmation.reason}`);
+  } else if (state.confirmationError !== "missing") {
+    lines.push("");
+    lines.push(
+      missingLine("Confirmación pendiente", "waiting-confirmation.json", state.confirmationError),
+    );
   }
 
   lines.push("");
