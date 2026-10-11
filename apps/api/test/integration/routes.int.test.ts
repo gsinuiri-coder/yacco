@@ -15,7 +15,11 @@ import { RoutesService } from "../../src/modules/routes/routes.service.js";
 import { SalesService } from "../../src/modules/sales/sales.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
-import { holdContainerTypeLock, startAndCheckBlocked } from "./support/hold-lock.js";
+import {
+  holdBatchItemLock,
+  holdContainerTypeLock,
+  startAndCheckBlocked,
+} from "./support/hold-lock.js";
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
@@ -1844,6 +1848,41 @@ describe("DELETE /api/v1/routes/:id/loads/:loadId", () => {
       .get(`/api/v1/routes/${routeId}/loads`)
       .set("Authorization", `Bearer ${adminToken}`);
     expect(list.body).toHaveLength(1);
+  });
+
+  test("serializa quitar carga con el arranque para que nunca borre después de salir", async () => {
+    const batchItemId = await createBatchItem(100);
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    const created = await addLoad(adminToken, routeId, batchItemId, 40).then((response) => {
+      expect(response.status).toBe(201);
+      return response;
+    });
+    const held = await holdBatchItemLock(prisma, batchItemId);
+
+    const removal = await startAndCheckBlocked(() =>
+      request(server())
+        .delete(`/api/v1/routes/${routeId}/loads/${created.body.id}`)
+        .set("Authorization", `Bearer ${adminToken}`),
+    );
+    const starting = await startAndCheckBlocked(() =>
+      request(server())
+        .patch(`/api/v1/routes/${routeId}/start`)
+        .set("Authorization", `Bearer ${adminToken}`),
+    );
+    await held.release();
+
+    const removalResponse = await removal.result;
+    const startingResponse = await starting.result;
+    expect(removal.finishedWhileLocked).toBe(false);
+    expect(starting.finishedWhileLocked).toBe(false);
+    expect(removalResponse.status).toBe(204);
+    expect(startingResponse.status).toBe(200);
+    await expect(prisma.route.findUniqueOrThrow({ where: { id: routeId } })).resolves.toMatchObject(
+      { status: RouteStatus.IN_PROGRESS },
+    );
+    await expect(
+      prisma.routeLoad.findUnique({ where: { id: created.body.id } }),
+    ).resolves.toBeNull();
   });
 
   test("an unknown loadId is rejected with 404", async () => {

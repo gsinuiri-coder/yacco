@@ -310,14 +310,18 @@ describe("Carga del camión", () => {
 
   it("sin rol de oficina no muestra acciones para cargar ni corregir", async () => {
     resetSession();
+    // VIEWER puede abrir el detalle de oficina; DRIVER es redirigido a «Mi ruta»
+    // antes de montar esta sección y su 403 para POST /loads se cubre en integración.
     cleanups.push(signIn(["VIEWER"], "lector"));
     await navigateTo("/login");
-    stubSection("IN_PROGRESS", [[load("l-1", 30)]], [batch("LOTE-A", "2026-08-01", 5, "item-a")]);
+    stubSection("PLANNED", [[load("l-1", 30)]], [batch("LOTE-A", "2026-08-01", 5, "item-a")]);
 
     await renderSection();
+    await screen.findByText("30 × Bidón 20L");
 
     expect(screen.queryByRole("form", { name: "Cargar el camión" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Corregir la carga/ })).toBeNull();
+    expect(screen.queryByText(/Con la ruta ya iniciada/)).toBeNull();
   });
 
   it("con la ruta en curso separa lo cargado de lo que queda arriba del camión", async () => {

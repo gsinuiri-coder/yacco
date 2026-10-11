@@ -523,6 +523,42 @@ describe("recargar una ruta en curso", () => {
       { status: RouteStatus.SETTLED },
     );
   });
+
+  test("serializa la recarga con el cierre para que la liquidación siempre la cuente", async () => {
+    const typeId = await createContainerType();
+    const batchItemId = await createBatchItem(4, typeId);
+    const routeId = await createRoute();
+    await startRoute(routeId);
+    const held = await holdContainerTypeLock(prisma, typeId);
+
+    const loading = await startAndCheckBlocked(() =>
+      request(server())
+        .post(`/api/v1/routes/${routeId}/loads`)
+        .set("Authorization", `Bearer ${sellerToken}`)
+        .send({ batchItemId, quantity: 4 }),
+    );
+    const finishing = await startAndCheckBlocked(() =>
+      request(server())
+        .patch(`/api/v1/routes/${routeId}/finish`)
+        .set("Authorization", `Bearer ${adminToken}`),
+    );
+    await held.release();
+
+    const loadResponse = await loading.result;
+    const finishResponse = await finishing.result;
+    expect(loading.finishedWhileLocked).toBe(false);
+    expect(finishing.finishedWhileLocked).toBe(false);
+    expect(loadResponse.status).toBe(201);
+    expect(finishResponse.status).toBe(200);
+
+    const settled = await postSettlement(routeId, {
+      fullReturned: 4,
+      fullReturnedByType: [{ containerTypeId: typeId, quantity: 4 }],
+      emptiesCollected: [],
+    }).expect(201);
+    expect(settled.body.settlement.fullOut).toBe(4);
+    expect(settled.body.differences.containers).toBe(0);
+  });
 });
 
 describe("a container shortfall settles anyway and reports it", () => {

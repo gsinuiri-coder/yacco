@@ -1235,6 +1235,8 @@ export class RoutesService {
     }
 
     const load = await this.prisma.$transaction(async (tx) => {
+      const lockedStatus = await lockRouteAndReadStatus(tx, routeId);
+      assertRouteIsTouchable(lockedStatus, "cargar unidades");
       await lockContainerTypes(tx, [batchItem.containerTypeId]);
       await assertIsOldestBatchItemWithStock(tx, batchItem);
 
@@ -1326,20 +1328,28 @@ export class RoutesService {
       );
     }
 
-    const load = await this.prisma.routeLoad.findFirst({
-      where: { id: loadId, routeId },
-      select: {
-        id: true,
-        batchItemId: true,
-        quantity: true,
-        batchItem: { select: { containerTypeId: true, batchId: true } },
-      },
-    });
-    if (load === null) {
-      throw new NotFoundException(`La carga "${loadId}" no existe en esta ruta`);
-    }
-
     await this.prisma.$transaction(async (tx) => {
+      const lockedStatus = await lockRouteAndReadStatus(tx, routeId);
+      if (lockedStatus !== RouteStatus.PLANNED) {
+        throw new ConflictException(
+          `Solo se puede corregir una carga mientras la ruta está planificada; esta está ${ROUTE_STATUS_LABELS[lockedStatus]}`,
+        );
+      }
+
+      const load = await tx.routeLoad.findFirst({
+        where: { id: loadId, routeId },
+        select: {
+          id: true,
+          batchItemId: true,
+          quantity: true,
+          batchItem: { select: { containerTypeId: true, batchId: true } },
+        },
+      });
+      if (load === null) {
+        throw new NotFoundException(`La carga "${loadId}" no existe en esta ruta`);
+      }
+
+      await lockContainerTypes(tx, [load.batchItem.containerTypeId]);
       await tx.batchItem.update({
         where: { id: load.batchItemId },
         data: { availableQty: { increment: load.quantity } },
@@ -1495,6 +1505,25 @@ function assertRouteIsTouchable(status: RouteStatus, action: string): void {
       `No se pueden ${action} de una ruta ${ROUTE_STATUS_LABELS[status]}`,
     );
   }
+}
+
+/**
+ * Serializa una mutación de la carga con los cambios de estado de la ruta.
+ * El orden es siempre ruta y después tipos de envase, igual que al liquidar.
+ */
+async function lockRouteAndReadStatus(
+  client: Prisma.TransactionClient,
+  routeId: string,
+): Promise<RouteStatus> {
+  await client.$queryRaw`SELECT id FROM routes WHERE id = ${routeId}::uuid FOR NO KEY UPDATE`;
+  const route = await client.route.findUnique({
+    where: { id: routeId },
+    select: { status: true },
+  });
+  if (route === null) {
+    throw new NotFoundException(`La ruta "${routeId}" no existe`);
+  }
+  return route.status;
 }
 
 function buildRouteFilter(query: ListRoutesQueryDto, actor: RouteActor): Prisma.RouteWhereInput {

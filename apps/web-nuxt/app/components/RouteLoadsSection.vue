@@ -79,8 +79,10 @@ const editable = computed(
 // calle, un error de carga se resuelve en la liquidación.
 const canRemove = computed(() => canManageLoads.value && props.route.status === "PLANNED");
 const sectionDescription = computed(() => {
-  if (canRemove.value) {
-    return "Lo que sube sale siempre del lote más antiguo con unidades. Mientras la ruta no arranque se puede corregir; después ya no.";
+  if (props.route.status === "PLANNED") {
+    return canManageLoads.value
+      ? "Lo que sube sale siempre del lote más antiguo con unidades. Mientras la ruta no arranque se puede corregir; después ya no."
+      : "Lo que sube sale siempre del lote más antiguo con unidades.";
   }
   if (props.route.status === "IN_PROGRESS" && canManageLoads.value) {
     return "Si el camión vuelve por más bidones, agrega aquí la nueva carga. Sale siempre del lote más antiguo con unidades.";
@@ -346,7 +348,7 @@ async function remove(load: RouteLoad): Promise<void> {
             </tr>
           </tbody>
         </table>
-        <p v-if="!canRemove" class="text-sm text-muted">
+        <p v-if="route.status !== 'PLANNED'" class="text-sm text-muted">
           Con la ruta ya iniciada, una carga mal ingresada no se borra: la diferencia se registra al
           liquidar.
         </p>
