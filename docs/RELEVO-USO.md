@@ -167,6 +167,16 @@ updated: 2026-10-09 18:00 por Giancarlo
 
 ## Correrlo, pararlo y leer lo que pasó
 
+### Ver cómo va
+
+En otra pestaña, el tablero de solo lectura muestra el agente actual, el relevo
+y sus últimas ocho corridas:
+
+```sh
+pnpm relay:status           # imprime una vez
+pnpm relay:status --watch   # redibuja cada 5 segundos hasta Ctrl+C
+```
+
 ```
 pnpm relay --dry-run   # qué correría y con qué banderas, sin correr nada
 pnpm relay             # arranca

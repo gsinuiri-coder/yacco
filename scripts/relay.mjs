@@ -722,7 +722,23 @@ async function relayLoop(
     const start = clock.now().toISOString();
     out.log(`\n=== Relevo: corrida ${runs + 1}/${config.maxRuns}, ${agent.name} ===`);
     const before = readFileOrNull(relayPath);
-    const result = await runAgent(agent, { prompt: config.prompt, root, out, onSpawn, env });
+    const currentPath = join(relayDir, "current.json");
+    writeFileSync(
+      currentPath,
+      JSON.stringify({
+        agent: agent.name,
+        model: agent.model ?? null,
+        run: runs + 1,
+        maxRuns: config.maxRuns,
+        start,
+      }) + "\n",
+    );
+    let result;
+    try {
+      result = await runAgent(agent, { prompt: config.prompt, root, out, onSpawn, env });
+    } finally {
+      rmSync(currentPath, { force: true });
+    }
     runs += 1;
 
     let outcome = "ok";
