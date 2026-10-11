@@ -148,7 +148,7 @@ cuándo, y tres líneas:
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 4 de «Fase 2 en local».
 - **Asumimos:** que a la oficina le sirve un orden sugerido por vecino más cercano desde la planta (paradas sin coordenadas al final), que confirma o no, y un recorrido para abrir en Google Maps, partido en tramos si es largo.
-- **Construido encima:** nada todavía. Se construye con `PLANT_LATITUDE`/`PLANT_LONGITUDE` en configuración y dos botones en la ruta.
+- **Construido encima:** `PLANT_LATITUDE`/`PLANT_LONGITUDE` se validan juntas y la oficina las lee por `GET /api/v1/settings/plant-location`; `proposeNearbyStopIds` arma la propuesta estable, `buildGoogleMapsRouteLegs` limita cada tramo a tres puntos intermedios para que funcione también en navegador móvil, y `RouteStopsSection.vue` muestra la confirmación y los enlaces sin incluir paradas sin coordenadas.
 - **Si resulta que no:** bajo. Es una propuesta que nadie está obligado a aceptar; se quitan los botones.
 
 ### Fase 2: la parada guarda dónde se marcó, una sola vez
