@@ -225,9 +225,17 @@ export class ReportsService {
     };
 
     const rows = batches.map((batch) => {
-      const items = batch.items
-        .map((item) => toLine(item.containerType, item.producedQty))
-        .sort(byName((line) => line.containerType.name));
+      const batchByTypeId = new Map<string, ProducedByTypeDto>();
+      for (const item of batch.items) {
+        toLine(item.containerType, item.producedQty);
+        const line = batchByTypeId.get(item.containerType.id) ?? {
+          containerType: item.containerType,
+          producedQty: 0,
+        };
+        line.producedQty += item.producedQty;
+        batchByTypeId.set(item.containerType.id, line);
+      }
+      const items = [...batchByTypeId.values()].sort(byName((line) => line.containerType.name));
       return {
         id: batch.id,
         code: batch.code,

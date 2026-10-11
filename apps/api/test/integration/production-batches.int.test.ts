@@ -10,6 +10,7 @@ const MISSING_UUID = "00000000-0000-4000-8000-000000000000";
 
 let ctx: TestAppContext;
 let adminToken: string;
+let secondAdminToken: string;
 let sellerToken: string;
 let driverToken: string;
 let containerTypeA: string;
@@ -87,6 +88,7 @@ async function inventoryOf(token: string, containerTypeId: string, state: string
 beforeAll(async () => {
   ctx = await startTestApp();
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
+  secondAdminToken = await createUserAndLogin("responsable-lotes-2", "ADMIN");
   sellerToken = await createUserAndLogin("vendedor-lotes", "SELLER");
   driverToken = await createUserAndLogin("repartidor-lotes", "DRIVER");
 
@@ -112,6 +114,7 @@ afterEach(async () => {
 });
 
 describe("POST /api/v1/production-batches", () => {
+  // HU-01 E1: la primera llenada crea el lote y mueve el stock en la misma cantidad.
   test("un lote de dos líneas emite DOS movimientos FILLING con las cantidades correctas y el batchId del lote", async () => {
     await createMovement(adminToken, {
       type: "FLEET_ENTRY",
@@ -180,6 +183,7 @@ describe("POST /api/v1/production-batches", () => {
   // Business decision (spec, decided with the client): the plant really
   // filled those containers, so the batch is recorded anyway. The negative
   // means "fleet entries are missing" and is not a bug.
+  // HU-01 E5: la sobreproducción se registra, advierte y deja visible el faltante.
   test("producir más de los vacíos disponibles registra el lote igual, avisa con los números, y deja el inventario negativo", async () => {
     // No FLEET_ENTRY at all: every unit produced here outruns what's on the books.
     const response = await createBatch(adminToken, {
@@ -230,10 +234,118 @@ describe("POST /api/v1/production-batches", () => {
     const code = nextCode();
     await createBatch(adminToken, { code }).expect(201);
 
-    const duplicate = await createBatch(adminToken, { code });
+    const duplicate = await createBatch(adminToken, { code, date: "2026-08-23" });
 
     expect(duplicate.status).toBe(409);
     expect(messagesOf(duplicate)).toContain("Ya existe");
+  });
+
+  // HU-01 E2 y E4: una llenada posterior agrega renglones auditables sin editar la primera.
+  test("dos llenadas del mismo día se guardan como renglones auditables del mismo lote y emiten sus propios movimientos", async () => {
+    const first = await createBatch(adminToken, {
+      code: "",
+      date: "2026-10-22",
+      notes: "Primera llenada",
+      items: [{ containerTypeId: containerTypeA, producedQty: 17 }],
+    }).expect(201);
+    const second = await createBatch(secondAdminToken, {
+      code: "NO-DEBE-CREAR-OTRO-LOTE",
+      date: "2026-10-22",
+      notes: "Segunda llenada",
+      items: [{ containerTypeId: containerTypeA, producedQty: 29 }],
+    }).expect(201);
+
+    expect(second.body.id).toBe(first.body.id);
+    expect(second.body.code).toBe("L-22102026");
+
+    const prisma = ctx.app.get(PrismaService);
+    const batches = await prisma.productionBatch.findMany({
+      where: { date: new Date("2026-10-22T00:00:00.000Z") },
+      include: { items: true },
+    });
+    expect(batches).toHaveLength(1);
+    const firstFilling = batches[0]!.items.find((item) => item.producedQty === 17);
+    const secondFilling = batches[0]!.items.find((item) => item.producedQty === 29);
+    expect(batches[0]).toMatchObject({
+      id: first.body.id,
+      filledById: firstFilling?.recordedById,
+      notes: "Primera llenada",
+    });
+    expect(batches[0]!.filledById).not.toBe(secondFilling?.recordedById);
+    expect(batches[0]!.items.map((item) => item.producedQty).sort((a, b) => a - b)).toEqual([
+      17, 29,
+    ]);
+
+    const auditedItems = await prisma.$queryRaw<
+      Array<{
+        producedQty: number;
+        notes: string | null;
+        createdAt: Date | null;
+        recordedBy: string | null;
+      }>
+    >`SELECT bi.produced_qty AS "producedQty",
+             bi.notes,
+             bi.created_at AS "createdAt",
+             u.username AS "recordedBy"
+        FROM batch_items bi
+        LEFT JOIN users u ON u.id = bi.recorded_by
+       WHERE bi.batch_id = ${first.body.id}::uuid
+       ORDER BY bi.produced_qty`;
+    expect(auditedItems).toEqual([
+      {
+        producedQty: 17,
+        notes: "Primera llenada",
+        createdAt: expect.any(Date),
+        recordedBy: ADMIN_USERNAME,
+      },
+      {
+        producedQty: 29,
+        notes: "Segunda llenada",
+        createdAt: expect.any(Date),
+        recordedBy: "responsable-lotes-2",
+      },
+    ]);
+
+    const movements = await prisma.containerMovement.findMany({
+      where: { batchId: first.body.id, type: "FILLING" },
+      orderBy: { quantity: "asc" },
+    });
+    expect(movements.map((movement) => movement.quantity)).toEqual([17, 29]);
+    expect(new Set(movements.map((movement) => movement.recordedById)).size).toBe(2);
+  });
+
+  // HU-01 E3: dos primeras llenadas simultáneas terminan en un lote y ninguna recibe 409.
+  test("dos primeras llenadas simultáneas crean un lote y dos renglones, sin 409", async () => {
+    const [first, second] = await Promise.all([
+      createBatch(adminToken, {
+        code: "",
+        date: "2026-10-22",
+        notes: "Simultánea 31",
+        items: [{ containerTypeId: containerTypeA, producedQty: 31 }],
+      }),
+      createBatch(secondAdminToken, {
+        code: undefined,
+        date: "2026-10-22",
+        notes: "Simultánea 47",
+        items: [{ containerTypeId: containerTypeA, producedQty: 47 }],
+      }),
+    ]);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(first.body.id).toBe(second.body.id);
+    expect(first.body.code).toBe("L-22102026");
+    expect(second.body.code).toBe("L-22102026");
+
+    const prisma = ctx.app.get(PrismaService);
+    const batches = await prisma.productionBatch.findMany({
+      where: { date: new Date("2026-10-22T00:00:00.000Z") },
+      include: { items: true },
+    });
+    expect(batches).toHaveLength(1);
+    expect(batches[0]!.items.map((item) => item.producedQty).sort((a, b) => a - b)).toEqual([
+      31, 47,
+    ]);
   });
 
   // This documents the atomicity guarantee ("si algo falla a mitad, no debe
@@ -253,6 +365,7 @@ describe("POST /api/v1/production-batches", () => {
 
     const failedAttempt = await createBatch(adminToken, {
       code,
+      date: "2026-08-23",
       items: [
         { containerTypeId: containerTypeA, producedQty: 10 },
         { containerTypeId: containerTypeB, producedQty: 20 },
@@ -342,6 +455,38 @@ describe("POST /api/v1/production-batches", () => {
       });
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe("GET /api/v1/production-batches/code-proposals", () => {
+  test("propone el código base o informa el lote al que se sumará, y solo ADMIN puede consultarlo", async () => {
+    const initial = await request(server())
+      .get("/api/v1/production-batches/code-proposals?date=2026-10-22")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(initial.body).toEqual({ code: "L-22102026", willAppend: false });
+
+    await createBatch(adminToken, { code: "", date: "2026-10-22" }).expect(201);
+
+    const next = await request(server())
+      .get("/api/v1/production-batches/code-proposals?date=2026-10-22")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(next.body).toEqual({ code: "L-22102026", willAppend: true });
+
+    await request(server())
+      .get("/api/v1/production-batches/code-proposals?date=2026-10-22")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .expect(403);
+  });
+
+  test("rechaza una fecha imposible", async () => {
+    const response = await request(server())
+      .get("/api/v1/production-batches/code-proposals?date=2026-02-31")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("no es una fecha válida");
   });
 });
 

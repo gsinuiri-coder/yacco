@@ -165,6 +165,7 @@ model User {
 
   roles                         UserRoleAssignment[]
   productionBatches             ProductionBatch[]
+  batchItemsRecorded            BatchItem[]          @relation("BatchItemRecordedBy")
   containerMovements            ContainerMovement[]
   containerCounts               ContainerCount[]
   orders                        Order[]
@@ -386,14 +387,18 @@ model ProductionBatch {
 }
 
 model BatchItem {
-  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  batchId         String @map("batch_id") @db.Uuid
-  containerTypeId String @map("container_type_id") @db.Uuid
-  producedQty     Int    @map("produced_qty")
-  availableQty    Int    @map("available_qty")
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchId         String    @map("batch_id") @db.Uuid
+  containerTypeId String    @map("container_type_id") @db.Uuid
+  producedQty     Int       @map("produced_qty")
+  availableQty    Int       @map("available_qty")
+  createdAt       DateTime? @map("created_at") @db.Timestamptz(6)
+  recordedById    String?   @map("recorded_by") @db.Uuid
+  notes           String?
 
   batch         ProductionBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
   containerType ContainerType   @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  recordedBy    User?           @relation("BatchItemRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
   routeLoads    RouteLoad[]
 
   @@map("batch_items")

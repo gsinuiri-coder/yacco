@@ -31,6 +31,10 @@ import {
   ProductionBatchResponseDto,
 } from "./dto/production-batch-response.dto.js";
 import { ListProductionBatchesQueryDto } from "./dto/list-production-batches-query.dto.js";
+import {
+  ProductionBatchCodeProposalDto,
+  ProductionBatchCodeProposalQueryDto,
+} from "./dto/production-batch-code-proposal.dto.js";
 import { ProductionBatchesService } from "./production-batches.service.js";
 
 /**
@@ -47,7 +51,9 @@ import { ProductionBatchesService } from "./production-batches.service.js";
 export class ProductionBatchesController {
   constructor(private readonly productionBatchesService: ProductionBatchesService) {}
 
-  @ApiOperation({ summary: "Registra un lote de producción y emite sus movimientos FILLING" })
+  @ApiOperation({
+    summary: "Registra una llenada en el lote de la fecha y emite sus movimientos FILLING",
+  })
   @ApiResponse({ status: 201, type: CreateProductionBatchResponseDto })
   @ApiBadRequestResponse({
     description:
@@ -63,6 +69,20 @@ export class ProductionBatchesController {
   ): Promise<CreateProductionBatchResponseDto> {
     // filledById comes from the access token, never from the body.
     return this.productionBatchesService.create(dto, request.user.sub);
+  }
+
+  @ApiOperation({
+    summary: "Propone el código o informa el lote existente para una fecha de producción",
+  })
+  @ApiResponse({ status: 200, type: ProductionBatchCodeProposalDto })
+  @ApiBadRequestResponse({ description: "The date is not a valid calendar day" })
+  @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
+  @Roles(UserRole.ADMIN)
+  @Get("code-proposals")
+  proposeCode(
+    @Query() query: ProductionBatchCodeProposalQueryDto,
+  ): Promise<ProductionBatchCodeProposalDto> {
+    return this.productionBatchesService.proposeCode(query.date);
   }
 
   @ApiOperation({

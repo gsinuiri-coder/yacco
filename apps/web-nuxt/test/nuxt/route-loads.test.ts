@@ -28,6 +28,10 @@ function batch(code: string, date: string, availableQty: number, itemId: string)
         containerType: { id: "ct-bidon", name: "Bidón 20L" },
         producedQty: availableQty,
         availableQty,
+        createdAt: null,
+        recordedById: null,
+        recordedBy: null,
+        notes: null,
       },
     ],
   };

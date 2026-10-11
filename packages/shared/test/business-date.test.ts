@@ -31,6 +31,8 @@ describe("limaToday", () => {
     // 02:00 UTC del 25 son las 21:00 del 24 en Lima.
     expect(limaToday(new Date("2026-08-25T02:00:00.000Z"))).toBe("2026-08-24");
     expect(limaToday(new Date("2026-08-25T05:00:00.000Z"))).toBe("2026-08-25");
+    // 23:30 del 22 en Lima ya es 04:30 del 23 en UTC: la llenada sigue siendo del 22.
+    expect(limaToday(new Date("2026-10-23T04:30:00.000Z"))).toBe("2026-10-22");
   });
 
   it("sin argumento usa el instante actual", () => {

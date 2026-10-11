@@ -3,8 +3,9 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { getQuery } from "h3";
 import type { H3Event } from "h3";
-import type { ProductionBatch, UserRole } from "@yacco/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { limaToday } from "@yacco/shared";
+import type { ProductionBatch, ProductionBatchCodeProposal, UserRole } from "@yacco/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "~/app.vue";
 import { pageOf } from "../support/fixtures";
 import { failWith, stubWrite } from "../support/route-detail";
@@ -13,6 +14,17 @@ import { resetSession, signIn } from "../support/session";
 const cleanups: Array<() => void> = [];
 const CON_CANO = { id: "ct-cano", name: "Con caño", active: true };
 const SIN_CANO = { id: "ct-sin", name: "Sin caño", active: true };
+const TODAY = limaToday();
+const [TODAY_YEAR, TODAY_MONTH, TODAY_DAY] = TODAY.split("-");
+const TODAY_CODE = `L-${TODAY_DAY}${TODAY_MONTH}${TODAY_YEAR}`;
+const EXISTING_DATE = "2026-09-17";
+const EXISTING_CODE = "L-17092026";
+const FIRST_FILL_AUDIT = {
+  createdAt: "2026-08-22T14:15:00.000Z",
+  recordedById: "u-1",
+  recordedBy: { id: "u-1", name: "Rosa Mamani" },
+  notes: "Turno mañana",
+};
 
 function batch(overrides: Partial<ProductionBatch> = {}): ProductionBatch {
   return {
@@ -24,6 +36,7 @@ function batch(overrides: Partial<ProductionBatch> = {}): ProductionBatch {
     notes: null,
     items: [
       {
+        ...FIRST_FILL_AUDIT,
         id: "i-1",
         containerTypeId: "ct-cano",
         containerType: { id: "ct-cano", name: "Con caño" },
@@ -35,10 +48,30 @@ function batch(overrides: Partial<ProductionBatch> = {}): ProductionBatch {
   };
 }
 
-function stubPage(batches: ProductionBatch[] = [batch()]) {
+function proposalFor(date: string): ProductionBatchCodeProposal {
+  if (date === EXISTING_DATE) return { code: EXISTING_CODE, willAppend: true };
+  const [year, month, day] = date.split("-");
+  return { code: `L-${day}${month}${year}`, willAppend: false };
+}
+
+function stubPage(
+  batches: ProductionBatch[] = [batch()],
+  proposal: (
+    date: string,
+  ) => ProductionBatchCodeProposal | Promise<ProductionBatchCodeProposal> = proposalFor,
+) {
   const queries: Array<Record<string, unknown>> = [];
+  const proposalDates: string[] = [];
   cleanups.push(
     registerEndpoint("/api/v1/container-types", () => [CON_CANO, SIN_CANO]),
+    registerEndpoint("/api/v1/production-batches/code-proposals", {
+      method: "GET",
+      handler: (event: H3Event) => {
+        const date = String(getQuery(event).date);
+        proposalDates.push(date);
+        return proposal(date);
+      },
+    }),
     registerEndpoint("/api/v1/production-batches", {
       method: "GET",
       handler: (event: H3Event) => {
@@ -47,7 +80,7 @@ function stubPage(batches: ProductionBatch[] = [batch()]) {
       },
     }),
   );
-  return queries;
+  return { queries, proposalDates };
 }
 
 async function renderProduction(roles: UserRole[] = ["ADMIN"]) {
@@ -69,11 +102,12 @@ describe("Producción", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const cleanup of cleanups.splice(0)) cleanup();
   });
 
   it("registra un lote de dos tipos: fecha como texto AAAA-MM-DD y cantidades enteras", async () => {
-    const queries = stubPage();
+    const { queries } = stubPage();
     const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({
       ...batch({ code: "LOTE-02" }),
       warnings: [],
@@ -81,13 +115,15 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
+    await screen.findByDisplayValue(TODAY_CODE);
+    await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), " LOTE-02 ");
     await chooseType(1, "Con caño");
     await user.type(screen.getByLabelText("Cantidad producida 1"), "200");
     await user.click(screen.getByRole("button", { name: "Agregar tipo de envase" }));
     await chooseType(2, "Sin caño");
     await user.type(screen.getByLabelText("Cantidad producida 2"), "150");
-    await user.click(screen.getByRole("button", { name: "Registrar lote" }));
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
 
     expect(await screen.findByText("Lote LOTE-02 registrado.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Ver inventario actualizado" })).toBeTruthy();
@@ -102,8 +138,129 @@ describe("Producción", () => {
       },
     ]);
     // El formulario se vacía y la lista se recarga.
-    expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("");
+    await waitFor(() =>
+      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe(TODAY_CODE),
+    );
     await waitFor(() => expect(queries.length).toBeGreaterThan(1));
+  });
+
+  it("precarga un código editable para el primer lote y bloquea el del lote existente", async () => {
+    const { proposalDates } = stubPage();
+
+    await renderProduction();
+    await waitFor(() =>
+      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe(TODAY_CODE),
+    );
+
+    await fireEvent.update(screen.getByLabelText("Fecha"), EXISTING_DATE);
+
+    const codeInput = screen.getByLabelText("Código") as HTMLInputElement;
+    await waitFor(() => expect(codeInput.value).toBe(EXISTING_CODE));
+    expect(codeInput.disabled).toBe(true);
+    expect(await screen.findByText(`Se suma al lote de hoy, ${EXISTING_CODE}`)).toBeTruthy();
+    expect(proposalDates).toContain(EXISTING_DATE);
+  });
+
+  it("no envía el código de la fecha anterior mientras espera la nueva propuesta", async () => {
+    let resolveProposal: ((value: ProductionBatchCodeProposal) => void) | undefined;
+    const pendingProposal = new Promise<ProductionBatchCodeProposal>((resolve) => {
+      resolveProposal = resolve;
+    });
+    stubPage([batch()], (requestedDate) =>
+      requestedDate === EXISTING_DATE ? pendingProposal : proposalFor(requestedDate),
+    );
+    const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({
+      ...batch({ code: EXISTING_CODE }),
+      warnings: [],
+    }));
+    const user = userEvent.setup();
+
+    await renderProduction();
+    await screen.findByDisplayValue(TODAY_CODE);
+    await chooseType(1, "Con caño");
+    await user.type(screen.getByLabelText("Cantidad producida 1"), "12");
+    await fireEvent.update(screen.getByLabelText("Fecha"), EXISTING_DATE);
+
+    const form = screen.getByRole("form", { name: "Registrar llenada" });
+    const disabledWhilePending = (
+      screen.getByRole("button", { name: "Crear lote" }) as HTMLButtonElement
+    ).disabled;
+    await fireEvent.submit(form);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const bodiesWhilePending = [...bodies];
+    resolveProposal?.({ code: EXISTING_CODE, willAppend: true });
+
+    expect(disabledWhilePending).toBe(true);
+    expect(bodiesWhilePending).toHaveLength(0);
+    await user.click(await screen.findByRole("button", { name: "Sumar llenada" }));
+    expect(bodies).toEqual([
+      {
+        code: EXISTING_CODE,
+        date: EXISTING_DATE,
+        items: [{ containerTypeId: "ct-cano", producedQty: 12 }],
+      },
+    ]);
+  });
+
+  it("si falla la propuesta de una fecha nueva, no reutiliza el código de la anterior", async () => {
+    stubPage([batch()], (requestedDate) => {
+      if (requestedDate === EXISTING_DATE) throw new Error("proposal unavailable");
+      return proposalFor(requestedDate);
+    });
+    const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({
+      ...batch({ code: EXISTING_CODE, date: EXISTING_DATE }),
+      warnings: [],
+    }));
+    const user = userEvent.setup();
+
+    await renderProduction();
+    await screen.findByDisplayValue(TODAY_CODE);
+    await chooseType(1, "Con caño");
+    await user.type(screen.getByLabelText("Cantidad producida 1"), "12");
+    await fireEvent.update(screen.getByLabelText("Fecha"), EXISTING_DATE);
+
+    const codeInput = screen.getByLabelText("Código") as HTMLInputElement;
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Crear lote" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect(codeInput.value).toBe("");
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
+
+    expect(bodies).toEqual([
+      {
+        code: "",
+        date: EXISTING_DATE,
+        items: [{ containerTypeId: "ct-cano", producedQty: 12 }],
+      },
+    ]);
+  });
+
+  // HU-01 E1: el lote pertenece al día calendario de America/Lima.
+  it("a las 23:30 de Lima registra la llenada en ese día, aunque UTC ya esté en el siguiente", async () => {
+    vi.setSystemTime(new Date("2026-10-23T04:30:00.000Z"));
+    stubPage();
+    const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({
+      ...batch({ code: "L-22102026", date: "2026-10-22" }),
+      warnings: [],
+    }));
+    const user = userEvent.setup();
+
+    await renderProduction();
+    expect(((await screen.findByLabelText("Fecha")) as HTMLInputElement).value).toBe("2026-10-22");
+    await screen.findByDisplayValue("L-22102026");
+    await chooseType(1, "Con caño");
+    await user.type(screen.getByLabelText("Cantidad producida 1"), "8");
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
+
+    expect(bodies).toEqual([
+      {
+        code: "L-22102026",
+        date: "2026-10-22",
+        items: [{ containerTypeId: "ct-cano", producedQty: 8 }],
+      },
+    ]);
   });
 
   it("la sobreproducción se avisa con sus números tras un alta exitosa, sin leerse como error", async () => {
@@ -122,10 +279,12 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
+    await screen.findByDisplayValue(TODAY_CODE);
+    await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), "LOTE-03");
     await chooseType(1, "Con caño");
     await user.type(screen.getByLabelText("Cantidad producida 1"), "200");
-    await user.click(screen.getByRole("button", { name: "Registrar lote" }));
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
 
     expect(await screen.findByText("Lote LOTE-03 registrado.")).toBeTruthy();
     expect(screen.getByText(/El lote se guardó igual/)).toBeTruthy();
@@ -151,16 +310,17 @@ describe("Producción", () => {
     expect(options.map((option) => option.textContent?.trim())).toEqual(["Sin caño"]);
   });
 
-  it("valida código, tipo y cantidad antes de llamar, y corregir una línea borra sólo su error", async () => {
+  it("permite el código vacío y valida tipo y cantidad antes de llamar", async () => {
     stubPage();
     const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST");
     const user = userEvent.setup();
 
     await renderProduction();
+    await screen.findByDisplayValue(TODAY_CODE);
+    await user.clear(screen.getByLabelText("Código"));
     await user.click(screen.getByRole("button", { name: "Agregar tipo de envase" }));
-    await user.click(screen.getByRole("button", { name: "Registrar lote" }));
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
 
-    expect(await screen.findByText("El código no puede estar vacío")).toBeTruthy();
     expect(screen.getAllByText("Elige un tipo de envase", { selector: "p" })).toHaveLength(2);
     expect(bodies).toHaveLength(0);
 
@@ -181,10 +341,12 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
+    await screen.findByDisplayValue(TODAY_CODE);
+    await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), "LOTE-01");
     await chooseType(1, "Con caño");
     await user.type(screen.getByLabelText("Cantidad producida 1"), "10");
-    await user.dblClick(screen.getByRole("button", { name: "Registrar lote" }));
+    await user.dblClick(screen.getByRole("button", { name: "Crear lote" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       'Ya existe un lote con el código "LOTE-01"',
@@ -198,19 +360,32 @@ describe("Producción", () => {
     await renderProduction(["SELLER"]);
 
     expect(await screen.findByText("LOTE-2026-08-22-01")).toBeTruthy();
-    expect(screen.queryByRole("form", { name: "Registrar lote" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar llenada" })).toBeNull();
   });
 
+  // HU-01 E4: el detalle separa hora, responsable, tipo, cantidad y nota de cada llenada.
   it("lista código, fecha, responsable, lo producido y lo que queda sin cargar (o «Todo cargado»)", async () => {
     stubPage([
       batch({
         items: [
           {
+            ...FIRST_FILL_AUDIT,
             id: "i-1",
             containerTypeId: "ct-cano",
             containerType: { id: "ct-cano", name: "Con caño" },
-            producedQty: 200,
+            producedQty: 120,
             availableQty: 80,
+          },
+          {
+            id: "i-1b",
+            containerTypeId: "ct-cano",
+            containerType: { id: "ct-cano", name: "Con caño" },
+            producedQty: 80,
+            availableQty: 20,
+            createdAt: "2026-08-22T16:45:00.000Z",
+            recordedById: "u-2",
+            recordedBy: { id: "u-2", name: "Luis Quispe" },
+            notes: "Turno tarde",
           },
           {
             id: "i-2",
@@ -218,6 +393,10 @@ describe("Producción", () => {
             containerType: { id: "ct-sin", name: "Sin caño" },
             producedQty: 50,
             availableQty: 0,
+            createdAt: null,
+            recordedById: null,
+            recordedBy: null,
+            notes: null,
           },
         ],
       }),
@@ -231,6 +410,10 @@ describe("Producción", () => {
             containerType: { id: "ct-cano", name: "Con caño" },
             producedQty: 100,
             availableQty: 0,
+            createdAt: null,
+            recordedById: null,
+            recordedBy: null,
+            notes: null,
           },
         ],
       }),
@@ -243,13 +426,25 @@ describe("Producción", () => {
     expect(within(row).getByText("Rosa Mamani")).toBeTruthy();
     expect(within(row).getByText("200× Con caño, 50× Sin caño")).toBeTruthy();
     // Sólo el tipo que todavía tiene unidades.
-    expect(within(row).getByText("80× Con caño")).toBeTruthy();
+    expect(within(row).getByText("100× Con caño")).toBeTruthy();
+
+    await userEvent.setup().click(within(row).getByRole("button", { name: "Ver 3 llenadas" }));
+    const details = screen.getByRole("region", {
+      name: "Llenadas del lote LOTE-2026-08-22-01",
+    });
+    expect(within(details).getByText("Rosa Mamani")).toBeTruthy();
+    expect(within(details).getByText("22/08/2026 09:15")).toBeTruthy();
+    expect(within(details).getByText("Turno mañana")).toBeTruthy();
+    expect(within(details).getByText("Luis Quispe")).toBeTruthy();
+    expect(within(details).getByText("22/08/2026 11:45")).toBeTruthy();
+    expect(within(details).getByText("Turno tarde")).toBeTruthy();
+    expect(within(details).getByText("Registro anterior sin hora ni responsable")).toBeTruthy();
     const old = screen.getByText("LOTE-VIEJO").closest("tr") as HTMLElement;
     expect(within(old).getByText("Todo cargado")).toBeTruthy();
   });
 
   it("el rango de fechas llega a la query; sin lotes lo dice", async () => {
-    const queries = stubPage([]);
+    const { queries } = stubPage([]);
 
     await renderProduction(["SELLER"]);
     expect(await screen.findByText("Todavía no hay lotes registrados")).toBeTruthy();

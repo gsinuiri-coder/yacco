@@ -34,6 +34,18 @@ export class ProductionBatchItemResponseDto {
   /** Born equal to producedQty; consumed by route loading (S5) and by a plant count that finds fewer fulls, never here. */
   @ApiProperty({ example: 200 })
   availableQty!: number;
+
+  @ApiPropertyOptional({ type: String, format: "date-time", nullable: true })
+  createdAt!: string | null;
+
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
+  recordedById!: string | null;
+
+  @ApiPropertyOptional({ type: ProductionBatchFilledByDto, nullable: true })
+  recordedBy!: ProductionBatchFilledByDto | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  notes!: string | null;
 }
 
 export class ProductionBatchResponseDto {

@@ -1503,7 +1503,12 @@ describe("POST /api/v1/routes/:id/loads", () => {
             items: [{ containerTypeId: containerType.body.id, producedQty: 40 }],
           })
           .expect(201);
-        return response.body.items[0].id as string;
+        const createdItem = response.body.items.find(
+          (item: { containerTypeId: string; producedQty: number }) =>
+            item.containerTypeId === containerType.body.id && item.producedQty === 40,
+        );
+        expect(createdItem).toBeDefined();
+        return createdItem.id as string;
       };
 
       return {
@@ -1539,6 +1544,55 @@ describe("POST /api/v1/routes/:id/loads", () => {
       expect(response.body.batchItemId).toBe(newItemId);
     });
 
+    test("consume dos renglones del mismo lote antes de pasar al lote del día siguiente", async () => {
+      fifoSeq += 1;
+      const type = await request(server())
+        .post("/api/v1/container-types")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ name: `Envase FIFO por llenada ${fifoSeq}` })
+        .expect(201);
+
+      const fill = (date: string, producedQty: number) =>
+        request(server())
+          .post("/api/v1/production-batches")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({
+            code: "",
+            date,
+            items: [{ containerTypeId: type.body.id, producedQty }],
+          })
+          .expect(201);
+
+      const first = await fill("2026-05-10", 3);
+      const second = await fill("2026-05-10", 4);
+      const nextDay = await fill("2026-05-11", 5);
+      expect(second.body.id).toBe(first.body.id);
+
+      const firstItemId = first.body.items.find(
+        (item: { producedQty: number }) => item.producedQty === 3,
+      ).id as string;
+      const secondItemId = second.body.items.find(
+        (item: { producedQty: number }) => item.producedQty === 4,
+      ).id as string;
+      const nextDayItemId = nextDay.body.items.find(
+        (item: { producedQty: number }) => item.producedQty === 5,
+      ).id as string;
+      const routeId = await createRoute(adminToken, { date: nextDate() });
+
+      await addLoad(adminToken, routeId, firstItemId, 3).then((r) => expect(r.status).toBe(201));
+      await addLoad(adminToken, routeId, secondItemId, 4).then((r) => expect(r.status).toBe(201));
+      await addLoad(adminToken, routeId, nextDayItemId, 2).then((r) => expect(r.status).toBe(201));
+
+      const loads = await prisma.routeLoad.findMany({
+        where: { routeId },
+        orderBy: { id: "asc" },
+      });
+      expect(new Set(loads.map((load) => load.batchItemId))).toEqual(
+        new Set([firstItemId, secondItemId, nextDayItemId]),
+      );
+      expect(loads.reduce((sum, load) => sum + load.quantity, 0)).toBe(9);
+    });
+
     test("los lotes viejos de OTRO tipo de envase no bloquean la carga", async () => {
       const { oldItemId } = await createFifoPair();
       const routeId = await createRoute(adminToken, { date: nextDate() });
@@ -1548,7 +1602,10 @@ describe("POST /api/v1/routes/:id/loads", () => {
       // por tipo de envase, este 201 sería un 400.
       const response = await addLoad(adminToken, routeId, oldItemId, 5);
 
-      expect(response.status).toBe(201);
+      expect({ status: response.status, message: messagesOf(response) }).toEqual({
+        status: 201,
+        message: "",
+      });
     });
   });
 

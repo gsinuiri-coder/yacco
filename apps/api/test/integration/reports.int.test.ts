@@ -355,6 +355,23 @@ describe("GET /api/v1/reports/production (HU-21)", () => {
     ]);
   });
 
+  test("dos llenadas del mismo tipo y día aparecen como un lote con el total por tipo", async () => {
+    await batch("", "2026-07-15", [[containerTypeA.id, 11]]);
+    await batch("CODIGO-QUE-NO-CREA-OTRO", "2026-07-15", [[containerTypeA.id, 23]]);
+
+    const response = await get("production?dateFrom=2026-07-15&dateTo=2026-07-15");
+
+    expect(response.status).toBe(200);
+    expect(response.body.batches).toHaveLength(1);
+    expect(response.body.batches[0]).toMatchObject({
+      code: "L-15072026",
+      total: 34,
+      items: [{ containerType: containerTypeA, producedQty: 34 }],
+    });
+    expect(response.body.byType).toEqual([{ containerType: containerTypeA, producedQty: 34 }]);
+    expect(response.body.total).toBe(34);
+  });
+
   test("el rango es obligatorio y no puede estar al revés", async () => {
     await get("production").expect(400);
     await get("production?dateFrom=2026-07-31&dateTo=2026-07-01").expect(400);

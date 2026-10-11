@@ -10,7 +10,6 @@ import {
   Matches,
   Max,
   Min,
-  MinLength,
   ValidateNested,
 } from "class-validator";
 import {
@@ -39,10 +38,14 @@ export class CreateProductionBatchItemDto {
  * corrected with inverse movements, never by editing the past (spec).
  */
 export class CreateProductionBatchDto {
-  @ApiProperty({ example: "LOTE-2026-08-22-01" })
+  @ApiPropertyOptional({
+    example: "LOTE-2026-08-22-01",
+    description:
+      "For the first filling of a date. If omitted or blank, the server generates L-DDMMYYYY; later fillings use that date's existing batch",
+  })
+  @IsOptional()
   @IsString({ message: "El código debe ser un texto" })
-  @MinLength(1, { message: "El código no puede estar vacío" })
-  code!: string;
+  code?: string;
 
   @ApiProperty({ example: "2026-08-22", description: "Día de producción (America/Lima)" })
   @IsString({ message: `La fecha del lote ${BUSINESS_DATE_MESSAGE}` })

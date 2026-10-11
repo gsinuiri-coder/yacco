@@ -5,6 +5,8 @@ import { jest } from "@jest/globals";
 import request from "supertest";
 import { main } from "../../src/cli/seed-test-data.js";
 import { TestDataSeeder } from "../../src/cli/test-data-seeder.js";
+import { TEST_BATCH_CODE, TEST_BATCH_NOTE, limaToday } from "../../src/cli/test-data-plan.js";
+import { ProductionBatchesService } from "../../src/modules/production-batches/production-batches.service.js";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
@@ -97,6 +99,49 @@ async function snapshot() {
 }
 
 describe("pnpm demo:prueba — datos de prueba en local (ítem K)", () => {
+  test("un lote diario previo no hace que una segunda corrida duplique la llenada de prueba", async () => {
+    const admin = await prisma.user.findUniqueOrThrow({ where: { username: "admin" } });
+    const containerType = await prisma.containerType.findFirstOrThrow({ orderBy: { name: "asc" } });
+    const date = limaToday(new Date());
+    const batches = ctx.app.get(ProductionBatchesService);
+    await batches.create(
+      {
+        code: "LOTE-DIARIO-PREVIO",
+        date,
+        notes: "Llenada previa ajena a demo:prueba.",
+        items: [{ containerTypeId: containerType.id, producedQty: 1 }],
+      },
+      admin.id,
+    );
+
+    await new TestDataSeeder(ctx.app, "admin").run();
+    const dailyBatch = await prisma.productionBatch.findUniqueOrThrow({
+      where: { code: "LOTE-DIARIO-PREVIO" },
+    });
+    const seededItemsBefore = await prisma.batchItem.count({
+      where: { batchId: dailyBatch.id, notes: TEST_BATCH_NOTE },
+    });
+    const fillingMovementsBefore = await prisma.containerMovement.count({
+      where: { batchId: dailyBatch.id, type: "FILLING" },
+    });
+
+    await new TestDataSeeder(ctx.app, "admin").run();
+
+    expect(dailyBatch.code).toBe("LOTE-DIARIO-PREVIO");
+    expect(await prisma.productionBatch.count({ where: { code: TEST_BATCH_CODE } })).toBe(0);
+    expect(seededItemsBefore).toBe(2);
+    expect(
+      await prisma.batchItem.count({
+        where: { batchId: dailyBatch.id, notes: TEST_BATCH_NOTE },
+      }),
+    ).toBe(seededItemsBefore);
+    expect(
+      await prisma.containerMovement.count({
+        where: { batchId: dailyBatch.id, type: "FILLING" },
+      }),
+    ).toBe(fillingMovementsBefore);
+  });
+
   test("carga el día completo de PRUEBA Planta; las contraseñas van a un archivo, no a la consola", async () => {
     const credentialsPath = path.join(credentialsDir, "credenciales-prueba.txt");
     const printed = await runMain(credentialsPath);

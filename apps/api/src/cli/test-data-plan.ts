@@ -66,6 +66,7 @@ export const TEST_FLEET_ENTRY: Readonly<Record<TestContainerKey, number>> = {
 };
 
 export const TEST_BATCH_CODE = "PRUEBA-LOTE-1";
+export const TEST_BATCH_NOTE = "Lote de prueba (pnpm demo:prueba).";
 
 export const TEST_BATCH: Readonly<Record<TestContainerKey, number>> = {
   CON_CANO: 120,

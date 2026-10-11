@@ -22,6 +22,10 @@ function batch(
       ...item,
       containerType: { id: item.containerTypeId, name: "Bidón 20L" },
       producedQty: item.availableQty,
+      createdAt: null,
+      recordedById: null,
+      recordedBy: null,
+      notes: null,
     })),
   };
 }
@@ -50,6 +54,24 @@ describe("planFifoLoad", () => {
     expect(planFifoLoad(BATCHES, BIDON, 50).lines).toEqual([
       { batchItemId: "item-a", batchCode: "LOTE-A", batchDate: "2026-08-01", quantity: 30 },
       { batchItemId: "item-b", batchCode: "LOTE-B", batchDate: "2026-08-03", quantity: 20 },
+    ]);
+  });
+
+  it("agota dos llenadas del mismo lote antes de pasar al lote del día siguiente", () => {
+    const byFilling = [
+      batch("L-10052026", "2026-05-10", [
+        { id: "fill-1", containerTypeId: BIDON, availableQty: 3 },
+        { id: "fill-2", containerTypeId: BIDON, availableQty: 4 },
+      ]),
+      batch("L-11052026", "2026-05-11", [
+        { id: "next-day", containerTypeId: BIDON, availableQty: 5 },
+      ]),
+    ];
+
+    expect(planFifoLoad(byFilling, BIDON, 9).lines).toEqual([
+      { batchItemId: "fill-1", batchCode: "L-10052026", batchDate: "2026-05-10", quantity: 3 },
+      { batchItemId: "fill-2", batchCode: "L-10052026", batchDate: "2026-05-10", quantity: 4 },
+      { batchItemId: "next-day", batchCode: "L-11052026", batchDate: "2026-05-11", quantity: 2 },
     ]);
   });
 

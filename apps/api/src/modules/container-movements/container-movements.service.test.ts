@@ -70,6 +70,10 @@ function buildPrismaMock() {
       findUnique: jest.fn<() => Promise<unknown>>(),
       upsert: jest.fn<() => Promise<unknown>>(),
     },
+    batchItem: {
+      findMany: jest.fn<() => Promise<unknown>>(),
+      updateMany: jest.fn<() => Promise<unknown>>(),
+    },
     $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
@@ -468,6 +472,68 @@ describe("ContainerMovementsService", () => {
       await expect(
         service.findAll({ page: 1, limit: 20, dateFrom: "2026-08-31", dateTo: "2026-08-01" }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("takeFullsFromPlantWithinTransaction", () => {
+    it("consume renglones por fecha/código de lote y luego por hora nullable e id", async () => {
+      prisma.batchItem.findMany.mockResolvedValue([
+        { id: "old-null", availableQty: 3, batch: { id: "batch-a", code: "L-10052026" } },
+        { id: "same-day", availableQty: 4, batch: { id: "batch-a", code: "L-10052026" } },
+        { id: "next-day", availableQty: 5, batch: { id: "batch-b", code: "L-11052026" } },
+      ]);
+      prisma.batchItem.updateMany.mockResolvedValue({ count: 1 });
+      prisma.containerType.findUnique.mockResolvedValue(containerTypeRow());
+      prisma.containerMovement.create.mockImplementation((...args: unknown[]) => {
+        const input = args[0] as { data: { quantity: number; batchId: string } };
+        return Promise.resolve(
+          movementRow({
+            type: ContainerMovementType.DAMAGE_WRITE_OFF,
+            fromState: ContainerState.FULL_AT_PLANT,
+            toState: null,
+            quantity: input.data.quantity,
+            batchId: input.data.batchId,
+          }),
+        );
+      });
+
+      await service.takeFullsFromPlantWithinTransaction(
+        prisma as unknown as Prisma.TransactionClient,
+        {
+          type: ContainerMovementType.DAMAGE_WRITE_OFF,
+          containerTypeId: CONTAINER_TYPE_ID,
+          quantity: 9,
+        },
+        USER_ID,
+      );
+
+      expect(prisma.batchItem.findMany).toHaveBeenCalledWith({
+        where: { containerTypeId: CONTAINER_TYPE_ID, availableQty: { gt: 0 } },
+        orderBy: [
+          { batch: { date: "asc" } },
+          { batch: { code: "asc" } },
+          { createdAt: { sort: "asc", nulls: "first" } },
+          { id: "asc" },
+        ],
+        select: { id: true, availableQty: true, batch: { select: { id: true, code: true } } },
+      });
+      const updateCalls = prisma.batchItem.updateMany.mock.calls as unknown as Array<
+        [Record<string, unknown>]
+      >;
+      expect(updateCalls.map(([call]) => call)).toEqual([
+        {
+          where: { id: "old-null", availableQty: { gte: 3 } },
+          data: { availableQty: { decrement: 3 } },
+        },
+        {
+          where: { id: "same-day", availableQty: { gte: 4 } },
+          data: { availableQty: { decrement: 4 } },
+        },
+        {
+          where: { id: "next-day", availableQty: { gte: 2 } },
+          data: { availableQty: { decrement: 2 } },
+        },
+      ]);
     });
   });
 
