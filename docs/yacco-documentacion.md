@@ -805,7 +805,9 @@ erDiagram
         int quantity
         uuid customer_id FK "null"
         uuid batch_id FK "null"
+        uuid route_id FK "null"
         uuid stop_id FK "null"
+        uuid pit_stop_id FK "null"
         uuid recorded_by FK
     }
     customer_container_balances {
@@ -842,6 +844,30 @@ erDiagram
         uuid route_id FK
         uuid batch_item_id FK
         int quantity
+        uuid pit_stop_id FK "null"
+    }
+    route_pit_stops {
+        uuid id PK
+        uuid route_id FK
+        uuid recorded_by FK
+        timestamptz created_at
+        string notes "null"
+        numeric cash_expected "null"
+        numeric cash_delivered "null"
+        string cash_reason "null"
+        timestamptz voided_at "null"
+        uuid voided_by FK "null"
+        string void_reason "null"
+    }
+    route_pit_stop_counts {
+        uuid id PK
+        uuid pit_stop_id FK
+        uuid container_type_id FK
+        int expected_full
+        int counted_full
+        int expected_empty
+        int counted_empty
+        string difference_reason "null"
     }
     route_stops {
         uuid id PK
@@ -887,6 +913,7 @@ erDiagram
         numeric total_cash_collected
         numeric total_pending_confirmation
         numeric total_on_credit
+        numeric total_cash_delivered_in_pits "null"
         string notes "null"
         uuid settled_by FK
         timestamptz settled_at
@@ -1063,6 +1090,10 @@ Endpoints de la API (prefijo `/api/v1`), tal como están en los controllers al 2
 | POST           | `/routes/:id/loads`                              | Carga de la ruta planificada (asignación FIFO); se rechaza después de iniciarla                                                                                                                                                                                                                        | ADMIN, SELLER                                          |
 | GET            | `/routes/:id/loads`                              | Lo cargado, con el lote de cada carga                                                                                                                                                                                                                                                                  | ADMIN, SELLER, DRIVER (solo su ruta)                   |
 | DELETE         | `/routes/:id/loads/:loadId`                      | Quita una carga mientras la ruta está planificada                                                                                                                                                                                                                                                      | ADMIN, SELLER                                          |
+| POST           | `/routes/:id/pit-stops`                          | Parada en planta: cuadre de bidones (siempre), descarga y carga FIFO opcionales, y entrega de efectivo opcional, en una sola transacción                                                                                                                                                               | ADMIN, SELLER                                          |
+| GET            | `/routes/:id/pit-stops`                          | Lista las paradas en planta de la ruta, con hora, quién registró, renglones y marca si está anulada                                                                                                                                                                                                    | ADMIN, SELLER, DRIVER (solo su ruta)                   |
+| GET            | `/routes/:id/pit-stops/preview`                  | Valores esperados para una parada en planta según el libro en este momento (llenos, vacíos y efectivo entregable)                                                                                                                                                                                      | ADMIN, SELLER                                          |
+| PATCH          | `/routes/:id/pit-stops/:pitStopId/void`          | Anula el último pit no anulado de la ruta (ADMIN con motivo obligatorio); emite movimientos inversos y deja de contar su efectivo                                                                                                                                                                      | ADMIN                                                  |
 | GET            | `/routes/:id/truck-stock`                        | Por tipo de envase, lo cargado y lo que queda arriba del camión, según el libro                                                                                                                                                                                                                        | ADMIN, SELLER, DRIVER (solo su ruta)                   |
 | GET            | `/routes/:routeId/settlement`                    | Conciliación de la ruta: lo esperado según el libro y, si ya se liquidó, lo persistido — sirve antes de liquidar; informa además si se corrigió una parada después del cierre                                                                                                                          | ADMIN, SELLER                                          |
 | POST           | `/routes/:routeId/settlement`                    | Liquidación de la ruta: concilia envases y dinero, nunca bloquea por una diferencia                                                                                                                                                                                                                    | ADMIN                                                  |

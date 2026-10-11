@@ -172,6 +172,13 @@ cuándo, y tres líneas:
 - **Construido encima:** nada todavía. Se construye `orders.rescheduled_from_order_id`, la acción individual y el lote «Reprogramar todos», ambos transaccionales.
 - **Si resulta que no:** medio. Los pedidos nuevos siguen siendo registros válidos y auditables; se deja de ofrecer el enlace o se ajusta la regla en una migración posterior, sin editar ni borrar los originales.
 
+### Fase 3: parada en planta (pit) para cuadre, carga, descarga y entrega de efectivo en medio del reparto
+
+- **Decidido por Giancarlo (2026-10-11),** sin reunión posible con el dueño; fila 2 de «Fase 3 en local».
+- **Asumimos:** que durante el día el vehículo vuelve a la planta a cargar y descargar en una ruta en curso; ahí se cuadran los bidones siempre (esperado según libro, contado y diferencia; motivo obligatorio si hay diferencia), se descargan vacíos y llenos opcionalmente (con movimientos `EMPTY_UNLOAD` y `FULL_RETURN`), se cargan llenos opcionalmente tomados FIFO del lote más antiguo con `ROUTE_LOAD` (único camino para sumar carga a una ruta que ya salió), y el chofer puede entregar efectivo opcionalmente (esperado = cobrado en efectivo no anulado menos entregado en pits anteriores; entregar de más pide motivo). Una diferencia nunca bloquea. Un pit no se edita ni borra: el administrador puede anular solo el último pit no anulado antes de liquidar (con motivo, `voided_at`/`voided_by`/`void_reason` con CHECK y movimientos inversos). La liquidación muestra lo entregado en pits y lo que falta entregar, congelando el total al liquidar, sin cambiar su lógica de bidones.
+- **Construido encima:** `route_pit_stops`, `route_pit_stop_counts`, `route_loads.pit_stop_id`, `container_movements.pit_stop_id`, `route_settlements.total_cash_delivered_in_pits`, los endpoints bajo `/routes/:id/pit-stops`, y la sección y formulario de «Parada en planta» en el detalle de ruta.
+- **Si resulta que no:** medio. Los movimientos y registros ya escritos quedan auditados e inmutables; se deja de ofrecer el formulario o se ajustan las reglas sin perder el historial.
+
 ### Fase 2: el orden por cercanía se propone, no se impone
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 4 de «Fase 2 en local».
