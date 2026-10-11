@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { getQuery } from "h3";
 import type { H3Event } from "h3";
-import type { CustomerLocation } from "@yacco/shared";
+import type { CustomerLocation, RouteStop } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
 import { buildCustomer, buildOrder, buildRoute, buildStop, pageOf } from "../support/fixtures";
@@ -79,6 +79,37 @@ describe("Detalle de ruta", () => {
     expect(within(aurora).getByText("Pendiente")).toBeTruthy();
     expect(within(row("Bodega Central")).getByText("Entregada")).toBeTruthy();
     expect(within(row("Bodega Central")).getByText("Pedido")).toBeTruthy();
+  });
+
+  it("la oficina abre en Maps el punto donde se marcó una parada", async () => {
+    const marked = {
+      ...buildStop({ status: "DELIVERED" }),
+      markedLatitude: "-12.046374",
+      markedLongitude: "-77.042793",
+      markedAccuracyM: "8.40",
+    } as RouteStop & {
+      markedLatitude: string;
+      markedLongitude: string;
+      markedAccuracyM: string;
+    };
+    stubRouteDetail(
+      cleanups,
+      buildRoute({
+        status: "FINISHED",
+        stops: [marked],
+      }),
+    );
+
+    await renderDetail();
+
+    const link = within(row("Bodega Central")).getByRole("link", {
+      name: "Ver dónde se marcó",
+    });
+    expect(link.getAttribute("href")).toBe(
+      "https://www.google.com/maps/search/?api=1&query=-12.046374%2C-77.042793",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
   it("la dirección y la referencia de cada parada llevan sus enlaces, como en la ficha y en «Mi ruta»", async () => {

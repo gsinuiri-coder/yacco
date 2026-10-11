@@ -3,6 +3,7 @@ import { formatSoles } from "@yacco/shared";
 import type {
   ContainerType,
   EffectivePrice,
+  MarkRouteStopBody,
   Order,
   PaymentMethod,
   Product,
@@ -28,6 +29,8 @@ const props = withDefaults(
      * la lista de usuarios, que es de la oficina.
      */
     canChangePrice?: boolean;
+    /** «Mi ruta» pide una sola lectura del GPS al confirmar; la oficina no. */
+    captureLocation?: boolean;
     /**
      * Corregir una parada ya registrada (HU-24, solo ADMIN): pide un motivo,
      * anula lo anotado y lo vuelve a registrar con PATCH .../correction. Quien
@@ -36,7 +39,7 @@ const props = withDefaults(
      */
     correction?: boolean;
   }>(),
-  { canChangePrice: true, correction: false },
+  { canChangePrice: true, captureLocation: false, correction: false },
 );
 const emit = defineEmits<{ cancel: []; marked: [result: RouteStop] }>();
 
@@ -69,6 +72,51 @@ const correctionReason = ref("");
 const validationError = ref<string | null>(null);
 const submitError = ref<string | null>(null);
 const submitting = ref(false);
+type MarkedLocationBody = Pick<
+  MarkRouteStopBody,
+  "markedLatitude" | "markedLongitude" | "markedAccuracyM"
+>;
+let markedLocationRequest: Promise<MarkedLocationBody> | null = null;
+
+function readMarkedLocation(): Promise<MarkedLocationBody> {
+  if (!props.captureLocation || props.correction || !("geolocation" in navigator)) {
+    return Promise.resolve({});
+  }
+  if (markedLocationRequest !== null) return markedLocationRequest;
+  markedLocationRequest = new Promise((resolve) => {
+    const unavailable = () => resolve({});
+    try {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => {
+          if (
+            !Number.isFinite(coords.latitude) ||
+            !Number.isFinite(coords.longitude) ||
+            !Number.isFinite(coords.accuracy) ||
+            coords.latitude < -90 ||
+            coords.latitude > 90 ||
+            coords.longitude < -180 ||
+            coords.longitude > 180 ||
+            coords.accuracy < 0 ||
+            coords.accuracy > 99_999_999.99
+          ) {
+            unavailable();
+            return;
+          }
+          resolve({
+            markedLatitude: coords.latitude.toFixed(6),
+            markedLongitude: coords.longitude.toFixed(6),
+            markedAccuracyM: coords.accuracy.toFixed(2),
+          });
+        },
+        unavailable,
+        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
+      );
+    } catch {
+      unavailable();
+    }
+  });
+  return markedLocationRequest;
+}
 
 watch(draft, () => {
   validationError.value = null;
@@ -161,10 +209,13 @@ async function submit(): Promise<void> {
   submitting.value = true;
   submitError.value = null;
   try {
+    const markedLocation = await readMarkedLocation();
     const path = `/routes/${props.routeId}/stops/${props.stop.id}`;
     const result = await api.request<RouteStop>(props.correction ? `${path}/correction` : path, {
       method: "PATCH",
-      body: props.correction ? { ...body, correctionReason: reason } : body,
+      body: props.correction
+        ? { ...body, correctionReason: reason }
+        : { ...body, ...markedLocation },
     });
     emit("marked", result);
   } catch (error) {
@@ -191,6 +242,11 @@ async function submit(): Promise<void> {
       label="¿Qué pasó en esta parada?"
       :options="OUTCOMES"
     />
+
+    <p v-if="captureLocation && !correction" class="text-sm text-muted">
+      Al registrar, el celular pedirá tu ubicación una vez. Si no está disponible, la parada se
+      guarda igual.
+    </p>
 
     <UFormField
       v-if="draft.outcome === 'FAILED'"

@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { limaToday } from "@yacco/shared";
 import type { Route, RouteStop } from "@yacco/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "~/app.vue";
 import { DRIVER, buildRoute, buildStop, pageOf } from "../support/fixtures";
 import { stubWrite } from "../support/route-detail";
@@ -14,6 +14,31 @@ import { resetSession, signIn } from "../support/session";
 // ya filtra GET /routes por el chofer; la pantalla pide solo las de hoy.
 
 const cleanups: Array<() => void> = [];
+
+function stubGeolocation(
+  result:
+    { latitude: number; longitude: number; accuracy: number } | { error: GeolocationPositionError },
+) {
+  const original = Object.getOwnPropertyDescriptor(navigator, "geolocation");
+  const getCurrentPosition = vi.fn(
+    (success: PositionCallback, error?: PositionErrorCallback | null) => {
+      if ("error" in result) {
+        error?.(result.error);
+        return;
+      }
+      success({ coords: result } as GeolocationPosition);
+    },
+  );
+  Object.defineProperty(navigator, "geolocation", {
+    configurable: true,
+    value: { getCurrentPosition },
+  });
+  cleanups.push(() => {
+    if (original === undefined) Reflect.deleteProperty(navigator, "geolocation");
+    else Object.defineProperty(navigator, "geolocation", original);
+  });
+  return getCurrentPosition;
+}
 
 function stubMyRoute(routes: Route[] | Route[][]) {
   const versions = Array.isArray(routes[0]) ? (routes as Route[][]) : [routes as Route[]];
@@ -152,6 +177,11 @@ describe("Mi ruta", () => {
       [buildRoute({ status: "IN_PROGRESS", stops: [delivered] })],
     ]);
     const bodies = stubWrite(cleanups, "/api/v1/routes/r-1/stops/stop-1", "PATCH", () => delivered);
+    const getCurrentPosition = stubGeolocation({
+      latitude: -12.046374,
+      longitude: -77.042793,
+      accuracy: 8.4,
+    });
     const user = userEvent.setup();
 
     await renderMyRoute();
@@ -169,11 +199,42 @@ describe("Mi ruta", () => {
         expect.objectContaining({
           status: "DELIVERED",
           items: [{ productId: "p-recarga", quantity: 1 }],
+          markedLatitude: "-12.046374",
+          markedLongitude: "-77.042793",
+          markedAccuracyM: "8.40",
         }),
       ]),
     );
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
     const stop = await screen.findByRole("article", { name: "Parada 1: Bodega Central" });
     await waitFor(() => expect(within(stop).getByText("Entregada")).toBeTruthy());
+  });
+
+  it("si el chofer niega la ubicación, la parada se registra igual sin coordenadas", async () => {
+    stubMyRoute([
+      [buildRoute({ status: "IN_PROGRESS", stops: [pending] })],
+      [buildRoute({ status: "IN_PROGRESS", stops: [delivered] })],
+    ]);
+    const bodies = stubWrite(cleanups, "/api/v1/routes/r-1/stops/stop-1", "PATCH", () => delivered);
+    const getCurrentPosition = stubGeolocation({
+      error: { code: 1, message: "Permiso denegado" } as GeolocationPositionError,
+    });
+    const user = userEvent.setup();
+
+    await renderMyRoute();
+    await user.click(await screen.findByRole("button", { name: "Registrar la parada 1" }));
+    const form = await screen.findByRole("form", {
+      name: "Registrar la parada de Bodega Central",
+    });
+    await user.click(within(form).getByLabelText("Producto 1"));
+    await user.click(await screen.findByRole("option", { name: "Recarga 20L" }));
+    await user.click(within(form).getByRole("button", { name: "Registrar la parada" }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+    expect(bodies[0]).not.toHaveProperty("markedLatitude");
+    expect(bodies[0]).not.toHaveProperty("markedLongitude");
+    expect(bodies[0]).not.toHaveProperty("markedAccuracyM");
   });
 
   it("una ruta que todavía no salió se inicia desde acá", async () => {

@@ -220,6 +220,7 @@ async function marked(): Promise<void> {
             :route-id="route.id"
             :stop="stop"
             :can-change-price="false"
+            capture-location
             @cancel="markingStopId = null"
             @marked="marked"
           />

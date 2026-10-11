@@ -89,6 +89,9 @@ export interface RouteStop {
   orderId: string | null;
   status: StopStatus;
   failureReason: string | null;
+  markedLatitude: string | null;
+  markedLongitude: string | null;
+  markedAccuracyM: string | null;
   correction: RouteStopCorrection | null;
   sale?: RouteStopSale | null;
   payment?: RouteStopPayment | null;
@@ -163,6 +166,9 @@ export interface MarkRouteStopBody {
   containersReturned?: ContainerReturnBody[];
   payment?: DeliveryPaymentBody;
   priceOverrideAuthorizedById?: string;
+  markedLatitude?: string;
+  markedLongitude?: string;
+  markedAccuracyM?: string;
 }
 
 /** CorrectRouteStopDto: the mark to re-register, plus the mandatory reason. */

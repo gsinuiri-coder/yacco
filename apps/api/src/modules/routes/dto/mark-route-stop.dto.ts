@@ -3,15 +3,18 @@ import { Type } from "class-transformer";
 import {
   ArrayMinSize,
   IsArray,
+  IsLatitude,
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsLongitude,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
   Max,
   Min,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 import { StopStatus } from "@prisma/client";
@@ -22,6 +25,8 @@ import {
 } from "../../orders/dto/create-order.dto.js";
 
 const MARKABLE_STATUSES = [StopStatus.DELIVERED, StopStatus.FAILED] as const;
+const COORDINATE_PATTERN = /^-?\d{1,3}(?:\.\d{1,6})?$/;
+const ACCURACY_PATTERN = /^\d{1,8}(?:\.\d{1,2})?$/;
 
 /**
  * `unitPrice` is optional on purpose (unlike CreateOrderItemDto's, which is
@@ -128,4 +133,34 @@ export class MarkRouteStopDto {
   @IsOptional()
   @IsUUID("4", { message: "Quien autoriza el precio debe ser un identificador válido" })
   priceOverrideAuthorizedById?: string;
+
+  @ApiPropertyOptional({ type: String, example: "-12.046374" })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "La latitud donde se marcó debe ser un texto decimal" })
+  @Matches(COORDINATE_PATTERN, {
+    message: "La latitud donde se marcó admite hasta 6 decimales",
+  })
+  @IsLatitude({ message: "La latitud donde se marcó debe estar entre -90 y 90" })
+  markedLatitude?: string;
+
+  @ApiPropertyOptional({ type: String, example: "-77.042793" })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "La longitud donde se marcó debe ser un texto decimal" })
+  @Matches(COORDINATE_PATTERN, {
+    message: "La longitud donde se marcó admite hasta 6 decimales",
+  })
+  @IsLongitude({ message: "La longitud donde se marcó debe estar entre -180 y 180" })
+  markedLongitude?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: "8.40",
+    description: "Precisión informada por el celular, en metros",
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "La precisión de la ubicación debe ser un texto decimal" })
+  @Matches(ACCURACY_PATTERN, {
+    message: "La precisión de la ubicación admite hasta 8 enteros y 2 decimales",
+  })
+  markedAccuracyM?: string;
 }
