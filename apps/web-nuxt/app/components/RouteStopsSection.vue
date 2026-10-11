@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatInstantInLima } from "@yacco/shared";
-import type { Route, RouteStop } from "@yacco/shared";
+import type { PlantLocation, Route, RouteStop } from "@yacco/shared";
+import { buildGoogleMapsRouteLegs, proposeNearbyStopIds } from "~/utils/route-planning";
 
 const props = defineProps<{ route: Route }>();
 const emit = defineEmits<{
@@ -15,6 +16,8 @@ const session = useSession();
 const editable = computed(
   () => props.route.status === "PLANNED" || props.route.status === "IN_PROGRESS",
 );
+const isOffice = computed(() => session.hasRole("ADMIN") || session.hasRole("SELLER"));
+const canReorder = computed(() => editable.value && isOffice.value);
 // Marcar sólo con la ruta en curso: antes el camión no salió, después ya cerró.
 // Es la misma regla que aplica RoutesService.markStop.
 const canMark = computed(() => props.route.status === "IN_PROGRESS");
@@ -38,6 +41,93 @@ const marking = ref<RouteStop | null>(null);
 const removingId = ref<string | null>(null);
 const busyId = ref<string | null>(null);
 const stopError = ref<string | null>(null);
+const plantLocation = ref<PlantLocation | null>(null);
+const plantLocationLoaded = ref(false);
+const routeToolsError = ref<string | null>(null);
+const proposedStopIds = ref<string[] | null>(null);
+const ordering = ref(false);
+let plantLocationRequest: Promise<void> | null = null;
+
+const proposedStops = computed(() => {
+  if (proposedStopIds.value === null) return [];
+  const byId = new Map(stops.value.map((stop) => [stop.id, stop]));
+  return proposedStopIds.value.flatMap((id) => {
+    const stop = byId.get(id);
+    return stop === undefined ? [] : [stop];
+  });
+});
+const stopsWithoutLocation = computed(() =>
+  stops.value.filter((stop) => stop.location.latitude === null || stop.location.longitude === null),
+);
+const mapLegs = computed(() => {
+  if (plantLocation.value?.latitude === null || plantLocation.value?.longitude === null) return [];
+  if (plantLocation.value === null) return [];
+  return buildGoogleMapsRouteLegs(
+    plantLocation.value,
+    stops.value.map((stop) => ({
+      id: stop.id,
+      latitude: stop.location.latitude,
+      longitude: stop.location.longitude,
+    })),
+  );
+});
+
+async function loadPlantLocation(): Promise<void> {
+  if (plantLocationLoaded.value) return;
+  if (plantLocationRequest !== null) return plantLocationRequest;
+  plantLocationRequest = (async () => {
+    try {
+      plantLocation.value = await api.request<PlantLocation>("/settings/plant-location");
+    } catch (error) {
+      routeToolsError.value = `No se pudo cargar la ubicación de la planta. ${describeApiFailure(error)}`;
+    } finally {
+      plantLocationLoaded.value = true;
+      plantLocationRequest = null;
+    }
+  })();
+  return plantLocationRequest;
+}
+
+onMounted(() => {
+  if (isOffice.value) void loadPlantLocation();
+});
+
+async function proposeNearbyOrder(): Promise<void> {
+  routeToolsError.value = null;
+  await loadPlantLocation();
+  const origin = plantLocation.value;
+  if (origin?.latitude === null || origin?.longitude === null || origin === null) {
+    routeToolsError.value =
+      "Falta configurar la ubicación de la planta para ordenar las paradas por cercanía.";
+    return;
+  }
+  proposedStopIds.value = proposeNearbyStopIds(
+    origin,
+    stops.value.map((stop) => ({
+      id: stop.id,
+      latitude: stop.location.latitude,
+      longitude: stop.location.longitude,
+    })),
+  );
+}
+
+async function applyProposedOrder(): Promise<void> {
+  if (proposedStopIds.value === null || ordering.value) return;
+  ordering.value = true;
+  routeToolsError.value = null;
+  try {
+    await api.request<Route>(`/routes/${props.route.id}/stops/reorder`, {
+      method: "PATCH",
+      body: { stopIds: proposedStopIds.value },
+    });
+    proposedStopIds.value = null;
+    emit("changed");
+  } catch (error) {
+    routeToolsError.value = describeApiFailure(error);
+  } finally {
+    ordering.value = false;
+  }
+}
 
 /**
  * Mover una parada es reordenar la ruta entera: el PATCH toma la lista
@@ -114,25 +204,37 @@ function markDone(result: RouteStop): void {
 <template>
   <SectionCard title="Paradas" description="En el orden en que el chofer las va a visitar.">
     <template v-if="editable && !adding && !batching" #actions>
-      <UButton
-        v-if="canBatch"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-list-checks"
-        label="Agregar pedidos pendientes"
-        @click="
-          batching = true;
-          stopError = null;
-        "
-      />
-      <UButton
-        icon="i-lucide-map-pin-plus"
-        label="Agregar parada"
-        @click="
-          adding = true;
-          stopError = null;
-        "
-      />
+      <div class="flex flex-wrap justify-end gap-2">
+        <UButton
+          v-if="canReorder && stops.length > 1"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-route"
+          label="Ordenar por cercanía"
+          :loading="ordering"
+          :disabled="busyId !== null"
+          @click="proposeNearbyOrder"
+        />
+        <UButton
+          v-if="canBatch"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-list-checks"
+          label="Agregar pedidos pendientes"
+          @click="
+            batching = true;
+            stopError = null;
+          "
+        />
+        <UButton
+          icon="i-lucide-map-pin-plus"
+          label="Agregar parada"
+          @click="
+            adding = true;
+            stopError = null;
+          "
+        />
+      </div>
     </template>
 
     <div class="space-y-4">
@@ -191,6 +293,78 @@ function markDone(result: RouteStop): void {
       </div>
 
       <UAlert v-if="stopError" role="alert" color="error" variant="subtle" :title="stopError" />
+      <UAlert
+        v-if="routeToolsError"
+        role="alert"
+        color="error"
+        variant="subtle"
+        :title="routeToolsError"
+      />
+
+      <div
+        v-if="proposedStopIds !== null"
+        role="group"
+        aria-label="Confirmar orden por cercanía"
+        class="space-y-3 rounded-md bg-elevated p-4"
+      >
+        <div>
+          <h3 class="font-semibold text-highlighted">Orden sugerido</h3>
+          <p class="text-sm text-muted">
+            Revísalo antes de cambiar la hoja de ruta. La propuesta empieza en la planta.
+          </p>
+        </div>
+        <ol class="grid list-decimal gap-2 pl-5 sm:grid-cols-2">
+          <li
+            v-for="stop in proposedStops"
+            :key="stop.id"
+            class="text-sm marker:font-semibold marker:text-muted"
+          >
+            <span class="text-highlighted">{{ stop.location.customer.name }}</span>
+          </li>
+        </ol>
+        <p v-if="stopsWithoutLocation.length > 0" class="text-sm text-warning">
+          {{ stopsWithoutLocation.length }}
+          {{
+            stopsWithoutLocation.length === 1
+              ? "parada sin ubicación queda"
+              : "paradas sin ubicación quedan"
+          }}
+          al final, en el orden actual.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <UButton label="Usar este orden" :loading="ordering" @click="applyProposedOrder" />
+          <UButton
+            color="neutral"
+            variant="ghost"
+            label="Cancelar"
+            :disabled="ordering"
+            @click="proposedStopIds = null"
+          />
+        </div>
+      </div>
+
+      <div v-if="mapLegs.length > 0" class="flex flex-wrap items-center gap-2">
+        <UButton
+          v-for="(leg, index) in mapLegs"
+          :key="leg.url"
+          :to="leg.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-map"
+          :label="
+            mapLegs.length === 1
+              ? 'Abrir recorrido en Maps'
+              : `Abrir tramo ${index + 1} de ${mapLegs.length} en Maps`
+          "
+        />
+      </div>
+      <p v-if="mapLegs.length > 0 && stopsWithoutLocation.length > 0" class="text-sm text-muted">
+        {{ stopsWithoutLocation.map((stop) => stop.location.customer.name).join(", ") }}
+        {{ stopsWithoutLocation.length === 1 ? "no entra" : "no entran" }} al recorrido porque
+        {{ stopsWithoutLocation.length === 1 ? "no tiene ubicación" : "no tienen ubicación" }}.
+      </p>
 
       <ListStatus
         v-if="stops.length === 0"
@@ -321,7 +495,7 @@ function markDone(result: RouteStop): void {
                     @click="startCorrecting(stop)"
                   />
                   <UButton
-                    v-if="editable"
+                    v-if="canReorder"
                     color="neutral"
                     variant="ghost"
                     size="sm"
@@ -331,7 +505,7 @@ function markDone(result: RouteStop): void {
                     @click="move(index, -1)"
                   />
                   <UButton
-                    v-if="editable"
+                    v-if="canReorder"
                     color="neutral"
                     variant="ghost"
                     size="sm"

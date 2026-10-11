@@ -120,6 +120,8 @@ mostrar ninguno.
 | `JWT_REFRESH_SECRET`    | `.env` local | Secret Manager       | —      | —                       |
 | `JWT_*_EXPIRES_IN`      | `.env` local | variable en claro    | —      | —                       |
 | `WEB_ORIGIN`            | `.env` local | variable en claro    | —      | —                       |
+| `PLANT_LATITUDE`        | `.env` local | variable en claro    | —      | —                       |
+| `PLANT_LONGITUDE`       | `.env` local | variable en claro    | —      | —                       |
 | `PORT`                  | 3200         | lo inyecta Cloud Run | —      | —                       |
 | `VERCEL_TOKEN`          | `.env.setup` | —                    | —      | Secret Manager, por WIF |
 
@@ -128,3 +130,8 @@ de su propio origen, y a qué API llega lo decide el host en las rutas del
 Build Output (D-021, D-023), no una variable. Si algún día hiciera falta una,
 ojo con `runtimeConfig.public` / `NUXT_PUBLIC_*`: viajan en el HTML que
 descarga el navegador, así que nunca un secreto.
+
+`PLANT_LATITUDE` y `PLANT_LONGITUDE` son configuración no secreta y se definen
+siempre juntas. La API las valida al arrancar y la oficina las obtiene desde
+`GET /api/v1/settings/plant-location`; el navegador no recibe variables del
+entorno ni necesita conocer dónde corre la API.

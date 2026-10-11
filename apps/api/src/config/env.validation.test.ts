@@ -22,6 +22,32 @@ test("coerces PORT from a string env value to a number", () => {
   expect(result.PORT).toBe(8080);
 });
 
+describe("plant coordinates", () => {
+  test("accepts the configured pair as decimal strings", () => {
+    const result = validateEnv(
+      validConfig({ PLANT_LATITUDE: "-12.046374", PLANT_LONGITUDE: "-77.042793" }),
+    );
+    expect(result.PLANT_LATITUDE).toBe("-12.046374");
+    expect(result.PLANT_LONGITUDE).toBe("-77.042793");
+  });
+
+  test.each([[{ PLANT_LATITUDE: "-12.046374" }], [{ PLANT_LONGITUDE: "-77.042793" }]])(
+    "rejects an incomplete pair: %j",
+    (coordinates) => {
+      expect(() => validateEnv(validConfig(coordinates))).toThrow(
+        /PLANT_LATITUDE and PLANT_LONGITUDE must be configured together/,
+      );
+    },
+  );
+
+  test.each([
+    [{ PLANT_LATITUDE: "-90.000001", PLANT_LONGITUDE: "-77.042793" }, /PLANT_LATITUDE/],
+    [{ PLANT_LATITUDE: "-12.046374", PLANT_LONGITUDE: "180.000001" }, /PLANT_LONGITUDE/],
+  ])("rejects coordinates outside their range", (coordinates, message) => {
+    expect(() => validateEnv(validConfig(coordinates))).toThrow(message);
+  });
+});
+
 test.each(["DATABASE_URL", "DIRECT_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET"])(
   "rejects a missing %s",
   (key) => {
