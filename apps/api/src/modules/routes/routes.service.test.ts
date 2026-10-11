@@ -1576,7 +1576,7 @@ describe("RoutesService", () => {
       expect(prisma.batchItem.findUnique).not.toHaveBeenCalled();
     });
 
-    // La invariante FIFO de CLAUDE.md, ahora sostenida por el servidor y no
+    // La invariante FIFO de AGENTS.md, ahora sostenida por el servidor y no
     // por el reparto que hace la web.
     it("busca el renglón más antiguo con stock del MISMO tipo, por lote, hora e id", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute());

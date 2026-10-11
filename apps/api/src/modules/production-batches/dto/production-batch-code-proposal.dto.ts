@@ -10,6 +10,9 @@ export class ProductionBatchCodeProposalQueryDto {
 }
 
 export class ProductionBatchCodeProposalDto {
-  @ApiProperty({ example: "L-22102026-2" })
+  @ApiProperty({ example: "L-22102026" })
   code!: string;
+
+  @ApiProperty({ description: "True when this filling will be appended to the existing batch" })
+  willAppend!: boolean;
 }

@@ -1503,7 +1503,12 @@ describe("POST /api/v1/routes/:id/loads", () => {
             items: [{ containerTypeId: containerType.body.id, producedQty: 40 }],
           })
           .expect(201);
-        return response.body.items[0].id as string;
+        const createdItem = response.body.items.find(
+          (item: { containerTypeId: string; producedQty: number }) =>
+            item.containerTypeId === containerType.body.id && item.producedQty === 40,
+        );
+        expect(createdItem).toBeDefined();
+        return createdItem.id as string;
       };
 
       return {
@@ -1597,7 +1602,10 @@ describe("POST /api/v1/routes/:id/loads", () => {
       // por tipo de envase, este 201 sería un 400.
       const response = await addLoad(adminToken, routeId, oldItemId, 5);
 
-      expect(response.status).toBe(201);
+      expect({ status: response.status, message: messagesOf(response) }).toEqual({
+        status: 201,
+        message: "",
+      });
     });
   });
 

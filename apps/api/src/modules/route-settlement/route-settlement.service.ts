@@ -19,6 +19,7 @@ import {
   ContainerMovementsService,
   lockContainerTypes,
 } from "../container-movements/container-movements.service.js";
+import { OLDEST_ROUTE_LOAD_FIRST } from "../production-batches/oldest-batch-first.js";
 import type { CreateRouteSettlementDto } from "./dto/create-route-settlement.dto.js";
 import type {
   ContainerDifferenceLineDto,
@@ -452,10 +453,7 @@ export class RouteSettlementService {
         quantity: true,
         batchItem: { select: { containerTypeId: true, batchId: true } },
       },
-      orderBy: [
-        { batchItem: { batch: { date: "asc" } } },
-        { batchItem: { batch: { code: "asc" } } },
-      ],
+      orderBy: OLDEST_ROUTE_LOAD_FIRST,
     });
 
     for (const line of fullReturnLines(dto, loads)) {

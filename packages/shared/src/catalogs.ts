@@ -60,6 +60,10 @@ export interface ProductionBatchItem {
   containerType: Named;
   producedQty: number;
   availableQty: number;
+  createdAt: string | null;
+  recordedById: string | null;
+  recordedBy: Named | null;
+  notes: string | null;
 }
 
 /** ProductionBatchResponseDto. `date` is a calendar day "AAAA-MM-DD". */
@@ -100,6 +104,7 @@ export interface CreateProductionBatchBody {
 
 export interface ProductionBatchCodeProposal {
   code: string;
+  willAppend: boolean;
 }
 
 /** ProductionBatchWarningDto: more filled than empties available. The batch registers anyway. */

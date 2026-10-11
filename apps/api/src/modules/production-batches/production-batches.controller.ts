@@ -51,7 +51,9 @@ import { ProductionBatchesService } from "./production-batches.service.js";
 export class ProductionBatchesController {
   constructor(private readonly productionBatchesService: ProductionBatchesService) {}
 
-  @ApiOperation({ summary: "Registra un lote de producción y emite sus movimientos FILLING" })
+  @ApiOperation({
+    summary: "Registra una llenada en el lote de la fecha y emite sus movimientos FILLING",
+  })
   @ApiResponse({ status: 201, type: CreateProductionBatchResponseDto })
   @ApiBadRequestResponse({
     description:
@@ -69,7 +71,9 @@ export class ProductionBatchesController {
     return this.productionBatchesService.create(dto, request.user.sub);
   }
 
-  @ApiOperation({ summary: "Propone el próximo código automático para una fecha de producción" })
+  @ApiOperation({
+    summary: "Propone el código o informa el lote existente para una fecha de producción",
+  })
   @ApiResponse({ status: 200, type: ProductionBatchCodeProposalDto })
   @ApiBadRequestResponse({ description: "The date is not a valid calendar day" })
   @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })

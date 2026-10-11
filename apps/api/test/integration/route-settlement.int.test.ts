@@ -817,6 +817,48 @@ describe("liquidar devuelve los llenos al galpón y repone su lote (FULL_RETURN)
     expect(await fullsOnRoute(typeId)).toBe(0);
   });
 
+  test("si una ruta cargó dos llenadas del mismo lote repone primero el renglón más antiguo", async () => {
+    const typeId = await createContainerType();
+    const fill = (producedQty: number) =>
+      request(server())
+        .post("/api/v1/production-batches")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          code: "",
+          date: "2026-04-15",
+          items: [{ containerTypeId: typeId, producedQty }],
+        })
+        .expect(201);
+    const first = await fill(4);
+    const second = await fill(6);
+    expect(second.body.id).toBe(first.body.id);
+    const firstItemId = first.body.items.find(
+      (item: { producedQty: number }) => item.producedQty === 4,
+    ).id as string;
+    const secondItemId = second.body.items.find(
+      (item: { producedQty: number }) => item.producedQty === 6,
+    ).id as string;
+
+    const routeId = await finishedRouteOf(
+      typeId,
+      [
+        { batchItemId: firstItemId, quantity: 4 },
+        { batchItemId: secondItemId, quantity: 2 },
+      ],
+      1,
+    );
+    const response = await postSettlement(routeId, {
+      fullReturned: 5,
+      fullReturnedByType: [{ containerTypeId: typeId, quantity: 5 }],
+      emptiesCollected: [],
+    });
+
+    expect(response.status).toBe(201);
+    expect(await batchAvailable(firstItemId)).toBe(4);
+    expect(await batchAvailable(secondItemId)).toBe(5);
+    expect((await fullReturnsOf(routeId)).map((movement) => movement.quantity)).toEqual([4, 1]);
+  });
+
   test("sin desglose, una ruta de un solo tipo de envase devuelve el total a ese tipo", async () => {
     const typeId = await createContainerType();
     const batchItemId = await createBatchItem(6, typeId);

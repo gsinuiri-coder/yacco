@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { getQuery } from "h3";
 import type { H3Event } from "h3";
+import { limaToday } from "@yacco/shared";
 import type { ProductionBatch, UserRole } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
@@ -13,6 +14,11 @@ import { resetSession, signIn } from "../support/session";
 const cleanups: Array<() => void> = [];
 const CON_CANO = { id: "ct-cano", name: "Con caño", active: true };
 const SIN_CANO = { id: "ct-sin", name: "Sin caño", active: true };
+const TODAY = limaToday();
+const [TODAY_YEAR, TODAY_MONTH, TODAY_DAY] = TODAY.split("-");
+const TODAY_CODE = `L-${TODAY_DAY}${TODAY_MONTH}${TODAY_YEAR}`;
+const EXISTING_DATE = "2026-09-17";
+const EXISTING_CODE = "L-17092026";
 const FIRST_FILL_AUDIT = {
   createdAt: "2026-08-22T14:15:00.000Z",
   recordedById: "u-1",
@@ -52,9 +58,9 @@ function stubPage(batches: ProductionBatch[] = [batch()]) {
       handler: (event: H3Event) => {
         const date = String(getQuery(event).date);
         proposalDates.push(date);
-        return date === "2026-10-11"
-          ? { code: "L-11102026", willAppend: true }
-          : { code: "L-10102026", willAppend: false };
+        return date === EXISTING_DATE
+          ? { code: EXISTING_CODE, willAppend: true }
+          : { code: TODAY_CODE, willAppend: false };
       },
     }),
     registerEndpoint("/api/v1/production-batches", {
@@ -99,7 +105,7 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
-    await screen.findByDisplayValue("L-10102026");
+    await screen.findByDisplayValue(TODAY_CODE);
     await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), " LOTE-02 ");
     await chooseType(1, "Con caño");
@@ -107,7 +113,7 @@ describe("Producción", () => {
     await user.click(screen.getByRole("button", { name: "Agregar tipo de envase" }));
     await chooseType(2, "Sin caño");
     await user.type(screen.getByLabelText("Cantidad producida 2"), "150");
-    await user.click(screen.getByRole("button", { name: "Registrar lote" }));
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
 
     expect(await screen.findByText("Lote LOTE-02 registrado.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Ver inventario actualizado" })).toBeTruthy();
@@ -123,7 +129,7 @@ describe("Producción", () => {
     ]);
     // El formulario se vacía y la lista se recarga.
     await waitFor(() =>
-      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("L-10102026"),
+      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe(TODAY_CODE),
     );
     await waitFor(() => expect(queries.length).toBeGreaterThan(1));
   });
@@ -133,16 +139,16 @@ describe("Producción", () => {
 
     await renderProduction();
     await waitFor(() =>
-      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("L-10102026"),
+      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe(TODAY_CODE),
     );
 
-    await fireEvent.update(screen.getByLabelText("Fecha"), "2026-10-11");
+    await fireEvent.update(screen.getByLabelText("Fecha"), EXISTING_DATE);
 
     const codeInput = screen.getByLabelText("Código") as HTMLInputElement;
-    await waitFor(() => expect(codeInput.value).toBe("L-11102026"));
+    await waitFor(() => expect(codeInput.value).toBe(EXISTING_CODE));
     expect(codeInput.disabled).toBe(true);
-    expect(await screen.findByText("Se suma al lote de hoy, L-11102026")).toBeTruthy();
-    expect(proposalDates).toContain("2026-10-11");
+    expect(await screen.findByText(`Se suma al lote de hoy, ${EXISTING_CODE}`)).toBeTruthy();
+    expect(proposalDates).toContain(EXISTING_DATE);
   });
 
   it("la sobreproducción se avisa con sus números tras un alta exitosa, sin leerse como error", async () => {
@@ -161,12 +167,12 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
-    await screen.findByDisplayValue("L-10102026");
+    await screen.findByDisplayValue(TODAY_CODE);
     await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), "LOTE-03");
     await chooseType(1, "Con caño");
     await user.type(screen.getByLabelText("Cantidad producida 1"), "200");
-    await user.click(screen.getByRole("button", { name: "Registrar lote" }));
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
 
     expect(await screen.findByText("Lote LOTE-03 registrado.")).toBeTruthy();
     expect(screen.getByText(/El lote se guardó igual/)).toBeTruthy();
@@ -198,10 +204,10 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
-    await screen.findByDisplayValue("L-10102026");
+    await screen.findByDisplayValue(TODAY_CODE);
     await user.clear(screen.getByLabelText("Código"));
     await user.click(screen.getByRole("button", { name: "Agregar tipo de envase" }));
-    await user.click(screen.getByRole("button", { name: "Registrar lote" }));
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
 
     expect(screen.getAllByText("Elige un tipo de envase", { selector: "p" })).toHaveLength(2);
     expect(bodies).toHaveLength(0);
@@ -223,12 +229,12 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
-    await screen.findByDisplayValue("L-10102026");
+    await screen.findByDisplayValue(TODAY_CODE);
     await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), "LOTE-01");
     await chooseType(1, "Con caño");
     await user.type(screen.getByLabelText("Cantidad producida 1"), "10");
-    await user.dblClick(screen.getByRole("button", { name: "Registrar lote" }));
+    await user.dblClick(screen.getByRole("button", { name: "Crear lote" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       'Ya existe un lote con el código "LOTE-01"',
@@ -242,7 +248,7 @@ describe("Producción", () => {
     await renderProduction(["SELLER"]);
 
     expect(await screen.findByText("LOTE-2026-08-22-01")).toBeTruthy();
-    expect(screen.queryByRole("form", { name: "Registrar lote" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Registrar llenada" })).toBeNull();
   });
 
   it("lista código, fecha, responsable, lo producido y lo que queda sin cargar (o «Todo cargado»)", async () => {
@@ -291,6 +297,10 @@ describe("Producción", () => {
             containerType: { id: "ct-cano", name: "Con caño" },
             producedQty: 100,
             availableQty: 0,
+            createdAt: null,
+            recordedById: null,
+            recordedBy: null,
+            notes: null,
           },
         ],
       }),

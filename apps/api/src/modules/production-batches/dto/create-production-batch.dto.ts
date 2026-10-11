@@ -40,7 +40,8 @@ export class CreateProductionBatchItemDto {
 export class CreateProductionBatchDto {
   @ApiPropertyOptional({
     example: "LOTE-2026-08-22-01",
-    description: "If omitted or blank, the server generates L-DDMMYYYY with a numeric suffix",
+    description:
+      "For the first filling of a date. If omitted or blank, the server generates L-DDMMYYYY; later fillings use that date's existing batch",
   })
   @IsOptional()
   @IsString({ message: "El código debe ser un texto" })

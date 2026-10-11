@@ -232,7 +232,7 @@ describe("POST /api/v1/production-batches", () => {
     const code = nextCode();
     await createBatch(adminToken, { code }).expect(201);
 
-    const duplicate = await createBatch(adminToken, { code });
+    const duplicate = await createBatch(adminToken, { code, date: "2026-08-23" });
 
     expect(duplicate.status).toBe(409);
     expect(messagesOf(duplicate)).toContain("Ya existe");
@@ -357,6 +357,7 @@ describe("POST /api/v1/production-batches", () => {
 
     const failedAttempt = await createBatch(adminToken, {
       code,
+      date: "2026-08-23",
       items: [
         { containerTypeId: containerTypeA, producedQty: 10 },
         { containerTypeId: containerTypeB, producedQty: 20 },

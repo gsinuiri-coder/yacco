@@ -62,9 +62,31 @@ function summarize(entries: Array<{ quantity: number; name: string }>): string {
   return entries.map((entry) => `${entry.quantity}× ${entry.name}`).join(", ");
 }
 
+function summarizeByType(
+  items: ReadonlyArray<{
+    containerTypeId: string;
+    containerType: { name: string };
+    quantity: number;
+  }>,
+): string {
+  const byType = new Map<string, { quantity: number; name: string }>();
+  for (const item of items) {
+    const current = byType.get(item.containerTypeId);
+    byType.set(item.containerTypeId, {
+      name: item.containerType.name,
+      quantity: (current?.quantity ?? 0) + item.quantity,
+    });
+  }
+  return summarize([...byType.values()]);
+}
+
 export function producedSummary(batch: ProductionBatch): string {
-  return summarize(
-    batch.items.map((item) => ({ quantity: item.producedQty, name: item.containerType.name })),
+  return summarizeByType(
+    batch.items.map((item) => ({
+      containerTypeId: item.containerTypeId,
+      containerType: item.containerType,
+      quantity: item.producedQty,
+    })),
   );
 }
 
@@ -76,7 +98,11 @@ export function producedSummary(batch: ProductionBatch): string {
 export function remainingSummary(batch: ProductionBatch): string {
   const remaining = batch.items.filter((item) => item.availableQty > 0);
   if (remaining.length === 0) return "Todo cargado";
-  return summarize(
-    remaining.map((item) => ({ quantity: item.availableQty, name: item.containerType.name })),
+  return summarizeByType(
+    remaining.map((item) => ({
+      containerTypeId: item.containerTypeId,
+      containerType: item.containerType,
+      quantity: item.availableQty,
+    })),
   );
 }

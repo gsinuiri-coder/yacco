@@ -27,29 +27,40 @@ function isPrismaKnownError(error: unknown, code: string): boolean {
 /** Everything the wire shape needs, and nothing else. */
 const BATCH_INCLUDE = {
   filledBy: { select: { id: true, name: true } },
-  items: { include: { containerType: { select: { id: true, name: true } } } },
+  items: {
+    orderBy: [{ createdAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+    include: {
+      containerType: { select: { id: true, name: true } },
+      recordedBy: { select: { id: true, name: true } },
+    },
+  },
 } satisfies Prisma.ProductionBatchInclude;
 
 type BatchWithRelations = Prisma.ProductionBatchGetPayload<{ include: typeof BATCH_INCLUDE }>;
 type BatchCodeDatabase = Pick<Prisma.TransactionClient, "productionBatch">;
+type BatchIdentity = { id: string; code: string };
 
 function automaticBatchCodeBase(date: string): string {
   const [year, month, day] = date.split("-") as [string, string, string];
   return `L-${day}${month}${year}`;
 }
 
-async function nextAutomaticBatchCode(database: BatchCodeDatabase, date: string): Promise<string> {
-  const base = automaticBatchCodeBase(date);
-  const rows = await database.productionBatch.findMany({
-    where: { code: { startsWith: base } },
-    select: { code: true },
+async function findCanonicalBatch(
+  database: BatchCodeDatabase,
+  date: Date,
+  dateText: string,
+): Promise<BatchIdentity | null> {
+  const defaultCode = automaticBatchCodeBase(dateText);
+  const preferred = await database.productionBatch.findFirst({
+    where: { date, code: defaultCode },
+    select: { id: true, code: true },
   });
-  const existing = new Set(rows.map((row) => row.code));
-  if (!existing.has(base)) return base;
-  for (let suffix = 2; ; suffix++) {
-    const candidate = `${base}-${suffix}`;
-    if (!existing.has(candidate)) return candidate;
-  }
+  if (preferred !== null) return preferred;
+  return database.productionBatch.findFirst({
+    where: { date },
+    orderBy: { code: "asc" },
+    select: { id: true, code: true },
+  });
 }
 
 function toBatchResponse(batch: BatchWithRelations): ProductionBatchResponseDto {
@@ -66,6 +77,10 @@ function toBatchResponse(batch: BatchWithRelations): ProductionBatchResponseDto 
       containerType: item.containerType,
       producedQty: item.producedQty,
       availableQty: item.availableQty,
+      createdAt: item.createdAt?.toISOString() ?? null,
+      recordedById: item.recordedById,
+      recordedBy: item.recordedBy,
+      notes: item.notes,
     })),
   };
 }
@@ -139,24 +154,31 @@ export class ProductionBatchesService {
     try {
       const { batch, warnings } = await this.prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`production-batch-code:${dto.date}`}))`;
-        resolvedCode = requestedCode || (await nextAutomaticBatchCode(tx, dto.date));
+        const existing = await findCanonicalBatch(tx, date, dto.date);
+        resolvedCode = existing?.code ?? (requestedCode || automaticBatchCodeBase(dto.date));
         await lockContainerTypes(tx, requestedIds);
-        const created = await tx.productionBatch.create({
-          data: {
-            code: resolvedCode,
-            date,
-            filledById,
-            notes: dto.notes ?? null,
-            items: {
-              create: dto.items.map((item) => ({
-                containerTypeId: item.containerTypeId,
-                producedQty: item.producedQty,
-                availableQty: item.producedQty,
-              })),
-            },
-          },
-          include: BATCH_INCLUDE,
-        });
+        const recordedAt = new Date();
+        const itemData = dto.items.map((item) => ({
+          containerTypeId: item.containerTypeId,
+          producedQty: item.producedQty,
+          availableQty: item.producedQty,
+          createdAt: recordedAt,
+          recordedById: filledById,
+          notes: dto.notes ?? null,
+        }));
+        const created =
+          existing === null
+            ? await tx.productionBatch.create({
+                data: {
+                  code: resolvedCode,
+                  date,
+                  filledById,
+                  notes: dto.notes ?? null,
+                  items: { create: itemData },
+                },
+                include: BATCH_INCLUDE,
+              })
+            : await appendFilling(tx, existing.id, itemData);
 
         const warnings: ProductionBatchWarningDto[] = [];
         for (const item of dto.items) {
@@ -205,9 +227,12 @@ export class ProductionBatchesService {
     }
   }
 
-  async proposeCode(date: string): Promise<{ code: string }> {
-    parseBusinessDate(date, "La fecha del lote");
-    return { code: await nextAutomaticBatchCode(this.prisma, date) };
+  async proposeCode(dateText: string): Promise<{ code: string; willAppend: boolean }> {
+    const date = parseBusinessDate(dateText, "La fecha del lote");
+    const existing = await findCanonicalBatch(this.prisma, date, dateText);
+    return existing === null
+      ? { code: automaticBatchCodeBase(dateText), willAppend: false }
+      : { code: existing.code, willAppend: true };
   }
 
   /** Always paginated; the count runs against the same filter as the page. */
@@ -245,6 +270,20 @@ export class ProductionBatchesService {
     }
     return toBatchResponse(batch);
   }
+}
+
+async function appendFilling(
+  tx: Prisma.TransactionClient,
+  batchId: string,
+  items: Array<Omit<Prisma.BatchItemCreateManyInput, "batchId">>,
+): Promise<BatchWithRelations> {
+  await tx.batchItem.createMany({
+    data: items.map((item) => ({ ...item, batchId })),
+  });
+  return tx.productionBatch.findUniqueOrThrow({
+    where: { id: batchId },
+    include: BATCH_INCLUDE,
+  });
 }
 
 function buildBatchFilter(query: ListProductionBatchesQueryDto): Prisma.ProductionBatchWhereInput {

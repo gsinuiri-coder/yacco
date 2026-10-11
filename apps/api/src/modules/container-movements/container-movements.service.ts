@@ -45,7 +45,7 @@ function toMovementResponse(movement: MovementWithRelations): ContainerMovementR
 /**
  * Lima has no DST and sits at UTC-5, so its midnight is always 05:00 UTC.
  * `occurredAt` is a timestamptz; a "from/to" filter on it is a business day
- * (CLAUDE.md), so both ends are converted to their UTC instant boundary here
+ * (AGENTS.md), so both ends are converted to their UTC instant boundary here
  * rather than compared as naive dates.
  */
 function limaDayStartUtc(date: string): Date {

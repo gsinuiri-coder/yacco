@@ -932,7 +932,7 @@ export class RoutesService {
 
   /**
    * Corregir una parada ya marcada: anula lo que se anotó y vuelve a
-   * registrarla como realmente fue. No es editar la fila (CLAUDE.md: un error
+   * registrarla como realmente fue. No es editar la fila (AGENTS.md: un error
    * operativo NUNCA se corrige editando ni borrando el registro): la venta
    * anterior queda en la tabla, anulada y con su motivo, y los envases se
    * devuelven con movimientos inversos. Lo único que se pisa son las tres
@@ -1113,10 +1113,10 @@ export class RoutesService {
   }
 
   /**
-   * Names what actually happened, per CLAUDE.md: naming the date and who
+   * Names what actually happened, per AGENTS.md: naming the date and who
    * recorded it is what stops the office and a driver from double-charging
    * the same delivery. `soldAt` is a timestamptz (an instant, not a business
-   * date — CLAUDE.md's date-formatting rule doesn't apply here), so a plain
+   * date — AGENTS.md's date-formatting rule doesn't apply here), so a plain
    * ISO string is enough for a message nobody parses back.
    *
    * `voidedAt: null` en la búsqueda de la venta: una parada corregida deja su
@@ -1312,7 +1312,7 @@ export class RoutesService {
   /**
    * Only while the route is still PLANNED: once the truck is out
    * (IN_PROGRESS) or the route is done (FINISHED), a loading mistake is
-   * corrected at settlement, not erased here (CLAUDE.md — a settlement
+   * corrected at settlement, not erased here (AGENTS.md — a settlement
    * mismatch still closes, recording the difference). `route_loads` is not
    * the ledger, so the row is genuinely deleted; `container_movements` is,
    * so the correction appends a FULL_RETURN (FULL_ON_ROUTE ->
@@ -1382,7 +1382,7 @@ export class RoutesService {
 
 /**
  * FIFO estricto: la carga de una ruta consume el lote más antiguo que
- * todavía tenga unidades de ese tipo de envase (CLAUDE.md, invariante de
+ * todavía tenga unidades de ese tipo de envase (AGENTS.md, invariante de
  * dominio). Originalmente la regla la sostenía únicamente el reparto que
  * hacía la web (el entonces `apps/web/src/lib/fifo-load-plan.ts`, hoy
  * `apps/web-nuxt/app/utils/fifo-load.ts`): cualquier otro cliente —el móvil,
@@ -1391,8 +1391,8 @@ export class RoutesService {
  * así que el servidor la aplica acá también; el cálculo del lado de la web
  * sigue existiendo, para mostrar el plan antes de confirmarlo.
  *
- * El orden es `OLDEST_BATCH_ITEM_FIRST`: fecha del lote, y el código como
- * desempate cuando dos lotes son del mismo día.
+ * El orden es `OLDEST_BATCH_ITEM_FIRST`: fecha y código del lote; dentro de
+ * un lote, hora de la llenada (NULL primero para los datos históricos) e id.
  *
  * La comprobación va DENTRO de la transacción de `addLoad` y con su mismo
  * cliente: leerla afuera dejaría una ventana en la que otra carga agota el

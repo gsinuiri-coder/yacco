@@ -134,7 +134,7 @@ cuándo, y tres líneas:
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 2 de «Fase 2 en local».
 - **Asumimos:** que todas las llenadas de una misma fecha de lote son un único lote auditable. La primera crea `L-DDMMYYYY` (día de Lima) o el código que escriba la oficina; las siguientes se suman al lote existente como renglones nuevos, nunca editando una llenada anterior. Si ya hay varios lotes históricos para esa fecha, se usa `L-DDMMYYYY` o, si no existe, el primero por código, sin fusionarlos.
-- **Construido encima:** nada todavía. Se construye en el registro y detalle de lotes, con autor, hora y nota por llenada, consumo FIFO entre renglones y concurrencia sin duplicar el lote ni responder 409.
+- **Construido encima:** `batch_items.created_at`/`recorded_by`/`notes`, `ProductionBatchesService.create` y `proposeCode`, el FIFO por renglón, el reporte consolidado y el registro y detalle de llenadas de `production.vue`.
 - **Si resulta que no:** medio. Cambiar el formato predeterminado es local al generador, pero volver a separar llenadas exige cambiar cómo se elige el lote y cómo se presentan sus renglones; los lotes y movimientos ya escritos no se fusionan, editan ni borran.
 
 ### Fase 2: a una ruta en curso se le puede agregar carga

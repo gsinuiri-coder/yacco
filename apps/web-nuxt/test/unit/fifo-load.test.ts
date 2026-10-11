@@ -22,6 +22,10 @@ function batch(
       ...item,
       containerType: { id: item.containerTypeId, name: "Bidón 20L" },
       producedQty: item.availableQty,
+      createdAt: null,
+      recordedById: null,
+      recordedBy: null,
+      notes: null,
     })),
   };
 }

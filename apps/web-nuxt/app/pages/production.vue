@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { PRODUCTION_BATCHES_PAGE_SIZE, formatCalendarDay, limaToday } from "@yacco/shared";
+import {
+  PRODUCTION_BATCHES_PAGE_SIZE,
+  formatCalendarDay,
+  formatInstantInLima,
+  limaToday,
+} from "@yacco/shared";
 import type {
   ContainerType,
   CreateProductionBatchResponse,
@@ -26,7 +31,13 @@ const lineErrors = ref<Array<string | undefined>>([]);
 const submitting = ref(false);
 const submitError = ref<string | null>(null);
 const slowSubmit = useSlowRequest(submitting);
-const registered = ref<{ code: string; warnings: ProductionBatchWarning[] } | null>(null);
+const registered = ref<{
+  code: string;
+  warnings: ProductionBatchWarning[];
+  appended: boolean;
+} | null>(null);
+const proposalLoading = ref(false);
+const willAppend = ref(false);
 
 const catalog = useCatalog<ContainerType>("/container-types");
 
@@ -36,6 +47,7 @@ async function loadCodeProposal(): Promise<void> {
   const request = ++proposalRequest;
   const requestedDate = date.value;
   const codeBeforeRequest = code.value;
+  proposalLoading.value = true;
   try {
     const proposal = await api.request<ProductionBatchCodeProposal>(
       "/production-batches/code-proposals",
@@ -44,12 +56,15 @@ async function loadCodeProposal(): Promise<void> {
     if (
       request === proposalRequest &&
       date.value === requestedDate &&
-      code.value === codeBeforeRequest
+      (proposal.willAppend || code.value === codeBeforeRequest)
     ) {
       code.value = proposal.code;
+      willAppend.value = proposal.willAppend;
     }
   } catch {
     // El POST también genera el código: una propuesta caída no bloquea producción.
+  } finally {
+    if (request === proposalRequest) proposalLoading.value = false;
   }
 }
 
@@ -57,6 +72,7 @@ watch(
   date,
   () => {
     dateError.value = undefined;
+    willAppend.value = false;
     void loadCodeProposal();
   },
   { immediate: true },
@@ -77,12 +93,13 @@ async function register(): Promise<void> {
   submitting.value = true;
   submitError.value = null;
   registered.value = null;
+  const appended = willAppend.value;
   try {
     const response = await api.request<CreateProductionBatchResponse>("/production-batches", {
       method: "POST",
       body: batchBody(code.value, date.value, notes.value, lines.value),
     });
-    registered.value = { code: response.code, warnings: response.warnings };
+    registered.value = { code: response.code, warnings: response.warnings, appended };
     code.value = "";
     date.value = limaToday();
     notes.value = "";
@@ -111,6 +128,21 @@ const summary = computed(() => {
   const total = list.total.value;
   return `${total} ${total === 1 ? "lote" : "lotes"}${list.hasFilters.value ? " con este filtro" : ""}`;
 });
+
+const expandedBatchIds = ref(new Set<string>());
+function toggleBatchDetails(batchId: string): void {
+  const next = new Set(expandedBatchIds.value);
+  if (next.has(batchId)) next.delete(batchId);
+  else next.add(batchId);
+  expandedBatchIds.value = next;
+}
+
+function fillingAudit(item: ProductionBatch["items"][number]): string | null {
+  if (item.createdAt === null && item.recordedBy === null) {
+    return "Registro anterior sin hora ni responsable";
+  }
+  return null;
+}
 </script>
 
 <template>
@@ -118,8 +150,8 @@ const summary = computed(() => {
     <div class="space-y-6">
       <SectionCard
         v-if="isAdmin"
-        title="Registrar lote"
-        description="Lo que se llenó hoy, por tipo de envase."
+        title="Registrar llenada"
+        description="Cada registro queda separado dentro del lote de su fecha."
       >
         <div class="space-y-4">
           <UAlert
@@ -127,7 +159,11 @@ const summary = computed(() => {
             role="status"
             color="success"
             variant="subtle"
-            :title="`Lote ${registered.code} registrado.`"
+            :title="
+              registered.appended
+                ? `Llenada sumada al lote ${registered.code}.`
+                : `Lote ${registered.code} registrado.`
+            "
           >
             <template #description>
               <ULink to="/inventory" class="underline">Ver inventario actualizado</ULink>
@@ -158,14 +194,34 @@ const summary = computed(() => {
             variant="subtle"
             :title="submitError"
           />
+          <UAlert
+            v-if="willAppend"
+            role="status"
+            color="info"
+            variant="subtle"
+            icon="i-lucide-layers-3"
+            :title="`Se suma al lote de hoy, ${code}`"
+            description="Esta llenada quedará como un renglón nuevo, con su hora, responsable y nota."
+          />
 
-          <form class="space-y-5" novalidate aria-label="Registrar lote" @submit.prevent="register">
+          <form
+            class="space-y-5"
+            novalidate
+            aria-label="Registrar llenada"
+            @submit.prevent="register"
+          >
             <div class="grid gap-4 sm:grid-cols-[12rem_12rem_1fr]">
               <UFormField label="Código">
-                <UInput v-model="code" :disabled="submitting" class="w-full" />
-                <template #hint
-                  >Se propone automáticamente; podés cambiarlo o dejarlo vacío.</template
-                >
+                <UInput
+                  v-model="code"
+                  :disabled="submitting || proposalLoading || willAppend"
+                  class="w-full"
+                />
+                <template #hint>
+                  <span v-if="proposalLoading">Buscando el lote de esta fecha…</span>
+                  <span v-else-if="willAppend">El código pertenece al lote ya creado.</span>
+                  <span v-else>Se propone automáticamente; podés cambiarlo.</span>
+                </template>
               </UFormField>
               <UFormField label="Fecha" :error="dateError">
                 <UInput v-model="date" type="date" :disabled="submitting" class="w-full" />
@@ -256,7 +312,7 @@ const summary = computed(() => {
                 type="submit"
                 icon="i-lucide-factory"
                 :disabled="submitting"
-                :label="submitting ? 'Registrando…' : 'Registrar lote'"
+                :label="submitting ? 'Registrando…' : willAppend ? 'Sumar llenada' : 'Crear lote'"
               />
             </div>
           </form>
@@ -327,24 +383,87 @@ const summary = computed(() => {
                   <th scope="col" class="px-4 py-2 font-medium">Responsable</th>
                   <th scope="col" class="px-4 py-2 font-medium">Producido</th>
                   <th scope="col" class="px-4 py-2 font-medium">Sin cargar</th>
+                  <th scope="col" class="px-4 py-2 text-right font-medium">Llenadas</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-default">
-                <tr v-for="batch in list.items.value" :key="batch.id">
-                  <td class="px-4 py-3 font-medium text-highlighted">{{ batch.code }}</td>
-                  <td class="px-4 py-3 tabular-nums">{{ formatCalendarDay(batch.date) }}</td>
-                  <td class="px-4 py-3">{{ batch.filledBy.name }}</td>
-                  <td class="px-4 py-3 text-muted">{{ producedSummary(batch) }}</td>
-                  <td class="px-4 py-3">
-                    <UBadge
-                      v-if="remainingSummary(batch) === 'Todo cargado'"
-                      color="neutral"
-                      variant="soft"
-                      label="Todo cargado"
-                    />
-                    <span v-else class="text-highlighted">{{ remainingSummary(batch) }}</span>
-                  </td>
-                </tr>
+                <template v-for="batch in list.items.value" :key="batch.id">
+                  <tr>
+                    <td class="px-4 py-3 font-medium text-highlighted">{{ batch.code }}</td>
+                    <td class="px-4 py-3 tabular-nums">{{ formatCalendarDay(batch.date) }}</td>
+                    <td class="px-4 py-3">{{ batch.filledBy.name }}</td>
+                    <td class="px-4 py-3 text-muted">{{ producedSummary(batch) }}</td>
+                    <td class="px-4 py-3">
+                      <UBadge
+                        v-if="remainingSummary(batch) === 'Todo cargado'"
+                        color="neutral"
+                        variant="soft"
+                        label="Todo cargado"
+                      />
+                      <span v-else class="text-highlighted">{{ remainingSummary(batch) }}</span>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                      <UButton
+                        color="neutral"
+                        variant="ghost"
+                        size="sm"
+                        :icon="
+                          expandedBatchIds.has(batch.id)
+                            ? 'i-lucide-chevron-up'
+                            : 'i-lucide-chevron-down'
+                        "
+                        :label="
+                          expandedBatchIds.has(batch.id)
+                            ? 'Ocultar llenadas'
+                            : `Ver ${batch.items.length} ${batch.items.length === 1 ? 'llenada' : 'llenadas'}`
+                        "
+                        :aria-expanded="expandedBatchIds.has(batch.id)"
+                        @click="toggleBatchDetails(batch.id)"
+                      />
+                    </td>
+                  </tr>
+                  <tr v-if="expandedBatchIds.has(batch.id)" class="bg-elevated/40">
+                    <td colspan="6" class="px-4 py-4">
+                      <section
+                        class="space-y-3"
+                        role="region"
+                        :aria-label="`Llenadas del lote ${batch.code}`"
+                      >
+                        <div class="flex flex-wrap items-baseline justify-between gap-2">
+                          <h3 class="font-medium text-highlighted">Registro de llenadas</h3>
+                          <p class="text-sm text-muted">Total: {{ producedSummary(batch) }}</p>
+                        </div>
+                        <ul
+                          class="divide-y divide-default rounded-lg border border-default bg-default"
+                        >
+                          <li
+                            v-for="item in batch.items"
+                            :key="item.id"
+                            class="grid gap-2 px-4 py-3 sm:grid-cols-[10rem_minmax(10rem,1fr)_minmax(12rem,1fr)] sm:items-center"
+                          >
+                            <div class="text-sm tabular-nums">
+                              <p v-if="item.createdAt" class="font-medium text-highlighted">
+                                {{ formatInstantInLima(item.createdAt) }}
+                              </p>
+                              <p v-if="item.recordedBy" class="text-muted">
+                                {{ item.recordedBy.name }}
+                              </p>
+                              <p v-if="fillingAudit(item)" class="text-muted">
+                                {{ fillingAudit(item) }}
+                              </p>
+                            </div>
+                            <p class="font-medium text-highlighted">
+                              {{ item.producedQty }}× {{ item.containerType.name }}
+                            </p>
+                            <p class="text-sm text-muted">
+                              {{ item.notes || "Sin nota" }}
+                            </p>
+                          </li>
+                        </ul>
+                      </section>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
