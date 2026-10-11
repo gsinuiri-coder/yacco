@@ -1041,15 +1041,52 @@ describe("RoutesService", () => {
   });
 
   describe("addOrderStops", () => {
-    it("refuses to batch orders into a route that is no longer PLANNED", async () => {
+    it("batches orders into an IN_PROGRESS route as admin", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+      prisma.order.findUnique.mockResolvedValue({
+        id: ORDER_ID,
+        status: OrderStatus.PENDING,
+        locationId: LOCATION_ID,
+        routeStop: null,
+      });
+      prisma.routeStop.findFirst.mockResolvedValue(null);
+      prisma.routeStop.create.mockResolvedValue(
+        buildStop({ origin: StopOrigin.ORDER, orderId: ORDER_ID, position: 1 }),
+      );
+      prisma.order.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.addOrderStops(ROUTE_ID, { orderIds: [ORDER_ID] }, adminActor);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.origin).toBe(StopOrigin.ORDER);
+    });
+
+    it("batches orders into an IN_PROGRESS route as seller", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.IN_PROGRESS }));
+      prisma.order.findUnique.mockResolvedValue({
+        id: ORDER_ID,
+        status: OrderStatus.PENDING,
+        locationId: LOCATION_ID,
+        routeStop: null,
+      });
+      prisma.routeStop.findFirst.mockResolvedValue(null);
+      prisma.routeStop.create.mockResolvedValue(
+        buildStop({ origin: StopOrigin.ORDER, orderId: ORDER_ID, position: 1 }),
+      );
+      prisma.order.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.addOrderStops(ROUTE_ID, { orderIds: [ORDER_ID] }, sellerActor);
+
+      expect(result).toHaveLength(1);
+    });
+
+    it("refuses to batch orders into a FINISHED route", async () => {
+      prisma.route.findUnique.mockResolvedValue(buildRoute({ status: RouteStatus.FINISHED }));
 
       await expect(
         service.addOrderStops(ROUTE_ID, { orderIds: [ORDER_ID] }, adminActor),
       ).rejects.toEqual(
-        new ConflictException(
-          "Solo se agregan pedidos en lote a una ruta planificada; esta está en curso",
-        ),
+        new ConflictException("No se pueden agregar paradas de una ruta terminada"),
       );
       expect(prisma.routeStop.create).not.toHaveBeenCalled();
     });

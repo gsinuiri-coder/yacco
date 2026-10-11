@@ -599,9 +599,8 @@ export class RoutesService {
 
   /**
    * «Agregar pedidos pendientes»: una parada ORDER por pedido, en el orden
-   * recibido, detrás de las que la ruta ya tenía. Solo con la ruta
-   * PLANIFICADA (armar la hoja antes de salir); una vez en la calle se agrega
-   * de a una, como siempre.
+   * recibido, detrás de las que la ruta ya tenía. Con la ruta PLANIFICADA
+   * o EN CURSO; solo con la ruta terminada se rechaza.
    *
    * Todo o nada. Cada pedido pasa por EXACTAMENTE la misma validación que
    * `addStop` (`resolveOrderStopLocation`), todos antes de escribir nada: el
@@ -616,11 +615,7 @@ export class RoutesService {
     actor: RouteActor,
   ): Promise<RouteStopResponseDto[]> {
     const route = await this.getOwnedRouteOrThrow(routeId, actor);
-    if (route.status !== RouteStatus.PLANNED) {
-      throw new ConflictException(
-        `Solo se agregan pedidos en lote a una ruta planificada; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
-      );
-    }
+    assertRouteIsTouchable(route.status, "agregar paradas");
 
     const stops: Array<{ orderId: string; locationId: string }> = [];
     for (const orderId of dto.orderIds) {
@@ -630,18 +625,8 @@ export class RoutesService {
     let current: string | undefined;
     try {
       const created = await this.prisma.$transaction(async (tx) => {
-        // Se vuelve a exigir PLANIFICADA adentro, y el UPDATE toma el candado
-        // de la fila: un `start` o un `finish` que llegue mientras se validaban
-        // los pedidos espera a este lote, o este lote ve que la ruta ya salió.
-        const { count } = await tx.route.updateMany({
-          where: { id: routeId, status: RouteStatus.PLANNED },
-          data: { status: RouteStatus.PLANNED },
-        });
-        if (count === 0) {
-          throw new ConflictException(
-            "La ruta dejó de estar planificada mientras se agregaban los pedidos",
-          );
-        }
+        const lockedStatus = await lockRouteAndReadStatus(tx, routeId);
+        assertRouteIsTouchable(lockedStatus, "agregar paradas");
         const rows: StopWithRelations[] = [];
         for (const stop of stops) {
           current = stop.orderId;

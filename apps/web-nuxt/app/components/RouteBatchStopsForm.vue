@@ -3,14 +3,15 @@ import { formatCalendarDay, formatSoles } from "@yacco/shared";
 import type { Order, Page, Route, RouteStop } from "@yacco/shared";
 
 /**
- * «Agregar pedidos pendientes»: armar la hoja de una ruta planificada de una
- * vez, con los pedidos PENDIENTES sin parada cuya entrega es el día de la
- * ruta (y de su zona, si la ruta tiene una, con la opción de ver todas).
+ * «Agregar pedidos pendientes»: armar la hoja de una ruta planificada o en
+ * curso de una vez, con los pedidos PENDIENTES sin parada cuya entrega es el
+ * día de la ruta (y de su zona, si la ruta tiene una, con la opción de ver
+ * todas).
  *
  * El lote va en el orden de la lista, que es el orden en que quedan las
  * paradas, y es todo o nada: si la API rechaza un pedido, su 400 lo nombra y
  * no se agrega ninguno. El formulario de a una (RouteStopAddForm) se queda
- * para la autoventa y para la ruta ya en la calle.
+ * para la autoventa y para clientes sin pedido.
  */
 const props = defineProps<{ route: Route }>();
 const emit = defineEmits<{ cancel: []; added: [] }>();

@@ -1064,7 +1064,7 @@ describe("POST /api/v1/routes/:id/stops/batch", () => {
     }
   });
 
-  test("si la ruta sale mientras se validaban los pedidos, el lote es un 409 y no agrega nada", async () => {
+  test("si la ruta termina mientras se validaban los pedidos, el lote es un 409 y no agrega nada", async () => {
     const routeId = await createRoute(adminToken, { date: nextDate() });
     const orderId = await createPendingOrder(adminToken);
     const service = ctx.app.get(RoutesService) as unknown as {
@@ -1077,7 +1077,7 @@ describe("POST /api/v1/routes/:id/stops/batch", () => {
         const location = await original(id);
         await prisma.route.update({
           where: { id: routeId },
-          data: { status: RouteStatus.IN_PROGRESS },
+          data: { status: RouteStatus.FINISHED },
         });
         return location;
       });
@@ -1113,9 +1113,65 @@ describe("POST /api/v1/routes/:id/stops/batch", () => {
     expect(await stopsOf(routeId)).toEqual([]);
   });
 
-  test("una ruta que ya salió no recibe un lote: 409, y no agrega nada", async () => {
+  test("lote sobre ruta en curso como administrador y como vendedor (pasan) y como chofer (rechazo)", async () => {
     const routeId = await createRoute(adminToken, { date: nextDate() });
     await startRoute(adminToken, routeId);
+    const orderAdmin = await createPendingOrder(adminToken);
+    const orderSeller = await createPendingOrder(adminToken);
+    const orderDriver = await createPendingOrder(adminToken);
+
+    // Chofer: rechazado con 403
+    const driverResponse = await addBatch(routeId, [orderDriver], driverToken);
+    expect(driverResponse.status).toBe(403);
+
+    // Administrador: pasa con 201
+    const adminResponse = await addBatch(routeId, [orderAdmin], adminToken);
+    expect(adminResponse.status).toBe(201);
+    expect(adminResponse.body[0]?.orderId).toBe(orderAdmin);
+
+    // Vendedor: pasa con 201
+    const sellerResponse = await addBatch(routeId, [orderSeller], sellerToken);
+    expect(sellerResponse.status).toBe(201);
+    expect(sellerResponse.body[0]?.orderId).toBe(orderSeller);
+
+    const stops = await stopsOf(routeId);
+    expect(stops).toEqual([
+      { position: 1, orderId: orderAdmin, origin: StopOrigin.ORDER },
+      { position: 2, orderId: orderSeller, origin: StopOrigin.ORDER },
+    ]);
+  });
+
+  test("lote sobre ruta en curso deshace el lote entero si un pedido ya está asignado", async () => {
+    const date = nextDate();
+    const routeId = await createRoute(adminToken, { date });
+    await startRoute(adminToken, routeId);
+    const otherRouteId = await createRoute(adminToken, { driverId: otherDriverId, date });
+    const free = await createPendingOrder(adminToken);
+    const taken = await createPendingOrder(adminToken);
+    await request(server())
+      .post(`/api/v1/routes/${otherRouteId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId: taken })
+      .expect(201);
+
+    const response = await addBatch(routeId, [free, taken], adminToken);
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain(`El pedido "${taken}" ya está asignado a otra parada`);
+    expect(await stopsOf(routeId)).toEqual([]);
+    const freeOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: free },
+      select: { status: true },
+    });
+    expect(freeOrder.status).toBe(OrderStatus.PENDING);
+  });
+
+  test("una ruta terminada no recibe un lote: 409, y no agrega nada", async () => {
+    const routeId = await createRoute(adminToken, { date: nextDate() });
+    await startRoute(adminToken, routeId);
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/finish`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
     const orderId = await createPendingOrder(adminToken);
 
     const response = await addBatch(routeId, [orderId]);
