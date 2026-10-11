@@ -4,6 +4,7 @@ import type {
   ContainerType,
   CreateProductionBatchResponse,
   ProductionBatch,
+  ProductionBatchCodeProposal,
   ProductionBatchWarning,
 } from "@yacco/shared";
 import type { BatchLineDraft } from "../utils/production-batch";
@@ -20,7 +21,6 @@ const date = ref(limaToday());
 const notes = ref("");
 const lines = ref<BatchLineDraft[]>([blankBatchLine(0)]);
 let nextKey = 1;
-const codeError = ref<string | undefined>(undefined);
 const dateError = ref<string | undefined>(undefined);
 const lineErrors = ref<Array<string | undefined>>([]);
 const submitting = ref(false);
@@ -30,8 +30,37 @@ const registered = ref<{ code: string; warnings: ProductionBatchWarning[] } | nu
 
 const catalog = useCatalog<ContainerType>("/container-types");
 
-watch(code, () => (codeError.value = undefined));
-watch(date, () => (dateError.value = undefined));
+let proposalRequest = 0;
+async function loadCodeProposal(): Promise<void> {
+  if (!isAdmin.value || date.value === "") return;
+  const request = ++proposalRequest;
+  const requestedDate = date.value;
+  const codeBeforeRequest = code.value;
+  try {
+    const proposal = await api.request<ProductionBatchCodeProposal>(
+      "/production-batches/code-proposals",
+      { query: { date: requestedDate } },
+    );
+    if (
+      request === proposalRequest &&
+      date.value === requestedDate &&
+      code.value === codeBeforeRequest
+    ) {
+      code.value = proposal.code;
+    }
+  } catch {
+    // El POST también genera el código: una propuesta caída no bloquea producción.
+  }
+}
+
+watch(
+  date,
+  () => {
+    dateError.value = undefined;
+    void loadCodeProposal();
+  },
+  { immediate: true },
+);
 
 function editLine(index: number, patch: Partial<BatchLineDraft>): void {
   lines.value = lines.value.map((line, i) => (i === index ? { ...line, ...patch } : line));
@@ -41,10 +70,9 @@ function editLine(index: number, patch: Partial<BatchLineDraft>): void {
 async function register(): Promise<void> {
   // Con un arranque en frío, un botón vivo son varios lotes duplicados.
   if (submitting.value) return;
-  codeError.value = code.value.trim() === "" ? "El código no puede estar vacío" : undefined;
   dateError.value = date.value === "" ? "Elige una fecha" : undefined;
   lineErrors.value = lines.value.map(checkBatchLine);
-  if (codeError.value || dateError.value || lineErrors.value.some(Boolean)) return;
+  if (dateError.value || lineErrors.value.some(Boolean)) return;
 
   submitting.value = true;
   submitError.value = null;
@@ -60,6 +88,7 @@ async function register(): Promise<void> {
     notes.value = "";
     lines.value = [blankBatchLine(nextKey++)];
     lineErrors.value = [];
+    void loadCodeProposal();
     list.retry();
   } catch (error) {
     // El 400 nombra el problema (código duplicado, tipo inactivo): tal cual.
@@ -132,8 +161,11 @@ const summary = computed(() => {
 
           <form class="space-y-5" novalidate aria-label="Registrar lote" @submit.prevent="register">
             <div class="grid gap-4 sm:grid-cols-[12rem_12rem_1fr]">
-              <UFormField label="Código" :error="codeError">
+              <UFormField label="Código">
                 <UInput v-model="code" :disabled="submitting" class="w-full" />
+                <template #hint
+                  >Se propone automáticamente; podés cambiarlo o dejarlo vacío.</template
+                >
               </UFormField>
               <UFormField label="Fecha" :error="dateError">
                 <UInput v-model="date" type="date" :disabled="submitting" class="w-full" />

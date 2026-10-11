@@ -236,6 +236,19 @@ describe("POST /api/v1/production-batches", () => {
     expect(messagesOf(duplicate)).toContain("Ya existe");
   });
 
+  test("dos altas simultáneas sin código reciben sufijos distintos para la fecha", async () => {
+    const [first, second] = await Promise.all([
+      createBatch(adminToken, { code: "", date: "2026-10-22" }),
+      createBatch(adminToken, { code: undefined, date: "2026-10-22" }),
+    ]);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(new Set([first.body.code, second.body.code])).toEqual(
+      new Set(["L-22102026", "L-22102026-2"]),
+    );
+  });
+
   // This documents the atomicity guarantee ("si algo falla a mitad, no debe
   // quedar ni el lote ni movimientos sueltos"): a doomed multi-line batch —
   // doomed only by its duplicate code — must leave nothing behind, not even
@@ -342,6 +355,38 @@ describe("POST /api/v1/production-batches", () => {
       });
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe("GET /api/v1/production-batches/code-proposals", () => {
+  test("propone el siguiente código de la fecha y solo ADMIN puede consultarlo", async () => {
+    const initial = await request(server())
+      .get("/api/v1/production-batches/code-proposals?date=2026-10-22")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(initial.body).toEqual({ code: "L-22102026" });
+
+    await createBatch(adminToken, { code: "", date: "2026-10-22" }).expect(201);
+
+    const next = await request(server())
+      .get("/api/v1/production-batches/code-proposals?date=2026-10-22")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(next.body).toEqual({ code: "L-22102026-2" });
+
+    await request(server())
+      .get("/api/v1/production-batches/code-proposals?date=2026-10-22")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .expect(403);
+  });
+
+  test("rechaza una fecha imposible", async () => {
+    const response = await request(server())
+      .get("/api/v1/production-batches/code-proposals?date=2026-02-31")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("no es una fecha válida");
   });
 });
 

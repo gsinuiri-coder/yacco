@@ -31,6 +31,26 @@ const BATCH_INCLUDE = {
 } satisfies Prisma.ProductionBatchInclude;
 
 type BatchWithRelations = Prisma.ProductionBatchGetPayload<{ include: typeof BATCH_INCLUDE }>;
+type BatchCodeDatabase = Pick<Prisma.TransactionClient, "productionBatch">;
+
+function automaticBatchCodeBase(date: string): string {
+  const [year, month, day] = date.split("-") as [string, string, string];
+  return `L-${day}${month}${year}`;
+}
+
+async function nextAutomaticBatchCode(database: BatchCodeDatabase, date: string): Promise<string> {
+  const base = automaticBatchCodeBase(date);
+  const rows = await database.productionBatch.findMany({
+    where: { code: { startsWith: base } },
+    select: { code: true },
+  });
+  const existing = new Set(rows.map((row) => row.code));
+  if (!existing.has(base)) return base;
+  for (let suffix = 2; ; suffix++) {
+    const candidate = `${base}-${suffix}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+}
 
 function toBatchResponse(batch: BatchWithRelations): ProductionBatchResponseDto {
   return {
@@ -90,6 +110,8 @@ export class ProductionBatchesService {
     filledById: string,
   ): Promise<CreateProductionBatchResponseDto> {
     const date = parseBusinessDate(dto.date, "La fecha del lote");
+    const requestedCode = dto.code?.trim() ?? "";
+    let resolvedCode = requestedCode;
 
     const duplicateIds = findDuplicateContainerTypeIds(dto.items);
     if (duplicateIds.length > 0) {
@@ -116,10 +138,12 @@ export class ProductionBatchesService {
 
     try {
       const { batch, warnings } = await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`production-batch-code:${dto.date}`}))`;
+        resolvedCode = requestedCode || (await nextAutomaticBatchCode(tx, dto.date));
         await lockContainerTypes(tx, requestedIds);
         const created = await tx.productionBatch.create({
           data: {
-            code: dto.code,
+            code: resolvedCode,
             date,
             filledById,
             notes: dto.notes ?? null,
@@ -175,10 +199,15 @@ export class ProductionBatchesService {
       // production_batches_code_key: the office reuses codes across days by
       // mistake more often than any other input here.
       if (isPrismaKnownError(error, "P2002")) {
-        throw new ConflictException(`Ya existe un lote con el código "${dto.code}"`);
+        throw new ConflictException(`Ya existe un lote con el código "${resolvedCode}"`);
       }
       throw error;
     }
+  }
+
+  async proposeCode(date: string): Promise<{ code: string }> {
+    parseBusinessDate(date, "La fecha del lote");
+    return { code: await nextAutomaticBatchCode(this.prisma, date) };
   }
 
   /** Always paginated; the count runs against the same filter as the page. */

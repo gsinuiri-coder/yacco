@@ -37,8 +37,17 @@ function batch(overrides: Partial<ProductionBatch> = {}): ProductionBatch {
 
 function stubPage(batches: ProductionBatch[] = [batch()]) {
   const queries: Array<Record<string, unknown>> = [];
+  const proposalDates: string[] = [];
   cleanups.push(
     registerEndpoint("/api/v1/container-types", () => [CON_CANO, SIN_CANO]),
+    registerEndpoint("/api/v1/production-batches/code-proposals", {
+      method: "GET",
+      handler: (event: H3Event) => {
+        const date = String(getQuery(event).date);
+        proposalDates.push(date);
+        return { code: date === "2026-10-11" ? "L-11102026-2" : "L-10102026" };
+      },
+    }),
     registerEndpoint("/api/v1/production-batches", {
       method: "GET",
       handler: (event: H3Event) => {
@@ -47,7 +56,7 @@ function stubPage(batches: ProductionBatch[] = [batch()]) {
       },
     }),
   );
-  return queries;
+  return { queries, proposalDates };
 }
 
 async function renderProduction(roles: UserRole[] = ["ADMIN"]) {
@@ -73,7 +82,7 @@ describe("Producción", () => {
   });
 
   it("registra un lote de dos tipos: fecha como texto AAAA-MM-DD y cantidades enteras", async () => {
-    const queries = stubPage();
+    const { queries } = stubPage();
     const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({
       ...batch({ code: "LOTE-02" }),
       warnings: [],
@@ -81,6 +90,8 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
+    await screen.findByDisplayValue("L-10102026");
+    await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), " LOTE-02 ");
     await chooseType(1, "Con caño");
     await user.type(screen.getByLabelText("Cantidad producida 1"), "200");
@@ -102,8 +113,26 @@ describe("Producción", () => {
       },
     ]);
     // El formulario se vacía y la lista se recarga.
-    expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("");
+    await waitFor(() =>
+      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("L-10102026"),
+    );
     await waitFor(() => expect(queries.length).toBeGreaterThan(1));
+  });
+
+  it("precarga el código propuesto y lo actualiza cuando cambia la fecha", async () => {
+    const { proposalDates } = stubPage();
+
+    await renderProduction();
+    await waitFor(() =>
+      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("L-10102026"),
+    );
+
+    await fireEvent.update(screen.getByLabelText("Fecha"), "2026-10-11");
+
+    await waitFor(() =>
+      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("L-11102026-2"),
+    );
+    expect(proposalDates).toContain("2026-10-11");
   });
 
   it("la sobreproducción se avisa con sus números tras un alta exitosa, sin leerse como error", async () => {
@@ -122,6 +151,8 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
+    await screen.findByDisplayValue("L-10102026");
+    await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), "LOTE-03");
     await chooseType(1, "Con caño");
     await user.type(screen.getByLabelText("Cantidad producida 1"), "200");
@@ -151,16 +182,17 @@ describe("Producción", () => {
     expect(options.map((option) => option.textContent?.trim())).toEqual(["Sin caño"]);
   });
 
-  it("valida código, tipo y cantidad antes de llamar, y corregir una línea borra sólo su error", async () => {
+  it("permite el código vacío y valida tipo y cantidad antes de llamar", async () => {
     stubPage();
     const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST");
     const user = userEvent.setup();
 
     await renderProduction();
+    await screen.findByDisplayValue("L-10102026");
+    await user.clear(screen.getByLabelText("Código"));
     await user.click(screen.getByRole("button", { name: "Agregar tipo de envase" }));
     await user.click(screen.getByRole("button", { name: "Registrar lote" }));
 
-    expect(await screen.findByText("El código no puede estar vacío")).toBeTruthy();
     expect(screen.getAllByText("Elige un tipo de envase", { selector: "p" })).toHaveLength(2);
     expect(bodies).toHaveLength(0);
 
@@ -181,6 +213,8 @@ describe("Producción", () => {
     const user = userEvent.setup();
 
     await renderProduction();
+    await screen.findByDisplayValue("L-10102026");
+    await user.clear(screen.getByLabelText("Código"));
     await user.type(screen.getByLabelText("Código"), "LOTE-01");
     await chooseType(1, "Con caño");
     await user.type(screen.getByLabelText("Cantidad producida 1"), "10");
@@ -249,7 +283,7 @@ describe("Producción", () => {
   });
 
   it("el rango de fechas llega a la query; sin lotes lo dice", async () => {
-    const queries = stubPage([]);
+    const { queries } = stubPage([]);
 
     await renderProduction(["SELLER"]);
     expect(await screen.findByText("Todavía no hay lotes registrados")).toBeTruthy();

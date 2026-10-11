@@ -111,6 +111,33 @@ describe("ProductionBatchesService", () => {
   });
 
   describe("create", () => {
+    it("genera el código por fecha cuando la oficina lo deja vacío", async () => {
+      prisma.containerType.findMany.mockResolvedValue([containerType()]);
+      prisma.productionBatch.findMany.mockResolvedValue([
+        { code: "L-22102026" },
+        { code: "L-22102026-2" },
+      ]);
+      stubEmptyAtPlant(prisma, 1000);
+      prisma.productionBatch.create.mockImplementation((...args: unknown[]) => {
+        const input = args[0] as { data: { code: string } };
+        return Promise.resolve(batchRow({ code: input.data.code }));
+      });
+
+      const result = await service.create(
+        {
+          code: "   ",
+          date: "2026-10-22",
+          items: [{ containerTypeId: CONTAINER_TYPE_A, producedQty: 50 }],
+        },
+        USER_ID,
+      );
+
+      expect(result.code).toBe("L-22102026-3");
+      expect(prisma.productionBatch.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ code: "L-22102026-3" }) }),
+      );
+    });
+
     it("un lote de dos líneas emite DOS movimientos FILLING con las cantidades correctas y el batchId del lote", async () => {
       prisma.containerType.findMany.mockResolvedValue([
         containerType(),
@@ -278,6 +305,21 @@ describe("ProductionBatchesService", () => {
       );
 
       expect(result.warnings).toEqual([]);
+    });
+  });
+
+  describe("proposeCode", () => {
+    it("propone el código base y avanza al primer sufijo disponible", async () => {
+      prisma.productionBatch.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ code: "L-22102026" }, { code: "L-22102026-2" }]);
+
+      await expect(service.proposeCode("2026-10-22")).resolves.toEqual({
+        code: "L-22102026",
+      });
+      await expect(service.proposeCode("2026-10-22")).resolves.toEqual({
+        code: "L-22102026-3",
+      });
     });
   });
 

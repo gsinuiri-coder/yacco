@@ -92,10 +92,14 @@ export const PRODUCTION_BATCHES_MAX_LIMIT = 100;
 
 /** CreateProductionBatchDto. `filledById` comes from the token. */
 export interface CreateProductionBatchBody {
-  code: string;
+  code?: string;
   date: string;
   notes?: string;
   items: Array<{ containerTypeId: string; producedQty: number }>;
+}
+
+export interface ProductionBatchCodeProposal {
+  code: string;
 }
 
 /** ProductionBatchWarningDto: more filled than empties available. The batch registers anyway. */
