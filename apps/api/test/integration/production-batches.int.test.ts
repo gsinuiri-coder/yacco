@@ -10,6 +10,7 @@ const MISSING_UUID = "00000000-0000-4000-8000-000000000000";
 
 let ctx: TestAppContext;
 let adminToken: string;
+let secondAdminToken: string;
 let sellerToken: string;
 let driverToken: string;
 let containerTypeA: string;
@@ -87,6 +88,7 @@ async function inventoryOf(token: string, containerTypeId: string, state: string
 beforeAll(async () => {
   ctx = await startTestApp();
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
+  secondAdminToken = await createUserAndLogin("responsable-lotes-2", "ADMIN");
   sellerToken = await createUserAndLogin("vendedor-lotes", "SELLER");
   driverToken = await createUserAndLogin("repartidor-lotes", "DRIVER");
 
@@ -236,17 +238,106 @@ describe("POST /api/v1/production-batches", () => {
     expect(messagesOf(duplicate)).toContain("Ya existe");
   });
 
-  test("dos altas simultáneas sin código reciben sufijos distintos para la fecha", async () => {
+  test("dos llenadas del mismo día se guardan como renglones auditables del mismo lote y emiten sus propios movimientos", async () => {
+    const first = await createBatch(adminToken, {
+      code: "",
+      date: "2026-10-22",
+      notes: "Primera llenada",
+      items: [{ containerTypeId: containerTypeA, producedQty: 17 }],
+    }).expect(201);
+    const second = await createBatch(secondAdminToken, {
+      code: "NO-DEBE-CREAR-OTRO-LOTE",
+      date: "2026-10-22",
+      notes: "Segunda llenada",
+      items: [{ containerTypeId: containerTypeA, producedQty: 29 }],
+    }).expect(201);
+
+    expect(second.body.id).toBe(first.body.id);
+    expect(second.body.code).toBe("L-22102026");
+
+    const prisma = ctx.app.get(PrismaService);
+    const batches = await prisma.productionBatch.findMany({
+      where: { date: new Date("2026-10-22T00:00:00.000Z") },
+      include: { items: true },
+    });
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toMatchObject({
+      id: first.body.id,
+      notes: "Primera llenada",
+    });
+    expect(batches[0]!.items.map((item) => item.producedQty).sort((a, b) => a - b)).toEqual([
+      17, 29,
+    ]);
+
+    const auditedItems = await prisma.$queryRaw<
+      Array<{
+        producedQty: number;
+        notes: string | null;
+        createdAt: Date | null;
+        recordedBy: string | null;
+      }>
+    >`SELECT bi.produced_qty AS "producedQty",
+             bi.notes,
+             bi.created_at AS "createdAt",
+             u.username AS "recordedBy"
+        FROM batch_items bi
+        LEFT JOIN users u ON u.id = bi.recorded_by
+       WHERE bi.batch_id = ${first.body.id}::uuid
+       ORDER BY bi.produced_qty`;
+    expect(auditedItems).toEqual([
+      {
+        producedQty: 17,
+        notes: "Primera llenada",
+        createdAt: expect.any(Date),
+        recordedBy: ADMIN_USERNAME,
+      },
+      {
+        producedQty: 29,
+        notes: "Segunda llenada",
+        createdAt: expect.any(Date),
+        recordedBy: "responsable-lotes-2",
+      },
+    ]);
+
+    const movements = await prisma.containerMovement.findMany({
+      where: { batchId: first.body.id, type: "FILLING" },
+      orderBy: { quantity: "asc" },
+    });
+    expect(movements.map((movement) => movement.quantity)).toEqual([17, 29]);
+    expect(new Set(movements.map((movement) => movement.recordedById)).size).toBe(2);
+  });
+
+  test("dos primeras llenadas simultáneas crean un lote y dos renglones, sin 409", async () => {
     const [first, second] = await Promise.all([
-      createBatch(adminToken, { code: "", date: "2026-10-22" }),
-      createBatch(adminToken, { code: undefined, date: "2026-10-22" }),
+      createBatch(adminToken, {
+        code: "",
+        date: "2026-10-22",
+        notes: "Simultánea 31",
+        items: [{ containerTypeId: containerTypeA, producedQty: 31 }],
+      }),
+      createBatch(secondAdminToken, {
+        code: undefined,
+        date: "2026-10-22",
+        notes: "Simultánea 47",
+        items: [{ containerTypeId: containerTypeA, producedQty: 47 }],
+      }),
     ]);
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
-    expect(new Set([first.body.code, second.body.code])).toEqual(
-      new Set(["L-22102026", "L-22102026-2"]),
-    );
+    expect(first.body.id).toBe(second.body.id);
+    expect(first.body.code).toBe("L-22102026");
+    expect(second.body.code).toBe("L-22102026");
+
+    const prisma = ctx.app.get(PrismaService);
+    const batches = await prisma.productionBatch.findMany({
+      where: { date: new Date("2026-10-22T00:00:00.000Z") },
+      include: { items: true },
+    });
+    expect(batches).toHaveLength(1);
+    expect(batches[0]!.items.map((item) => item.producedQty).sort((a, b) => a - b)).toEqual([
+      31, 47,
+    ]);
   });
 
   // This documents the atomicity guarantee ("si algo falla a mitad, no debe
@@ -359,12 +450,12 @@ describe("POST /api/v1/production-batches", () => {
 });
 
 describe("GET /api/v1/production-batches/code-proposals", () => {
-  test("propone el siguiente código de la fecha y solo ADMIN puede consultarlo", async () => {
+  test("propone el código base o informa el lote al que se sumará, y solo ADMIN puede consultarlo", async () => {
     const initial = await request(server())
       .get("/api/v1/production-batches/code-proposals?date=2026-10-22")
       .set("Authorization", `Bearer ${adminToken}`)
       .expect(200);
-    expect(initial.body).toEqual({ code: "L-22102026" });
+    expect(initial.body).toEqual({ code: "L-22102026", willAppend: false });
 
     await createBatch(adminToken, { code: "", date: "2026-10-22" }).expect(201);
 
@@ -372,7 +463,7 @@ describe("GET /api/v1/production-batches/code-proposals", () => {
       .get("/api/v1/production-batches/code-proposals?date=2026-10-22")
       .set("Authorization", `Bearer ${adminToken}`)
       .expect(200);
-    expect(next.body).toEqual({ code: "L-22102026-2" });
+    expect(next.body).toEqual({ code: "L-22102026", willAppend: true });
 
     await request(server())
       .get("/api/v1/production-batches/code-proposals?date=2026-10-22")

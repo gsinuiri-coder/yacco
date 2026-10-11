@@ -1578,7 +1578,7 @@ describe("RoutesService", () => {
 
     // La invariante FIFO de CLAUDE.md, ahora sostenida por el servidor y no
     // por el reparto que hace la web.
-    it("busca el lote más antiguo con stock del MISMO tipo de envase, por fecha y luego código", async () => {
+    it("busca el renglón más antiguo con stock del MISMO tipo, por lote, hora e id", async () => {
       prisma.route.findUnique.mockResolvedValue(buildRoute());
       prisma.batchItem.findUnique.mockResolvedValue(buildBatchItem());
       prisma.batchItem.updateMany.mockResolvedValue({ count: 1 });
@@ -1588,7 +1588,12 @@ describe("RoutesService", () => {
 
       expect(prisma.batchItem.findFirst).toHaveBeenCalledWith({
         where: { containerTypeId: CONTAINER_TYPE_ID, availableQty: { gt: 0 } },
-        orderBy: [{ batch: { date: "asc" } }, { batch: { code: "asc" } }],
+        orderBy: [
+          { batch: { date: "asc" } },
+          { batch: { code: "asc" } },
+          { createdAt: { sort: "asc", nulls: "first" } },
+          { id: "asc" },
+        ],
         select: { id: true, batch: { select: { code: true } } },
       });
     });

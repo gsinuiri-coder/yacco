@@ -13,6 +13,12 @@ import { resetSession, signIn } from "../support/session";
 const cleanups: Array<() => void> = [];
 const CON_CANO = { id: "ct-cano", name: "Con caño", active: true };
 const SIN_CANO = { id: "ct-sin", name: "Sin caño", active: true };
+const FIRST_FILL_AUDIT = {
+  createdAt: "2026-08-22T14:15:00.000Z",
+  recordedById: "u-1",
+  recordedBy: { id: "u-1", name: "Rosa Mamani" },
+  notes: "Turno mañana",
+};
 
 function batch(overrides: Partial<ProductionBatch> = {}): ProductionBatch {
   return {
@@ -24,6 +30,7 @@ function batch(overrides: Partial<ProductionBatch> = {}): ProductionBatch {
     notes: null,
     items: [
       {
+        ...FIRST_FILL_AUDIT,
         id: "i-1",
         containerTypeId: "ct-cano",
         containerType: { id: "ct-cano", name: "Con caño" },
@@ -45,7 +52,9 @@ function stubPage(batches: ProductionBatch[] = [batch()]) {
       handler: (event: H3Event) => {
         const date = String(getQuery(event).date);
         proposalDates.push(date);
-        return { code: date === "2026-10-11" ? "L-11102026-2" : "L-10102026" };
+        return date === "2026-10-11"
+          ? { code: "L-11102026", willAppend: true }
+          : { code: "L-10102026", willAppend: false };
       },
     }),
     registerEndpoint("/api/v1/production-batches", {
@@ -119,7 +128,7 @@ describe("Producción", () => {
     await waitFor(() => expect(queries.length).toBeGreaterThan(1));
   });
 
-  it("precarga el código propuesto y lo actualiza cuando cambia la fecha", async () => {
+  it("precarga un código editable para el primer lote y bloquea el del lote existente", async () => {
     const { proposalDates } = stubPage();
 
     await renderProduction();
@@ -129,9 +138,10 @@ describe("Producción", () => {
 
     await fireEvent.update(screen.getByLabelText("Fecha"), "2026-10-11");
 
-    await waitFor(() =>
-      expect((screen.getByLabelText("Código") as HTMLInputElement).value).toBe("L-11102026-2"),
-    );
+    const codeInput = screen.getByLabelText("Código") as HTMLInputElement;
+    await waitFor(() => expect(codeInput.value).toBe("L-11102026"));
+    expect(codeInput.disabled).toBe(true);
+    expect(await screen.findByText("Se suma al lote de hoy, L-11102026")).toBeTruthy();
     expect(proposalDates).toContain("2026-10-11");
   });
 
@@ -240,11 +250,23 @@ describe("Producción", () => {
       batch({
         items: [
           {
+            ...FIRST_FILL_AUDIT,
             id: "i-1",
             containerTypeId: "ct-cano",
             containerType: { id: "ct-cano", name: "Con caño" },
-            producedQty: 200,
+            producedQty: 120,
             availableQty: 80,
+          },
+          {
+            id: "i-1b",
+            containerTypeId: "ct-cano",
+            containerType: { id: "ct-cano", name: "Con caño" },
+            producedQty: 80,
+            availableQty: 20,
+            createdAt: "2026-08-22T16:45:00.000Z",
+            recordedById: "u-2",
+            recordedBy: { id: "u-2", name: "Luis Quispe" },
+            notes: "Turno tarde",
           },
           {
             id: "i-2",
@@ -252,6 +274,10 @@ describe("Producción", () => {
             containerType: { id: "ct-sin", name: "Sin caño" },
             producedQty: 50,
             availableQty: 0,
+            createdAt: null,
+            recordedById: null,
+            recordedBy: null,
+            notes: null,
           },
         ],
       }),
@@ -277,7 +303,19 @@ describe("Producción", () => {
     expect(within(row).getByText("Rosa Mamani")).toBeTruthy();
     expect(within(row).getByText("200× Con caño, 50× Sin caño")).toBeTruthy();
     // Sólo el tipo que todavía tiene unidades.
-    expect(within(row).getByText("80× Con caño")).toBeTruthy();
+    expect(within(row).getByText("100× Con caño")).toBeTruthy();
+
+    await userEvent.setup().click(within(row).getByRole("button", { name: "Ver 3 llenadas" }));
+    const details = screen.getByRole("region", {
+      name: "Llenadas del lote LOTE-2026-08-22-01",
+    });
+    expect(within(details).getByText("Rosa Mamani")).toBeTruthy();
+    expect(within(details).getByText("22/08/2026 09:15")).toBeTruthy();
+    expect(within(details).getByText("Turno mañana")).toBeTruthy();
+    expect(within(details).getByText("Luis Quispe")).toBeTruthy();
+    expect(within(details).getByText("22/08/2026 11:45")).toBeTruthy();
+    expect(within(details).getByText("Turno tarde")).toBeTruthy();
+    expect(within(details).getByText("Registro anterior sin hora ni responsable")).toBeTruthy();
     const old = screen.getByText("LOTE-VIEJO").closest("tr") as HTMLElement;
     expect(within(old).getByText("Todo cargado")).toBeTruthy();
   });
