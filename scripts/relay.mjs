@@ -799,6 +799,15 @@ async function relayLoop(
   return EXIT.maxRuns;
 }
 
+/** Limpieza síncrona antes de que una señal termine el proceso del relevo. */
+export function stopCurrentRun({ child, release, root = REPO_ROOT }) {
+  if (child !== null && child.exitCode === null) child.kill();
+  // Antes de soltar el lock: otro relevo podría arrancar apenas se libera y
+  // crear su propio current.json, que este proceso nunca debe borrar.
+  rmSync(join(root, ".relay", "current.json"), { force: true });
+  release();
+}
+
 async function main(argv) {
   const known = new Set(["--dry-run"]);
   const unknown = argv.filter((arg) => !known.has(arg));
@@ -815,8 +824,7 @@ async function main(argv) {
     ["SIGTERM", 143],
   ]) {
     process.on(signal, () => {
-      if (child !== null && child.exitCode === null) child.kill();
-      release();
+      stopCurrentRun({ child, release });
       process.exit(code);
     });
   }
