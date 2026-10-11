@@ -24,6 +24,7 @@ import {
   parseRelay,
   readRelayConfig,
   runRelay,
+  stopCurrentRun,
 } from "./relay.mjs";
 
 const LIMIT_MESSAGE = "Error: You've hit your usage limit. Try again later.";
@@ -251,6 +252,27 @@ describe("matchLimit", () => {
 
   test("sin coincidencias devuelve null", () => {
     assert.equal(matchLimit(["todo bien"], [/usage limit/i]), null);
+  });
+});
+
+describe("stopCurrentRun", () => {
+  test("una señal mata al agente, borra current.json y recién después libera el lock", () => {
+    const currentPath = join(root, ".relay", "current.json");
+    writeFileSync(currentPath, "corrida activa\n");
+    const events = [];
+    const child = {
+      exitCode: null,
+      kill: () => events.push("agente detenido"),
+    };
+
+    stopCurrentRun({
+      child,
+      root,
+      release: () => events.push(`lock liberado; current existe: ${existsSync(currentPath)}`),
+    });
+
+    assert.deepEqual(events, ["agente detenido", "lock liberado; current existe: false"]);
+    assert.equal(existsSync(currentPath), false);
   });
 });
 
