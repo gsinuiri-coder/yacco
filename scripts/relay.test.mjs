@@ -6,6 +6,7 @@
  * vueltas usa un reloj inyectado: ningún test duerme de verdad.
  */
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +18,8 @@ import {
   DEFAULT_WAIT_MINUTES,
   EXIT,
   LIMIT_SCAN_LINES,
+  commandLine,
+  gitIn,
   matchLimit,
   parseRelay,
   readRelayConfig,
@@ -73,6 +76,16 @@ if (step === "env") {
   process.exit(0);
 }
 if (step === "fail") { console.error("boom"); process.exit(1); }
+if (step === "fail-noisy") {
+  for (let i = 1; i <= 6; i++) console.error("error línea " + i);
+  console.error("error línea 7 ${REGISTERED_VALUE} ${TOKEN_LIKE}");
+  process.exit(1);
+}
+if (step === "dirty") {
+  writeFileSync(join(root, "trabajo.txt"), "a medias\\n");
+  touch();
+  process.exit(1);
+}
 if (step === "ok") touch();
 if (step === "finish") rewrite("status", "done");
 if (step === "block") rewrite("status", "blocked", "blocked-reason: hace falta un humano\\n");
@@ -103,7 +116,10 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
+  for (const dir of remotes.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+
+const remotes = [];
 
 function agent(name, sequence) {
   return {
@@ -149,6 +165,10 @@ function captureOut() {
 // Sin PATH de por medio: el "comando" de un agente falso ya es la ruta de node.
 const resolveDirect = (command) => ({ file: command, prefixArgs: [], env: {} });
 
+// El directorio temporal no es un repo: salvo en los tests de la red de
+// seguridad, git responde «árbol limpio».
+const cleanGit = () => ({ ok: true, status: 0, stdout: "", stderr: "" });
+
 function relay(agents, options = {}) {
   const { overrides, ...rest } = options;
   return runRelay({
@@ -157,8 +177,35 @@ function relay(agents, options = {}) {
     clock: rest.clock ?? fakeClock(),
     out: rest.out ?? captureOut(),
     resolve: rest.resolve ?? resolveDirect,
+    git: rest.git ?? cleanGit,
     ...rest,
   });
+}
+
+function sh(cwd, ...args) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+  return result.stdout.trim();
+}
+
+/**
+ * Convierte `root` en un repo en `branch`, con un remoto bare propio. Lo del
+ * relevo y el agente falso quedan ignorados: lo único que puede ensuciar el
+ * árbol es lo que el agente "trabajó".
+ */
+function initRepo(branch) {
+  const remote = mkdtempSync(join(tmpdir(), "relay-remote-"));
+  remotes.push(remote);
+  sh(remote, "init", "-q", "--bare");
+  sh(root, "init", "-q", "-b", branch);
+  sh(root, "config", "user.name", "relay-test");
+  sh(root, "config", "user.email", "relay-test@example.invalid");
+  sh(root, "config", "commit.gpgsign", "false");
+  writeFileSync(join(root, ".gitignore"), ".relay/\ncalls.txt\nfake-agent.mjs\nenv.json\n");
+  sh(root, "add", ".gitignore");
+  sh(root, "commit", "-q", "-m", "inicio");
+  sh(root, "remote", "add", "origin", remote);
+  return remote;
 }
 
 function calls() {
@@ -253,12 +300,62 @@ describe("runRelay", () => {
     assert.match(out.text(), /hace falta un humano/);
   });
 
-  test("dos fallos que no son límite seguidos: sale con 1 y el error", async () => {
+  test("dos fallos que no son límite seguidos: el relevo pasa al siguiente agente", async () => {
     const out = captureOut();
     const code = await relay([agent("a", "fail,fail"), agent("b", "finish")], { out });
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(calls(), ["a", "a", "b"]);
+    assert.match(
+      out.text(),
+      /a falló dos veces seguidas \(salió con código 1\)\. Paso al siguiente/,
+    );
+  });
+
+  test("sale con 1 solo cuando fallaron dos veces todos los agentes", async () => {
+    const out = captureOut();
+    const code = await relay([agent("a", "fail,fail"), agent("b", "fail,fail")], { out });
     assert.equal(code, EXIT.error);
-    assert.deepEqual(calls(), ["a", "a"]);
-    assert.match(out.text(), /a falló dos veces seguidas/);
+    assert.deepEqual(calls(), ["a", "a", "b", "b"]);
+    assert.match(out.text(), /Todos los agentes fallaron dos veces seguidas/);
+  });
+
+  test("un agente que falló dos veces no vuelve después de la espera por cuota", async () => {
+    const clock = fakeClock();
+    const code = await relay([agent("a", "fail,fail"), agent("b", "limit,finish")], { clock });
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(calls(), ["a", "a", "b", "b"]);
+    assert.deepEqual(clock.sleeps, [60 * 60 * 1000]);
+  });
+
+  test("el log guarda las últimas 5 líneas de stderr de una corrida fallida, redactadas", async () => {
+    await relay([agent("a", "fail-noisy,finish")], {
+      env: { RELAY_TEST_TOKEN: REGISTERED_VALUE },
+    });
+    const [failed, ok] = logEntries();
+    assert.equal(failed.result, "error");
+    assert.deepEqual(failed.stderr, [
+      "error línea 3",
+      "error línea 4",
+      "error línea 5",
+      "error línea 6",
+      "error línea 7 *** ***",
+    ]);
+    assert.deepEqual(ok.stderr, []);
+  });
+
+  test("una corrida que termina por límite no guarda stderr, solo las líneas del límite", async () => {
+    await relay([agent("a", "limit"), agent("b", "finish")]);
+    assert.deepEqual(logEntries()[0].stderr, []);
+  });
+
+  test("la redacción tapa también un JWT, una clave AKIA y una clave privada PEM", () => {
+    // Armados en tiempo de ejecución: un literal con esta forma dispara
+    // gitleaks en CI aunque sea falso.
+    const jwt = ["eyJ" + "hbGciOiJub25lIn0", "eyJ" + "zdWIiOiIxIn0", "ZmFsc28"].join(".");
+    const akia = "AK" + "IA" + "X".repeat(16);
+    const pem = ["-----BEGIN", "RSA", "PRIVATE", "KEY-----"].join(" ");
+    const match = matchLimit([`límite ${jwt} ${akia} ${pem} MIIE`], [/límite/]);
+    assert.equal(match.lines[0], "límite *** *** ***");
   });
 
   test("un solo fallo no corta: se reintenta y sigue", async () => {
@@ -380,8 +477,19 @@ describe("runRelay", () => {
     assert.equal(code, EXIT.done);
     assert.deepEqual(calls(), []);
     assert.equal(existsSync(join(root, ".relay", "lock")), false);
-    assert.match(out.text(), /Correría a: /);
+    assert.match(out.text(), /Correría a \(modelo: [^)]*\): /);
     assert.match(out.text(), /seguí desde next-step/);
+  });
+
+  test("--dry-run muestra el modelo de cada agente", async () => {
+    const out = captureOut();
+    const withModel = { ...agent("a", "finish"), model: "modelo-a", modelFlag: "--model" };
+    await relay([withModel, agent("b", "finish")], {
+      out,
+      dryRun: true,
+    });
+    assert.match(out.text(), /Correría a \(modelo: modelo-a\): .* --model modelo-a$/m);
+    assert.match(out.text(), /Correría b \(modelo: el default de su CLI\): /);
   });
 
   test("una corrida que sale bien sin tocar RELEVO.md no avanzó: dos seguidas cortan", async () => {
@@ -471,6 +579,116 @@ describe("runRelay", () => {
   });
 });
 
+describe("red de seguridad: el WIP que deja un agente", () => {
+  test("un agente que falla con el árbol sucio: commit WIP en su rama y push", async () => {
+    const remote = initRepo("feat/item");
+    const out = captureOut();
+    const code = await relay([agent("a", "dirty,finish")], { out, git: gitIn(root) });
+    assert.equal(code, EXIT.done);
+    assert.equal(sh(root, "status", "--porcelain"), "");
+    assert.match(
+      sh(root, "log", "-1", "--format=%s"),
+      /^wip\(relay\): a dejó cambios sin commitear/,
+    );
+    assert.equal(sh(root, "show", "HEAD:trabajo.txt"), "a medias");
+    assert.equal(sh(remote, "rev-parse", "feat/item"), sh(root, "rev-parse", "HEAD"));
+    assert.equal(logEntries()[0].wip.branch, "feat/item");
+  });
+
+  test("con el árbol limpio no commitea nada", async () => {
+    initRepo("feat/item");
+    const head = sh(root, "rev-parse", "HEAD");
+    await relay([agent("a", "finish")], { git: gitIn(root) });
+    assert.equal(sh(root, "rev-parse", "HEAD"), head);
+    assert.equal(logEntries()[0].wip, null);
+  });
+
+  test("en main nunca commitea: RELEVO.md queda blocked y sale con 2", async () => {
+    initRepo("main");
+    const head = sh(root, "rev-parse", "HEAD");
+    const out = captureOut();
+    const code = await relay([agent("a", "dirty,finish")], { out, git: gitIn(root) });
+    assert.equal(code, EXIT.blocked);
+    assert.deepEqual(calls(), ["a"]);
+    assert.equal(sh(root, "rev-parse", "HEAD"), head);
+    const state = parseRelay(readFileSync(join(root, ".relay", "RELEVO.md"), "utf8"));
+    assert.equal(state.status, "blocked");
+    assert.match(state["blocked-reason"], /cambios sin commitear en main/);
+    assert.match(out.text(), /cambios sin commitear en main/);
+  });
+
+  test("con HEAD suelto tampoco commitea: blocked", async () => {
+    initRepo("feat/item");
+    sh(root, "checkout", "-q", "--detach");
+    const head = sh(root, "rev-parse", "HEAD");
+    const code = await relay([agent("a", "dirty,finish")], { git: gitIn(root) });
+    assert.equal(code, EXIT.blocked);
+    assert.equal(sh(root, "rev-parse", "HEAD"), head);
+    const state = parseRelay(readFileSync(join(root, ".relay", "RELEVO.md"), "utf8"));
+    assert.match(state["blocked-reason"], /HEAD suelto/);
+  });
+
+  test("un merge con conflictos no se cierra con add -A: blocked y nada commiteado", async () => {
+    initRepo("feat/item");
+    writeFileSync(join(root, "f.txt"), "base\n");
+    sh(root, "add", "f.txt");
+    sh(root, "commit", "-q", "-m", "base");
+    sh(root, "checkout", "-q", "-b", "otra");
+    writeFileSync(join(root, "f.txt"), "otra\n");
+    sh(root, "commit", "-q", "-am", "otra");
+    sh(root, "checkout", "-q", "feat/item");
+    writeFileSync(join(root, "f.txt"), "item\n");
+    sh(root, "commit", "-q", "-am", "item");
+    // Lo que dejaría un agente que arrancó un merge y salió sin resolverlo.
+    spawnSync("git", ["merge", "-q", "otra"], { cwd: root });
+    const head = sh(root, "rev-parse", "HEAD");
+    const code = await relay([agent("a", "ok")], { git: gitIn(root) });
+    assert.equal(code, EXIT.blocked);
+    assert.equal(sh(root, "rev-parse", "HEAD"), head);
+    const state = parseRelay(readFileSync(join(root, ".relay", "RELEVO.md"), "utf8"));
+    assert.match(state["blocked-reason"], /conflictos sin resolver/);
+  });
+
+  test("si el push falla, el WIP queda commiteado, se avisa y el relevo sigue", async () => {
+    initRepo("feat/item");
+    sh(root, "remote", "set-url", "origin", join(root, "no-existe.git"));
+    const out = captureOut();
+    const code = await relay([agent("a", "dirty,finish")], { out, git: gitIn(root) });
+    assert.equal(code, EXIT.done);
+    assert.equal(sh(root, "show", "HEAD:trabajo.txt"), "a medias");
+    assert.equal(logEntries()[0].wip.pushed, false);
+    assert.match(out.text(), /El push de feat\/item falló/);
+  });
+
+  test("con el árbol limpio pero commits sin pushear, los pushea", async () => {
+    const remote = initRepo("feat/item");
+    sh(root, "push", "-q", "-u", "origin", "feat/item");
+    writeFileSync(join(root, "hecho.txt"), "commiteado por el agente\n");
+    sh(root, "add", "hecho.txt");
+    sh(root, "commit", "-q", "-m", "trabajo del agente sin push");
+    await relay([agent("a", "finish")], { git: gitIn(root) });
+    assert.equal(sh(remote, "rev-parse", "feat/item"), sh(root, "rev-parse", "HEAD"));
+    assert.equal(logEntries()[0].wip, null);
+  });
+
+  test("un commit que falla bloquea con el motivo en una sola línea y sin reinterpretar $&", async () => {
+    const git = (args) => {
+      if (args[0] === "status") return { ok: true, stdout: " M x.ts", stderr: "" };
+      if (args[0] === "branch") return { ok: true, stdout: "feat/item", stderr: "" };
+      if (args[0] === "commit")
+        return { ok: false, stdout: "", stderr: "error: $& roto\nhint: otra" };
+      return { ok: true, stdout: "", stderr: "" };
+    };
+    const code = await relay([agent("a", "ok")], { git });
+    assert.equal(code, EXIT.blocked);
+    const state = parseRelay(readFileSync(join(root, ".relay", "RELEVO.md"), "utf8"));
+    assert.equal(
+      state["blocked-reason"],
+      "no pude commitear el WIP de a: error: $& roto · hint: otra",
+    );
+  });
+});
+
 describe("relay.config.json", () => {
   const configPath = join(REPO_ROOT, "relay.config.json");
 
@@ -497,18 +715,18 @@ describe("relay.config.json", () => {
   test("sin sandbox solo con la clave explícita, y nunca un bypass ni un modo que apruebe solo", () => {
     const forbidden = [
       "--dangerously-bypass-approvals-and-sandbox",
-      "--dangerously-skip-permissions",
       "--allow-dangerously-skip-permissions",
       "bypassPermissions",
       "auto",
       "--yolo",
     ];
+    const unsandboxedFlags = ["danger-full-access", "--dangerously-skip-permissions"];
     const entries = readRelayConfig(configPath).agents;
     for (const entry of entries) {
       for (const flag of forbidden) {
         assert.ok(!(entry.args ?? []).includes(flag), `${entry.name} usa ${flag}`);
       }
-      if ((entry.args ?? []).includes("danger-full-access")) {
+      if (unsandboxedFlags.some((flag) => (entry.args ?? []).includes(flag))) {
         assert.equal(entry.unsandboxed, true, `${entry.name} sin unsandboxed: true`);
         assert.ok(entry.unsandboxedReason, `${entry.name} sin unsandboxedReason`);
       } else {
@@ -528,23 +746,58 @@ describe("relay.config.json", () => {
     }
   });
 
-  test("antigravity no corre sin --sandbox, y mientras no ande queda en null con el motivo", () => {
+  test("cada agente fija su modelo, y el relevo lo convierte en --model al final", () => {
+    const entries = readRelayConfig(configPath).agents;
+    const models = Object.fromEntries(entries.map((entry) => [entry.name, entry.model]));
+    assert.deepEqual(models, {
+      codex: "gpt-5.6-sol",
+      antigravity: "gemini-3.1-pro-high",
+      claude: "claude-opus-5-5",
+    });
+    for (const entry of entries) {
+      const line = commandLine(entry, "PROMPT");
+      assert.deepEqual(line.slice(-2), ["--model", entry.model], entry.name);
+      assert.equal(line.filter((arg) => arg === "--model").length, 1, entry.name);
+      assert.ok(line.includes("PROMPT"), entry.name);
+    }
+  });
+
+  test("un model en una CLI sin bandera verificada se rechaza al leer la config", () => {
+    const badPath = join(root, "bad.json");
+    const unknown = { ...agent("agente-x", "ok"), command: "otra-cli", model: "m-1" };
+    writeFileSync(badPath, JSON.stringify(config([unknown])));
+    assert.throws(() => readRelayConfig(badPath), /agente-x fija `model` pero otra-cli/);
+  });
+
+  test("antigravity corre sin TTY y sin sandbox, declarado como codex y con la versión verificada", () => {
     const entry = readRelayConfig(configPath).agents.find((a) => a.name === "antigravity");
     assert.equal(entry.command, "agy");
-    // Sin sandbox, agy solo avanza con allow-rules globales o con el bypass:
-    // ninguna de las dos reemplaza al sandbox.
-    if (entry.args !== null) {
-      assert.ok(entry.args.includes("--sandbox"), "antigravity sin --sandbox");
-      return;
-    }
+    // En esta máquina su --sandbox no anda y, sin él, el modo headless
+    // deniega todo comando: la única forma de que trabaje es el bypass.
+    assert.deepEqual(entry.args, ["-p", "{prompt}", "--dangerously-skip-permissions"]);
+    assert.equal(entry.unsandboxed, true);
+    assert.match(entry.unsandboxedReason, /docs\/RELEVO-USO\.md/);
     assert.match(entry.verifiedWith, /agy \d+\.\d+\.\d+/);
-    assert.match(entry.verifiedWith, /--sandbox` NO anda/);
   });
 
   test("los patrones de límite reconocen los mensajes conocidos", () => {
     const { agents } = readRelayConfig(configPath);
     const byName = Object.fromEntries(agents.map((a) => [a.name, a.limitPatterns]));
     assert.notEqual(matchLimit(["You've hit your usage limit."], byName.codex), null);
+    // Tal cual lo imprime codex-cli 0.162.0 (2026-10-10), con apóstrofo
+    // tipográfico: el patrón con `'` recto no lo reconocía.
+    assert.notEqual(
+      matchLimit(
+        [
+          "ERROR: You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), " +
+            "visit https://chatgpt.com/settings/usage to purchase more credits or try again at " +
+            "Oct 14th, 2026 10:23 PM.",
+        ],
+        byName.codex,
+      ),
+      null,
+    );
+    assert.notEqual(matchLimit(["You’ve hit your limit · resets 3pm"], byName.claude), null);
     assert.notEqual(matchLimit(["Claude AI usage limit reached|1760040000"], byName.claude), null);
     assert.notEqual(matchLimit(["You've hit your limit · resets 3pm"], byName.claude), null);
     // Mensajes tal como están en el binario de agy 1.3.3.
@@ -575,6 +828,32 @@ describe("relay.config.json", () => {
     writeFileSync(badPath, JSON.stringify(config([{ ...unsandboxed, unsandboxed: true }])));
     assert.throws(() => readRelayConfig(badPath), /unsandboxedReason/);
     const declared = { ...unsandboxed, unsandboxed: true, unsandboxedReason: "motivo" };
+    writeFileSync(badPath, JSON.stringify(config([declared])));
+    assert.equal(readRelayConfig(badPath).agents[0].name, "agente-x");
+  });
+
+  test("--dangerously-skip-permissions sin la clave explícita se rechaza al leer la config", () => {
+    const badPath = join(root, "bad.json");
+    const skip = {
+      ...agent("agente-x", "ok"),
+      args: ["-p", "{prompt}", "--dangerously-skip-permissions"],
+    };
+    writeFileSync(badPath, JSON.stringify(config([skip])));
+    assert.throws(
+      () => readRelayConfig(badPath),
+      /agente-x usa --dangerously-skip-permissions sin `unsandboxed: true`/,
+    );
+    writeFileSync(
+      badPath,
+      JSON.stringify(config([{ ...skip, args: ["--dangerously-skip-permissions=true"] }])),
+    );
+    assert.throws(() => readRelayConfig(badPath), /sin `unsandboxed: true`/);
+    writeFileSync(
+      badPath,
+      JSON.stringify(config([{ ...skip, args: ["exec", "--sandbox=danger-full-access"] }])),
+    );
+    assert.throws(() => readRelayConfig(badPath), /sin `unsandboxed: true`/);
+    const declared = { ...skip, unsandboxed: true, unsandboxedReason: "motivo" };
     writeFileSync(badPath, JSON.stringify(config([declared])));
     assert.equal(readRelayConfig(badPath).agents[0].name, "agente-x");
   });

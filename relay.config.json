@@ -1,5 +1,5 @@
 {
-  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. Ningún agente corre sin sandbox salvo el que lo declara con `unsandboxed: true` y su motivo (hoy codex en Windows; el relevo lo avisa al arrancar), y ninguno con --dangerously-bypass-approvals-and-sandbox: ver `verifiedWith`.",
+  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. Ningún agente corre sin sandbox salvo el que lo declara con `unsandboxed: true` y su motivo (hoy codex y antigravity en Windows; el relevo lo avisa al arrancar), y ninguno con --dangerously-bypass-approvals-and-sandbox: ver `verifiedWith`. `model` es el modelo de cada agente: el relevo lo pasa con la bandera de MODEL_FLAGS (scripts/relay.mjs), al final de `args`.",
   "prompt": "Sos un agente desatendido de pnpm relay. Leé AGENTS.md y .agents/rules/unattended-agents.md, y seguí .relay/RELEVO.md desde next-step. Al terminar cada paso, actualizá .relay/RELEVO.md (last-step, next-step, updated) y commiteá tu WIP en la rama del ítem. Ante cualquier acción que esas reglas prohíben: status: blocked con blocked-reason, y salí.",
   "waitMinutes": 60,
   "maxRuns": 50,
@@ -8,9 +8,10 @@
       "name": "codex",
       "command": "codex",
       "npmPackage": "@openai/codex",
+      "model": "gpt-5.6-sol",
       "unsandboxed": true,
       "unsandboxedReason": "Decisión de Giancarlo (2026-10-10): en Windows el sandbox workspace-write de codex deja .git de solo lectura (openai/codex #18918) y sin crear la rama del ítem no puede trabajar. Riesgo y lo que hay que cerrar antes de correr: docs/RELEVO-USO.md.",
-      "verifiedWith": "codex-cli 0.162.0 (`codex exec --help` y corridas reales sin TTY, 2026-10-10): --sandbox danger-full-access; `exec` no acepta -a/--ask-for-approval, y su política por defecto es never (el encabezado dice `approval: never`); se fija igual con -c approval_policy=\"never\" para que ninguna config.toml la cambie. Termina sola. Sin --dangerously-bypass-approvals-and-sandbox.",
+      "verifiedWith": "codex-cli 0.162.0 (`codex exec --help` y corridas reales sin TTY, 2026-10-10): --sandbox danger-full-access; `exec` no acepta -a/--ask-for-approval, y su política por defecto es never (el encabezado dice `approval: never`); se fija igual con -c approval_policy=\"never\" para que ninguna config.toml la cambie. Termina sola. Sin --dangerously-bypass-approvals-and-sandbox. Mensaje de límite real (2026-10-10): «ERROR: You’ve hit your usage limit…», con apóstrofo tipográfico, en stderr y con código 1. `--model` verificado en `codex exec --help`.",
       "args": [
         "exec",
         "--sandbox",
@@ -24,7 +25,7 @@
         "{prompt}"
       ],
       "limitPatterns": [
-        "you'?ve hit your usage limit",
+        "you['’]?ve hit your usage limit",
         "usage limit (has been )?reached",
         "exceeded (your|the) (current )?quota",
         "insufficient_quota"
@@ -33,9 +34,12 @@
     {
       "name": "antigravity",
       "command": "agy",
-      "verifiedWith": "agy 1.3.3 (`agy --help` y corridas reales sin TTY, 2026-10-10): `-p {prompt}` corre sin TTY y termina solo. `--sandbox` NO anda en esta máquina: «sandboxing on Windows requires Windows 11 24H2 or later with the August 2026 or later update» (acá: 22H2, build 22621). Sin sandbox, cada comando cae a la aprobación «unsandboxed», que el modo headless deniega solo: la corrida termina con código 0 y sin salida. Lo único que quedaría son las allow-rules de ~/.gemini/antigravity-cli/settings.json (global, compartido con otros proyectos) o --dangerously-skip-permissions: ninguna es un sandbox.",
-      "$comment": "args: null: sin sandbox que funcione, el relevo la salta. Para activarla: Windows 11 24H2 con la actualización de agosto 2026, volver a verificar con `agy --help` y una corrida `-p ... --sandbox` que ejecute un comando, y anotar la versión. agy se actualiza sola (pasó de 1.2.8 a 1.3.3 durante la verificación): la versión de verifiedWith puede no ser la instalada. Los patrones salen de los mensajes del binario 1.3.3.",
-      "args": null,
+      "model": "gemini-3.1-pro-high",
+      "unsandboxed": true,
+      "unsandboxedReason": "Autorización de Giancarlo (2026-10-10), la misma opción explícita que codex: en esta máquina (Windows 11 22H2, build 22621) el --sandbox de agy no anda —pide 24H2 con la actualización de agosto 2026— y, sin él, el modo headless deniega todo comando. Lo único que lo deja trabajar es --dangerously-skip-permissions. Riesgo y lo que hay que cerrar antes de correr: docs/RELEVO-USO.md.",
+      "verifiedWith": "agy 1.3.3 (`agy --help`, `agy models` y dos corridas reales sin TTY, 2026-10-10): `-p {prompt}` corre sin TTY y termina solo. Sin bypass, el comando de terminal se deniega («a tool required the \"command\" permission that headless mode cannot prompt for, so it was auto-denied») y sale con 0 sin hacer nada; con --dangerously-skip-permissions lo ejecuta y sale con 0. Las banderas después del prompt se leen. `--model` y el id del modelo salen de `agy --help` y `agy models`.",
+      "$comment": "agy se actualiza sola (pasó de 1.2.8 a 1.3.3 durante la primera verificación): la versión de verifiedWith puede no ser la instalada. Los patrones de límite salen de los mensajes del binario 1.3.3. Si un día anda su --sandbox (Windows 11 24H2 con la actualización de agosto 2026), volver a verificar y sacarle el bypass.",
+      "args": ["-p", "{prompt}", "--dangerously-skip-permissions"],
       "limitPatterns": [
         "you have exhausted your quota",
         "individual quota reached",
@@ -48,7 +52,8 @@
       "name": "claude",
       "command": "claude",
       "npmPackage": "@anthropic-ai/claude-code",
-      "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla.",
+      "model": "claude-opus-5-5",
+      "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla. `--model` verificado en Claude Code 2.1.296 (acepta id o alias; se fija el id para que no cambie solo).",
       "args": [
         "-p",
         "{prompt}",
@@ -63,7 +68,7 @@
       ],
       "limitPatterns": [
         "usage limit reached",
-        "you'?ve hit your (usage |weekly |session )?limit",
+        "you['’]?ve hit your (usage |weekly |session )?limit",
         "\\d+-hour limit reached",
         "weekly limit reached"
       ]
