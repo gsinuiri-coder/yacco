@@ -35,6 +35,9 @@ export const CONTAINER_MOVEMENT_TYPE_VALUES = [
   "LOAN_DELIVERY_VOID",
   "EMPTY_PICKUP_VOID",
   "FULL_SALE_VOID",
+  "ROUTE_LOAD_VOID",
+  "FULL_RETURN_VOID",
+  "EMPTY_UNLOAD_VOID",
 ] as const;
 
 export type ContainerMovementType = (typeof CONTAINER_MOVEMENT_TYPE_VALUES)[number];

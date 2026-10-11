@@ -78,6 +78,9 @@ const INTERNAL_ONLY_MOVEMENT_TYPES: ReadonlySet<ContainerMovementType> = new Set
   ContainerMovementType.LOAN_DELIVERY_VOID,
   ContainerMovementType.EMPTY_PICKUP_VOID,
   ContainerMovementType.FULL_SALE_VOID,
+  ContainerMovementType.ROUTE_LOAD_VOID,
+  ContainerMovementType.EMPTY_UNLOAD_VOID,
+  ContainerMovementType.FULL_RETURN_VOID,
 ]);
 
 @Injectable()
@@ -232,7 +235,13 @@ export class ContainerMovementsService {
     client: Prisma.TransactionClient,
     dto: CreateContainerMovementDto,
     recordedById: string,
-    options?: { batchId?: string; routeId?: string; stopId?: string; occurredAt?: Date },
+    options?: {
+      batchId?: string;
+      routeId?: string;
+      stopId?: string;
+      pitStopId?: string;
+      occurredAt?: Date;
+    },
   ): Promise<MovementWithRelations> {
     const fromState = dto.fromState ?? null;
     const toState = dto.toState ?? null;
@@ -285,6 +294,7 @@ export class ContainerMovementsService {
         batchId: options?.batchId ?? null,
         routeId: options?.routeId ?? null,
         stopId: options?.stopId ?? null,
+        pitStopId: options?.pitStopId ?? null,
         recordedById,
       },
       include: MOVEMENT_INCLUDE,
@@ -400,6 +410,38 @@ export class ContainerMovementsService {
       this.prisma.containerMovement.groupBy({
         by: ["containerTypeId"],
         where: { routeId, fromState: ContainerState.FULL_ON_ROUTE },
+        _sum: { quantity: true },
+      }),
+    ]);
+    const net = new Map<string, number>();
+    for (const row of into) {
+      net.set(row.containerTypeId, (net.get(row.containerTypeId) ?? 0) + (row._sum.quantity ?? 0));
+    }
+    for (const row of outOf) {
+      net.set(row.containerTypeId, (net.get(row.containerTypeId) ?? 0) - (row._sum.quantity ?? 0));
+    }
+    return net;
+  }
+
+  /**
+   * Vacíos actualmente arriba del camión para esta ruta: todo lo que entró a
+   * EMPTY_ON_ROUTE menos todo lo que salió. Los EMPTY_PICKUP suman, los
+   * EMPTY_UNLOAD de paradas en planta restan, y sus anulaciones corrigen solas.
+   */
+  async getRouteEmptyStockByType(
+    routeId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<Map<string, number>> {
+    const client = tx ?? this.prisma;
+    const [into, outOf] = await Promise.all([
+      client.containerMovement.groupBy({
+        by: ["containerTypeId"],
+        where: { routeId, toState: ContainerState.EMPTY_ON_ROUTE },
+        _sum: { quantity: true },
+      }),
+      client.containerMovement.groupBy({
+        by: ["containerTypeId"],
+        where: { routeId, fromState: ContainerState.EMPTY_ON_ROUTE },
         _sum: { quantity: true },
       }),
     ]);

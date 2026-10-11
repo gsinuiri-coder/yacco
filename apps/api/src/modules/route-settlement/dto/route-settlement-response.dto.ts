@@ -72,6 +72,13 @@ export class RouteSettlementExpectedDto {
 
   @ApiProperty({ type: String, example: "40.00" })
   totalOnCredit!: string;
+
+  @ApiProperty({
+    type: String,
+    example: "50.00",
+    description: "Efectivo entregado en paradas en planta (pits) no anuladas",
+  })
+  totalCashDeliveredInPits!: string;
 }
 
 /** The persisted row: what actually got liquidated, physical counts included. */
@@ -118,6 +125,13 @@ export class RouteSettlementDto {
 
   @ApiProperty({ type: String, example: "40.00" })
   totalOnCredit!: string;
+
+  @ApiProperty({
+    type: String,
+    example: "50.00",
+    description: "Efectivo entregado en paradas en planta (pits), congelado al liquidar",
+  })
+  totalCashDeliveredInPits!: string;
 
   @ApiPropertyOptional({ nullable: true })
   notes!: string | null;
