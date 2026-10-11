@@ -3,12 +3,13 @@
 `pnpm relay` corre la cola de Yacco con un agente a la vez. Cuando uno se queda
 sin cuota, sigue con el siguiente, en el orden de `relay.config.json` (hoy:
 codex, antigravity, claude; claude siempre último). Si todos están sin cuota,
-espera `waitMinutes` y vuelve a empezar por el primero. El traspaso entre
-agentes es `.relay/RELEVO.md`.
+espera `waitMinutes` y vuelve a empezar por el primero. Un agente que falla
+dos veces seguidas por otra cosa queda fuera por el resto del relevo, y se
+sigue con el siguiente. El traspaso entre agentes es `.relay/RELEVO.md`.
 
 Las reglas que sigue cada agente están en `.agents/rules/unattended-agents.md`.
 
-## codex corre sin sandbox en Windows
+## codex y antigravity corren sin sandbox en Windows
 
 **Decisión de Giancarlo (2026-10-10).** En Windows, el sandbox
 `workspace-write` de codex deja `.git` de solo lectura (openai/codex #18918):
@@ -19,13 +20,22 @@ no puede trabajar. Por eso corre con `--sandbox danger-full-access` y
 `never`, y la bandera la fija para que ninguna `config.toml` la cambie. Nunca
 con `--dangerously-bypass-approvals-and-sandbox`.
 
-Es una opción explícita: `"unsandboxed": true` y `unsandboxedReason` en su
-entrada de `relay.config.json`. `danger-full-access` sin esa clave hace fallar
-la lectura de la config, y el bypass falla siempre. Al arrancar, el relevo
-imprime «AVISO: codex corre sin sandbox: tiene acceso completo a esta
-cuenta».
+**antigravity, misma opción (autorización de Giancarlo, 2026-10-10).** Su
+`--sandbox` en Windows pide Windows 11 24H2 con la actualización de agosto
+2026, y esta máquina tiene 22H2 (build 22621). Sin sandbox, el modo headless
+(`agy -p`) deniega todo comando de terminal y termina con código 0 sin hacer
+nada (verificado con agy 1.3.3). Lo único que lo deja trabajar es
+`--dangerously-skip-permissions`, y con eso corre. Si un día anda su
+sandbox, se vuelve a verificar y se le saca el bypass.
 
-**El riesgo.** Sin sandbox, codex puede leer y escribir todo lo que puede la
+Es una opción explícita: `"unsandboxed": true` y `unsandboxedReason` en su
+entrada de `relay.config.json`. `danger-full-access` o
+`--dangerously-skip-permissions` sin esa clave hacen fallar la lectura de la
+config, y `--dangerously-bypass-approvals-and-sandbox` falla siempre. Al
+arrancar, el relevo imprime «AVISO: <agente> corre sin sandbox: tiene acceso
+completo a esta cuenta», uno por agente.
+
+**El riesgo.** Sin sandbox, codex y antigravity pueden leer y escribir todo lo que puede la
 cuenta que corre el relevo, y ejecutar cualquier comando con su red. Las
 reglas de `unattended-agents.md` siguen valiendo, pero son instrucciones, no
 un límite: lo único que lo acota de verdad es que la cuenta no tenga nada que
@@ -43,6 +53,9 @@ guarda su sesión en el HOME, que el relevo sí pasa.
       tiene token).
 - [ ] **Sanity:** sin el token de su MCP en `~/.gemini/settings.json` (y
       rotado, porque quedó en un transcript el 2026-10-10).
+- [ ] **antigravity:** sin MCPs con credenciales en
+      `~/.gemini/antigravity-cli/settings.json` (`agy mcp list`): con el
+      bypass, agy los usa sin preguntar.
 - [ ] **`GH_TOKEN` limitado:** fine-grained, solo este repo, Contents, Pull
       requests y Checks; sin Actions ni Administration.
 - [ ] **Protección de `main`:** hoy `enforce_admins` está apagado, así que una
@@ -85,23 +98,48 @@ puede escaparse. La única garantía es que no haya credencial que usar:
   en todos los modos, y `--disallowedTools` agrega gcloud, neonctl, vercel,
   `gh workflow`, `--admin` y force-push. No `auto`: su clasificador aprueba lo
   que ninguna regla nombra.
-- **antigravity** (`agy`): tiene modo no interactivo (`-p`, sin TTY, termina
-  solo), pero queda en `args: null` y el relevo la salta. Su `--sandbox` en
-  Windows pide Windows 11 24H2 con la actualización de agosto 2026, y esta
-  máquina tiene 22H2: todo comando sale del sandbox, pide la aprobación
-  «unsandboxed», el modo headless la deniega sola y la corrida termina con
-  código 0 sin hacer nada. Sin sandbox quedarían las allow-rules de
-  `~/.gemini/antigravity-cli/settings.json` (globales, compartidas con otros
-  proyectos) o `--dangerously-skip-permissions`: ninguna reemplaza al
-  sandbox. Para activarla: actualizar Windows, volver a verificar con
-  `agy --help` y una corrida `-p ... --sandbox` que ejecute un comando, y
-  anotar la versión. Ojo: `agy` se actualiza sola, así que la versión de
+- **antigravity** (`agy`): `-p {prompt} --dangerously-skip-permissions`,
+  **sin sandbox** por la decisión de arriba. Lo acota solo lo que la cuenta
+  no tenga. Ojo: `agy` se actualiza sola, así que la versión de
   `verifiedWith` puede no ser la instalada.
+- **Modelo fijo**: cada agente declara `model` en `relay.config.json` (hoy
+  codex `gpt-5.6-sol`, antigravity `gemini-3.1-pro-high`, claude
+  `claude-opus-5-5`). El relevo lo pasa con la bandera de `MODEL_FLAGS`
+  (`--model` en las tres, verificada con su `--help`) al final de los args.
+  Un `model` en una CLI que no está en `MODEL_FLAGS` corta al leer la
+  config. `--dry-run` muestra el modelo de cada uno.
 
 Las banderas de cada agente salen de su `--help` en la versión anotada en
 `verifiedWith`. Al subir de versión una CLI, se vuelven a verificar. Un test
-(`relay.test.mjs`) falla si alguna usa un bypass o un modo de aprobación
-automática.
+(`relay.test.mjs`) falla si alguna usa `--dangerously-bypass-approvals-and-sandbox`
+o un modo de aprobación automática, y si una corre sin sandbox
+(`danger-full-access`, `--dangerously-skip-permissions`, también en su forma
+`--bandera=valor`) sin declararlo.
+
+## Red de seguridad: el WIP que deja un agente
+
+Después de cada corrida, salga bien o mal, el relevo mira `git status`. Si
+el agente dejó cambios, los commitea en la rama actual
+(`wip(relay): <agente> dejó cambios sin commitear`, con `git add -A` y
+`--no-verify`: el hook corre eslint y un WIP a medias puede no pasarlo) y
+hace push. Si la rama tiene commits sin pushear (ese WIP o los del propio
+agente), también los pushea, con el árbol limpio o no. Si el push falla, el
+commit queda local, el relevo lo avisa y lo reintenta después de la
+corrida siguiente.
+
+Cada git corre sin prompts (`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`)
+y con un tope de 2 minutos: unas credenciales vencidas no cuelgan el relevo.
+
+**Lo que commitea es todo lo que `.gitignore` no excluye**, y lo pushea. Un
+archivo con un secreto que un agente dejó suelto llega a GitHub antes que
+gitleaks (que corre en CI). Es parte del riesgo de los agentes sin sandbox
+de arriba.
+
+No commitea, y escribe `status: blocked` con el motivo en RELEVO.md y sale
+con 2, si: la rama es `main`, no hay rama (HEAD suelto o un rebase a
+medias), quedó un merge/rebase/cherry-pick con conflictos sin resolver, o
+`git status`/`git commit` fallan. Una persona revisa el árbol y mueve los
+cambios a la rama del ítem.
 
 ## `.relay/RELEVO.md`
 
@@ -135,19 +173,24 @@ pnpm relay             # arranca
 touch .relay/stop      # para entre dos corridas (sale con 4)
 ```
 
-| Código | Por qué paró                                                                                                                                                                         |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0      | `status: done`                                                                                                                                                                       |
-| 1      | Un agente falló dos veces seguidas por algo que no es la cuota (una corrida que sale bien sin tocar RELEVO.md cuenta como falla), no hay ningún agente disponible, o falta RELEVO.md |
-| 2      | `status: blocked`                                                                                                                                                                    |
-| 3      | Llegó a `maxRuns`                                                                                                                                                                    |
-| 4      | `.relay/stop`                                                                                                                                                                        |
+| Código | Por qué paró                                                                                                                                                                                    |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0      | `status: done`                                                                                                                                                                                  |
+| 1      | Todos los agentes fallaron dos veces seguidas por algo que no es la cuota (una corrida que sale bien sin tocar RELEVO.md cuenta como falla), no hay ningún agente disponible, o falta RELEVO.md |
+| 2      | `status: blocked`, puesto por un agente o por la red de seguridad (cambios en main o sin rama, conflictos sin resolver, o git que falla)                                                        |
+| 3      | Llegó a `maxRuns`                                                                                                                                                                               |
+| 4      | `.relay/stop`                                                                                                                                                                                   |
 
 - `.relay/lock` tiene el pid del relevo que corre: nunca dos a la vez. Si
   quedó de un relevo que murió, el siguiente lo reemplaza solo. Si Windows
   reusó ese pid, se borra a mano.
 - `.relay/log.jsonl` tiene una línea por corrida: agente, inicio, fin,
-  resultado, código de salida y, si fue un límite, el patrón y hasta 5 líneas
-  que lo dispararon. Esas líneas pasan por una redacción: los valores
-  secretos del entorno y todo lo que tiene forma de credencial salen como
-  `***`. La salida completa de cada agente va a la terminal, no a disco.
+  resultado, código de salida; si fue un límite, el patrón y hasta 5 líneas
+  que lo dispararon; si falló, las últimas 5 líneas de su stderr; y el WIP
+  que commiteó la red de seguridad (`wip`: rama, commit y si se pusheó).
+  Esas líneas pasan por una redacción: los valores secretos del entorno y
+  lo que tiene forma de credencial conocida (`sk-`, `gh*_`, `AIza`,
+  `Bearer`, `postgres://`, JWT, `AKIA`, el inicio de una clave PEM) salen
+  como `***`. Un secreto con otra forma que no venga del entorno puede
+  pasar: `.relay/` es local e ignorado por git: no lo compartas. La salida
+  completa de cada agente va a la terminal, no a disco.

@@ -13,9 +13,15 @@
  *   blocked      sale con 2 e imprime `blocked-reason`
  *   in-progress  corre al agente actual
  *
- * Y sale con 1 si un agente falla por algo que no es la cuota dos veces
- * seguidas (una corrida que sale bien sin tocar RELEVO.md cuenta como falla:
- * no avanzó), con 3 si llega a `maxRuns`, y con 4 si lo paró `.relay/stop`.
+ * Un agente que falla por algo que no es la cuota dos veces seguidas (una
+ * corrida que sale bien sin tocar RELEVO.md cuenta como falla: no avanzó)
+ * queda fuera por el resto del relevo, y se sigue con el siguiente. Sale con
+ * 1 solo si quedaron fuera todos, con 3 si llega a `maxRuns`, y con 4 si lo
+ * paró `.relay/stop`.
+ *
+ * Red de seguridad: después de cada corrida, si el árbol quedó con cambios,
+ * el relevo los commitea como WIP en la rama actual y hace push. En main (o
+ * sin rama) no commitea: marca RELEVO.md `blocked` y sale con 2.
  *
  *   pnpm relay              arranca
  *   pnpm relay --dry-run    muestra qué correría, sin correr nada
@@ -25,7 +31,7 @@
  * salvo el que la config declara `unsandboxed` (hoy codex en Windows): leé la
  * advertencia de ese archivo antes.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   mkdirSync,
@@ -45,6 +51,7 @@ import {
   redact,
   registerSecret,
   resolveCli,
+  resolveCommand,
 } from "./lib.mjs";
 
 export const DEFAULT_WAIT_MINUTES = 60;
@@ -65,6 +72,9 @@ const TOKEN_SHAPES = [
   /AIza[0-9A-Za-z_-]{35}/g,
   /Bearer\s+\S+/gi,
   /postgres(?:ql)?:\/\/\S+/gi,
+  /eyJ[\w-]+\.[\w-]+\.[\w-]+/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----.*/g,
 ];
 
 // Claves y valores en inglés: son un enum de máquina, como cualquier otro
@@ -165,28 +175,55 @@ function compilePatterns(agentName, patterns) {
   });
 }
 
-// Saltea aprobaciones y sandbox a la vez: nunca, ni con `unsandboxed`.
+// Saltea aprobaciones y sandbox a la vez: nunca, ni con `unsandboxed`. codex
+// tiene otra forma de correr sin sandbox, con la aprobación fijada a mano.
 const FORBIDDEN_FLAG = "--dangerously-bypass-approvals-and-sandbox";
-const NO_SANDBOX = "danger-full-access";
+// Lo que deja a un agente sin sandbox: `danger-full-access` en codex y, en
+// agy, el bypass de permisos: en esta máquina su --sandbox no anda y, sin
+// él, el modo headless deniega todo comando.
+const NO_SANDBOX = ["danger-full-access", "--dangerously-skip-permissions"];
+
+/**
+ * La bandera de modelo de cada CLI, verificada con su `--help` (codex-cli
+ * 0.162.0, agy 1.3.3, Claude Code 2.1.296). Un `model` en una CLI que no
+ * está acá corta al leer la config: una bandera no se adivina.
+ */
+export const MODEL_FLAGS = { codex: "--model", agy: "--model", claude: "--model" };
 
 /**
  * Correr sin sandbox es una decisión explícita de la config, nunca un
- * default: `danger-full-access` solo vale con `unsandboxed: true` y su
- * `unsandboxedReason`.
+ * default: `danger-full-access` o `--dangerously-skip-permissions` solo
+ * valen con `unsandboxed: true` y su `unsandboxedReason`.
  */
 function checkSandboxPolicy(agent) {
   const args = agent.args ?? [];
-  if (args.includes(FORBIDDEN_FLAG)) {
+  // También en su forma `--bandera=valor` o `--sandbox=danger-full-access`.
+  const uses = (flag) => args.some((arg) => arg === flag || arg.split("=").includes(flag));
+  if (uses(FORBIDDEN_FLAG)) {
     throw new Error(`relay.config.json: ${agent.name} usa ${FORBIDDEN_FLAG}, que nunca se acepta.`);
   }
   const reason = agent.unsandboxedReason;
   const declared = agent.unsandboxed === true && typeof reason === "string" && reason.trim() !== "";
-  if (args.includes(NO_SANDBOX) && !declared) {
+  const flag = NO_SANDBOX.find(uses);
+  if (flag !== undefined && !declared) {
     throw new Error(
-      `relay.config.json: ${agent.name} usa ${NO_SANDBOX} sin \`unsandboxed: true\` ` +
+      `relay.config.json: ${agent.name} usa ${flag} sin \`unsandboxed: true\` ` +
         "y su `unsandboxedReason`.",
     );
   }
+}
+
+/** La bandera con que la CLI de `agent` recibe su `model`, si lo fija. */
+function modelFlagFor(agent) {
+  if (agent.model === undefined || agent.model === null) return undefined;
+  const flag = MODEL_FLAGS[agent.command];
+  if (typeof agent.model !== "string" || agent.model.trim() === "" || flag === undefined) {
+    throw new Error(
+      `relay.config.json: ${agent.name} fija \`model\` pero ${agent.command} no tiene ` +
+        "bandera de modelo verificada en MODEL_FLAGS (o el modelo está vacío).",
+    );
+  }
+  return flag;
 }
 
 /**
@@ -214,6 +251,7 @@ export function readRelayConfig(path = join(REPO_ROOT, "relay.config.json")) {
     maxRuns: raw.maxRuns ?? DEFAULT_MAX_RUNS,
     agents: raw.agents.map((agent) => ({
       ...agent,
+      modelFlag: modelFlagFor(agent),
       limitPatterns: compilePatterns(agent.name, agent.limitPatterns),
     })),
   };
@@ -231,10 +269,15 @@ export function redactLine(line) {
   return TOKEN_SHAPES.reduce((text, shape) => text.replace(shape, "***"), redact(line));
 }
 
+/** Una línea de salida lista para el log: sin secretos y recortada. */
+function logLine(line) {
+  return redactLine(line.trim()).slice(0, MAX_LOGGED_LINE_LENGTH);
+}
+
 /**
  * El primer patrón que matchea alguna línea, con las líneas que matchearon
- * (sin secretos y recortadas). Esas líneas son lo único de la salida de un
- * agente que llega al log.
+ * (sin secretos y recortadas). Con la cola de stderr de una corrida fallida,
+ * son lo único de la salida de un agente que llega al log.
  */
 export function matchLimit(lines, patterns) {
   for (const regex of patterns) {
@@ -242,9 +285,7 @@ export function matchLimit(lines, patterns) {
     if (matched.length > 0) {
       return {
         pattern: regex.source,
-        lines: matched
-          .slice(0, MAX_LOGGED_LINES)
-          .map((line) => redactLine(line.trim()).slice(0, MAX_LOGGED_LINE_LENGTH)),
+        lines: matched.slice(0, MAX_LOGGED_LINES).map(logLine),
       };
     }
   }
@@ -302,8 +343,15 @@ function acquireLock(relayDir, { pid, isAlive, out }) {
   };
 }
 
-function commandLine(agent, prompt) {
-  return [agent.command, ...agent.args.map((arg) => (arg === "{prompt}" ? prompt : arg))];
+/**
+ * La línea de comando de un agente. El modelo va al final: en agy, una
+ * bandera entre `-p` y el prompt es frágil, y las tres CLIs leen banderas
+ * después del prompt (verificado con corridas reales).
+ */
+export function commandLine(agent, prompt) {
+  const args = agent.args.map((arg) => (arg === "{prompt}" ? prompt : arg));
+  const model = agent.model ? [agent.modelFlag, agent.model] : [];
+  return [agent.command, ...args, ...model];
 }
 
 /**
@@ -340,13 +388,18 @@ function runAgent(agent, { prompt, root, out, onSpawn, env }) {
       });
     }
     child.on("error", (error) => {
-      resolvePromise({ code: null, error: error.message, limit: null });
+      resolvePromise({ code: null, error: error.message, limit: null, stderr: [] });
     });
     child.on("close", (code) => {
       scan("stdout", "", true);
       scan("stderr", "", true);
       const lines = [...tail.stdout, ...tail.stderr];
-      resolvePromise({ code, error: null, limit: matchLimit(lines, agent.limitPatterns) });
+      resolvePromise({
+        code,
+        error: null,
+        limit: matchLimit(lines, agent.limitPatterns),
+        stderr: tail.stderr.slice(-MAX_LOGGED_LINES).map(logLine),
+      });
     });
   });
 }
@@ -433,10 +486,127 @@ function dryRun(agents, { prompt, relayPath, out }) {
     const shown = commandLine(agent, prompt)
       .map((arg) => (/\s/.test(arg) ? JSON.stringify(arg) : arg))
       .join(" ");
-    out.log(`Correría ${agent.name}: ${shown}`);
+    const model = agent.model ?? "el default de su CLI";
+    out.log(`Correría ${agent.name} (modelo: ${model}): ${shown}`);
   }
   out.log("--dry-run: no corrí nada ni tomé el lock.");
   return EXIT.done;
+}
+
+// Un git que espera algo (credenciales vencidas, un editor) colgaría el
+// relevo fuera de `maxRuns` y de `.relay/stop`: sin prompts y con tope.
+const GIT_TIMEOUT_MS = 2 * 60 * 1000;
+const GIT_NO_PROMPT = { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", GIT_EDITOR: "true" };
+
+/**
+ * git en `root`, sin cortar nunca: devuelve `{ ok, stdout, stderr }` también
+ * si no se pudo lanzar o se pasó del tope. Quien llama decide qué hacer.
+ */
+export function gitIn(root) {
+  return (args) => {
+    let resolved;
+    try {
+      resolved = resolveCommand("git");
+    } catch (error) {
+      return { ok: false, stdout: "", stderr: error.message };
+    }
+    const result = spawnSync(resolved.file, [...resolved.prefixArgs, ...args], {
+      cwd: root,
+      env: { ...process.env, ...resolved.env, ...GIT_NO_PROMPT },
+      shell: false,
+      encoding: "utf8",
+      timeout: GIT_TIMEOUT_MS,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stderr = result.error === undefined ? (result.stderr ?? "") : result.error.message;
+    return { ok: result.status === 0, stdout: (result.stdout ?? "").trim(), stderr };
+  };
+}
+
+/** Reemplaza (o agrega) un campo `clave: valor` de RELEVO.md, en una línea. */
+function setRelayField(text, key, value) {
+  const line = new RegExp(`^${key}:.*$`, "m");
+  const field = `${key}: ${value.replace(/\s*\n\s*/g, " · ")}`;
+  return line.test(text)
+    ? text.replace(line, () => field)
+    : `${text.replace(/\n?$/, "\n")}${field}\n`;
+}
+
+function markBlocked(relayPath, reason, now) {
+  let text = readFileOrNull(relayPath) ?? "# Relevo\n";
+  text = setRelayField(text, "status", "blocked");
+  text = setRelayField(text, "blocked-reason", reason);
+  text = setRelayField(text, "updated", `${now.toISOString()} por el relevo`);
+  writeFileSync(relayPath, text);
+}
+
+// Conflictos sin resolver en `status --porcelain`: `add -A` los daría por
+// resueltos y el commit cerraría el merge con los marcadores adentro.
+const UNMERGED = /^(?:DD|AU|UD|UA|DU|AA|UU) /m;
+
+/**
+ * Red de seguridad después de cada corrida, bien o mal: si el agente dejó
+ * cambios sin commitear, van como WIP a la rama actual; y si la rama tiene
+ * commits sin pushear (ese WIP o los del agente), se pushean, para que el
+ * siguiente agente (o una persona) no los pierda. Devuelve `{ wip }` (null
+ * si no hubo nada que commitear) o `{ blocked }` con el motivo.
+ *
+ * `--no-verify` a propósito: el hook corre eslint y un WIP a medias puede no
+ * pasarlo; justo ahí es cuando más importa no perderlo. El PR igual pasa por
+ * los cinco checks. `add -A` respeta .gitignore (los `.env*` incluidos).
+ */
+function commitLeftovers(agentName, { git, out }) {
+  const status = git(["status", "--porcelain"]);
+  if (!status.ok) return { blocked: `no pude leer git status: ${logLine(status.stderr)}` };
+
+  const branch = git(["branch", "--show-current"]);
+  const name = branch.ok ? branch.stdout : "";
+  const dirty = status.stdout !== "";
+  if (dirty && UNMERGED.test(status.stdout)) {
+    return {
+      blocked:
+        `${agentName} dejó un merge, rebase o cherry-pick con conflictos sin resolver; ` +
+        "el relevo no lo cierra. Revisá git status.",
+    };
+  }
+  if (name === "" || name === "main") {
+    if (!dirty) return { wip: null };
+    const where = name === "" ? "sin rama (HEAD suelto o un rebase a medias)" : "en main";
+    return {
+      blocked:
+        `${agentName} dejó cambios sin commitear ${where}; el relevo nunca commitea ahí. ` +
+        "Revisá git status y movelos a la rama del ítem.",
+    };
+  }
+
+  let commit = null;
+  if (dirty) {
+    const message = `wip(relay): ${agentName} dejó cambios sin commitear`;
+    for (const args of [
+      ["add", "-A"],
+      ["commit", "--no-verify", "-q", "-m", message],
+    ]) {
+      const result = git(args);
+      if (!result.ok) {
+        return { blocked: `no pude commitear el WIP de ${agentName}: ${logLine(result.stderr)}` };
+      }
+    }
+    commit = git(["rev-parse", "--short", "HEAD"]).stdout;
+  }
+
+  // Sin upstream, o con commits que el remoto no tiene: push. Si falla, lo
+  // commiteado queda local y la próxima corrida lo vuelve a intentar.
+  const ahead = git(["rev-list", "--count", "@{upstream}..HEAD"]);
+  const pending = !ahead.ok || ahead.stdout !== "0";
+  let pushed = false;
+  if (pending) {
+    const push = git(["push", "-q", "-u", "origin", name]);
+    pushed = push.ok;
+    if (!push.ok) out.error(`El push de ${name} falló: ${logLine(push.stderr)}`);
+  }
+  if (commit === null) return { wip: null };
+  out.log(`${agentName} dejó cambios: WIP ${commit} en ${name}${pushed ? ", pusheado" : ""}.`);
+  return { wip: { branch: name, commit, pushed } };
 }
 
 const realClock = {
@@ -468,6 +638,7 @@ export async function runRelay({
   onLock = () => {},
   onSpawn = () => {},
   env = process.env,
+  git = gitIn(root),
 }) {
   registerEnvSecrets(env);
   const relayDir = join(root, ".relay");
@@ -501,6 +672,7 @@ export async function runRelay({
       onRun,
       onSpawn,
       env,
+      git,
     });
   } finally {
     release();
@@ -509,10 +681,13 @@ export async function runRelay({
 
 async function relayLoop(
   agents,
-  { config, clock, out, root, relayPath, relayDir, onRun, onSpawn, env },
+  { config, clock, out, root, relayPath, relayDir, onRun, onSpawn, env, git },
 ) {
   const waitMs = config.waitMinutes * 60 * 1000;
+  // Sin cuota: vuelven después de la espera.
   const exhausted = new Set();
+  // Fallaron dos veces seguidas: quedan fuera por el resto del relevo.
+  const broken = new Set();
   let current = 0;
   let failures = 0;
 
@@ -524,12 +699,17 @@ async function relayLoop(
     const stopCode = stopCodeFor(relayPath, out);
     if (stopCode !== null) return stopCode;
 
-    const index = agents.findIndex((_, i) => i >= current && !exhausted.has(i));
+    if (broken.size === agents.length) {
+      out.error("Todos los agentes fallaron dos veces seguidas. Paro el relevo.");
+      return EXIT.error;
+    }
+    const index = agents.findIndex((_, i) => i >= current && !exhausted.has(i) && !broken.has(i));
     if (index === -1) {
+      const first = agents.find((_, i) => !broken.has(i));
       const until = new Date(clock.now().getTime() + waitMs);
       out.log(
         `Todos sin cuota. Espero ${config.waitMinutes} min (hasta ${until.toISOString()}) ` +
-          `y vuelvo a empezar por ${agents[0].name}.`,
+          `y vuelvo a empezar por ${first.name}.`,
       );
       await clock.sleep(waitMs);
       exhausted.clear();
@@ -551,6 +731,8 @@ async function relayLoop(
     // Salió bien pero no escribió RELEVO.md: no avanzó, y volver a correrlo
     // igual sería gastar corridas con aprobación automática.
     else if (readFileOrNull(relayPath) === before) outcome = "no-progress";
+    const failed = outcome === "error" || outcome === "no-progress";
+    const net = commitLeftovers(agent.name, { git, out });
     appendFileSync(
       join(relayDir, "log.jsonl"),
       JSON.stringify({
@@ -561,9 +743,17 @@ async function relayLoop(
         exitCode: result.code,
         pattern: result.limit?.pattern ?? null,
         lines: result.limit?.lines ?? [],
+        stderr: failed ? result.stderr : [],
+        wip: net.wip ?? null,
       }) + "\n",
     );
     onRun(outcome);
+
+    if (net.blocked !== undefined) {
+      markBlocked(relayPath, net.blocked, clock.now());
+      out.error(`Relevo bloqueado: ${net.blocked}`);
+      return EXIT.blocked;
+    }
 
     if (outcome === "limit") {
       out.log(`${agent.name} sin cuota (patrón: ${result.limit.pattern}). Paso al siguiente.`);
@@ -579,10 +769,13 @@ async function relayLoop(
           ? "salió bien sin actualizar RELEVO.md"
           : (result.error ?? `salió con código ${result.code}`);
       if (failures >= 2) {
-        out.error(`${agent.name} falló dos veces seguidas (${reason}). Paro el relevo.`);
-        return EXIT.error;
+        out.error(`${agent.name} falló dos veces seguidas (${reason}). Paso al siguiente.`);
+        broken.add(index);
+        current = index + 1;
+        failures = 0;
+      } else {
+        out.log(`${agent.name} falló (${reason}). Lo reintento una vez.`);
       }
-      out.log(`${agent.name} falló (${reason}). Lo reintento una vez.`);
     }
   }
 
