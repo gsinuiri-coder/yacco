@@ -25,6 +25,8 @@ const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
 const MISSING_UUID = "00000000-0000-4000-8000-000000000000";
 const ROUTE_DATE = "2026-08-25";
+const ORIGINAL_PLANT_LATITUDE = process.env.PLANT_LATITUDE;
+const ORIGINAL_PLANT_LONGITUDE = process.env.PLANT_LONGITUDE;
 
 // One route per driver per day, so tests that need several fresh routes for
 // the same driver each need a distinct date — sequential days starting well
@@ -240,6 +242,8 @@ async function containerBalance(location: string): Promise<number> {
 }
 
 beforeAll(async () => {
+  process.env.PLANT_LATITUDE = "-12.046374";
+  process.env.PLANT_LONGITUDE = "-77.042793";
   ctx = await startTestApp();
   prisma = ctx.app.get(PrismaService);
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
@@ -296,6 +300,29 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await stopTestApp(ctx);
+  if (ORIGINAL_PLANT_LATITUDE === undefined) delete process.env.PLANT_LATITUDE;
+  else process.env.PLANT_LATITUDE = ORIGINAL_PLANT_LATITUDE;
+  if (ORIGINAL_PLANT_LONGITUDE === undefined) delete process.env.PLANT_LONGITUDE;
+  else process.env.PLANT_LONGITUDE = ORIGINAL_PLANT_LONGITUDE;
+});
+
+describe("GET /api/v1/settings/plant-location", () => {
+  test("admin and seller can read the non-secret plant coordinates", async () => {
+    for (const token of [adminToken, sellerToken]) {
+      const response = await request(server())
+        .get("/api/v1/settings/plant-location")
+        .set("Authorization", `Bearer ${token}`);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ latitude: "-12.046374", longitude: "-77.042793" });
+    }
+  });
+
+  test("a driver cannot read office route-planning settings", async () => {
+    await request(server())
+      .get("/api/v1/settings/plant-location")
+      .set("Authorization", `Bearer ${driverToken}`)
+      .expect(403);
+  });
 });
 
 // HU-10 §2.4 E1 (this PR: only the planning skeleton — FIFO cargo and the
@@ -1242,6 +1269,19 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId", () => {
 });
 
 describe("PATCH /api/v1/routes/:id/stops/reorder", () => {
+  test("reserves route ordering for the office", async () => {
+    const routeId = await createRoute(adminToken, { date: "2026-10-19" });
+    const firstStopId = await addVanSaleStop(adminToken, routeId);
+    const secondStopId = await addVanSaleStop(adminToken, routeId);
+
+    const response = await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/reorder`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({ stopIds: [secondStopId, firstStopId] });
+
+    expect(response.status).toBe(403);
+  });
+
   test("reassigns positions 1..N in the requested order", async () => {
     const routeId = await createRoute(adminToken, { date: "2026-10-20" });
     const firstStopId = await addVanSaleStop(adminToken, routeId);

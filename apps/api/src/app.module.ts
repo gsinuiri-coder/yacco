@@ -25,6 +25,7 @@ import { RouteSettlementModule } from "./modules/route-settlement/route-settleme
 import { SalesModule } from "./modules/sales/sales.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
 import { ZonesModule } from "./modules/zones/zones.module.js";
+import { SettingsModule } from "./modules/settings/settings.module.js";
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ZonesModule } from "./modules/zones/zones.module.js";
     PaymentMethodsModule,
     HealthModule,
     ZonesModule,
+    SettingsModule,
   ],
 })
 export class AppModule {}

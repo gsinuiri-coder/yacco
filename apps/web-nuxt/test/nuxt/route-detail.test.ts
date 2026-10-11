@@ -778,6 +778,190 @@ describe("Detalle de ruta", () => {
         ],
       });
 
+    it("propone el orden por cercanía y espera la confirmación antes de reordenar", async () => {
+      const withoutLocation = buildStop({
+        id: "stop-missing",
+        position: 1,
+        location: {
+          ...buildStop().location,
+          id: "loc-missing",
+          latitude: null,
+          longitude: null,
+          customer: { id: "c-missing", name: "Sin ubicación" },
+        },
+      });
+      const far = buildStop({
+        id: "stop-far",
+        position: 2,
+        location: {
+          ...buildStop().location,
+          id: "loc-far",
+          name: "Almacén",
+          address: "Av. Dos 200",
+          latitude: "0.000000",
+          longitude: "2.000000",
+          customer: { id: "c-far", name: "Lejana" },
+        },
+      });
+      const near = buildStop({
+        id: "stop-near",
+        position: 3,
+        location: {
+          ...buildStop().location,
+          id: "loc-near",
+          name: "Tienda",
+          address: "Av. Uno 100",
+          latitude: "0.000000",
+          longitude: "1.000000",
+          customer: { id: "c-near", name: "Cercana" },
+        },
+      });
+      stubRouteDetail(cleanups, buildRoute({ stops: [withoutLocation, far, near] }));
+      cleanups.push(
+        registerEndpoint("/api/v1/settings/plant-location", () => ({
+          latitude: "0.000000",
+          longitude: "0.000000",
+        })),
+      );
+      const bodies = stubWrite(cleanups, `${ROUTE}/stops/reorder`, "PATCH", () =>
+        buildRoute({ stops: [near, far, withoutLocation] }),
+      );
+      const user = userEvent.setup();
+
+      await renderDetail();
+      await user.click(screen.getByRole("button", { name: "Ordenar por cercanía" }));
+
+      const proposal = screen.getByRole("group", { name: "Confirmar orden por cercanía" });
+      const proposedStops = within(proposal).getAllByRole("listitem");
+      expect(
+        proposedStops.map((item) => item.textContent?.match(/Cercana|Lejana|Sin ubicación/)?.[0]),
+      ).toEqual(["Cercana", "Lejana", "Sin ubicación"]);
+      expect(proposedStops[0]!.textContent).toContain("Tienda · Av. Uno 100");
+      expect(proposedStops[1]!.textContent).toContain("Almacén · Av. Dos 200");
+      expect(within(proposal).getByText(/1 parada sin ubicación queda al final/)).toBeTruthy();
+      expect(bodies).toHaveLength(0);
+
+      await user.click(within(proposal).getByRole("button", { name: "Usar este orden" }));
+      await waitFor(() =>
+        expect(bodies).toEqual([{ stopIds: ["stop-near", "stop-far", "stop-missing"] }]),
+      );
+    });
+
+    it("parte el recorrido de Maps en tramos aptos para móvil y avisa qué paradas omite", async () => {
+      const located = Array.from({ length: 6 }, (_, index) =>
+        buildStop({
+          id: `stop-${index + 1}`,
+          position: index + 1,
+          location: {
+            ...buildStop().location,
+            id: `loc-${index + 1}`,
+            latitude: "0.000000",
+            longitude: `${index + 1}.000000`,
+            customer: { id: `c-${index + 1}`, name: `Cliente ${index + 1}` },
+          },
+        }),
+      );
+      const missing = buildStop({
+        id: "stop-missing",
+        position: 7,
+        location: {
+          ...buildStop().location,
+          id: "loc-missing",
+          latitude: null,
+          longitude: null,
+          customer: { id: "c-missing", name: "Sin ubicación" },
+        },
+      });
+      stubRouteDetail(cleanups, buildRoute({ stops: [...located, missing] }));
+      cleanups.push(
+        registerEndpoint("/api/v1/settings/plant-location", () => ({
+          latitude: "0.000000",
+          longitude: "0.000000",
+        })),
+      );
+
+      await renderDetail();
+
+      const first = await screen.findByRole("link", { name: "Abrir tramo 1 de 2 en Maps" });
+      const second = screen.getByRole("link", { name: "Abrir tramo 2 de 2 en Maps" });
+      expect(first.getAttribute("href")).toContain("destination=0.000000%2C4.000000");
+      expect(second.getAttribute("href")).toContain("origin=0.000000%2C4.000000");
+      expect(
+        screen.getByText(/Sin ubicación no entra al recorrido porque no tiene ubicación/),
+      ).toBeTruthy();
+    });
+
+    it("explica cuando falta configurar la planta", async () => {
+      stubRouteDetail(cleanups, buildRoute({ stops: [buildStop()] }));
+
+      await renderDetail();
+
+      expect(
+        await screen.findByText(/Configura la ubicación de la planta para abrir el recorrido/),
+      ).toBeTruthy();
+    });
+
+    it("explica cuando ninguna parada tiene ubicación", async () => {
+      const first = buildStop({
+        location: { ...buildStop().location, latitude: null, longitude: null },
+      });
+      const second = buildStop({
+        id: "stop-2",
+        position: 2,
+        location: {
+          ...buildStop().location,
+          id: "loc-2",
+          latitude: null,
+          longitude: null,
+          customer: { id: "c-2", name: "Panadería Aurora" },
+        },
+      });
+      stubRouteDetail(cleanups, buildRoute({ stops: [first, second] }));
+      cleanups.push(
+        registerEndpoint("/api/v1/settings/plant-location", () => ({
+          latitude: "0.000000",
+          longitude: "0.000000",
+        })),
+      );
+
+      await renderDetail();
+
+      expect(
+        await screen.findByText(/Ninguna parada entra al recorrido porque falta su ubicación/),
+      ).toBeTruthy();
+    });
+
+    it("explica un fallo al preparar Maps y permite reintentarlo", async () => {
+      stubRouteDetail(
+        cleanups,
+        buildRoute({
+          stops: [
+            buildStop({
+              location: {
+                ...buildStop().location,
+                latitude: "0.000000",
+                longitude: "1.000000",
+              },
+            }),
+          ],
+        }),
+      );
+      let requests = 0;
+      cleanups.push(
+        registerEndpoint("/api/v1/settings/plant-location", (event) => {
+          requests += 1;
+          if (requests === 1) return failWith(503, "Servicio temporalmente no disponible")(event);
+          return { latitude: "0.000000", longitude: "0.000000" };
+        }),
+      );
+
+      await renderDetail();
+      expect(await screen.findByText(/No se pudo preparar el recorrido/)).toBeTruthy();
+      await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar recorrido" }));
+
+      expect(await screen.findByRole("link", { name: "Abrir recorrido en Maps" })).toBeTruthy();
+    });
+
     it("subir una parada manda la lista COMPLETA en el orden nuevo; primera no sube, última no baja", async () => {
       stubRouteDetail(cleanups, twoStops());
       const bodies = stubWrite(cleanups, `${ROUTE}/stops/reorder`, "PATCH", () => twoStops());

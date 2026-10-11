@@ -82,7 +82,7 @@ describe("deployCommands", () => {
   const params = (envName) => ({
     projectId: "yacco-v2-prod",
     region: "us-east4",
-    config: {},
+    config: { PLANT_LATITUDE: "-12.046374", PLANT_LONGITUDE: "-77.042793" },
     envName,
     imageRef: `${REPO}:${imageTagFor(SHA)}`,
     commit: SHA,
@@ -132,6 +132,19 @@ describe("deployCommands", () => {
     const envVars = deploy.find((arg) => arg.startsWith("--set-env-vars="));
     assert.match(envVars, new RegExp(`DEPLOYED_COMMIT=${SHA}`));
     assert.match(envVars, /APP_ENV=demo/);
+    assert.match(envVars, /PLANT_LATITUDE=-12\.046374/);
+    assert.match(envVars, /PLANT_LONGITUDE=-77\.042793/);
+  });
+
+  test("el deploy frena si falta una coordenada de la planta", () => {
+    assert.throws(
+      () =>
+        deployCommands({
+          ...params("production"),
+          config: { PLANT_LATITUDE: "-12.046374" },
+        }),
+      /PLANT_LATITUDE y PLANT_LONGITUDE son obligatorias/,
+    );
   });
 });
 
@@ -163,7 +176,11 @@ describe("flags de diccionario de gcloud", () => {
     const [deploy] = deployCommands({
       projectId: "yacco-v2-prod",
       region: "us-east4",
-      config,
+      config: {
+        PLANT_LATITUDE: "-12.046374",
+        PLANT_LONGITUDE: "-77.042793",
+        ...config,
+      },
       envName,
       imageRef: `${REPO}:${imageTagFor(SHA)}`,
       commit: SHA,

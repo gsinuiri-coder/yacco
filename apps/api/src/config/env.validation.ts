@@ -8,6 +8,8 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsLatitude,
+  IsLongitude,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -142,6 +144,17 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsIn(APP_ENVIRONMENTS, { message: `APP_ENV must be one of: ${APP_ENVIRONMENTS.join(", ")}` })
   APP_ENV?: AppEnvironment;
+
+  /** Non-secret plant origin used to propose and open delivery routes. */
+  @IsOptional()
+  @IsString()
+  @IsLatitude({ message: "PLANT_LATITUDE must be a latitude between -90 and 90" })
+  PLANT_LATITUDE?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsLongitude({ message: "PLANT_LONGITUDE must be a longitude between -180 and 180" })
+  PLANT_LONGITUDE?: string;
 }
 
 /**
@@ -162,9 +175,20 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     throw new Error(`Invalid environment configuration:\n${details}`);
   }
 
+  assertPlantCoordinatesArePaired(validated);
   assertProductionHasWebOrigin(config, validated);
 
   return validated;
+}
+
+function assertPlantCoordinatesArePaired(validated: EnvironmentVariables): void {
+  const hasLatitude = validated.PLANT_LATITUDE !== undefined;
+  const hasLongitude = validated.PLANT_LONGITUDE !== undefined;
+  if (hasLatitude === hasLongitude) return;
+  throw new Error(
+    "Invalid environment configuration:\n" +
+      "PLANT_LATITUDE and PLANT_LONGITUDE must be configured together",
+  );
 }
 
 /**

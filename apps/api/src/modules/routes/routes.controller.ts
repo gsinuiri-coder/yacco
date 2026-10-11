@@ -188,6 +188,7 @@ export class RoutesController {
     description: "The list is incomplete or names a stop from another route",
   })
   @ApiConflictResponse({ description: "Route is FINISHED" })
+  @Roles(UserRole.ADMIN, UserRole.SELLER)
   @Patch(":id/stops/reorder")
   reorderStops(
     @Param("id", ParseUUIDPipe) id: string,
