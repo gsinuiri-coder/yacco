@@ -1,5 +1,5 @@
 import request from "supertest";
-import { OrderStatus, StopOrigin } from "@prisma/client";
+import { OrderStatus, StopOrigin, StopStatus } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
@@ -921,6 +921,197 @@ describe("PATCH /api/v1/orders/:id/cancel", () => {
   });
 });
 
+describe("POST /api/v1/orders/:id/reschedule and /reschedule-by-date", () => {
+  let driverSequence = 0;
+
+  async function getOrNewDriver(): Promise<string> {
+    driverSequence++;
+    const username = `chofer-reprogramar-${driverSequence}`;
+    await request(server())
+      .post("/api/v1/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: username, username, password: "password123", roles: ["DRIVER"] })
+      .expect(201);
+    const users = await request(server())
+      .get("/api/v1/users?role=DRIVER")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    return users.body.find((u: { username: string }) => u.username === username).id;
+  }
+
+  test("reschedules a failed order copying lines and unit prices even if catalog price changed", async () => {
+    const driverId = await getOrNewDriver();
+    const deliveryDate = "2026-10-01";
+    const orderId = await createOrder(adminToken, {
+      deliveryDate,
+      items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+    });
+
+    // Create route, add stop, start, and mark FAILED
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: deliveryDate })
+      .expect(201);
+    const stop = await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/start`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/stops/${stop.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Local cerrado por mudanza" })
+      .expect(200);
+
+    // Change catalog list price from 12.50 to 18.00!
+    const prisma = ctx.app.get(PrismaService);
+    await prisma.product.update({
+      where: { id: refillProductId },
+      data: { listPrice: "18.00" },
+    });
+
+    // Reschedule as SELLER
+    const rescheduleResponse = await request(server())
+      .post(`/api/v1/orders/${orderId}/reschedule`)
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({})
+      .expect(201);
+
+    const newOrder = rescheduleResponse.body;
+    expect(newOrder.status).toBe(OrderStatus.PENDING);
+    expect(newOrder.deliveryDate).toBe("2026-10-02"); // default next day
+    expect(newOrder.rescheduledFromOrderId).toBe(orderId);
+    expect(newOrder.rescheduledFrom).toEqual({ id: orderId, deliveryDate: "2026-10-01" });
+    expect(newOrder.items).toHaveLength(1);
+    expect(newOrder.items[0].unitPrice).toBe("12.50"); // Preserved original price! Not 18.00!
+    expect(newOrder.items[0].quantity).toBe(2);
+
+    // Verify original order remains FAILED with its date and failureReason and links to new order
+    const originalResponse = await request(server())
+      .get(`/api/v1/orders/${orderId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(originalResponse.body.status).toBe(OrderStatus.FAILED);
+    expect(originalResponse.body.deliveryDate).toBe("2026-10-01");
+    expect(originalResponse.body.failureReason).toBe("Local cerrado por mudanza");
+    expect(originalResponse.body.rescheduledTo).toEqual({
+      id: newOrder.id,
+      deliveryDate: "2026-10-02",
+    });
+
+    // Revert list price back for other tests
+    await prisma.product.update({
+      where: { id: refillProductId },
+      data: { listPrice: "12.50" },
+    });
+  });
+
+  test("second reschedule attempt of the same failed order is rejected with 409", async () => {
+    const driverId = await getOrNewDriver();
+    const deliveryDate = "2026-10-03";
+    const orderId = await createOrder(adminToken, { deliveryDate });
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: deliveryDate })
+      .expect(201);
+    const stop = await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/start`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/stops/${stop.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "No contesta" })
+      .expect(200);
+
+    // First reschedule passes
+    await request(server())
+      .post(`/api/v1/orders/${orderId}/reschedule`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({})
+      .expect(201);
+
+    // Second reschedule fails
+    const second = await request(server())
+      .post(`/api/v1/orders/${orderId}/reschedule`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({});
+    expect(second.status).toBe(409);
+    expect(messagesOf(second)).toContain("ya fue reprogramado");
+  });
+
+  test("«Reprogramar todos» with one order already rescheduled undoes everything (todo o nada)", async () => {
+    const driverId = await getOrNewDriver();
+    const deliveryDate = "2026-10-05";
+    const order1Id = await createOrder(adminToken, { deliveryDate });
+    const order2Id = await createOrder(adminToken, { deliveryDate });
+
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: deliveryDate })
+      .expect(201);
+    const stop1 = await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId: order1Id })
+      .expect(201);
+    const stop2 = await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId: order2Id })
+      .expect(201);
+
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/start`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/stops/${stop1.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Motivo 1" })
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/stops/${stop2.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Motivo 2" })
+      .expect(200);
+
+    // Reschedule order 1 individually
+    await request(server())
+      .post(`/api/v1/orders/${order1Id}/reschedule`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({})
+      .expect(201);
+
+    // Now call batch reschedule for that date -> fails and rolls back!
+    const batchResponse = await request(server())
+      .post("/api/v1/orders/reschedule-by-date")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ deliveryDate });
+    expect(batchResponse.status).toBe(409);
+    expect(messagesOf(batchResponse)).toContain("ya fueron reprogramados");
+
+    // Order 2 was NOT rescheduled
+    const checkOrder2 = await request(server())
+      .get(`/api/v1/orders/${order2Id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(checkOrder2.body.rescheduledTo).toBeNull();
+  });
+});
+
 describe("role guard", () => {
   test("DRIVER is refused on every orders route but the detail", async () => {
     const list = await request(server())
@@ -945,6 +1136,18 @@ describe("role guard", () => {
       .patch(`/api/v1/orders/${MISSING_UUID}/cancel`)
       .set("Authorization", `Bearer ${driverToken}`);
     expect(cancel.status).toBe(403);
+
+    const reschedule = await request(server())
+      .post(`/api/v1/orders/${MISSING_UUID}/reschedule`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({});
+    expect(reschedule.status).toBe(403);
+
+    const rescheduleDate = await request(server())
+      .post("/api/v1/orders/reschedule-by-date")
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({ deliveryDate: "2026-10-01" });
+    expect(rescheduleDate.status).toBe(403);
   });
 
   test("an unauthenticated request is refused with 401", async () => {

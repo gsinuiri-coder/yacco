@@ -30,6 +30,8 @@ import { CreateOrderDto } from "./dto/create-order.dto.js";
 import { CreateOrdersBatchDto } from "./dto/create-orders-batch.dto.js";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto.js";
 import { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.dto.js";
+import { RescheduleOrderDto } from "./dto/reschedule-order.dto.js";
+import { RescheduleOrdersByDateDto } from "./dto/reschedule-orders-by-date.dto.js";
 import { OrdersService } from "./orders.service.js";
 
 /**
@@ -111,5 +113,40 @@ export class OrdersController {
   @Patch(":id/cancel")
   cancel(@Param("id", ParseUUIDPipe) id: string): Promise<OrderResponseDto> {
     return this.ordersService.cancel(id);
+  }
+
+  @ApiOperation({
+    summary: "Reprograma todos los pedidos no entregados de una fecha, todo o nada",
+  })
+  @ApiResponse({ status: 201, type: OrderResponseDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: "Validation failed, or no failed orders exist for that date",
+  })
+  @ApiConflictResponse({
+    description: "One or more orders for that date were already rescheduled",
+  })
+  @Post("reschedule-by-date")
+  rescheduleByDate(
+    @Body() dto: RescheduleOrdersByDateDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<OrderResponseDto[]> {
+    return this.ordersService.rescheduleByDate(dto, request.user.sub);
+  }
+
+  @ApiOperation({
+    summary: "Reprograma un pedido no entregado creando uno nuevo en PENDING",
+  })
+  @ApiResponse({ status: 201, type: OrderResponseDto })
+  @ApiNotFoundResponse({ description: "Order id does not exist" })
+  @ApiConflictResponse({
+    description: "Order is not FAILED, or was already rescheduled",
+  })
+  @Post(":id/reschedule")
+  reschedule(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: RescheduleOrderDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<OrderResponseDto> {
+    return this.ordersService.reschedule(id, dto, request.user.sub);
   }
 }

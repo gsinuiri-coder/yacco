@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { formatCalendarDay, formatInstantInLima, formatSoles, timesQuantity } from "@yacco/shared";
+import {
+  formatCalendarDay,
+  formatInstantInLima,
+  formatSoles,
+  nextCalendarDay,
+  timesQuantity,
+} from "@yacco/shared";
 import type { Order } from "@yacco/shared";
 
 const route = useRoute();
@@ -17,6 +23,40 @@ const cancelling = ref(false);
 const cancelError = ref<string | null>(null);
 const cancelNotice = ref<string | null>(null);
 const slowCancel = useSlowRequest(cancelling);
+
+const confirmingReschedule = ref(false);
+const rescheduling = ref(false);
+const rescheduleDeliveryDate = ref("");
+const rescheduleError = ref<string | null>(null);
+const rescheduleNotice = ref<string | null>(null);
+const slowReschedule = useSlowRequest(rescheduling);
+
+function startReschedule(): void {
+  if (order.value) {
+    rescheduleDeliveryDate.value = nextCalendarDay(order.value.deliveryDate);
+  }
+  confirmingReschedule.value = true;
+}
+
+async function rescheduleOrder(): Promise<void> {
+  if (rescheduling.value) return;
+  rescheduling.value = true;
+  rescheduleError.value = null;
+  rescheduleNotice.value = null;
+  try {
+    const newOrder = await api.request<Order>(`/orders/${orderId}/reschedule`, {
+      method: "POST",
+      body: rescheduleDeliveryDate.value ? { deliveryDate: rescheduleDeliveryDate.value } : {},
+    });
+    confirmingReschedule.value = false;
+    rescheduleNotice.value = `Pedido reprogramado exitosamente para el ${formatCalendarDay(newOrder.deliveryDate)}`;
+    await resource.reload();
+  } catch (error) {
+    rescheduleError.value = describeApiFailure(error);
+  } finally {
+    rescheduling.value = false;
+  }
+}
 
 async function cancel(): Promise<void> {
   // Un doble clic no manda dos PATCH.
@@ -70,6 +110,22 @@ async function cancel(): Promise<void> {
       />
       <UAlert v-if="cancelError" role="alert" color="error" variant="subtle" :title="cancelError" />
 
+      <UAlert
+        v-if="rescheduleNotice"
+        role="status"
+        color="info"
+        variant="subtle"
+        icon="i-lucide-info"
+        :title="rescheduleNotice"
+      />
+      <UAlert
+        v-if="rescheduleError"
+        role="alert"
+        color="error"
+        variant="subtle"
+        :title="rescheduleError"
+      />
+
       <ResourceState
         :loading="resource.loading.value"
         :slow="resource.slow.value"
@@ -81,6 +137,44 @@ async function cancel(): Promise<void> {
         back-label="Volver a pedidos"
         @retry="resource.reload"
       >
+        <UAlert
+          v-if="order && order.rescheduledTo"
+          role="status"
+          color="info"
+          variant="subtle"
+          icon="i-lucide-calendar-arrow-up"
+          :title="`Reprogramado para ${formatCalendarDay(order.rescheduledTo.deliveryDate)}`"
+          class="mb-4"
+        >
+          <template #description>
+            <NuxtLink
+              :to="`/orders/${order.rescheduledTo.id}`"
+              class="font-medium text-primary hover:underline"
+            >
+              Ver nuevo pedido
+            </NuxtLink>
+          </template>
+        </UAlert>
+
+        <UAlert
+          v-if="order && order.rescheduledFrom"
+          role="status"
+          color="info"
+          variant="subtle"
+          icon="i-lucide-calendar-arrow-down"
+          :title="`Reprogramación del pedido del ${formatCalendarDay(order.rescheduledFrom.deliveryDate)}`"
+          class="mb-4"
+        >
+          <template #description>
+            <NuxtLink
+              :to="`/orders/${order.rescheduledFrom.id}`"
+              class="font-medium text-primary hover:underline"
+            >
+              Ver pedido original
+            </NuxtLink>
+          </template>
+        </UAlert>
+
         <UAlert
           v-if="order && order.siblingOrders && order.siblingOrders.length > 0"
           role="status"
@@ -141,6 +235,10 @@ async function cancel(): Promise<void> {
               <dd class="text-highlighted tabular-nums">
                 {{ formatInstantInLima(order.createdAt) }}
               </dd>
+            </div>
+            <div v-if="order.failureReason">
+              <dt class="text-muted">Motivo de no entrega</dt>
+              <dd class="font-medium text-error">{{ order.failureReason }}</dd>
             </div>
           </dl>
 
@@ -213,6 +311,50 @@ async function cancel(): Promise<void> {
               icon="i-lucide-ban"
               label="Cancelar pedido"
               @click="confirming = true"
+            />
+          </div>
+
+          <div
+            v-if="order.status === 'FAILED' && !order.rescheduledTo"
+            class="border-t border-default p-5"
+          >
+            <div v-if="confirmingReschedule" class="space-y-3">
+              <p class="text-highlighted">Reprogramar pedido para:</p>
+              <div class="flex flex-wrap items-center gap-3">
+                <UFormField label="Nueva fecha de entrega">
+                  <UInput v-model="rescheduleDeliveryDate" type="date" />
+                </UFormField>
+              </div>
+              <div class="flex gap-2">
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  label="Cancelar"
+                  :disabled="rescheduling"
+                  @click="confirmingReschedule = false"
+                />
+                <UButton
+                  color="primary"
+                  :disabled="rescheduling"
+                  :label="rescheduling ? 'Reprogramando…' : 'Confirmar reprogramación'"
+                  @click="rescheduleOrder"
+                />
+              </div>
+              <UAlert
+                v-if="slowReschedule && rescheduling"
+                role="status"
+                color="neutral"
+                variant="subtle"
+                :title="SLOW_REQUEST_MESSAGE"
+              />
+            </div>
+            <UButton
+              v-else
+              color="primary"
+              variant="outline"
+              icon="i-lucide-calendar-clock"
+              label="Reprogramar pedido"
+              @click="startReschedule"
             />
           </div>
         </UCard>

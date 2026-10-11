@@ -207,4 +207,69 @@ describe("Detalle de pedido", () => {
     expect(await screen.findByText("Ese pedido no existe")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("muestra «Reprogramado para <fecha>» con enlace cuando el pedido ya fue reprogramado", async () => {
+    stubGet(
+      buildOrder({
+        status: "FAILED",
+        rescheduledTo: { id: "o-new", deliveryDate: "2026-08-26" },
+      }),
+    );
+
+    await renderDetail();
+
+    expect(await screen.findByText("Reprogramado para 26/08/2026")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Ver nuevo pedido" });
+    expect(link.getAttribute("href")).toBe("/orders/o-new");
+    expect(screen.queryByRole("button", { name: "Reprogramar pedido" })).toBeNull();
+  });
+
+  it("muestra «Reprogramación del pedido del <fecha>» con enlace cuando es un pedido reprogramado", async () => {
+    stubGet(
+      buildOrder({
+        status: "PENDING",
+        rescheduledFrom: { id: "o-orig", deliveryDate: "2026-08-24" },
+      }),
+    );
+
+    await renderDetail();
+
+    expect(await screen.findByText("Reprogramación del pedido del 24/08/2026")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Ver pedido original" });
+    expect(link.getAttribute("href")).toBe("/orders/o-orig");
+  });
+
+  it("muestra el motivo de no entrega y botón para reprogramar cuando está FAILED", async () => {
+    const order = buildOrder({
+      status: "FAILED",
+      failureReason: "Cliente de viaje",
+      deliveryDate: "2026-08-25",
+    });
+    stubGet(order);
+
+    let rescheduleCalled = false;
+    endpoint("/api/v1/orders/o-1/reschedule", {
+      method: "POST",
+      handler: () => {
+        rescheduleCalled = true;
+        return buildOrder({
+          id: "o-resched",
+          deliveryDate: "2026-08-26",
+          status: "PENDING",
+        });
+      },
+    });
+
+    await renderDetail();
+
+    expect(await screen.findByText("Cliente de viaje")).toBeTruthy();
+    const btn = screen.getByRole("button", { name: "Reprogramar pedido" });
+    await userEvent.setup().click(btn);
+
+    expect(screen.getByText("Reprogramar pedido para:")).toBeTruthy();
+    const confirmBtn = screen.getByRole("button", { name: "Confirmar reprogramación" });
+    await userEvent.setup().click(confirmBtn);
+
+    await waitFor(() => expect(rescheduleCalled).toBe(true));
+  });
 });

@@ -26,6 +26,10 @@ function buildOrder(overrides: Record<string, unknown> = {}) {
     id: ORDER_ID,
     locationId: LOCATION_ID,
     orderGroupId: null,
+    rescheduledFromOrderId: null,
+    rescheduledFrom: null,
+    rescheduledTo: null,
+    routeStop: null,
     deliveryDate: new Date(Date.UTC(2026, 7, 25)),
     status: OrderStatus.PENDING,
     createdById: USER_ID,
@@ -706,6 +710,245 @@ describe("OrdersService", () => {
       prisma.order.findUnique.mockResolvedValue(null);
 
       await expect(service.cancel(ORDER_ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe("reschedule", () => {
+    it("copies items and exact unit prices to a new PENDING order, defaulting to next day", async () => {
+      const originalFailed = buildOrder({
+        status: OrderStatus.FAILED,
+        deliveryDate: new Date(Date.UTC(2026, 7, 25)),
+        rescheduledTo: null,
+      });
+      const newOrderId = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+      const createdRescheduled = buildOrder({
+        id: newOrderId,
+        status: OrderStatus.PENDING,
+        deliveryDate: new Date(Date.UTC(2026, 7, 26)),
+        rescheduledFromOrderId: ORDER_ID,
+      });
+
+      const txMock = {
+        order: {
+          findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue(originalFailed),
+          create: jest.fn<() => Promise<unknown>>().mockResolvedValue(createdRescheduled),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: unknown) => {
+        return (cb as (tx: typeof txMock) => Promise<unknown>)(txMock);
+      });
+
+      const result = await service.reschedule(ORDER_ID, {}, USER_ID);
+
+      expect(txMock.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            locationId: LOCATION_ID,
+            deliveryDate: new Date(Date.UTC(2026, 7, 26)),
+            status: OrderStatus.PENDING,
+            rescheduledFromOrderId: ORDER_ID,
+            createdById: USER_ID,
+            items: {
+              create: [
+                {
+                  productId: PRODUCT_ID,
+                  quantity: 3,
+                  unitPrice: new Prisma.Decimal("12.5"),
+                },
+              ],
+            },
+          }),
+        }),
+      );
+      expect(result.id).toBe(newOrderId);
+      expect(result.deliveryDate).toBe("2026-08-26");
+      expect(result.status).toBe(OrderStatus.PENDING);
+    });
+
+    it("accepts an explicit deliveryDate for the rescheduled order", async () => {
+      const originalFailed = buildOrder({
+        status: OrderStatus.FAILED,
+        deliveryDate: new Date(Date.UTC(2026, 7, 25)),
+        rescheduledTo: null,
+      });
+      const createdRescheduled = buildOrder({
+        status: OrderStatus.PENDING,
+        deliveryDate: new Date(Date.UTC(2026, 7, 28)),
+        rescheduledFromOrderId: ORDER_ID,
+      });
+
+      const txMock = {
+        order: {
+          findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue(originalFailed),
+          create: jest.fn<() => Promise<unknown>>().mockResolvedValue(createdRescheduled),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: unknown) => {
+        return (cb as (tx: typeof txMock) => Promise<unknown>)(txMock);
+      });
+
+      const result = await service.reschedule(ORDER_ID, { deliveryDate: "2026-08-28" }, USER_ID);
+
+      expect(txMock.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            deliveryDate: new Date(Date.UTC(2026, 7, 28)),
+          }),
+        }),
+      );
+      expect(result.deliveryDate).toBe("2026-08-28");
+    });
+
+    it("rejects rescheduling an order that is not FAILED", async () => {
+      const order = buildOrder({ status: OrderStatus.PENDING });
+      const txMock = {
+        order: {
+          findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue(order),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: unknown) => {
+        return (cb as (tx: typeof txMock) => Promise<unknown>)(txMock);
+      });
+
+      await expect(service.reschedule(ORDER_ID, {}, USER_ID)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      await expect(service.reschedule(ORDER_ID, {}, USER_ID)).rejects.toThrow(
+        "Solo se puede reprogramar un pedido no entregado; este está pendiente",
+      );
+    });
+
+    it("rejects rescheduling an order that was already rescheduled", async () => {
+      const order = buildOrder({
+        status: OrderStatus.FAILED,
+        rescheduledTo: { id: "rescheduled-id", deliveryDate: new Date(Date.UTC(2026, 7, 26)) },
+      });
+      const txMock = {
+        order: {
+          findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue(order),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: unknown) => {
+        return (cb as (tx: typeof txMock) => Promise<unknown>)(txMock);
+      });
+
+      await expect(service.reschedule(ORDER_ID, {}, USER_ID)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      await expect(service.reschedule(ORDER_ID, {}, USER_ID)).rejects.toThrow(
+        "El pedido ya fue reprogramado para el 26/08/2026",
+      );
+    });
+
+    it("throws NotFoundException if the order does not exist", async () => {
+      const txMock = {
+        order: {
+          findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue(null),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: unknown) => {
+        return (cb as (tx: typeof txMock) => Promise<unknown>)(txMock);
+      });
+
+      await expect(service.reschedule(ORDER_ID, {}, USER_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe("rescheduleByDate", () => {
+    it("reschedules all FAILED orders for a date in one transaction", async () => {
+      const order1 = buildOrder({
+        id: "order-1",
+        status: OrderStatus.FAILED,
+        deliveryDate: new Date(Date.UTC(2026, 7, 25)),
+        rescheduledTo: null,
+      });
+      const order2 = buildOrder({
+        id: "order-2",
+        status: OrderStatus.FAILED,
+        deliveryDate: new Date(Date.UTC(2026, 7, 25)),
+        rescheduledTo: null,
+      });
+      const resched1 = buildOrder({
+        id: "resched-1",
+        deliveryDate: new Date(Date.UTC(2026, 7, 26)),
+      });
+      const resched2 = buildOrder({
+        id: "resched-2",
+        deliveryDate: new Date(Date.UTC(2026, 7, 26)),
+      });
+
+      const txMock = {
+        order: {
+          findMany: jest.fn<() => Promise<unknown>>().mockResolvedValue([order1, order2]),
+          create: jest
+            .fn<() => Promise<unknown>>()
+            .mockResolvedValueOnce(resched1)
+            .mockResolvedValueOnce(resched2),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: unknown) => {
+        return (cb as (tx: typeof txMock) => Promise<unknown>)(txMock);
+      });
+
+      const result = await service.rescheduleByDate({ deliveryDate: "2026-08-25" }, USER_ID);
+
+      expect(txMock.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            deliveryDate: new Date(Date.UTC(2026, 7, 25)),
+            status: OrderStatus.FAILED,
+          },
+        }),
+      );
+      expect(txMock.order.create).toHaveBeenCalledTimes(2);
+      expect(result).toHaveLength(2);
+    });
+
+    it("rejects if one order of the date was already rescheduled", async () => {
+      const order1 = buildOrder({
+        id: "order-1",
+        status: OrderStatus.FAILED,
+        deliveryDate: new Date(Date.UTC(2026, 7, 25)),
+        rescheduledTo: { id: "resched-1", deliveryDate: new Date(Date.UTC(2026, 7, 26)) },
+      });
+      const order2 = buildOrder({
+        id: "order-2",
+        status: OrderStatus.FAILED,
+        deliveryDate: new Date(Date.UTC(2026, 7, 25)),
+        rescheduledTo: null,
+      });
+
+      const txMock = {
+        order: {
+          findMany: jest.fn<() => Promise<unknown>>().mockResolvedValue([order1, order2]),
+          create: jest.fn<() => Promise<unknown>>(),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: unknown) => {
+        return (cb as (tx: typeof txMock) => Promise<unknown>)(txMock);
+      });
+
+      await expect(
+        service.rescheduleByDate({ deliveryDate: "2026-08-25" }, USER_ID),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(txMock.order.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects with BadRequestException if there are no FAILED orders on that date", async () => {
+      const txMock = {
+        order: {
+          findMany: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
+        },
+      };
+      prisma.$transaction.mockImplementation(async (cb: unknown) => {
+        return (cb as (tx: typeof txMock) => Promise<unknown>)(txMock);
+      });
+
+      await expect(
+        service.rescheduleByDate({ deliveryDate: "2026-08-25" }, USER_ID),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });

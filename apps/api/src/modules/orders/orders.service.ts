@@ -20,6 +20,8 @@ import type {
   OrderSiblingDto,
   PaginatedOrdersDto,
 } from "./dto/order-response.dto.js";
+import type { RescheduleOrderDto } from "./dto/reschedule-order.dto.js";
+import type { RescheduleOrdersByDateDto } from "./dto/reschedule-orders-by-date.dto.js";
 
 /**
  * Everything the wire shape needs, and nothing else. The order's own
@@ -37,6 +39,23 @@ const ORDER_INCLUDE = {
     },
   },
   items: { include: { product: { select: { id: true, name: true } } } },
+  routeStop: {
+    select: {
+      failureReason: true,
+    },
+  },
+  rescheduledFrom: {
+    select: {
+      id: true,
+      deliveryDate: true,
+    },
+  },
+  rescheduledTo: {
+    select: {
+      id: true,
+      deliveryDate: true,
+    },
+  },
 } satisfies Prisma.OrderInclude;
 
 const ORDER_GROUP_INCLUDE = {
@@ -70,6 +89,17 @@ export function formatBusinessDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+export function nextCalendarDay(day: string): string {
+  const [year, month, dayOfMonth] = day.split("-").map(Number) as [number, number, number];
+  const next = new Date(Date.UTC(year, month - 1, dayOfMonth + 1));
+  return formatBusinessDate(next);
+}
+
+export function formatCalendarDay(day: string): string {
+  const [year, month, dayOfMonth] = day.split("-") as [string, string, string];
+  return `${dayOfMonth}/${month}/${year}`;
+}
+
 /**
  * Sum of quantity × unitPrice across every item, in Decimal throughout: a
  * single float in this sum would break the money guarantee the whole project
@@ -93,6 +123,20 @@ function toOrderResponse(
       name: order.location.name,
     },
     orderGroupId: order.orderGroupId,
+    rescheduledFromOrderId: order.rescheduledFromOrderId,
+    rescheduledFrom: order.rescheduledFrom
+      ? {
+          id: order.rescheduledFrom.id,
+          deliveryDate: formatBusinessDate(order.rescheduledFrom.deliveryDate),
+        }
+      : null,
+    rescheduledTo: order.rescheduledTo
+      ? {
+          id: order.rescheduledTo.id,
+          deliveryDate: formatBusinessDate(order.rescheduledTo.deliveryDate),
+        }
+      : null,
+    failureReason: order.routeStop?.failureReason ?? null,
     customerId: order.location.customer.id,
     customer: { ...order.location.customer, phone: order.location.phone },
     deliveryDate: formatBusinessDate(order.deliveryDate),
@@ -496,10 +540,163 @@ export class OrdersService {
 
     return this.findOne(id);
   }
+
+  /**
+   * Reschedules an un-delivered (FAILED) order by creating a new PENDING order
+   * for the same location with the same items and exact unit prices.
+   * Defaults to the next calendar day in America/Lima.
+   * Can only be rescheduled once; subsequent attempts fail with ConflictException.
+   */
+  async reschedule(
+    id: string,
+    dto: RescheduleOrderDto,
+    createdById: string,
+  ): Promise<OrderResponseDto> {
+    try {
+      const created = await this.prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id },
+          include: {
+            ...ORDER_INCLUDE,
+            rescheduledTo: { select: { id: true, deliveryDate: true } },
+          },
+        });
+        if (order === null) {
+          throw new NotFoundException(`El pedido "${id}" no existe`);
+        }
+        if (order.status !== OrderStatus.FAILED) {
+          throw new ConflictException(
+            `Solo se puede reprogramar un pedido no entregado; este está ${ORDER_STATUS_LABELS[order.status]}`,
+          );
+        }
+        if (order.rescheduledTo !== null) {
+          throw new ConflictException(
+            `El pedido ya fue reprogramado para el ${formatCalendarDay(formatBusinessDate(order.rescheduledTo.deliveryDate))}`,
+          );
+        }
+
+        const targetDeliveryDate =
+          dto.deliveryDate !== undefined
+            ? parseBusinessDate(dto.deliveryDate, "La fecha de entrega")
+            : parseBusinessDate(
+                nextCalendarDay(formatBusinessDate(order.deliveryDate)),
+                "La fecha de entrega",
+              );
+
+        return tx.order.create({
+          data: {
+            locationId: order.locationId,
+            deliveryDate: targetDeliveryDate,
+            status: OrderStatus.PENDING,
+            rescheduledFromOrderId: order.id,
+            createdById,
+            items: {
+              create: order.items.map((item) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+              })),
+            },
+          },
+          include: ORDER_INCLUDE,
+        });
+      });
+
+      return toOrderResponse(created);
+    } catch (error) {
+      if (isPrismaKnownError(error, "P2002")) {
+        throw new ConflictException("Este pedido ya fue reprogramado");
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Reschedules all FAILED orders of a given delivery date in a single transaction.
+   * If any order was already rescheduled, the entire operation is rolled back and rejected.
+   */
+  async rescheduleByDate(
+    dto: RescheduleOrdersByDateDto,
+    createdById: string,
+  ): Promise<OrderResponseDto[]> {
+    const sourceDate = parseBusinessDate(dto.deliveryDate, "La fecha de origen");
+    const targetDate =
+      dto.newDeliveryDate !== undefined
+        ? parseBusinessDate(dto.newDeliveryDate, "La nueva fecha de entrega")
+        : parseBusinessDate(nextCalendarDay(dto.deliveryDate), "La nueva fecha de entrega");
+
+    try {
+      const createdOrders = await this.prisma.$transaction(async (tx) => {
+        const orders = await tx.order.findMany({
+          where: {
+            deliveryDate: sourceDate,
+            status: OrderStatus.FAILED,
+          },
+          include: {
+            ...ORDER_INCLUDE,
+            rescheduledTo: { select: { id: true, deliveryDate: true } },
+          },
+          orderBy: { createdAt: "asc" },
+        });
+
+        if (orders.length === 0) {
+          throw new BadRequestException(
+            `No existen pedidos no entregados en la fecha ${dto.deliveryDate}`,
+          );
+        }
+
+        const alreadyRescheduled = orders.find((o) => o.rescheduledTo !== null);
+        if (alreadyRescheduled !== undefined) {
+          throw new ConflictException(
+            `Uno o más pedidos de la fecha ${dto.deliveryDate} ya fueron reprogramados`,
+          );
+        }
+
+        const results: OrderWithRelations[] = [];
+        for (const order of orders) {
+          const created = await tx.order.create({
+            data: {
+              locationId: order.locationId,
+              deliveryDate: targetDate,
+              status: OrderStatus.PENDING,
+              rescheduledFromOrderId: order.id,
+              createdById,
+              items: {
+                create: order.items.map((item) => ({
+                  productId: item.productId,
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice,
+                })),
+              },
+            },
+            include: ORDER_INCLUDE,
+          });
+          results.push(created);
+        }
+
+        return results;
+      });
+
+      return createdOrders.map((order) => toOrderResponse(order));
+    } catch (error) {
+      if (isPrismaKnownError(error, "P2002")) {
+        throw new ConflictException("Uno o más pedidos de la fecha ya fueron reprogramados");
+      }
+      throw error;
+    }
+  }
 }
 
 function buildOrderFilter(query: ListOrdersQueryDto): Prisma.OrderWhereInput {
-  const { status, customerId, zoneId, deliveryDateFrom, deliveryDateTo, hasRouteStop } = query;
+  const {
+    status,
+    customerId,
+    zoneId,
+    deliveryDateFrom,
+    deliveryDateTo,
+    hasRouteStop,
+    isRescheduled,
+  } = query;
   const from =
     deliveryDateFrom === undefined
       ? undefined
@@ -527,6 +724,9 @@ function buildOrderFilter(query: ListOrdersQueryDto): Prisma.OrderWhereInput {
     // por una columna de Order: no existe tal columna.
     ...(hasRouteStop !== undefined
       ? { routeStop: hasRouteStop ? { isNot: null } : { is: null } }
+      : {}),
+    ...(isRescheduled !== undefined
+      ? { rescheduledTo: isRescheduled ? { isNot: null } : { is: null } }
       : {}),
     // Both ends inclusive: they are calendar days, not instants.
     ...(from !== undefined || to !== undefined

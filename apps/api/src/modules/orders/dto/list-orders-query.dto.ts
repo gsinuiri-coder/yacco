@@ -95,4 +95,13 @@ export class ListOrdersQueryDto {
   @Transform(toOptionalBoolean)
   @IsBoolean({ message: "El filtro de parada asignada debe ser verdadero o falso" })
   hasRouteStop?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "false: solo pedidos sin reprogramar; true: solo los que ya fueron reprogramados. Omitido, no filtra",
+  })
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean({ message: "El filtro de reprogramado debe ser verdadero o falso" })
+  isRescheduled?: boolean;
 }

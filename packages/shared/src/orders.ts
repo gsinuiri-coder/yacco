@@ -27,12 +27,21 @@ export interface OrderSibling {
   locationName: string;
 }
 
+export interface RescheduledOrderLink {
+  id: string;
+  deliveryDate: string;
+}
+
 /** OrderResponseDto. `createdAt` is an instant. */
 export interface Order {
   id: string;
   locationId: string;
   location?: OrderLocation;
   orderGroupId: string | null;
+  rescheduledFromOrderId?: string | null;
+  rescheduledFrom?: RescheduledOrderLink | null;
+  rescheduledTo?: RescheduledOrderLink | null;
+  failureReason?: string | null;
   customerId: string;
   customer: { id: string; name: string; phone: string };
   deliveryDate: string;
@@ -59,6 +68,7 @@ export interface OrderListQuery {
   deliveryDateFrom?: string;
   deliveryDateTo?: string;
   hasRouteStop?: boolean;
+  isRescheduled?: boolean;
 }
 
 /** CreateOrderItemDto. */
@@ -85,6 +95,15 @@ export interface CreateOrdersBatchBody {
   deliveryDate: string;
   idempotencyKey?: string;
   locations: CreateLocationOrderBody[];
+}
+
+export interface RescheduleOrderBody {
+  deliveryDate?: string;
+}
+
+export interface RescheduleOrdersByDateBody {
+  deliveryDate: string;
+  newDeliveryDate?: string;
 }
 
 /** MAX_LIMIT in list-orders-query.dto.ts. */

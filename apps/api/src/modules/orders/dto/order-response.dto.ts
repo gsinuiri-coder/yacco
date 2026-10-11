@@ -58,6 +58,14 @@ export class OrderSiblingDto {
   locationName!: string;
 }
 
+export class RescheduledOrderLinkDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty({ type: String, example: "2026-08-26" })
+  deliveryDate!: string;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
@@ -70,6 +78,18 @@ export class OrderResponseDto {
 
   @ApiPropertyOptional({ format: "uuid", nullable: true })
   orderGroupId!: string | null;
+
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
+  rescheduledFromOrderId?: string | null;
+
+  @ApiPropertyOptional({ type: RescheduledOrderLinkDto, nullable: true })
+  rescheduledFrom?: RescheduledOrderLinkDto | null;
+
+  @ApiPropertyOptional({ type: RescheduledOrderLinkDto, nullable: true })
+  rescheduledTo?: RescheduledOrderLinkDto | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  failureReason?: string | null;
 
   @ApiProperty({ format: "uuid" })
   customerId!: string;

@@ -33,6 +33,10 @@ export function buildOrder(overrides: Partial<Order> = {}): Order {
     id: "o-1",
     locationId: "location-1",
     orderGroupId: null,
+    rescheduledFromOrderId: null,
+    rescheduledFrom: null,
+    rescheduledTo: null,
+    failureReason: null,
     customerId: "11111111-1111-4111-8111-111111111111",
     customer: {
       id: "11111111-1111-4111-8111-111111111111",
