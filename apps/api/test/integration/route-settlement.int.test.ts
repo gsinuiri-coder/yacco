@@ -33,6 +33,7 @@ let ctx: TestAppContext;
 let prisma: PrismaService;
 let adminToken: string;
 let sellerToken: string;
+let sellerId: string;
 let driverToken: string;
 let driverId: string;
 let zoneId: string;
@@ -160,10 +161,15 @@ async function createRoute(): Promise<string> {
   return response.body.id;
 }
 
-async function addLoad(routeId: string, batchItemId: string, quantity: number): Promise<void> {
+async function addLoad(
+  routeId: string,
+  batchItemId: string,
+  quantity: number,
+  token = adminToken,
+): Promise<void> {
   await request(server())
     .post(`/api/v1/routes/${routeId}/loads`)
-    .set("Authorization", `Bearer ${adminToken}`)
+    .set("Authorization", `Bearer ${token}`)
     .send({ batchItemId, quantity })
     .expect(201);
 }
@@ -285,7 +291,9 @@ beforeAll(async () => {
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
   const admin = await prisma.user.findUniqueOrThrow({ where: { username: ADMIN_USERNAME } });
   adminUserId = admin.id;
-  sellerToken = (await createUserAndLogin("vendedor-liquidacion", "SELLER")).token;
+  const seller = await createUserAndLogin("vendedor-liquidacion", "SELLER");
+  sellerToken = seller.token;
+  sellerId = seller.id;
   const driver = await createUserAndLogin("repartidor-liquidacion", "DRIVER");
   driverToken = driver.token;
   driverId = driver.id;
@@ -422,6 +430,134 @@ describe("full reconciliation: LOAN_DELIVERY + FULL_SALE + a rejected payment", 
 
     const route = await prisma.route.findUniqueOrThrow({ where: { id: routeId } });
     expect(route.status).toBe(RouteStatus.SETTLED);
+  });
+});
+
+// Decisión de Fase 2, fila 3 (docs/plan-final.md): la oficina puede agregar
+// carga con la ruta IN_PROGRESS; sigue siendo FIFO y la liquidación suma la
+// carga inicial y la recarga sin una rama especial.
+describe("recargar una ruta en curso", () => {
+  test("planifica, sale, recarga por FIFO, entrega y liquida contando las dos cargas", async () => {
+    const typeId = await createContainerType();
+    const refillId = await createProductFor(typeId, "REFILL");
+    const { locationId } = await createFreshLocation();
+
+    const createDatedBatchItem = async (
+      code: string,
+      date: string,
+      producedQty: number,
+    ): Promise<string> => {
+      const response = await request(server())
+        .post("/api/v1/production-batches")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ code, date, items: [{ containerTypeId: typeId, producedQty }] })
+        .expect(201);
+      return response.body.items[0].id;
+    };
+
+    const firstItemId = await createDatedBatchItem(
+      `LOTE-RECARGA-VIEJO-${extraTypeSeq}`,
+      "2026-04-10",
+      3,
+    );
+    const secondItemId = await createDatedBatchItem(
+      `LOTE-RECARGA-NUEVO-${extraTypeSeq}`,
+      "2026-04-11",
+      5,
+    );
+    const routeId = await createRoute();
+    const stopId = await addStop(routeId, locationId);
+
+    await addLoad(routeId, firstItemId, 3);
+    await startRoute(routeId);
+    await addLoad(routeId, secondItemId, 5, sellerToken);
+
+    const loads = await prisma.routeLoad.findMany({ where: { routeId } });
+    expect(loads.map((load) => [load.batchItemId, load.quantity])).toEqual(
+      expect.arrayContaining([
+        [firstItemId, 3],
+        [secondItemId, 5],
+      ]),
+    );
+    expect(loads).toHaveLength(2);
+    const loadMovements = await prisma.containerMovement.findMany({
+      where: { routeId, type: ContainerMovementType.ROUTE_LOAD },
+    });
+    const batchItems = await prisma.batchItem.findMany({
+      where: { id: { in: [firstItemId, secondItemId] } },
+      select: { id: true, batchId: true },
+    });
+    const batchIdByItem = new Map(batchItems.map((item) => [item.id, item.batchId]));
+    expect(loadMovements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          batchId: batchIdByItem.get(firstItemId),
+          quantity: 3,
+          recordedById: adminUserId,
+        }),
+        expect.objectContaining({
+          batchId: batchIdByItem.get(secondItemId),
+          quantity: 5,
+          recordedById: sellerId,
+        }),
+      ]),
+    );
+    expect(loadMovements).toHaveLength(2);
+
+    await deliverStop(routeId, stopId, {
+      items: [{ productId: refillId, quantity: 6 }],
+    }).then((response) => expect(response.status).toBe(200));
+    await finishRoute(routeId);
+
+    const preview = await getSettlement(routeId).expect(200);
+    expect(preview.body.expected).toMatchObject({ fullOut: 8, fullDelivered: 6 });
+
+    const settled = await postSettlement(routeId, {
+      fullReturned: 2,
+      fullReturnedByType: [{ containerTypeId: typeId, quantity: 2 }],
+      emptiesCollected: [],
+    }).expect(201);
+    expect(settled.body.differences.containers).toBe(0);
+    expect(settled.body.settlement).toMatchObject({ fullOut: 8, fullDelivered: 6 });
+    await expect(prisma.route.findUniqueOrThrow({ where: { id: routeId } })).resolves.toMatchObject(
+      { status: RouteStatus.SETTLED },
+    );
+  });
+
+  test("serializa la recarga con el cierre para que la liquidación siempre la cuente", async () => {
+    const typeId = await createContainerType();
+    const batchItemId = await createBatchItem(4, typeId);
+    const routeId = await createRoute();
+    await startRoute(routeId);
+    const held = await holdContainerTypeLock(prisma, typeId);
+
+    const loading = await startAndCheckBlocked(() =>
+      request(server())
+        .post(`/api/v1/routes/${routeId}/loads`)
+        .set("Authorization", `Bearer ${sellerToken}`)
+        .send({ batchItemId, quantity: 4 }),
+    );
+    const finishing = await startAndCheckBlocked(() =>
+      request(server())
+        .patch(`/api/v1/routes/${routeId}/finish`)
+        .set("Authorization", `Bearer ${adminToken}`),
+    );
+    await held.release();
+
+    const loadResponse = await loading.result;
+    const finishResponse = await finishing.result;
+    expect(loading.finishedWhileLocked).toBe(false);
+    expect(finishing.finishedWhileLocked).toBe(false);
+    expect(loadResponse.status).toBe(201);
+    expect(finishResponse.status).toBe(200);
+
+    const settled = await postSettlement(routeId, {
+      fullReturned: 4,
+      fullReturnedByType: [{ containerTypeId: typeId, quantity: 4 }],
+      emptiesCollected: [],
+    }).expect(201);
+    expect(settled.body.settlement.fullOut).toBe(4);
+    expect(settled.body.differences.containers).toBe(0);
   });
 });
 

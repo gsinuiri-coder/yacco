@@ -474,9 +474,11 @@ export async function lockLocation(
  * Bloquea los tipos de envase cuyo stock de planta se va a leer o mover, para
  * que un conteo de la planta y una carga, un lote o una liquidación del mismo
  * tipo vayan de a uno: sin esto, el conteo compara contra el libro de un
- * momento antes. Se toma ANTES que cualquier otro bloqueo de la transacción, y
- * en orden de id, para que dos escrituras sobre varios tipos no se crucen en
- * un deadlock. `FOR NO KEY UPDATE`, como `lockLocation`: choca con otra
+ * momento antes. Se toma en orden de id, para que dos escrituras sobre varios
+ * tipos no se crucen en un deadlock. Las operaciones ligadas a una ruta toman
+ * primero el lock de esa ruta y después estos tipos; carga, corrección y
+ * liquidación conservan ese mismo orden. `FOR NO KEY UPDATE`, como
+ * `lockLocation`: choca con otra
  * escritura del mismo tipo, pero no frena a un movimiento que solo lo
  * referencia (`FOR KEY SHARE` de su FK).
  */

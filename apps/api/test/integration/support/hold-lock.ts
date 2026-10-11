@@ -38,6 +38,40 @@ export async function holdContainerTypeLock(
 }
 
 /**
+ * Sostiene el renglón de un ítem de lote mientras una corrección de carga
+ * intenta reponerlo. Permite observar si la operación conserva bloqueada la
+ * ruta hasta terminar, sin insertar esperas artificiales en producción.
+ */
+export async function holdBatchItemLock(
+  prisma: PrismaService,
+  batchItemId: string,
+): Promise<{ release: () => Promise<void> }> {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markLocked!: () => void;
+  const locked = new Promise<void>((resolve) => {
+    markLocked = resolve;
+  });
+  const transaction = prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT id FROM batch_items WHERE id = ${batchItemId}::uuid FOR UPDATE`;
+      markLocked();
+      await released;
+    },
+    { timeout: 30_000 },
+  );
+  await locked;
+  return {
+    release: async () => {
+      release();
+      await transaction;
+    },
+  };
+}
+
+/**
  * Arranca `work` y dice si terminó dentro de `BLOCKED_FOR_MS`. Lo usa cada
  * test para afirmar que una escritura espera al bloqueo en vez de leer el
  * libro de un momento antes.
