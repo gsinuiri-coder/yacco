@@ -175,10 +175,7 @@ afterAll(async () => {
   await stopTestApp(ctx);
 });
 
-// HU-06 §2.4 E1: "Dado un cliente registrado, cuando capturo un pedido,
-// entonces queda en estado «pendiente», disponible para asignar a una ruta,
-// con precios según lista o personalizado."
-
+// HU-06 §2.4 E1: "Dado un cliente registrado con un local activo, cuando capturo cantidades y una fecha de entrega, entonces se crea un pedido pendiente para ese local, con precios según lista o personalizado."
 describe("POST /api/v1/orders", () => {
   test("HU-06 E1: a seller captures an order and it lands PENDING with its items", async () => {
     const response = await request(server())
@@ -401,8 +398,9 @@ describe("POST /api/v1/orders", () => {
   });
 });
 
+// HU-06 §2.4 E2: "Dado un cliente con tres locales activos, cuando cargo cantidades distintas en dos y dejo el tercero vacío, entonces se crean en una sola transacción dos pedidos enlazados —uno por local— y ninguno para el tercero; si una línea es inválida, no se crea ninguno."
 describe("POST /api/v1/orders/batch", () => {
-  test("crea un pedido por cada local con cantidades y enlaza los creados juntos", async () => {
+  test("HU-06 E2: crea un pedido por cada local con cantidades y enlaza los creados juntos", async () => {
     const { customerId, primaryLocation, secondLocation, thirdLocation } =
       await createCustomerWithThreeLocations();
     const prisma = ctx.app.get(PrismaService);
@@ -482,7 +480,8 @@ describe("POST /api/v1/orders/batch", () => {
     ).toBe(0);
   });
 
-  test("repetir el mismo envío devuelve el mismo grupo sin crear pedidos de más", async () => {
+  // HU-06 §2.4 E3: "Dado el mismo envío repetido por un reintento, cuando llega con la misma clave de idempotencia, entonces se devuelve el grupo ya creado sin duplicar pedidos."
+  test("HU-06 E3: repetir el mismo envío devuelve el mismo grupo sin crear pedidos de más", async () => {
     const { customerId, primaryLocation, secondLocation } =
       await createCustomerWithThreeLocations();
     const prisma = ctx.app.get(PrismaService);
@@ -939,7 +938,8 @@ describe("POST /api/v1/orders/:id/reschedule and /reschedule-by-date", () => {
     return users.body.find((u: { username: string }) => u.username === username).id;
   }
 
-  test("reschedules a failed order copying lines and unit prices even if catalog price changed", async () => {
+  // HU-06 §2.4 E4: "Dado un pedido no entregado que todavía no fue reprogramado, cuando administrador o vendedor lo reprograma, entonces el original conserva estado, fecha y motivo, y se crea un pedido nuevo pendiente para el mismo local con los mismos productos, cantidades y precios; un segundo intento sobre el mismo original se rechaza."
+  test("HU-06 E4: reschedules a failed order copying lines and unit prices even if catalog price changed", async () => {
     const driverId = await getOrNewDriver();
     const deliveryDate = "2026-10-01";
     const orderId = await createOrder(adminToken, {
@@ -1051,7 +1051,8 @@ describe("POST /api/v1/orders/:id/reschedule and /reschedule-by-date", () => {
     expect(messagesOf(second)).toContain("ya fue reprogramado");
   });
 
-  test("«Reprogramar todos» with one order already rescheduled undoes everything (todo o nada)", async () => {
+  // HU-06 §2.4 E5: "Dado varios no entregados de una fecha, cuando la oficina elige «Reprogramar todos», entonces todos los nuevos pedidos se crean o ninguno."
+  test("HU-06 E5: «Reprogramar todos» with one order already rescheduled undoes everything (todo o nada)", async () => {
     const driverId = await getOrNewDriver();
     const deliveryDate = "2026-10-05";
     const order1Id = await createOrder(adminToken, { deliveryDate });

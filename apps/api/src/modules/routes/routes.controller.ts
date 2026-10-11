@@ -303,7 +303,7 @@ export class RoutesController {
     description:
       "Validation failed, the batch item is missing, it is not the FIFO head, or there isn't enough stock",
   })
-  @ApiConflictResponse({ description: "Route is FINISHED" })
+  @ApiConflictResponse({ description: "Route is not PLANNED" })
   @Roles(UserRole.ADMIN, UserRole.SELLER)
   @Post(":id/loads")
   addLoad(
