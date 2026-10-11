@@ -59,6 +59,10 @@ enum ContainerMovementType {
   LOAN_DELIVERY_VOID
   EMPTY_PICKUP_VOID
   FULL_SALE_VOID
+  // Las tres anulaciones de parada en planta (pit):
+  ROUTE_LOAD_VOID
+  EMPTY_UNLOAD_VOID
+  FULL_RETURN_VOID
 
   @@map("container_movement_type")
 }
@@ -182,6 +186,8 @@ model User {
   paymentsRejected              Payment[]            @relation("PaymentRejectedBy")
   paymentsVoided                Payment[]            @relation("PaymentVoidedBy")
   routeSettlements              RouteSettlement[]
+  pitStopsRecorded              RoutePitStop[]       @relation("RoutePitStopRecordedBy")
+  pitStopsVoided                RoutePitStop[]       @relation("RoutePitStopVoidedBy")
   syncOperations                SyncOperation[]
   productPriceChanges           ProductPriceChange[]
 
@@ -228,8 +234,9 @@ model ContainerType {
   products   Product[]
   batchItems BatchItem[]
   movements  ContainerMovement[]
-  balances   CustomerContainerBalance[]
-  counts     ContainerCount[]
+  balances      CustomerContainerBalance[]
+  counts        ContainerCount[]
+  pitStopCounts RoutePitStopCount[]
 
   @@map("container_types")
 }
@@ -434,6 +441,7 @@ model ContainerMovement {
   // movement type leaves this null.
   routeId         String?               @map("route_id") @db.Uuid
   stopId          String?               @map("stop_id") @db.Uuid
+  pitStopId       String?               @map("pit_stop_id") @db.Uuid
   recordedById    String                @map("recorded_by") @db.Uuid
 
   containerType  ContainerType     @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
@@ -441,6 +449,7 @@ model ContainerMovement {
   batch          ProductionBatch?  @relation(fields: [batchId], references: [id], onDelete: Restrict)
   route          Route?            @relation(fields: [routeId], references: [id], onDelete: Restrict)
   stop           RouteStop?        @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  pitStop        RoutePitStop?     @relation(fields: [pitStopId], references: [id], onDelete: Restrict)
   recordedBy     User              @relation(fields: [recordedById], references: [id], onDelete: Restrict)
   containerCount ContainerCount?
 
@@ -557,6 +566,7 @@ model Route {
   zone       Zone?               @relation(fields: [zoneId], references: [id], onDelete: Restrict)
   loads      RouteLoad[]
   stops      RouteStop[]
+  pitStops   RoutePitStop[]
   movements  ContainerMovement[]
   settlement RouteSettlement?
 
@@ -568,13 +578,15 @@ model Route {
 
 // Consumes batch_items strictly FIFO (oldest production_batches.date first).
 model RouteLoad {
-  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  routeId     String @map("route_id") @db.Uuid
-  batchItemId String @map("batch_item_id") @db.Uuid
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  routeId     String  @map("route_id") @db.Uuid
+  batchItemId String  @map("batch_item_id") @db.Uuid
   quantity    Int
+  pitStopId   String? @map("pit_stop_id") @db.Uuid
 
-  route     Route     @relation(fields: [routeId], references: [id], onDelete: Restrict)
-  batchItem BatchItem @relation(fields: [batchItemId], references: [id], onDelete: Restrict)
+  route     Route         @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  batchItem BatchItem     @relation(fields: [batchItemId], references: [id], onDelete: Restrict)
+  pitStop   RoutePitStop? @relation(fields: [pitStopId], references: [id], onDelete: Restrict)
 
   @@map("route_loads")
 }
@@ -613,6 +625,47 @@ model RouteStop {
 
   @@index([routeId, position])
   @@map("route_stops")
+}
+
+model RoutePitStop {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  routeId       String    @map("route_id") @db.Uuid
+  recordedById  String    @map("recorded_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  notes         String?
+  cashExpected  Decimal?  @map("cash_expected") @db.Decimal(10, 2)
+  cashDelivered Decimal?  @map("cash_delivered") @db.Decimal(10, 2)
+  cashReason    String?   @map("cash_reason")
+  voidedAt      DateTime? @map("voided_at") @db.Timestamptz(6)
+  voidedById    String?   @map("voided_by") @db.Uuid
+  voidReason    String?   @map("void_reason")
+
+  route      Route                @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  recordedBy User                 @relation("RoutePitStopRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  voidedBy   User?                @relation("RoutePitStopVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  counts     RoutePitStopCount[]
+  loads      RouteLoad[]
+  movements  ContainerMovement[]
+
+  @@index([routeId, createdAt])
+  @@map("route_pit_stops")
+}
+
+model RoutePitStopCount {
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pitStopId        String  @map("pit_stop_id") @db.Uuid
+  containerTypeId  String  @map("container_type_id") @db.Uuid
+  expectedFull     Int     @map("expected_full")
+  countedFull      Int     @map("counted_full")
+  expectedEmpty    Int     @map("expected_empty")
+  countedEmpty     Int     @map("counted_empty")
+  differenceReason String? @map("difference_reason")
+
+  pitStop       RoutePitStop  @relation(fields: [pitStopId], references: [id], onDelete: Restrict)
+  containerType ContainerType @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([pitStopId, containerTypeId])
+  @@map("route_pit_stop_counts")
 }
 
 // --- Sales & collections ----------------------------------------------------
@@ -777,6 +830,7 @@ model RouteSettlement {
   totalCashCollected       Decimal  @map("total_cash_collected") @db.Decimal(10, 2)
   totalPendingConfirmation Decimal  @map("total_pending_confirmation") @db.Decimal(10, 2)
   totalOnCredit            Decimal  @map("total_on_credit") @db.Decimal(10, 2)
+  totalCashDeliveredInPits Decimal? @map("total_cash_delivered_in_pits") @db.Decimal(10, 2)
   notes                    String?
   settledById              String   @map("settled_by") @db.Uuid
   settledAt                DateTime @map("settled_at") @db.Timestamptz(6)
