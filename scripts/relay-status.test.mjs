@@ -134,6 +134,22 @@ describe("relay:status", () => {
     assert.match(text, /Parada solicitada: no/);
   });
 
+  test("muestra el agente cuya confirmación está pendiente", () => {
+    writeRelay();
+    writeFileSync(
+      join(relayDir, "waiting-confirmation.json"),
+      JSON.stringify({
+        agent: "claude",
+        reason: "codex y antigravity quedaron sin cuota",
+        createdAt: "2026-10-10T15:00:00.000Z",
+      }),
+    );
+
+    const text = renderStatus(readStatusState(root, { isAlive: () => false }), NOW, false);
+    assert.match(text, /Esperando confirmación para claude/);
+    assert.match(text, /codex y antigravity quedaron sin cuota/);
+  });
+
   test("muestra solo las últimas ocho corridas", () => {
     writeRelay();
     const entries = Array.from({ length: 9 }, (_, index) => ({

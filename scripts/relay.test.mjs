@@ -277,6 +277,65 @@ describe("stopCurrentRun", () => {
 });
 
 describe("runRelay", () => {
+  test("un agente que requiere confirmación no se lanza después de agotar la cuota anterior", async () => {
+    const clock = fakeClock();
+    const out = captureOut();
+    const code = await relay(
+      [agent("a", "limit"), { ...agent("b", "finish"), confirmBeforeRun: true }],
+      { clock, out },
+    );
+
+    assert.equal(code, EXIT.confirmation);
+    assert.deepEqual(calls(), ["a"]);
+    assert.deepEqual(clock.sleeps, []);
+    assert.match(out.text(), /Esperando confirmación para b/);
+    assert.match(out.text(), /a quedó sin cuota/);
+    assert.match(out.text(), /pnpm relay --confirm b/);
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(root, ".relay", "waiting-confirmation.json"), "utf8")),
+      {
+        agent: "b",
+        reason: "a quedó sin cuota",
+        createdAt: "2026-10-09T15:00:00.000Z",
+      },
+    );
+  });
+
+  test("la confirmación permite correr al agente durante esa ejecución", async () => {
+    writeFileSync(join(root, ".relay", "waiting-confirmation.json"), "marca anterior\n");
+    const code = await runRelay({
+      root,
+      config: config([agent("a", "limit"), { ...agent("b", "finish"), confirmBeforeRun: true }]),
+      confirmedAgents: new Set(["b"]),
+      clock: fakeClock(),
+      out: captureOut(),
+      resolve: resolveDirect,
+      git: cleanGit,
+    });
+
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(calls(), ["a", "b"]);
+    assert.equal(existsSync(join(root, ".relay", "waiting-confirmation.json")), false);
+  });
+
+  test("explica cuando llega al agente por dos fallas del anterior", async () => {
+    const out = captureOut();
+    const code = await relay(
+      [agent("a", "fail,fail"), { ...agent("b", "finish"), confirmBeforeRun: true }],
+      { out },
+    );
+
+    assert.equal(code, EXIT.confirmation);
+    assert.deepEqual(calls(), ["a", "a"]);
+    assert.match(out.text(), /a falló dos veces seguidas/);
+  });
+
+  test("un agente sin confirmBeforeRun corre como hasta ahora", async () => {
+    const code = await relay([agent("a", "finish")]);
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(calls(), ["a"]);
+  });
+
   test("con límite pasa al siguiente agente", async () => {
     const code = await relay([agent("a", "limit"), agent("b", "finish")]);
     assert.equal(code, EXIT.done);
@@ -549,6 +608,15 @@ describe("runRelay", () => {
     assert.match(out.text(), /Correría b \(modelo: el default de su CLI\): /);
   });
 
+  test("--dry-run muestra qué agente requiere confirmación", async () => {
+    const out = captureOut();
+    await relay([{ ...agent("a", "finish"), confirmBeforeRun: true }], {
+      out,
+      dryRun: true,
+    });
+    assert.match(out.text(), /a requiere confirmación antes de correr/);
+  });
+
   test("una corrida que sale bien sin tocar RELEVO.md no avanzó: dos seguidas cortan", async () => {
     const out = captureOut();
     const code = await relay([agent("a", "idle,idle,idle")], { out });
@@ -759,6 +827,24 @@ describe("relay.config.json", () => {
     assert.equal(parsed.waitMinutes, DEFAULT_WAIT_MINUTES);
     assert.equal(parsed.maxRuns, DEFAULT_MAX_RUNS);
     assert.match(parsed.prompt, /\.relay\/RELEVO\.md/);
+    assert.deepEqual(
+      parsed.agents.filter((agent) => agent.confirmBeforeRun).map((agent) => agent.name),
+      ["claude"],
+    );
+  });
+
+  test("--confirm rechaza con claridad un nombre que no existe en la config", () => {
+    const result = spawnSync(
+      process.execPath,
+      [join(REPO_ROOT, "scripts", "relay.mjs"), "--confirm", "nadie"],
+      {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+      },
+    );
+
+    assert.equal(result.status, EXIT.error);
+    assert.match(result.stderr, /No existe el agente "nadie" en relay\.config\.json/);
   });
 
   test("cada agente con banderas dice de qué versión salen y pasa el prompt", () => {

@@ -1,5 +1,5 @@
 {
-  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. Ningún agente corre sin sandbox salvo el que lo declara con `unsandboxed: true` y su motivo (hoy codex y antigravity en Windows; el relevo lo avisa al arrancar), y ninguno con --dangerously-bypass-approvals-and-sandbox: ver `verifiedWith`. `model` es el modelo de cada agente: el relevo lo pasa con la bandera de MODEL_FLAGS (scripts/relay.mjs), al final de `args`.",
+  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. `confirmBeforeRun: true` exige confirmación humana antes de lanzarlo. Ningún agente corre sin sandbox salvo el que lo declara con `unsandboxed: true` y su motivo (hoy codex y antigravity en Windows; el relevo lo avisa al arrancar), y ninguno con --dangerously-bypass-approvals-and-sandbox: ver `verifiedWith`. `model` es el modelo de cada agente: el relevo lo pasa con la bandera de MODEL_FLAGS (scripts/relay.mjs), al final de `args`.",
   "prompt": "Sos un agente desatendido de pnpm relay. Leé AGENTS.md y .agents/rules/unattended-agents.md, y seguí .relay/RELEVO.md desde next-step. Al terminar cada paso, actualizá .relay/RELEVO.md (last-step, next-step, updated) y commiteá tu WIP en la rama del ítem. Ante cualquier acción que esas reglas prohíben: status: blocked con blocked-reason, y salí.",
   "waitMinutes": 60,
   "maxRuns": 50,
@@ -53,6 +53,7 @@
       "command": "claude",
       "npmPackage": "@anthropic-ai/claude-code",
       "model": "claude-opus-5-5",
+      "confirmBeforeRun": true,
       "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla. `--model` verificado en Claude Code 2.1.296 (acepta id o alias; se fija el id para que no cambie solo).",
       "args": [
         "-p",

@@ -7,6 +7,19 @@ espera `waitMinutes` y vuelve a empezar por el primero. Un agente que falla
 dos veces seguidas por otra cosa queda fuera por el resto del relevo, y se
 sigue con el siguiente. El traspaso entre agentes es `.relay/RELEVO.md`.
 
+Claude requiere confirmación humana antes de cada ejecución del relevo. Cuando
+le llega el turno, el relevo explica si fue porque los agentes anteriores se
+quedaron sin cuota o fallaron dos veces, y sale con código 5 sin lanzar Claude,
+sin esperar `waitMinutes` y sin volver al primero. Para continuar esa misma cola
+en una ejecución nueva:
+
+```sh
+pnpm relay --confirm claude
+```
+
+La confirmación vive solamente en ese proceso: no queda guardada para una
+ejecución posterior.
+
 Las reglas que sigue cada agente están en `.agents/rules/unattended-agents.md`.
 
 ## codex y antigravity corren sin sandbox en Windows
@@ -180,8 +193,12 @@ pnpm relay:status --watch   # redibuja cada 5 segundos hasta Ctrl+C
 ```
 pnpm relay --dry-run   # qué correría y con qué banderas, sin correr nada
 pnpm relay             # arranca
+pnpm relay --confirm claude # confirma Claude solo para esta ejecución
 touch .relay/stop      # para entre dos corridas (sale con 4)
 ```
+
+`--dry-run` también indica qué agentes requieren confirmación. Un nombre pasado
+a `--confirm` que no existe en `relay.config.json` termina con un error claro.
 
 | Código | Por qué paró                                                                                                                                                                                    |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -190,10 +207,15 @@ touch .relay/stop      # para entre dos corridas (sale con 4)
 | 2      | `status: blocked`, puesto por un agente o por la red de seguridad (cambios en main o sin rama, conflictos sin resolver, o git que falla)                                                        |
 | 3      | Llegó a `maxRuns`                                                                                                                                                                               |
 | 4      | `.relay/stop`                                                                                                                                                                                   |
+| 5      | El siguiente agente requiere confirmación; no fue lanzado. Continuá con `pnpm relay --confirm <agente>`                                                                                         |
 
 - `.relay/lock` tiene el pid del relevo que corre: nunca dos a la vez. Si
   quedó de un relevo que murió, el siguiente lo reemplaza solo. Si Windows
   reusó ese pid, se borra a mano.
+- `.relay/waiting-confirmation.json` identifica al agente pendiente y el motivo
+  que muestra `pnpm relay:status`. El relevo lo escribe antes de salir con 5 y
+  lo borra al iniciar la próxima ejecución real; `relay:status` nunca lo
+  modifica.
 - `.relay/log.jsonl` tiene una línea por corrida: agente, inicio, fin,
   resultado, código de salida; si fue un límite, el patrón y hasta 5 líneas
   que lo dispararon; si falló, las últimas 5 líneas de su stderr; y el WIP
