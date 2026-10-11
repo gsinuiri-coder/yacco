@@ -39,12 +39,34 @@ export class OrderItemResponseDto {
   unitPrice!: string;
 }
 
+export class OrderLocationDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
+export class OrderSiblingDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty({ format: "uuid" })
+  locationId!: string;
+
+  @ApiProperty()
+  locationName!: string;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
 
   @ApiProperty({ format: "uuid" })
   locationId!: string;
+
+  @ApiPropertyOptional({ type: OrderLocationDto })
+  location?: OrderLocationDto;
 
   @ApiPropertyOptional({ format: "uuid", nullable: true })
   orderGroupId!: string | null;
@@ -74,6 +96,9 @@ export class OrderResponseDto {
 
   @ApiProperty({ type: OrderItemResponseDto, isArray: true })
   items!: OrderItemResponseDto[];
+
+  @ApiProperty({ type: OrderSiblingDto, isArray: true })
+  siblingOrders!: OrderSiblingDto[];
 
   /**
    * Sum of quantity × unitPrice across items, computed with Decimal and

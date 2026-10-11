@@ -81,6 +81,30 @@ async function cancel(): Promise<void> {
         back-label="Volver a pedidos"
         @retry="resource.reload"
       >
+        <UAlert
+          v-if="order && order.siblingOrders && order.siblingOrders.length > 0"
+          role="status"
+          color="info"
+          variant="subtle"
+          icon="i-lucide-store"
+          :title="`Parte de un pedido de ${order.siblingOrders.length + 1} locales`"
+          class="mb-4"
+        >
+          <template #description>
+            <div class="mt-1 flex flex-wrap items-center gap-2 text-sm">
+              <span>Otros locales:</span>
+              <NuxtLink
+                v-for="sibling in order.siblingOrders"
+                :key="sibling.id"
+                :to="`/orders/${sibling.id}`"
+                class="font-medium text-primary hover:underline"
+              >
+                {{ sibling.locationName }}
+              </NuxtLink>
+            </div>
+          </template>
+        </UAlert>
+
         <UCard v-if="order" :ui="{ body: 'p-0 sm:p-0' }">
           <dl class="grid gap-5 p-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div>
@@ -91,6 +115,10 @@ async function cancel(): Promise<void> {
                 }}</NuxtLink>
               </dd>
               <dd class="text-muted">{{ order.customer.phone }}</dd>
+            </div>
+            <div v-if="order.location">
+              <dt class="text-muted">Local</dt>
+              <dd class="font-medium text-highlighted">{{ order.location.name }}</dd>
             </div>
             <div>
               <dt class="text-muted">Estado</dt>

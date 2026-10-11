@@ -11,12 +11,20 @@ import type { OrderLineDraft } from "../utils/order-lines";
  * Sin cliente no se elige producto: un precio prellenado que no es de nadie
  * es peor que un campo vacío.
  */
-const props = defineProps<{
-  customerId: string | null;
-  errors: Array<string | undefined>;
-  disabled: boolean;
-}>();
-const lines = defineModel<OrderLineDraft[]>({ required: true });
+const props = withDefaults(
+  defineProps<{
+    customerId: string | null;
+    locationId?: string | null;
+    labelPrefix?: string;
+    errors: Array<string | undefined>;
+    disabled: boolean;
+  }>(),
+  {
+    locationId: null,
+    labelPrefix: "",
+  },
+);
+const lines = defineModel<OrderLineDraft[]>({ default: () => [] });
 const emit = defineEmits<{ edited: [index: number] }>();
 
 const api = useApi();
@@ -48,8 +56,8 @@ let latestCustomer = 0;
 
 // Sólo un cambio de cliente vuelve a pedir precios; editar una línea no.
 watch(
-  () => props.customerId,
-  async (customerId) => {
+  () => [props.customerId, props.locationId] as const,
+  async ([customerId, locationId]) => {
     const current = ++latestCustomer;
     effective.value = [];
     pricesError.value = null;
@@ -60,7 +68,10 @@ watch(
     loadingPrices.value = true;
     let fetched: EffectivePrice[] = [];
     try {
-      fetched = await api.request<EffectivePrice[]>(`/customers/${customerId}/effective-prices`);
+      const query = locationId ? `?locationId=${locationId}` : "";
+      fetched = await api.request<EffectivePrice[]>(
+        `/customers/${customerId}/effective-prices${query}`,
+      );
     } catch (error) {
       if (current === latestCustomer) pricesError.value = describeApiFailure(error);
     }
@@ -69,7 +80,32 @@ watch(
     loadingPrices.value = false;
     lines.value = repriceLines(lines.value, products.value, fetched, pricesAvailable.value);
   },
+  { immediate: true },
 );
+
+function productLabel(index: number): string {
+  return props.labelPrefix
+    ? `Producto ${index + 1} de ${props.labelPrefix}`
+    : `Producto ${index + 1}`;
+}
+
+function quantityLabel(index: number): string {
+  return props.labelPrefix
+    ? `Cantidad del producto ${index + 1} de ${props.labelPrefix}`
+    : `Cantidad del producto ${index + 1}`;
+}
+
+function unitPriceLabel(index: number): string {
+  return props.labelPrefix
+    ? `Precio unitario del producto ${index + 1} de ${props.labelPrefix}`
+    : `Precio unitario del producto ${index + 1}`;
+}
+
+function removeLabel(index: number): string {
+  return props.labelPrefix
+    ? `Quitar producto ${index + 1} de ${props.labelPrefix}`
+    : `Quitar producto ${index + 1}`;
+}
 
 const productItems = computed(() =>
   products.value.map((product) => ({ label: product.name, value: product.id })),
@@ -156,7 +192,7 @@ const productPlaceholder = computed(() => {
                   :model-value="line.productId === '' ? undefined : line.productId"
                   :items="productItems"
                   :placeholder="productPlaceholder"
-                  :aria-label="`Producto ${index + 1}`"
+                  :aria-label="productLabel(index)"
                   :disabled="disabled || loadingProducts || customerId === null"
                   class="w-full"
                   @update:model-value="(value: string) => chooseProduct(index, value)"
@@ -169,7 +205,7 @@ const productPlaceholder = computed(() => {
                   :min="1"
                   :max="MAX_ITEM_QUANTITY"
                   :step="1"
-                  :aria-label="`Cantidad del producto ${index + 1}`"
+                  :aria-label="quantityLabel(index)"
                   :disabled="disabled"
                   @update:model-value="
                     (value: string | number) => update(index, { quantity: String(value) })
@@ -182,7 +218,7 @@ const productPlaceholder = computed(() => {
                     :model-value="line.unitPrice"
                     inputmode="decimal"
                     placeholder="12.50"
-                    :aria-label="`Precio unitario del producto ${index + 1}`"
+                    :aria-label="unitPriceLabel(index)"
                     :disabled="disabled"
                     class="w-28"
                     @update:model-value="
@@ -207,7 +243,7 @@ const productPlaceholder = computed(() => {
                   color="neutral"
                   variant="ghost"
                   icon="i-lucide-x"
-                  :aria-label="`Quitar producto ${index + 1}`"
+                  :aria-label="removeLabel(index)"
                   :disabled="disabled || lines.length <= 1"
                   @click="removeLine(index)"
                 />

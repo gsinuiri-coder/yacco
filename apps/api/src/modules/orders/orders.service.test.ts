@@ -635,6 +635,39 @@ describe("OrdersService", () => {
       expect(result.items[0]?.product.name).toBe("Recarga 20L");
     });
 
+    it("returns sibling orders when the order belongs to an order group", async () => {
+      prisma.order.findFirst.mockResolvedValue(buildOrder({ orderGroupId: ORDER_GROUP_ID }));
+      prisma.order.findMany.mockResolvedValue([
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          locationId: OTHER_LOCATION_ID,
+          location: { name: "Sucursal Sur" },
+        },
+      ]);
+
+      const result = await service.findOne(ORDER_ID);
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith({
+        where: {
+          orderGroupId: ORDER_GROUP_ID,
+          id: { not: ORDER_ID },
+        },
+        select: {
+          id: true,
+          locationId: true,
+          location: { select: { name: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(result.siblingOrders).toEqual([
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          locationId: OTHER_LOCATION_ID,
+          locationName: "Sucursal Sur",
+        },
+      ]);
+    });
+
     it("throws NotFoundException for an unknown id", async () => {
       prisma.order.findFirst.mockResolvedValue(null);
 

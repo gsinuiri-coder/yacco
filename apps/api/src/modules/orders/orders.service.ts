@@ -15,7 +15,11 @@ import type {
   CreateOrdersBatchDto,
 } from "./dto/create-orders-batch.dto.js";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto.js";
-import type { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.dto.js";
+import type {
+  OrderResponseDto,
+  OrderSiblingDto,
+  PaginatedOrdersDto,
+} from "./dto/order-response.dto.js";
 
 /**
  * Everything the wire shape needs, and nothing else. The order's own
@@ -26,6 +30,8 @@ import type { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.
 const ORDER_INCLUDE = {
   location: {
     select: {
+      id: true,
+      name: true,
       phone: true,
       customer: { select: { id: true, name: true } },
     },
@@ -75,10 +81,17 @@ function computeOrderTotal(items: { quantity: number; unitPrice: Prisma.Decimal 
     .toFixed(2);
 }
 
-function toOrderResponse(order: OrderWithRelations): OrderResponseDto {
+function toOrderResponse(
+  order: OrderWithRelations,
+  siblingOrders: OrderSiblingDto[] = [],
+): OrderResponseDto {
   return {
     id: order.id,
     locationId: order.locationId,
+    location: {
+      id: order.location.id,
+      name: order.location.name,
+    },
     orderGroupId: order.orderGroupId,
     customerId: order.location.customer.id,
     customer: { ...order.location.customer, phone: order.location.phone },
@@ -93,6 +106,7 @@ function toOrderResponse(order: OrderWithRelations): OrderResponseDto {
       quantity: item.quantity,
       unitPrice: item.unitPrice.toFixed(2),
     })),
+    siblingOrders,
     total: computeOrderTotal(order.items),
   };
 }
@@ -318,7 +332,16 @@ export class OrdersService {
         return created;
       });
 
-      return orders.map(toOrderResponse);
+      return orders.map((order) => {
+        const siblings = orders
+          .filter((other) => other.id !== order.id)
+          .map((other) => ({
+            id: other.id,
+            locationId: other.locationId,
+            locationName: other.location.name,
+          }));
+        return toOrderResponse(order, siblings);
+      });
     } catch (error) {
       if (dto.idempotencyKey !== undefined && isPrismaKnownError(error, "P2002")) {
         const existing = await this.prisma.orderGroup.findUniqueOrThrow({
@@ -356,9 +379,17 @@ export class OrdersService {
         `La clave de idempotencia "${dto.idempotencyKey}" ya se usó para otro pedido. Genera una clave nueva para este envío.`,
       );
     }
-    return requestedLocations.map((location) =>
-      toOrderResponse(existingByLocation.get(location.locationId) as OrderWithRelations),
-    );
+    return requestedLocations.map((location) => {
+      const order = existingByLocation.get(location.locationId) as OrderWithRelations;
+      const siblings = existing.orders
+        .filter((other) => other.id !== order.id)
+        .map((other) => ({
+          id: other.id,
+          locationId: other.locationId,
+          locationName: other.location.name,
+        }));
+      return toOrderResponse(order, siblings);
+    });
   }
 
   /** Always paginated; the count runs against the same filter as the page. */
@@ -378,7 +409,7 @@ export class OrdersService {
     ]);
 
     return {
-      data: orders.map(toOrderResponse),
+      data: orders.map((order) => toOrderResponse(order)),
       total,
       page,
       limit,
@@ -403,7 +434,29 @@ export class OrdersService {
     if (order === null) {
       throw new NotFoundException(`El pedido "${id}" no existe`);
     }
-    return toOrderResponse(order);
+
+    let siblingOrders: OrderSiblingDto[] = [];
+    if (order.orderGroupId !== null) {
+      const siblings = await this.prisma.order.findMany({
+        where: {
+          orderGroupId: order.orderGroupId,
+          id: { not: order.id },
+        },
+        select: {
+          id: true,
+          locationId: true,
+          location: { select: { name: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      siblingOrders = siblings.map((sibling) => ({
+        id: sibling.id,
+        locationId: sibling.locationId,
+        locationName: sibling.location.name,
+      }));
+    }
+
+    return toOrderResponse(order, siblingOrders);
   }
 
   /**

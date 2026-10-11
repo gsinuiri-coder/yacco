@@ -16,10 +16,22 @@ export interface OrderItem {
   unitPrice: string;
 }
 
+export interface OrderLocation {
+  id: string;
+  name: string;
+}
+
+export interface OrderSibling {
+  id: string;
+  locationId: string;
+  locationName: string;
+}
+
 /** OrderResponseDto. `createdAt` is an instant. */
 export interface Order {
   id: string;
   locationId: string;
+  location?: OrderLocation;
   orderGroupId: string | null;
   customerId: string;
   customer: { id: string; name: string; phone: string };
@@ -29,6 +41,7 @@ export interface Order {
   createdAt: string;
   items: OrderItem[];
   total: string;
+  siblingOrders?: OrderSibling[];
 }
 
 /**

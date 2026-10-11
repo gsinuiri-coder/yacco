@@ -779,6 +779,47 @@ describe("GET /api/v1/orders/:id", () => {
     expect(messagesOf(response)).toContain("no existe");
   });
 
+  test("returns sibling orders when the order belongs to a multi-location batch", async () => {
+    const { customerId, primaryLocation, secondLocation } =
+      await createCustomerWithThreeLocations();
+    const batchResponse = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        customerId,
+        deliveryDate: "2026-10-18",
+        locations: [
+          {
+            locationId: primaryLocation.id,
+            items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+          },
+          {
+            locationId: secondLocation.id,
+            items: [{ productId: containerProductId, quantity: 1, unitPrice: "35.00" }],
+          },
+        ],
+      })
+      .expect(201);
+
+    const [firstOrder, secondOrder] = batchResponse.body as [
+      { id: string; locationId: string },
+      { id: string; locationId: string },
+    ];
+
+    const response = await request(server())
+      .get(`/api/v1/orders/${firstOrder.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.siblingOrders).toEqual([
+      {
+        id: secondOrder.id,
+        locationId: secondLocation.id,
+        locationName: secondLocation.name,
+      },
+    ]);
+  });
+
   test("a malformed id is rejected with 400", async () => {
     const response = await request(server())
       .get("/api/v1/orders/not-a-uuid")

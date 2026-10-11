@@ -110,6 +110,20 @@ describe("Detalle de pedido", () => {
     expect(screen.queryByRole("button", { name: "Cancelar pedido" })).toBeNull();
   });
 
+  it("muestra el enlace y aviso cuando es parte de un pedido de varios locales", async () => {
+    stubGet(
+      buildOrder({
+        siblingOrders: [{ id: "o-2", locationId: "loc-sur", locationName: "Sucursal Sur" }],
+      }),
+    );
+
+    await renderDetail();
+
+    expect(await screen.findByText("Parte de un pedido de 2 locales")).toBeTruthy();
+    const siblingLink = screen.getByRole("link", { name: "Sucursal Sur" });
+    expect(siblingLink.getAttribute("href")).toBe("/orders/o-2");
+  });
+
   it("cancelar pide confirmación y repinta el estado como Cancelado", async () => {
     const order = buildOrder({ status: "PENDING" });
     stubGet(order);
