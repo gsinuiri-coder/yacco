@@ -40,6 +40,6 @@ preguntar: lo que en una sesión con persona sería «pará y preguntá», acá 
   `.relay/RELEVO.md`. Una corrida que no lo cambia cuenta como falla, y dos
   seguidas te sacan del relevo: sigue el próximo agente.
 - Commitear tu WIP vos. Si al salir dejás cambios sin commitear, el relevo
-  los commitea y pushea por vos; si estás en `main`, en cambio, marca
-  `blocked` y para todo.
+  los commitea y pushea por vos; si estás en `main`, sin rama o con
+  conflictos sin resolver, en cambio, marca `blocked` y para todo.
 - Cuando no queda nada en la cola: `status: done`.

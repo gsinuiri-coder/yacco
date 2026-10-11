@@ -111,8 +111,10 @@ puede escaparse. La única garantía es que no haya credencial que usar:
 
 Las banderas de cada agente salen de su `--help` en la versión anotada en
 `verifiedWith`. Al subir de versión una CLI, se vuelven a verificar. Un test
-(`relay.test.mjs`) falla si alguna usa un bypass o un modo de aprobación
-automática.
+(`relay.test.mjs`) falla si alguna usa `--dangerously-bypass-approvals-and-sandbox`
+o un modo de aprobación automática, y si una corre sin sandbox
+(`danger-full-access`, `--dangerously-skip-permissions`, también en su forma
+`--bandera=valor`) sin declararlo.
 
 ## Red de seguridad: el WIP que deja un agente
 
@@ -120,11 +122,24 @@ Después de cada corrida, salga bien o mal, el relevo mira `git status`. Si
 el agente dejó cambios, los commitea en la rama actual
 (`wip(relay): <agente> dejó cambios sin commitear`, con `git add -A` y
 `--no-verify`: el hook corre eslint y un WIP a medias puede no pasarlo) y
-hace push. Si el push falla, el commit queda local y el relevo lo avisa.
+hace push. Si la rama tiene commits sin pushear (ese WIP o los del propio
+agente), también los pushea, con el árbol limpio o no. Si el push falla, el
+commit queda local, el relevo lo avisa y lo reintenta después de la
+corrida siguiente.
 
-Nunca en `main` ni con HEAD suelto: ahí no commitea, escribe
-`status: blocked` con el motivo en RELEVO.md y sale con 2. Una persona
-mueve los cambios a la rama del ítem.
+Cada git corre sin prompts (`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`)
+y con un tope de 2 minutos: unas credenciales vencidas no cuelgan el relevo.
+
+**Lo que commitea es todo lo que `.gitignore` no excluye**, y lo pushea. Un
+archivo con un secreto que un agente dejó suelto llega a GitHub antes que
+gitleaks (que corre en CI). Es parte del riesgo de los agentes sin sandbox
+de arriba.
+
+No commitea, y escribe `status: blocked` con el motivo en RELEVO.md y sale
+con 2, si: la rama es `main`, no hay rama (HEAD suelto o un rebase a
+medias), quedó un merge/rebase/cherry-pick con conflictos sin resolver, o
+`git status`/`git commit` fallan. Una persona revisa el árbol y mueve los
+cambios a la rama del ítem.
 
 ## `.relay/RELEVO.md`
 
@@ -162,7 +177,7 @@ touch .relay/stop      # para entre dos corridas (sale con 4)
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0      | `status: done`                                                                                                                                                                                  |
 | 1      | Todos los agentes fallaron dos veces seguidas por algo que no es la cuota (una corrida que sale bien sin tocar RELEVO.md cuenta como falla), no hay ningún agente disponible, o falta RELEVO.md |
-| 2      | `status: blocked`, puesto por un agente o por la red de seguridad (cambios sin commitear en main)                                                                                               |
+| 2      | `status: blocked`, puesto por un agente o por la red de seguridad (cambios en main o sin rama, conflictos sin resolver, o git que falla)                                                        |
 | 3      | Llegó a `maxRuns`                                                                                                                                                                               |
 | 4      | `.relay/stop`                                                                                                                                                                                   |
 
@@ -174,5 +189,8 @@ touch .relay/stop      # para entre dos corridas (sale con 4)
   que lo dispararon; si falló, las últimas 5 líneas de su stderr; y el WIP
   que commiteó la red de seguridad (`wip`: rama, commit y si se pusheó).
   Esas líneas pasan por una redacción: los valores secretos del entorno y
-  todo lo que tiene forma de credencial salen como `***`. La salida
+  lo que tiene forma de credencial conocida (`sk-`, `gh*_`, `AIza`,
+  `Bearer`, `postgres://`, JWT, `AKIA`, el inicio de una clave PEM) salen
+  como `***`. Un secreto con otra forma que no venga del entorno puede
+  pasar: `.relay/` es local e ignorado por git: no lo compartas. La salida
   completa de cada agente va a la terminal, no a disco.

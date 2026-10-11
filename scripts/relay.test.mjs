@@ -343,6 +343,20 @@ describe("runRelay", () => {
     assert.deepEqual(ok.stderr, []);
   });
 
+  test("una corrida que termina por límite no guarda stderr, solo las líneas del límite", async () => {
+    await relay([agent("a", "limit"), agent("b", "finish")]);
+    assert.deepEqual(logEntries()[0].stderr, []);
+  });
+
+  test("la redacción tapa también un JWT, una clave AKIA y una clave privada PEM", () => {
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJh";
+    const match = matchLimit(
+      [`límite ${jwt} AKIAABCDEFGHIJKLMNOP -----BEGIN RSA PRIVATE KEY----- MIIE`],
+      [/límite/],
+    );
+    assert.equal(match.lines[0], "límite *** *** ***");
+  });
+
   test("un solo fallo no corta: se reintenta y sigue", async () => {
     const code = await relay([agent("a", "fail,finish")]);
     assert.equal(code, EXIT.done);
@@ -601,6 +615,77 @@ describe("red de seguridad: el WIP que deja un agente", () => {
     assert.match(state["blocked-reason"], /cambios sin commitear en main/);
     assert.match(out.text(), /cambios sin commitear en main/);
   });
+
+  test("con HEAD suelto tampoco commitea: blocked", async () => {
+    initRepo("feat/item");
+    sh(root, "checkout", "-q", "--detach");
+    const head = sh(root, "rev-parse", "HEAD");
+    const code = await relay([agent("a", "dirty,finish")], { git: gitIn(root) });
+    assert.equal(code, EXIT.blocked);
+    assert.equal(sh(root, "rev-parse", "HEAD"), head);
+    const state = parseRelay(readFileSync(join(root, ".relay", "RELEVO.md"), "utf8"));
+    assert.match(state["blocked-reason"], /HEAD suelto/);
+  });
+
+  test("un merge con conflictos no se cierra con add -A: blocked y nada commiteado", async () => {
+    initRepo("feat/item");
+    writeFileSync(join(root, "f.txt"), "base\n");
+    sh(root, "add", "f.txt");
+    sh(root, "commit", "-q", "-m", "base");
+    sh(root, "checkout", "-q", "-b", "otra");
+    writeFileSync(join(root, "f.txt"), "otra\n");
+    sh(root, "commit", "-q", "-am", "otra");
+    sh(root, "checkout", "-q", "feat/item");
+    writeFileSync(join(root, "f.txt"), "item\n");
+    sh(root, "commit", "-q", "-am", "item");
+    // Lo que dejaría un agente que arrancó un merge y salió sin resolverlo.
+    spawnSync("git", ["merge", "-q", "otra"], { cwd: root });
+    const head = sh(root, "rev-parse", "HEAD");
+    const code = await relay([agent("a", "ok")], { git: gitIn(root) });
+    assert.equal(code, EXIT.blocked);
+    assert.equal(sh(root, "rev-parse", "HEAD"), head);
+    const state = parseRelay(readFileSync(join(root, ".relay", "RELEVO.md"), "utf8"));
+    assert.match(state["blocked-reason"], /conflictos sin resolver/);
+  });
+
+  test("si el push falla, el WIP queda commiteado, se avisa y el relevo sigue", async () => {
+    initRepo("feat/item");
+    sh(root, "remote", "set-url", "origin", join(root, "no-existe.git"));
+    const out = captureOut();
+    const code = await relay([agent("a", "dirty,finish")], { out, git: gitIn(root) });
+    assert.equal(code, EXIT.done);
+    assert.equal(sh(root, "show", "HEAD:trabajo.txt"), "a medias");
+    assert.equal(logEntries()[0].wip.pushed, false);
+    assert.match(out.text(), /El push de feat\/item falló/);
+  });
+
+  test("con el árbol limpio pero commits sin pushear, los pushea", async () => {
+    const remote = initRepo("feat/item");
+    sh(root, "push", "-q", "-u", "origin", "feat/item");
+    writeFileSync(join(root, "hecho.txt"), "commiteado por el agente\n");
+    sh(root, "add", "hecho.txt");
+    sh(root, "commit", "-q", "-m", "trabajo del agente sin push");
+    await relay([agent("a", "finish")], { git: gitIn(root) });
+    assert.equal(sh(remote, "rev-parse", "feat/item"), sh(root, "rev-parse", "HEAD"));
+    assert.equal(logEntries()[0].wip, null);
+  });
+
+  test("un commit que falla bloquea con el motivo en una sola línea y sin reinterpretar $&", async () => {
+    const git = (args) => {
+      if (args[0] === "status") return { ok: true, stdout: " M x.ts", stderr: "" };
+      if (args[0] === "branch") return { ok: true, stdout: "feat/item", stderr: "" };
+      if (args[0] === "commit")
+        return { ok: false, stdout: "", stderr: "error: $& roto\nhint: otra" };
+      return { ok: true, stdout: "", stderr: "" };
+    };
+    const code = await relay([agent("a", "ok")], { git });
+    assert.equal(code, EXIT.blocked);
+    const state = parseRelay(readFileSync(join(root, ".relay", "RELEVO.md"), "utf8"));
+    assert.equal(
+      state["blocked-reason"],
+      "no pude commitear el WIP de a: error: $& roto · hint: otra",
+    );
+  });
 });
 
 describe("relay.config.json", () => {
@@ -757,6 +842,16 @@ describe("relay.config.json", () => {
       () => readRelayConfig(badPath),
       /agente-x usa --dangerously-skip-permissions sin `unsandboxed: true`/,
     );
+    writeFileSync(
+      badPath,
+      JSON.stringify(config([{ ...skip, args: ["--dangerously-skip-permissions=true"] }])),
+    );
+    assert.throws(() => readRelayConfig(badPath), /sin `unsandboxed: true`/);
+    writeFileSync(
+      badPath,
+      JSON.stringify(config([{ ...skip, args: ["exec", "--sandbox=danger-full-access"] }])),
+    );
+    assert.throws(() => readRelayConfig(badPath), /sin `unsandboxed: true`/);
     const declared = { ...skip, unsandboxed: true, unsandboxedReason: "motivo" };
     writeFileSync(badPath, JSON.stringify(config([declared])));
     assert.equal(readRelayConfig(badPath).agents[0].name, "agente-x");

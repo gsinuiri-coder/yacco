@@ -31,7 +31,7 @@
  * salvo el que la config declara `unsandboxed` (hoy codex en Windows): leé la
  * advertencia de ese archivo antes.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   mkdirSync,
@@ -51,7 +51,7 @@ import {
   redact,
   registerSecret,
   resolveCli,
-  run,
+  resolveCommand,
 } from "./lib.mjs";
 
 export const DEFAULT_WAIT_MINUTES = 60;
@@ -72,6 +72,9 @@ const TOKEN_SHAPES = [
   /AIza[0-9A-Za-z_-]{35}/g,
   /Bearer\s+\S+/gi,
   /postgres(?:ql)?:\/\/\S+/gi,
+  /eyJ[\w-]+\.[\w-]+\.[\w-]+/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----.*/g,
 ];
 
 // Claves y valores en inglés: son un enum de máquina, como cualquier otro
@@ -194,12 +197,14 @@ export const MODEL_FLAGS = { codex: "--model", agy: "--model", claude: "--model"
  */
 function checkSandboxPolicy(agent) {
   const args = agent.args ?? [];
-  if (args.includes(FORBIDDEN_FLAG)) {
+  // También en su forma `--bandera=valor` o `--sandbox=danger-full-access`.
+  const uses = (flag) => args.some((arg) => arg === flag || arg.split("=").includes(flag));
+  if (uses(FORBIDDEN_FLAG)) {
     throw new Error(`relay.config.json: ${agent.name} usa ${FORBIDDEN_FLAG}, que nunca se acepta.`);
   }
   const reason = agent.unsandboxedReason;
   const declared = agent.unsandboxed === true && typeof reason === "string" && reason.trim() !== "";
-  const flag = NO_SANDBOX.find((candidate) => args.includes(candidate));
+  const flag = NO_SANDBOX.find(uses);
   if (flag !== undefined && !declared) {
     throw new Error(
       `relay.config.json: ${agent.name} usa ${flag} sin \`unsandboxed: true\` ` +
@@ -488,16 +493,43 @@ function dryRun(agents, { prompt, relayPath, out }) {
   return EXIT.done;
 }
 
-/** git en `root`, sin cortar si falla: quien llama decide qué hacer. */
+// Un git que espera algo (credenciales vencidas, un editor) colgaría el
+// relevo fuera de `maxRuns` y de `.relay/stop`: sin prompts y con tope.
+const GIT_TIMEOUT_MS = 2 * 60 * 1000;
+const GIT_NO_PROMPT = { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", GIT_EDITOR: "true" };
+
+/**
+ * git en `root`, sin cortar nunca: devuelve `{ ok, stdout, stderr }` también
+ * si no se pudo lanzar o se pasó del tope. Quien llama decide qué hacer.
+ */
 export function gitIn(root) {
-  return (args) => run("git", args, { cwd: root, allowFailure: true });
+  return (args) => {
+    let resolved;
+    try {
+      resolved = resolveCommand("git");
+    } catch (error) {
+      return { ok: false, stdout: "", stderr: error.message };
+    }
+    const result = spawnSync(resolved.file, [...resolved.prefixArgs, ...args], {
+      cwd: root,
+      env: { ...process.env, ...resolved.env, ...GIT_NO_PROMPT },
+      shell: false,
+      encoding: "utf8",
+      timeout: GIT_TIMEOUT_MS,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stderr = result.error === undefined ? (result.stderr ?? "") : result.error.message;
+    return { ok: result.status === 0, stdout: (result.stdout ?? "").trim(), stderr };
+  };
 }
 
-/** Reemplaza (o agrega) un campo `clave: valor` de RELEVO.md. */
+/** Reemplaza (o agrega) un campo `clave: valor` de RELEVO.md, en una línea. */
 function setRelayField(text, key, value) {
   const line = new RegExp(`^${key}:.*$`, "m");
-  const field = `${key}: ${value}`;
-  return line.test(text) ? text.replace(line, field) : `${text.replace(/\n?$/, "\n")}${field}\n`;
+  const field = `${key}: ${value.replace(/\s*\n\s*/g, " · ")}`;
+  return line.test(text)
+    ? text.replace(line, () => field)
+    : `${text.replace(/\n?$/, "\n")}${field}\n`;
 }
 
 function markBlocked(relayPath, reason, now) {
@@ -508,11 +540,16 @@ function markBlocked(relayPath, reason, now) {
   writeFileSync(relayPath, text);
 }
 
+// Conflictos sin resolver en `status --porcelain`: `add -A` los daría por
+// resueltos y el commit cerraría el merge con los marcadores adentro.
+const UNMERGED = /^(?:DD|AU|UD|UA|DU|AA|UU) /m;
+
 /**
  * Red de seguridad después de cada corrida, bien o mal: si el agente dejó
- * cambios sin commitear, van como WIP a la rama actual y se pushean, para
- * que el siguiente agente (o una persona) no los pierda. Devuelve
- * `{ wip }` (null si el árbol estaba limpio) o `{ blocked }` con el motivo.
+ * cambios sin commitear, van como WIP a la rama actual; y si la rama tiene
+ * commits sin pushear (ese WIP o los del agente), se pushean, para que el
+ * siguiente agente (o una persona) no los pierda. Devuelve `{ wip }` (null
+ * si no hubo nada que commitear) o `{ blocked }` con el motivo.
  *
  * `--no-verify` a propósito: el hook corre eslint y un WIP a medias puede no
  * pasarlo; justo ahí es cuando más importa no perderlo. El PR igual pasa por
@@ -521,12 +558,20 @@ function markBlocked(relayPath, reason, now) {
 function commitLeftovers(agentName, { git, out }) {
   const status = git(["status", "--porcelain"]);
   if (!status.ok) return { blocked: `no pude leer git status: ${logLine(status.stderr)}` };
-  if (status.stdout === "") return { wip: null };
 
   const branch = git(["branch", "--show-current"]);
   const name = branch.ok ? branch.stdout : "";
+  const dirty = status.stdout !== "";
+  if (dirty && UNMERGED.test(status.stdout)) {
+    return {
+      blocked:
+        `${agentName} dejó un merge, rebase o cherry-pick con conflictos sin resolver; ` +
+        "el relevo no lo cierra. Revisá git status.",
+    };
+  }
   if (name === "" || name === "main") {
-    const where = name === "" ? "sin rama (HEAD suelto)" : "en main";
+    if (!dirty) return { wip: null };
+    const where = name === "" ? "sin rama (HEAD suelto o un rebase a medias)" : "en main";
     return {
       blocked:
         `${agentName} dejó cambios sin commitear ${where}; el relevo nunca commitea ahí. ` +
@@ -534,26 +579,34 @@ function commitLeftovers(agentName, { git, out }) {
     };
   }
 
-  const message = `wip(relay): ${agentName} dejó cambios sin commitear`;
-  for (const args of [
-    ["add", "-A"],
-    ["commit", "--no-verify", "-q", "-m", message],
-  ]) {
-    const result = git(args);
-    if (!result.ok) {
-      return { blocked: `no pude commitear el WIP de ${agentName}: ${logLine(result.stderr)}` };
+  let commit = null;
+  if (dirty) {
+    const message = `wip(relay): ${agentName} dejó cambios sin commitear`;
+    for (const args of [
+      ["add", "-A"],
+      ["commit", "--no-verify", "-q", "-m", message],
+    ]) {
+      const result = git(args);
+      if (!result.ok) {
+        return { blocked: `no pude commitear el WIP de ${agentName}: ${logLine(result.stderr)}` };
+      }
     }
+    commit = git(["rev-parse", "--short", "HEAD"]).stdout;
   }
-  const commit = git(["rev-parse", "--short", "HEAD"]).stdout;
-  const push = git(["push", "-q", "-u", "origin", name]);
-  if (!push.ok) {
-    // El WIP ya está a salvo en un commit local: el siguiente push lo lleva.
-    out.error(
-      `El WIP de ${agentName} quedó en ${commit} pero el push falló: ${logLine(push.stderr)}`,
-    );
+
+  // Sin upstream, o con commits que el remoto no tiene: push. Si falla, lo
+  // commiteado queda local y la próxima corrida lo vuelve a intentar.
+  const ahead = git(["rev-list", "--count", "@{upstream}..HEAD"]);
+  const pending = !ahead.ok || ahead.stdout !== "0";
+  let pushed = false;
+  if (pending) {
+    const push = git(["push", "-q", "-u", "origin", name]);
+    pushed = push.ok;
+    if (!push.ok) out.error(`El push de ${name} falló: ${logLine(push.stderr)}`);
   }
-  out.log(`${agentName} dejó cambios: WIP ${commit} en ${name}${push.ok ? ", pusheado" : ""}.`);
-  return { wip: { branch: name, commit, pushed: push.ok } };
+  if (commit === null) return { wip: null };
+  out.log(`${agentName} dejó cambios: WIP ${commit} en ${name}${pushed ? ", pusheado" : ""}.`);
+  return { wip: { branch: name, commit, pushed } };
 }
 
 const realClock = {
