@@ -23,6 +23,15 @@ export function formatCalendarDay(day: string): string {
   return `${dayOfMonth}/${month}/${year}`;
 }
 
+/** "2026-08-25" -> "2026-08-26". Rolls over months and years in UTC. */
+export function nextCalendarDay(day: string): string {
+  const parts = CALENDAR_DAY.exec(day);
+  if (parts === null) return day;
+  const [, year, month, dayOfMonth] = parts;
+  const next = new Date(Date.UTC(Number(year), Number(month) - 1, Number(dayOfMonth) + 1));
+  return next.toISOString().slice(0, 10);
+}
+
 /**
  * The current calendar day in Lima, as "AAAA-MM-DD". This reads the present
  * instant in an explicit zone — the opposite of parsing a day string. The

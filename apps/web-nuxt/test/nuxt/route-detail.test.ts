@@ -596,12 +596,30 @@ describe("Detalle de ruta", () => {
       expect((await within(form).findByRole("alert")).textContent).toContain("Base caída");
     });
 
-    it("una ruta que ya salió no lo ofrece: ahí se agrega de a una", async () => {
+    it("una ruta en curso sí lo ofrece para la oficina (administrador y vendedor)", async () => {
       stubRouteDetail(cleanups, buildRoute({ status: "IN_PROGRESS" }));
 
       await renderDetail();
 
       expect(screen.getByRole("button", { name: "Agregar parada" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Agregar pedidos pendientes" })).toBeTruthy();
+    });
+
+    it("un vendedor también ve la opción de agregar pedidos pendientes en ruta en curso", async () => {
+      resetSession();
+      cleanups.push(signIn(["SELLER"], "vendedor"));
+      stubRouteDetail(cleanups, buildRoute({ status: "IN_PROGRESS" }));
+
+      await renderDetail();
+
+      expect(screen.getByRole("button", { name: "Agregar pedidos pendientes" })).toBeTruthy();
+    });
+
+    it("una ruta terminada no ofrece agregar pedidos pendientes", async () => {
+      stubRouteDetail(cleanups, buildRoute({ status: "FINISHED" }));
+
+      await renderDetail();
+
       expect(screen.queryByRole("button", { name: "Agregar pedidos pendientes" })).toBeNull();
     });
   });

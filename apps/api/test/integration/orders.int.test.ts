@@ -1,5 +1,5 @@
 import request from "supertest";
-import { OrderStatus, StopOrigin } from "@prisma/client";
+import { OrderStatus, StopOrigin, StopStatus } from "@prisma/client";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
@@ -71,6 +71,45 @@ async function createOrder(
   return response.body.id;
 }
 
+let multiLocationSequence = 0;
+async function createCustomerWithThreeLocations() {
+  multiLocationSequence++;
+  const suffix = multiLocationSequence;
+  const customer = await request(server())
+    .post("/api/v1/customers")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: `Cliente con tres locales ${suffix}`,
+      phone: `94400${String(suffix).padStart(4, "0")}`,
+      address: "Av. Principal 100",
+      addressReference: "Local principal",
+    })
+    .expect(201);
+  const prisma = ctx.app.get(PrismaService);
+  const primaryLocation = await prisma.customerLocation.findFirstOrThrow({
+    where: { customerId: customer.body.id, isPrimary: true },
+  });
+  const secondLocation = await prisma.customerLocation.create({
+    data: {
+      customerId: customer.body.id,
+      name: "Tienda Norte",
+      address: "Av. Norte 200",
+      addressReference: "Frente al parque",
+      phone: `94500${String(suffix).padStart(4, "0")}`,
+    },
+  });
+  const thirdLocation = await prisma.customerLocation.create({
+    data: {
+      customerId: customer.body.id,
+      name: "Tienda Sur",
+      address: "Av. Sur 300",
+      addressReference: "Puerta azul",
+      phone: `94600${String(suffix).padStart(4, "0")}`,
+    },
+  });
+  return { customerId: customer.body.id as string, primaryLocation, secondLocation, thirdLocation };
+}
+
 beforeAll(async () => {
   ctx = await startTestApp();
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
@@ -136,10 +175,7 @@ afterAll(async () => {
   await stopTestApp(ctx);
 });
 
-// HU-06 §2.4 E1: "Dado un cliente registrado, cuando capturo un pedido,
-// entonces queda en estado «pendiente», disponible para asignar a una ruta,
-// con precios según lista o personalizado."
-
+// HU-06 §2.4 E1: "Dado un cliente registrado con un local activo, cuando capturo cantidades y una fecha de entrega, entonces se crea un pedido pendiente para ese local, con precios según lista o personalizado."
 describe("POST /api/v1/orders", () => {
   test("HU-06 E1: a seller captures an order and it lands PENDING with its items", async () => {
     const response = await request(server())
@@ -359,6 +395,129 @@ describe("POST /api/v1/orders", () => {
 
     expect(response.status).toBe(400);
     expect(messagesOf(response)).toContain("no es una fecha válida");
+  });
+});
+
+// HU-06 §2.4 E2: "Dado un cliente con tres locales activos, cuando cargo cantidades distintas en dos y dejo el tercero vacío, entonces se crean en una sola transacción dos pedidos enlazados —uno por local— y ninguno para el tercero; si una línea es inválida, no se crea ninguno."
+describe("POST /api/v1/orders/batch", () => {
+  test("HU-06 E2: crea un pedido por cada local con cantidades y enlaza los creados juntos", async () => {
+    const { customerId, primaryLocation, secondLocation, thirdLocation } =
+      await createCustomerWithThreeLocations();
+    const prisma = ctx.app.get(PrismaService);
+
+    const response = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        customerId,
+        deliveryDate: "2026-10-15",
+        idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        locations: [
+          {
+            locationId: primaryLocation.id,
+            items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+          },
+          {
+            locationId: secondLocation.id,
+            items: [{ productId: containerProductId, quantity: 1, unitPrice: "35.00" }],
+          },
+          { locationId: thirdLocation.id, items: [] },
+        ],
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toHaveLength(2);
+    expect(response.body.map((order: { locationId: string }) => order.locationId)).toEqual([
+      primaryLocation.id,
+      secondLocation.id,
+    ]);
+    expect(
+      new Set(response.body.map((order: { orderGroupId: string }) => order.orderGroupId)),
+    ).toEqual(new Set([response.body[0].orderGroupId]));
+    expect(response.body[0].orderGroupId).toEqual(expect.any(String));
+
+    const persisted = await prisma.order.findMany({
+      where: { orderGroupId: response.body[0].orderGroupId },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(persisted.map((order) => order.locationId)).toEqual([
+      primaryLocation.id,
+      secondLocation.id,
+    ]);
+  });
+
+  test("una línea inválida en el segundo local no deja ningún pedido ni grupo", async () => {
+    const { customerId, primaryLocation, secondLocation } =
+      await createCustomerWithThreeLocations();
+    const prisma = ctx.app.get(PrismaService);
+    const idempotencyKey = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+    const response = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        customerId,
+        deliveryDate: "2026-10-16",
+        idempotencyKey,
+        locations: [
+          {
+            locationId: primaryLocation.id,
+            items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+          },
+          {
+            locationId: secondLocation.id,
+            items: [{ productId: containerProductId, quantity: 0, unitPrice: "35.00" }],
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(await prisma.orderGroup.count({ where: { idempotencyKey } })).toBe(0);
+    expect(
+      await prisma.order.count({
+        where: { locationId: { in: [primaryLocation.id, secondLocation.id] } },
+      }),
+    ).toBe(0);
+  });
+
+  // HU-06 §2.4 E3: "Dado el mismo envío repetido por un reintento, cuando llega con la misma clave de idempotencia, entonces se devuelve el grupo ya creado sin duplicar pedidos."
+  test("HU-06 E3: repetir el mismo envío devuelve el mismo grupo sin crear pedidos de más", async () => {
+    const { customerId, primaryLocation, secondLocation } =
+      await createCustomerWithThreeLocations();
+    const prisma = ctx.app.get(PrismaService);
+    const idempotencyKey = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const body = {
+      customerId,
+      deliveryDate: "2026-10-17",
+      idempotencyKey,
+      locations: [
+        {
+          locationId: primaryLocation.id,
+          items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+        },
+        {
+          locationId: secondLocation.id,
+          items: [{ productId: containerProductId, quantity: 1, unitPrice: "35.00" }],
+        },
+      ],
+    };
+
+    const first = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send(body)
+      .expect(201);
+    const replay = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send(body)
+      .expect(201);
+
+    expect(replay.body.map((order: { id: string }) => order.id)).toEqual(
+      first.body.map((order: { id: string }) => order.id),
+    );
+    const group = await prisma.orderGroup.findUniqueOrThrow({ where: { idempotencyKey } });
+    expect(await prisma.order.count({ where: { orderGroupId: group.id } })).toBe(2);
   });
 });
 
@@ -619,6 +778,47 @@ describe("GET /api/v1/orders/:id", () => {
     expect(messagesOf(response)).toContain("no existe");
   });
 
+  test("returns sibling orders when the order belongs to a multi-location batch", async () => {
+    const { customerId, primaryLocation, secondLocation } =
+      await createCustomerWithThreeLocations();
+    const batchResponse = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        customerId,
+        deliveryDate: "2026-10-18",
+        locations: [
+          {
+            locationId: primaryLocation.id,
+            items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+          },
+          {
+            locationId: secondLocation.id,
+            items: [{ productId: containerProductId, quantity: 1, unitPrice: "35.00" }],
+          },
+        ],
+      })
+      .expect(201);
+
+    const [firstOrder, secondOrder] = batchResponse.body as [
+      { id: string; locationId: string },
+      { id: string; locationId: string },
+    ];
+
+    const response = await request(server())
+      .get(`/api/v1/orders/${firstOrder.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.siblingOrders).toEqual([
+      {
+        id: secondOrder.id,
+        locationId: secondLocation.id,
+        locationName: secondLocation.name,
+      },
+    ]);
+  });
+
   test("a malformed id is rejected with 400", async () => {
     const response = await request(server())
       .get("/api/v1/orders/not-a-uuid")
@@ -720,6 +920,199 @@ describe("PATCH /api/v1/orders/:id/cancel", () => {
   });
 });
 
+describe("POST /api/v1/orders/:id/reschedule and /reschedule-by-date", () => {
+  let driverSequence = 0;
+
+  async function getOrNewDriver(): Promise<string> {
+    driverSequence++;
+    const username = `chofer-reprogramar-${driverSequence}`;
+    await request(server())
+      .post("/api/v1/users")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: username, username, password: "password123", roles: ["DRIVER"] })
+      .expect(201);
+    const users = await request(server())
+      .get("/api/v1/users?role=DRIVER")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    return users.body.find((u: { username: string }) => u.username === username).id;
+  }
+
+  // HU-06 §2.4 E4: "Dado un pedido no entregado que todavía no fue reprogramado, cuando administrador o vendedor lo reprograma, entonces el original conserva estado, fecha y motivo, y se crea un pedido nuevo pendiente para el mismo local con los mismos productos, cantidades y precios; un segundo intento sobre el mismo original se rechaza."
+  test("HU-06 E4: reschedules a failed order copying lines and unit prices even if catalog price changed", async () => {
+    const driverId = await getOrNewDriver();
+    const deliveryDate = "2026-10-01";
+    const orderId = await createOrder(adminToken, {
+      deliveryDate,
+      items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+    });
+
+    // Create route, add stop, start, and mark FAILED
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: deliveryDate })
+      .expect(201);
+    const stop = await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/start`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/stops/${stop.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Local cerrado por mudanza" })
+      .expect(200);
+
+    // Change catalog list price from 12.50 to 18.00!
+    const prisma = ctx.app.get(PrismaService);
+    await prisma.product.update({
+      where: { id: refillProductId },
+      data: { listPrice: "18.00" },
+    });
+
+    // Reschedule as SELLER
+    const rescheduleResponse = await request(server())
+      .post(`/api/v1/orders/${orderId}/reschedule`)
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({})
+      .expect(201);
+
+    const newOrder = rescheduleResponse.body;
+    expect(newOrder.status).toBe(OrderStatus.PENDING);
+    expect(newOrder.deliveryDate).toBe("2026-10-02"); // default next day
+    expect(newOrder.rescheduledFromOrderId).toBe(orderId);
+    expect(newOrder.rescheduledFrom).toEqual({ id: orderId, deliveryDate: "2026-10-01" });
+    expect(newOrder.items).toHaveLength(1);
+    expect(newOrder.items[0].unitPrice).toBe("12.50"); // Preserved original price! Not 18.00!
+    expect(newOrder.items[0].quantity).toBe(2);
+
+    // Verify original order remains FAILED with its date and failureReason and links to new order
+    const originalResponse = await request(server())
+      .get(`/api/v1/orders/${orderId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(originalResponse.body.status).toBe(OrderStatus.FAILED);
+    expect(originalResponse.body.deliveryDate).toBe("2026-10-01");
+    expect(originalResponse.body.failureReason).toBe("Local cerrado por mudanza");
+    expect(originalResponse.body.rescheduledTo).toEqual({
+      id: newOrder.id,
+      deliveryDate: "2026-10-02",
+    });
+
+    // Revert list price back for other tests
+    await prisma.product.update({
+      where: { id: refillProductId },
+      data: { listPrice: "12.50" },
+    });
+  });
+
+  test("second reschedule attempt of the same failed order is rejected with 409", async () => {
+    const driverId = await getOrNewDriver();
+    const deliveryDate = "2026-10-03";
+    const orderId = await createOrder(adminToken, { deliveryDate });
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: deliveryDate })
+      .expect(201);
+    const stop = await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId })
+      .expect(201);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/start`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/stops/${stop.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "No contesta" })
+      .expect(200);
+
+    // First reschedule passes
+    await request(server())
+      .post(`/api/v1/orders/${orderId}/reschedule`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({})
+      .expect(201);
+
+    // Second reschedule fails
+    const second = await request(server())
+      .post(`/api/v1/orders/${orderId}/reschedule`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({});
+    expect(second.status).toBe(409);
+    expect(messagesOf(second)).toContain("ya fue reprogramado");
+  });
+
+  // HU-06 §2.4 E5: "Dado varios no entregados de una fecha, cuando la oficina elige «Reprogramar todos», entonces todos los nuevos pedidos se crean o ninguno."
+  test("HU-06 E5: «Reprogramar todos» with one order already rescheduled undoes everything (todo o nada)", async () => {
+    const driverId = await getOrNewDriver();
+    const deliveryDate = "2026-10-05";
+    const order1Id = await createOrder(adminToken, { deliveryDate });
+    const order2Id = await createOrder(adminToken, { deliveryDate });
+
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: deliveryDate })
+      .expect(201);
+    const stop1 = await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId: order1Id })
+      .expect(201);
+    const stop2 = await request(server())
+      .post(`/api/v1/routes/${route.body.id}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: StopOrigin.ORDER, orderId: order2Id })
+      .expect(201);
+
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/start`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/stops/${stop1.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Motivo 1" })
+      .expect(200);
+    await request(server())
+      .patch(`/api/v1/routes/${route.body.id}/stops/${stop2.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ status: StopStatus.FAILED, failureReason: "Motivo 2" })
+      .expect(200);
+
+    // Reschedule order 1 individually
+    await request(server())
+      .post(`/api/v1/orders/${order1Id}/reschedule`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({})
+      .expect(201);
+
+    // Now call batch reschedule for that date -> fails and rolls back!
+    const batchResponse = await request(server())
+      .post("/api/v1/orders/reschedule-by-date")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ deliveryDate });
+    expect(batchResponse.status).toBe(409);
+    expect(messagesOf(batchResponse)).toContain("ya fueron reprogramados");
+
+    // Order 2 was NOT rescheduled
+    const checkOrder2 = await request(server())
+      .get(`/api/v1/orders/${order2Id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    expect(checkOrder2.body.rescheduledTo).toBeNull();
+  });
+});
+
 describe("role guard", () => {
   test("DRIVER is refused on every orders route but the detail", async () => {
     const list = await request(server())
@@ -744,6 +1137,18 @@ describe("role guard", () => {
       .patch(`/api/v1/orders/${MISSING_UUID}/cancel`)
       .set("Authorization", `Bearer ${driverToken}`);
     expect(cancel.status).toBe(403);
+
+    const reschedule = await request(server())
+      .post(`/api/v1/orders/${MISSING_UUID}/reschedule`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({});
+    expect(reschedule.status).toBe(403);
+
+    const rescheduleDate = await request(server())
+      .post("/api/v1/orders/reschedule-by-date")
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({ deliveryDate: "2026-10-01" });
+    expect(rescheduleDate.status).toBe(403);
   });
 
   test("an unauthenticated request is refused with 401", async () => {

@@ -141,8 +141,36 @@ cuándo, y tres líneas:
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 3 de «Fase 2 en local».
 - **Asumimos:** que el camión vuelve a la planta a recargar en medio del reparto, y que la oficina (ADMIN o SELLER) lo anota en la misma ruta, con salida de lotes FIFO como al planificar. Quitar carga sigue siendo solo antes de salir.
-- **Construido encima:** `POST /api/v1/routes/:id/loads` admite `PLANNED` e `IN_PROGRESS` para ADMIN y SELLER, conserva el movimiento `ROUTE_LOAD` y el consumo FIFO; el detalle permite registrar la recarga y solo ofrece quitar cargas en `PLANNED`. La prueba de integración recorre planificar, salir, recargar, entregar y liquidar, y confirma que la liquidación suma ambas cargas sin una rama especial.
+- **Construido encima:** `POST /api/v1/routes/:id/loads` admitió transitoriamente `IN_PROGRESS`. El 2026-10-11 Giancarlo retiró la recarga libre en ruta (Fase 3, fila 1): «no se puede agregar carga a una ruta que ya salió» (la carga a mitad de reparto entrará por la parada en planta / pit en la fila 2). `POST /api/v1/routes/:id/loads` y la pantalla exigen `PLANNED` de nuevo; lo cargado previamente en el libro de pruebas locales se conserva.
 - **Si resulta que no:** bajo. Se vuelve a exigir `PLANNED` para cargar; lo ya cargado queda en el libro.
+
+### Fase 3: un formulario crea pedidos enlazados para varios locales
+
+- **Decidido por Giancarlo (2026-10-11),** sin reunión posible con el dueño; fila 1 de «Fase 3 en local».
+- **Asumimos:** que la oficina toma una sola fecha y cantidades para uno o más locales activos del mismo cliente, pero conserva «un pedido = un local = una parada». Los pedidos nacen juntos, enlazados y en una sola transacción; un local sin cantidades no crea pedido y repetir el mismo envío no duplica el grupo.
+- **Construido encima:** nada todavía. Se construyen `order_groups`, `orders.order_group_id`, el alta idempotente y la lectura «Parte de un pedido de N locales».
+- **Si resulta que no:** medio. Los pedidos ya creados siguen siendo pedidos independientes válidos; se deja de ofrecer el formulario múltiple y el enlace del grupo.
+
+### Fase 3: la oficina agrega varios pedidos a una ruta planificada o en curso
+
+- **Decidido por Giancarlo (2026-10-11),** sin reunión posible con el dueño; fila 1 de «Fase 3 en local».
+- **Asumimos:** que administrador y vendedor pueden seleccionar juntos los pedidos pendientes de la fecha de la ruta, filtrarlos por zona y agregarlos al final tanto en `PLANNED` como en `IN_PROGRESS`. El lote es todo o nada; el chofer no agrega pedidos y una falta de stock arriba del camión avisa sin bloquear.
+- **Construido encima:** nada todavía. Se amplían el lote de paradas y el detalle de ruta sin editar paradas ya registradas.
+- **Si resulta que no:** bajo. Se vuelve a limitar el lote a rutas planificadas; las paradas agregadas quedan auditadas como cualquier otra.
+
+### Fase 3: la carga libre vuelve a ser solo antes de salir
+
+- **Decidido por Giancarlo (2026-10-11),** sin reunión posible con el dueño; fila 1 de «Fase 3 en local», que reemplaza la decisión de Fase 2 sobre recargar una ruta en curso.
+- **Asumimos:** que una carga directa sólo se registra con la ruta `PLANNED`; si el vehículo vuelve a la planta durante el reparto, la carga entra por la parada en planta de la fila 2 y no por el formulario libre de carga.
+- **Construido encima:** hoy #307 permite `POST /api/v1/routes/:id/loads` en `IN_PROGRESS`; esta fila lo revierte en API, web y tests sin borrar ninguna carga histórica del libro.
+- **Si resulta que no:** bajo. El código de #307 queda identificado y se puede volver a habilitar, sin tocar cargas ya escritas.
+
+### Fase 3: reprogramar conserva el pedido no entregado y crea otro
+
+- **Decidido por Giancarlo (2026-10-11),** sin reunión posible con el dueño; fila 1 de «Fase 3 en local».
+- **Asumimos:** que reprogramar es una decisión de administrador o vendedor: el pedido fallido conserva estado, fecha, motivo y renglones; se crea una sola vez otro pedido pendiente para el mismo local, con los mismos productos, cantidades y precios, enlazado al original. Por defecto va al día siguiente de America/Lima, pero la oficina puede cambiar la fecha.
+- **Construido encima:** nada todavía. Se construye `orders.rescheduled_from_order_id`, la acción individual y el lote «Reprogramar todos», ambos transaccionales.
+- **Si resulta que no:** medio. Los pedidos nuevos siguen siendo registros válidos y auditables; se deja de ofrecer el enlace o se ajusta la regla en una migración posterior, sin editar ni borrar los originales.
 
 ### Fase 2: el orden por cercanía se propone, no se impone
 

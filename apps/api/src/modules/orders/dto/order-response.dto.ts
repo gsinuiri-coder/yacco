@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { OrderStatus } from "@prisma/client";
 
 /** Minimum the office needs to recognise the customer without a second call. */
@@ -39,9 +39,57 @@ export class OrderItemResponseDto {
   unitPrice!: string;
 }
 
+export class OrderLocationDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+}
+
+export class OrderSiblingDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty({ format: "uuid" })
+  locationId!: string;
+
+  @ApiProperty()
+  locationName!: string;
+}
+
+export class RescheduledOrderLinkDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty({ type: String, example: "2026-08-26" })
+  deliveryDate!: string;
+}
+
 export class OrderResponseDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
+
+  @ApiProperty({ format: "uuid" })
+  locationId!: string;
+
+  @ApiPropertyOptional({ type: OrderLocationDto })
+  location?: OrderLocationDto;
+
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
+  orderGroupId!: string | null;
+
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
+  rescheduledFromOrderId?: string | null;
+
+  @ApiPropertyOptional({ type: RescheduledOrderLinkDto, nullable: true })
+  rescheduledFrom?: RescheduledOrderLinkDto | null;
+
+  @ApiPropertyOptional({ type: RescheduledOrderLinkDto, nullable: true })
+  rescheduledTo?: RescheduledOrderLinkDto | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  failureReason?: string | null;
 
   @ApiProperty({ format: "uuid" })
   customerId!: string;
@@ -68,6 +116,9 @@ export class OrderResponseDto {
 
   @ApiProperty({ type: OrderItemResponseDto, isArray: true })
   items!: OrderItemResponseDto[];
+
+  @ApiProperty({ type: OrderSiblingDto, isArray: true })
+  siblingOrders!: OrderSiblingDto[];
 
   /**
    * Sum of quantity × unitPrice across items, computed with Decimal and

@@ -27,8 +27,11 @@ import { viewerFrom } from "../../common/viewer.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
+import { CreateOrdersBatchDto } from "./dto/create-orders-batch.dto.js";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto.js";
 import { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.dto.js";
+import { RescheduleOrderDto } from "./dto/reschedule-order.dto.js";
+import { RescheduleOrdersByDateDto } from "./dto/reschedule-orders-by-date.dto.js";
 import { OrdersService } from "./orders.service.js";
 
 /**
@@ -55,6 +58,22 @@ export class OrdersController {
   ): Promise<OrderResponseDto> {
     // createdById comes from the access token, never from the body.
     return this.ordersService.create(dto, request.user.sub);
+  }
+
+  @ApiOperation({
+    summary: "Registra un pedido por cada local con productos, todos o ninguno",
+  })
+  @ApiResponse({ status: 201, type: OrderResponseDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: "Validation failed, or a customer, location or product cannot be used",
+  })
+  @ApiConflictResponse({ description: "idempotencyKey was reused for a different submission" })
+  @Post("batch")
+  createBatch(
+    @Body() dto: CreateOrdersBatchDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<OrderResponseDto[]> {
+    return this.ordersService.createBatch(dto, request.user.sub);
   }
 
   @ApiOperation({
@@ -94,5 +113,40 @@ export class OrdersController {
   @Patch(":id/cancel")
   cancel(@Param("id", ParseUUIDPipe) id: string): Promise<OrderResponseDto> {
     return this.ordersService.cancel(id);
+  }
+
+  @ApiOperation({
+    summary: "Reprograma todos los pedidos no entregados de una fecha, todo o nada",
+  })
+  @ApiResponse({ status: 201, type: OrderResponseDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: "Validation failed, or no failed orders exist for that date",
+  })
+  @ApiConflictResponse({
+    description: "One or more orders for that date were already rescheduled",
+  })
+  @Post("reschedule-by-date")
+  rescheduleByDate(
+    @Body() dto: RescheduleOrdersByDateDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<OrderResponseDto[]> {
+    return this.ordersService.rescheduleByDate(dto, request.user.sub);
+  }
+
+  @ApiOperation({
+    summary: "Reprograma un pedido no entregado creando uno nuevo en PENDING",
+  })
+  @ApiResponse({ status: 201, type: OrderResponseDto })
+  @ApiNotFoundResponse({ description: "Order id does not exist" })
+  @ApiConflictResponse({
+    description: "Order is not FAILED, or was already rescheduled",
+  })
+  @Post(":id/reschedule")
+  reschedule(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: RescheduleOrderDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<OrderResponseDto> {
+    return this.ordersService.reschedule(id, dto, request.user.sub);
   }
 }

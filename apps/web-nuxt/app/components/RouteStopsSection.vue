@@ -32,10 +32,12 @@ const showActions = computed(() => editable.value || canCorrect.value);
 const correcting = ref<RouteStop | null>(null);
 
 const adding = ref(false);
-// Armar la hoja de una vez: solo con la ruta planificada, y solo la oficina
-// (la API lo limita a ADMIN y SELLER). En la calle se agrega de a una.
+// Armar la hoja en lote: ruta planificada o en curso, y solo la oficina
+// (la API lo limita a ADMIN y SELLER).
 const canBatch = computed(
-  () => props.route.status === "PLANNED" && (session.hasRole("ADMIN") || session.hasRole("SELLER")),
+  () =>
+    (props.route.status === "PLANNED" || props.route.status === "IN_PROGRESS") &&
+    (session.hasRole("ADMIN") || session.hasRole("SELLER")),
 );
 const batching = ref(false);
 const marking = ref<RouteStop | null>(null);

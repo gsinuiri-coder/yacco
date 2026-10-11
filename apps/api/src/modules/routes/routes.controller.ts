@@ -157,10 +157,11 @@ export class RoutesController {
     return this.routesService.addStop(id, dto, actorFrom(request));
   }
 
-  // Solo la oficina arma la hoja de ruta de una vez: el chofer agrega de a una
-  // (autoventa) desde «Mi ruta», con la ruta ya en la calle.
+  // Solo la oficina arma la hoja de ruta en lote (planificada o en curso):
+  // el chofer agrega de a una (autoventa) desde «Mi ruta».
   @ApiOperation({
-    summary: "Agrega varias paradas de pedidos pendientes a una ruta planificada, todo o nada",
+    summary:
+      "Agrega varias paradas de pedidos pendientes a una ruta planificada o en curso, todo o nada",
   })
   @ApiResponse({ status: 201, type: [RouteStopResponseDto] })
   @ApiNotFoundResponse({ description: "Route id does not exist" })
@@ -168,7 +169,7 @@ export class RoutesController {
     description:
       "Validation failed, or one order is missing, not pending or already assigned (named); nothing is added",
   })
-  @ApiConflictResponse({ description: "Route is not PLANNED" })
+  @ApiConflictResponse({ description: "Route is FINISHED" })
   @Roles(UserRole.ADMIN, UserRole.SELLER)
   @Post(":id/stops/batch")
   addOrderStops(
@@ -302,7 +303,7 @@ export class RoutesController {
     description:
       "Validation failed, the batch item is missing, it is not the FIFO head, or there isn't enough stock",
   })
-  @ApiConflictResponse({ description: "Route is FINISHED" })
+  @ApiConflictResponse({ description: "Route is not PLANNED" })
   @Roles(UserRole.ADMIN, UserRole.SELLER)
   @Post(":id/loads")
   addLoad(

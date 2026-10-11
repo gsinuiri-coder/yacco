@@ -3,10 +3,10 @@ import { screen, waitFor } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { getQuery, readBody, setResponseStatus } from "h3";
 import type { H3Event } from "h3";
-import type { Customer, EffectivePrice, Product } from "@yacco/shared";
+import type { Customer, CustomerLocation, EffectivePrice, Product } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
-import { buildCustomer, pageOf } from "../support/fixtures";
+import { buildCustomer, buildLocation, pageOf } from "../support/fixtures";
 import { resetSession, signIn } from "../support/session";
 
 const cleanups: Array<() => void> = [];
@@ -26,7 +26,10 @@ function endpoint(...args: Parameters<typeof registerEndpoint>) {
   cleanups.push(registerEndpoint(...args));
 }
 
-function stubCatalog(effectiveByCustomer: Record<string, EffectivePrice[] | "falla">) {
+function stubCatalog(
+  effectiveByCustomer: Record<string, EffectivePrice[] | "falla">,
+  locationsByCustomer: Record<string, CustomerLocation[]> = {},
+) {
   endpoint("/api/v1/products", () => [RECARGA, BIDON]);
   endpoint("/api/v1/customers", (event: H3Event) => {
     const search = String(getQuery(event).search ?? "").toLowerCase();
@@ -34,6 +37,15 @@ function stubCatalog(effectiveByCustomer: Record<string, EffectivePrice[] | "fal
       [AURORA, NORTE].filter((customer) => customer.name.toLowerCase().includes(search)),
     );
   });
+  for (const customer of [AURORA, NORTE]) {
+    endpoint(`/api/v1/customers/${customer.id}/locations`, () => {
+      return (
+        locationsByCustomer[customer.id] ?? [
+          buildLocation({ id: `loc-${customer.id}`, name: "Principal", isPrimary: true }),
+        ]
+      );
+    });
+  }
   for (const [customerId, prices] of Object.entries(effectiveByCustomer)) {
     endpoint(`/api/v1/customers/${customerId}/effective-prices`, (event: H3Event) => {
       if (prices === "falla") {
@@ -46,9 +58,9 @@ function stubCatalog(effectiveByCustomer: Record<string, EffectivePrice[] | "fal
   endpoint("/api/v1/orders", { method: "GET", handler: () => pageOf([]) });
 }
 
-function stubCreate(respond: (event: H3Event) => unknown = () => ({ id: "o-new" })) {
+function stubCreate(respond: (event: H3Event) => unknown = () => [{ id: "o-new" }]) {
   const bodies: unknown[] = [];
-  endpoint("/api/v1/orders", {
+  endpoint("/api/v1/orders/batch", {
     method: "POST",
     handler: async (event: H3Event) => {
       bodies.push(await readBody(event));
@@ -71,11 +83,17 @@ async function pickCustomer(user: ReturnType<typeof userEvent.setup>, customer: 
   await user.click(await screen.findByRole("option", { name: new RegExp(customer.name) }));
 }
 
-async function pickProduct(user: ReturnType<typeof userEvent.setup>, line: number, name: string) {
+async function pickProduct(
+  user: ReturnType<typeof userEvent.setup>,
+  line: number,
+  name: string,
+  locationName?: string,
+) {
+  const label = locationName ? `Producto ${line} de ${locationName}` : `Producto ${line}`;
   await waitFor(() =>
-    expect((screen.getByLabelText(`Producto ${line}`) as HTMLButtonElement).disabled).toBe(false),
+    expect((screen.getByLabelText(label) as HTMLButtonElement).disabled).toBe(false),
   );
-  await user.click(screen.getByLabelText(`Producto ${line}`));
+  await user.click(screen.getByLabelText(label));
   await user.click(await screen.findByRole("option", { name }));
 }
 
@@ -116,11 +134,17 @@ describe("Nuevo pedido", () => {
     expect(bodies).toHaveLength(1);
     expect(bodies[0]).toMatchObject({
       customerId: "c-aurora",
-      items: [
-        { productId: "p-recarga", quantity: 3, unitPrice: "9.90" },
-        { productId: "p-bidon", quantity: 1, unitPrice: "35.00" },
+      locations: [
+        {
+          locationId: "loc-c-aurora",
+          items: [
+            { productId: "p-recarga", quantity: 3, unitPrice: "9.90" },
+            { productId: "p-bidon", quantity: 1, unitPrice: "35.00" },
+          ],
+        },
       ],
     });
+    expect((bodies[0] as { idempotencyKey: string }).idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
     expect((bodies[0] as { deliveryDate: string }).deliveryDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
@@ -281,5 +305,46 @@ describe("Nuevo pedido", () => {
 
     await waitFor(() => expect(useRouter().currentRoute.value.path).toBe("/orders"));
     expect(posts).toBe(1);
+  });
+
+  it("para un cliente con varios locales activos, lista los locales y crea pedidos solo para los que tienen productos", async () => {
+    const locCentral = buildLocation({
+      id: "loc-central",
+      name: "Local Central",
+      isPrimary: true,
+    });
+    const locSur = buildLocation({
+      id: "loc-sur",
+      name: "Sucursal Sur",
+      isPrimary: false,
+    });
+    stubCatalog({ "c-aurora": [agreed(RECARGA, "9.90")] }, { "c-aurora": [locCentral, locSur] });
+    const bodies = stubCreate();
+    const user = userEvent.setup();
+
+    await renderCreate();
+    await pickCustomer(user, AURORA);
+
+    expect(await screen.findByText("Local Central")).toBeTruthy();
+    expect(screen.getByText("Sucursal Sur")).toBeTruthy();
+
+    await pickProduct(user, 1, "Recarga 20L", "Local Central");
+    await user.clear(screen.getByLabelText("Cantidad del producto 1 de Local Central"));
+    await user.type(screen.getByLabelText("Cantidad del producto 1 de Local Central"), "2");
+
+    await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
+
+    await waitFor(() => expect(useRouter().currentRoute.value.path).toBe("/orders"));
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({
+      customerId: "c-aurora",
+      locations: [
+        {
+          locationId: "loc-central",
+          items: [{ productId: "p-recarga", quantity: 2, unitPrice: "9.90" }],
+        },
+      ],
+    });
+    expect((bodies[0] as { locations: unknown[] }).locations).toHaveLength(1);
   });
 });

@@ -70,11 +70,7 @@ async function reload(): Promise<void> {
 onMounted(reload);
 
 const canManageLoads = computed(() => session.hasRole("ADMIN") || session.hasRole("SELLER"));
-const editable = computed(
-  () =>
-    canManageLoads.value &&
-    (props.route.status === "PLANNED" || props.route.status === "IN_PROGRESS"),
-);
+const editable = computed(() => canManageLoads.value && props.route.status === "PLANNED");
 // La API sólo deja corregir una carga con la ruta PLANNED: con el camión en la
 // calle, un error de carga se resuelve en la liquidación.
 const canRemove = computed(() => canManageLoads.value && props.route.status === "PLANNED");
@@ -83,9 +79,6 @@ const sectionDescription = computed(() => {
     return canManageLoads.value
       ? "Lo que sube sale siempre del lote más antiguo con unidades. Mientras la ruta no arranque se puede corregir; después ya no."
       : "Lo que sube sale siempre del lote más antiguo con unidades.";
-  }
-  if (props.route.status === "IN_PROGRESS" && canManageLoads.value) {
-    return "Si el camión vuelve por más bidones, agrega aquí la nueva carga. Sale siempre del lote más antiguo con unidades.";
   }
   return "Lo que subió salió siempre del lote más antiguo con unidades.";
 });

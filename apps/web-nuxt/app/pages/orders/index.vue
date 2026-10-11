@@ -67,7 +67,16 @@ function openOrder(_event: Event, row: { original: Order }): void {
 <template>
   <AppPage title="Pedidos" :description="summary">
     <template #actions>
-      <UButton to="/orders/new" icon="i-lucide-plus" label="Nuevo pedido" />
+      <div class="flex items-center gap-2">
+        <UButton
+          to="/orders/undelivered"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-calendar-clock"
+          label="No entregados"
+        />
+        <UButton to="/orders/new" icon="i-lucide-plus" label="Nuevo pedido" />
+      </div>
     </template>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
