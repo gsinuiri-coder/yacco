@@ -114,6 +114,7 @@ afterEach(async () => {
 });
 
 describe("POST /api/v1/production-batches", () => {
+  // HU-01 E1: la primera llenada crea el lote y mueve el stock en la misma cantidad.
   test("un lote de dos líneas emite DOS movimientos FILLING con las cantidades correctas y el batchId del lote", async () => {
     await createMovement(adminToken, {
       type: "FLEET_ENTRY",
@@ -182,6 +183,7 @@ describe("POST /api/v1/production-batches", () => {
   // Business decision (spec, decided with the client): the plant really
   // filled those containers, so the batch is recorded anyway. The negative
   // means "fleet entries are missing" and is not a bug.
+  // HU-01 E5: la sobreproducción se registra, advierte y deja visible el faltante.
   test("producir más de los vacíos disponibles registra el lote igual, avisa con los números, y deja el inventario negativo", async () => {
     // No FLEET_ENTRY at all: every unit produced here outruns what's on the books.
     const response = await createBatch(adminToken, {
@@ -238,6 +240,7 @@ describe("POST /api/v1/production-batches", () => {
     expect(messagesOf(duplicate)).toContain("Ya existe");
   });
 
+  // HU-01 E2 y E4: una llenada posterior agrega renglones auditables sin editar la primera.
   test("dos llenadas del mismo día se guardan como renglones auditables del mismo lote y emiten sus propios movimientos", async () => {
     const first = await createBatch(adminToken, {
       code: "",
@@ -261,10 +264,14 @@ describe("POST /api/v1/production-batches", () => {
       include: { items: true },
     });
     expect(batches).toHaveLength(1);
+    const firstFilling = batches[0]!.items.find((item) => item.producedQty === 17);
+    const secondFilling = batches[0]!.items.find((item) => item.producedQty === 29);
     expect(batches[0]).toMatchObject({
       id: first.body.id,
+      filledById: firstFilling?.recordedById,
       notes: "Primera llenada",
     });
+    expect(batches[0]!.filledById).not.toBe(secondFilling?.recordedById);
     expect(batches[0]!.items.map((item) => item.producedQty).sort((a, b) => a - b)).toEqual([
       17, 29,
     ]);
@@ -307,6 +314,7 @@ describe("POST /api/v1/production-batches", () => {
     expect(new Set(movements.map((movement) => movement.recordedById)).size).toBe(2);
   });
 
+  // HU-01 E3: dos primeras llenadas simultáneas terminan en un lote y ninguna recibe 409.
   test("dos primeras llenadas simultáneas crean un lote y dos renglones, sin 409", async () => {
     const [first, second] = await Promise.all([
       createBatch(adminToken, {

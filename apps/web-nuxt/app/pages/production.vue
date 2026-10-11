@@ -84,8 +84,9 @@ function editLine(index: number, patch: Partial<BatchLineDraft>): void {
 }
 
 async function register(): Promise<void> {
-  // Con un arranque en frío, un botón vivo son varios lotes duplicados.
-  if (submitting.value) return;
+  // Con un arranque en frío, un botón vivo son varios lotes duplicados. Mientras
+  // cambia la fecha tampoco se puede enviar el código que propuso la anterior.
+  if (submitting.value || proposalLoading.value) return;
   dateError.value = date.value === "" ? "Elige una fecha" : undefined;
   lineErrors.value = lines.value.map(checkBatchLine);
   if (dateError.value || lineErrors.value.some(Boolean)) return;
@@ -311,7 +312,7 @@ function fillingAudit(item: ProductionBatch["items"][number]): string | null {
               <UButton
                 type="submit"
                 icon="i-lucide-factory"
-                :disabled="submitting"
+                :disabled="submitting || proposalLoading"
                 :label="submitting ? 'Registrando…' : willAppend ? 'Sumar llenada' : 'Crear lote'"
               />
             </div>

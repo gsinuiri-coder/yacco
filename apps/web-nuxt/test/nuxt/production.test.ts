@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { getQuery } from "h3";
 import type { H3Event } from "h3";
 import { limaToday } from "@yacco/shared";
-import type { ProductionBatch, UserRole } from "@yacco/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ProductionBatch, ProductionBatchCodeProposal, UserRole } from "@yacco/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "~/app.vue";
 import { pageOf } from "../support/fixtures";
 import { failWith, stubWrite } from "../support/route-detail";
@@ -48,7 +48,18 @@ function batch(overrides: Partial<ProductionBatch> = {}): ProductionBatch {
   };
 }
 
-function stubPage(batches: ProductionBatch[] = [batch()]) {
+function proposalFor(date: string): ProductionBatchCodeProposal {
+  if (date === EXISTING_DATE) return { code: EXISTING_CODE, willAppend: true };
+  const [year, month, day] = date.split("-");
+  return { code: `L-${day}${month}${year}`, willAppend: false };
+}
+
+function stubPage(
+  batches: ProductionBatch[] = [batch()],
+  proposal: (
+    date: string,
+  ) => ProductionBatchCodeProposal | Promise<ProductionBatchCodeProposal> = proposalFor,
+) {
   const queries: Array<Record<string, unknown>> = [];
   const proposalDates: string[] = [];
   cleanups.push(
@@ -58,9 +69,7 @@ function stubPage(batches: ProductionBatch[] = [batch()]) {
       handler: (event: H3Event) => {
         const date = String(getQuery(event).date);
         proposalDates.push(date);
-        return date === EXISTING_DATE
-          ? { code: EXISTING_CODE, willAppend: true }
-          : { code: TODAY_CODE, willAppend: false };
+        return proposal(date);
       },
     }),
     registerEndpoint("/api/v1/production-batches", {
@@ -93,6 +102,7 @@ describe("Producción", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const cleanup of cleanups.splice(0)) cleanup();
   });
 
@@ -149,6 +159,73 @@ describe("Producción", () => {
     expect(codeInput.disabled).toBe(true);
     expect(await screen.findByText(`Se suma al lote de hoy, ${EXISTING_CODE}`)).toBeTruthy();
     expect(proposalDates).toContain(EXISTING_DATE);
+  });
+
+  it("no envía el código de la fecha anterior mientras espera la nueva propuesta", async () => {
+    let resolveProposal: ((value: ProductionBatchCodeProposal) => void) | undefined;
+    const pendingProposal = new Promise<ProductionBatchCodeProposal>((resolve) => {
+      resolveProposal = resolve;
+    });
+    stubPage([batch()], (requestedDate) =>
+      requestedDate === EXISTING_DATE ? pendingProposal : proposalFor(requestedDate),
+    );
+    const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({
+      ...batch({ code: EXISTING_CODE }),
+      warnings: [],
+    }));
+    const user = userEvent.setup();
+
+    await renderProduction();
+    await screen.findByDisplayValue(TODAY_CODE);
+    await chooseType(1, "Con caño");
+    await user.type(screen.getByLabelText("Cantidad producida 1"), "12");
+    await fireEvent.update(screen.getByLabelText("Fecha"), EXISTING_DATE);
+
+    const form = screen.getByRole("form", { name: "Registrar llenada" });
+    const disabledWhilePending = (
+      screen.getByRole("button", { name: "Crear lote" }) as HTMLButtonElement
+    ).disabled;
+    await fireEvent.submit(form);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const bodiesWhilePending = [...bodies];
+    resolveProposal?.({ code: EXISTING_CODE, willAppend: true });
+
+    expect(disabledWhilePending).toBe(true);
+    expect(bodiesWhilePending).toHaveLength(0);
+    await user.click(await screen.findByRole("button", { name: "Sumar llenada" }));
+    expect(bodies).toEqual([
+      {
+        code: EXISTING_CODE,
+        date: EXISTING_DATE,
+        items: [{ containerTypeId: "ct-cano", producedQty: 12 }],
+      },
+    ]);
+  });
+
+  // HU-01 E1: el lote pertenece al día calendario de America/Lima.
+  it("a las 23:30 de Lima registra la llenada en ese día, aunque UTC ya esté en el siguiente", async () => {
+    vi.setSystemTime(new Date("2026-10-23T04:30:00.000Z"));
+    stubPage();
+    const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({
+      ...batch({ code: "L-22102026", date: "2026-10-22" }),
+      warnings: [],
+    }));
+    const user = userEvent.setup();
+
+    await renderProduction();
+    expect(((await screen.findByLabelText("Fecha")) as HTMLInputElement).value).toBe("2026-10-22");
+    await screen.findByDisplayValue("L-22102026");
+    await chooseType(1, "Con caño");
+    await user.type(screen.getByLabelText("Cantidad producida 1"), "8");
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
+
+    expect(bodies).toEqual([
+      {
+        code: "L-22102026",
+        date: "2026-10-22",
+        items: [{ containerTypeId: "ct-cano", producedQty: 8 }],
+      },
+    ]);
   });
 
   it("la sobreproducción se avisa con sus números tras un alta exitosa, sin leerse como error", async () => {
@@ -251,6 +328,7 @@ describe("Producción", () => {
     expect(screen.queryByRole("form", { name: "Registrar llenada" })).toBeNull();
   });
 
+  // HU-01 E4: el detalle separa hora, responsable, tipo, cantidad y nota de cada llenada.
   it("lista código, fecha, responsable, lo producido y lo que queda sin cargar (o «Todo cargado»)", async () => {
     stubPage([
       batch({
