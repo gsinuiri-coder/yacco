@@ -38,5 +38,8 @@ preguntar: lo que en una sesión con persona sería «pará y preguntá», acá 
   rama es el gate; nunca `--admin`.
 - Al terminar cada paso: actualizar `last-step`, `next-step` y `updated` de
   `.relay/RELEVO.md`. Una corrida que no lo cambia cuenta como falla, y dos
-  seguidas paran el relevo.
+  seguidas te sacan del relevo: sigue el próximo agente.
+- Commitear tu WIP vos. Si al salir dejás cambios sin commitear, el relevo
+  los commitea y pushea por vos; si estás en `main`, en cambio, marca
+  `blocked` y para todo.
 - Cuando no queda nada en la cola: `status: done`.
