@@ -53,6 +53,7 @@ import {
   REFILL_PRODUCT_BY_CONTAINER,
   TEST_BATCH,
   TEST_BATCH_CODE,
+  TEST_BATCH_NOTE,
   TEST_CASH_AT_DELIVERY,
   TEST_CUSTOMER,
   TEST_DRIVER_1,
@@ -275,18 +276,28 @@ export class TestDataSeeder {
 
   private async ensureBatch(containerTypeIds: Record<TestContainerKey, string>): Promise<void> {
     const batches = this.app.get(ProductionBatchesService);
+    const date = limaToday(this.now);
     const existing = await batches.findAll(
-      await validated(ListProductionBatchesQueryDto, { limit: 100 }),
+      await validated(ListProductionBatchesQueryDto, { dateFrom: date, dateTo: date, limit: 100 }),
     );
-    if (existing.data.some((batch) => batch.code === TEST_BATCH_CODE)) {
-      this.lines.push(`Lote ${TEST_BATCH_CODE}: ya estaba.`);
+    const fillingExists = existing.data.some((batch) => {
+      const seededItems = batch.items.filter((item) => item.notes === TEST_BATCH_NOTE);
+      return CONTAINER_KEYS.every((key) =>
+        seededItems.some(
+          (item) =>
+            item.containerTypeId === containerTypeIds[key] && item.producedQty === TEST_BATCH[key],
+        ),
+      );
+    });
+    if (fillingExists) {
+      this.lines.push(`Llenada de prueba del ${date}: ya estaba.`);
       return;
     }
-    await batches.create(
+    const created = await batches.create(
       await validated(CreateProductionBatchDto, {
         code: TEST_BATCH_CODE,
-        date: limaToday(this.now),
-        notes: "Lote de prueba (pnpm demo:prueba).",
+        date,
+        notes: TEST_BATCH_NOTE,
         items: CONTAINER_KEYS.map((key) => ({
           containerTypeId: containerTypeIds[key],
           producedQty: TEST_BATCH[key],
@@ -294,7 +305,7 @@ export class TestDataSeeder {
       }),
       this.actor.id,
     );
-    this.lines.push(`Lote ${TEST_BATCH_CODE}: registrado.`);
+    this.lines.push(`Llenada de prueba del ${date}: registrada en el lote ${created.code}.`);
   }
 
   private async ensureCustomer(zoneId: string): Promise<string> {

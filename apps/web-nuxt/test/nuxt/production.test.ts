@@ -202,6 +202,41 @@ describe("Producción", () => {
     ]);
   });
 
+  it("si falla la propuesta de una fecha nueva, no reutiliza el código de la anterior", async () => {
+    stubPage([batch()], (requestedDate) => {
+      if (requestedDate === EXISTING_DATE) throw new Error("proposal unavailable");
+      return proposalFor(requestedDate);
+    });
+    const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({
+      ...batch({ code: EXISTING_CODE, date: EXISTING_DATE }),
+      warnings: [],
+    }));
+    const user = userEvent.setup();
+
+    await renderProduction();
+    await screen.findByDisplayValue(TODAY_CODE);
+    await chooseType(1, "Con caño");
+    await user.type(screen.getByLabelText("Cantidad producida 1"), "12");
+    await fireEvent.update(screen.getByLabelText("Fecha"), EXISTING_DATE);
+
+    const codeInput = screen.getByLabelText("Código") as HTMLInputElement;
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Crear lote" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect(codeInput.value).toBe("");
+    await user.click(screen.getByRole("button", { name: "Crear lote" }));
+
+    expect(bodies).toEqual([
+      {
+        code: "",
+        date: EXISTING_DATE,
+        items: [{ containerTypeId: "ct-cano", producedQty: 12 }],
+      },
+    ]);
+  });
+
   // HU-01 E1: el lote pertenece al día calendario de America/Lima.
   it("a las 23:30 de Lima registra la llenada en ese día, aunque UTC ya esté en el siguiente", async () => {
     vi.setSystemTime(new Date("2026-10-23T04:30:00.000Z"));

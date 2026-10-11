@@ -73,6 +73,9 @@ watch(
   () => {
     dateError.value = undefined;
     willAppend.value = false;
+    // Un código propuesto pertenece a una sola fecha. Si la nueva propuesta
+    // falla, el POST vacío deja que la API genere el código correcto.
+    code.value = "";
     void loadCodeProposal();
   },
   { immediate: true },
