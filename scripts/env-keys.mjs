@@ -91,6 +91,16 @@ export const ENV_KEYS = [
     required: true,
     description: "Duración del refresh token (configuración, no secreto)",
   },
+  {
+    key: "PLANT_LATITUDE",
+    required: true,
+    description: "Latitud de la planta para ordenar y abrir recorridos",
+  },
+  {
+    key: "PLANT_LONGITUDE",
+    required: true,
+    description: "Longitud de la planta para ordenar y abrir recorridos",
+  },
 ];
 
 /** Las dos claves que `secrets:generate` escribe, y con cuántos bytes. */

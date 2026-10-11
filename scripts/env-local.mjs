@@ -15,6 +15,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { REPO_ROOT, loadConfig, readFileOrNull, run } from "./lib.mjs";
 
 const COMPOSE_SERVICE = "postgres";
@@ -59,22 +60,8 @@ function requireKeys(env, keys) {
   }
 }
 
-function main() {
-  const env = loadConfig();
-  requireKeys(env, [
-    "JWT_ACCESS_SECRET",
-    "JWT_REFRESH_SECRET",
-    "JWT_ACCESS_EXPIRES_IN",
-    "JWT_REFRESH_EXPIRES_IN",
-  ]);
-
-  const { port, source } = resolveLocalPostgresPort();
-  const localUrl = `postgresql://yacco:yacco@localhost:${port}/yacco_dev`;
-
-  // DATABASE_URL y DIRECT_URL son el mismo valor en local a propósito: el
-  // pooler de Neon no existe acá, y Prisma resuelve las dos eagerly porque
-  // ambas están declaradas en el bloque datasource.
-  const apiEnv = [
+export function buildApiEnv({ env, localUrl }) {
+  return [
     "# Generado por `pnpm env:local`. No lo edites a mano: se regenera.",
     "# Apunta SIEMPRE al Postgres local de Docker, nunca a Neon.",
     `DATABASE_URL=${localUrl}`,
@@ -83,10 +70,32 @@ function main() {
     `JWT_ACCESS_EXPIRES_IN=${env.JWT_ACCESS_EXPIRES_IN}`,
     `JWT_REFRESH_SECRET=${env.JWT_REFRESH_SECRET}`,
     `JWT_REFRESH_EXPIRES_IN=${env.JWT_REFRESH_EXPIRES_IN}`,
+    `PLANT_LATITUDE=${env.PLANT_LATITUDE}`,
+    `PLANT_LONGITUDE=${env.PLANT_LONGITUDE}`,
     `PORT=${API_PORT}`,
     `WEB_ORIGIN=${WEB_DEV_ORIGIN}`,
     "",
   ].join("\n");
+}
+
+function main() {
+  const env = loadConfig();
+  requireKeys(env, [
+    "JWT_ACCESS_SECRET",
+    "JWT_REFRESH_SECRET",
+    "JWT_ACCESS_EXPIRES_IN",
+    "JWT_REFRESH_EXPIRES_IN",
+    "PLANT_LATITUDE",
+    "PLANT_LONGITUDE",
+  ]);
+
+  const { port, source } = resolveLocalPostgresPort();
+  const localUrl = `postgresql://yacco:yacco@localhost:${port}/yacco_dev`;
+
+  // DATABASE_URL y DIRECT_URL son el mismo valor en local a propósito: el
+  // pooler de Neon no existe acá, y Prisma resuelve las dos eagerly porque
+  // ambas están declaradas en el bloque datasource.
+  const apiEnv = buildApiEnv({ env, localUrl });
 
   // apps/web-nuxt no necesita un .env propio: `LOCAL_API_ORIGIN` en
   // config/api-proxy.ts ya apunta a la API local en tiempo de compilación,
@@ -103,4 +112,6 @@ function main() {
   console.log("Ningún valor se imprimió. Levantá la base con `pnpm demo:up`.");
 }
 
-main();
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main();
+}

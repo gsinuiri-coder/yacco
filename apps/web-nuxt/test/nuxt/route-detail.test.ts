@@ -796,6 +796,8 @@ describe("Detalle de ruta", () => {
         location: {
           ...buildStop().location,
           id: "loc-far",
+          name: "Almacén",
+          address: "Av. Dos 200",
           latitude: "0.000000",
           longitude: "2.000000",
           customer: { id: "c-far", name: "Lejana" },
@@ -807,6 +809,8 @@ describe("Detalle de ruta", () => {
         location: {
           ...buildStop().location,
           id: "loc-near",
+          name: "Tienda",
+          address: "Av. Uno 100",
           latitude: "0.000000",
           longitude: "1.000000",
           customer: { id: "c-near", name: "Cercana" },
@@ -828,11 +832,12 @@ describe("Detalle de ruta", () => {
       await user.click(screen.getByRole("button", { name: "Ordenar por cercanía" }));
 
       const proposal = screen.getByRole("group", { name: "Confirmar orden por cercanía" });
+      const proposedStops = within(proposal).getAllByRole("listitem");
       expect(
-        within(proposal)
-          .getAllByRole("listitem")
-          .map((item) => item.textContent),
+        proposedStops.map((item) => item.textContent?.match(/Cercana|Lejana|Sin ubicación/)?.[0]),
       ).toEqual(["Cercana", "Lejana", "Sin ubicación"]);
+      expect(proposedStops[0]!.textContent).toContain("Tienda · Av. Uno 100");
+      expect(proposedStops[1]!.textContent).toContain("Almacén · Av. Dos 200");
       expect(within(proposal).getByText(/1 parada sin ubicación queda al final/)).toBeTruthy();
       expect(bodies).toHaveLength(0);
 
@@ -884,6 +889,77 @@ describe("Detalle de ruta", () => {
       expect(
         screen.getByText(/Sin ubicación no entra al recorrido porque no tiene ubicación/),
       ).toBeTruthy();
+    });
+
+    it("explica cuando falta configurar la planta", async () => {
+      stubRouteDetail(cleanups, buildRoute({ stops: [buildStop()] }));
+
+      await renderDetail();
+
+      expect(
+        await screen.findByText(/Configura la ubicación de la planta para abrir el recorrido/),
+      ).toBeTruthy();
+    });
+
+    it("explica cuando ninguna parada tiene ubicación", async () => {
+      const first = buildStop({
+        location: { ...buildStop().location, latitude: null, longitude: null },
+      });
+      const second = buildStop({
+        id: "stop-2",
+        position: 2,
+        location: {
+          ...buildStop().location,
+          id: "loc-2",
+          latitude: null,
+          longitude: null,
+          customer: { id: "c-2", name: "Panadería Aurora" },
+        },
+      });
+      stubRouteDetail(cleanups, buildRoute({ stops: [first, second] }));
+      cleanups.push(
+        registerEndpoint("/api/v1/settings/plant-location", () => ({
+          latitude: "0.000000",
+          longitude: "0.000000",
+        })),
+      );
+
+      await renderDetail();
+
+      expect(
+        await screen.findByText(/Ninguna parada entra al recorrido porque falta su ubicación/),
+      ).toBeTruthy();
+    });
+
+    it("explica un fallo al preparar Maps y permite reintentarlo", async () => {
+      stubRouteDetail(
+        cleanups,
+        buildRoute({
+          stops: [
+            buildStop({
+              location: {
+                ...buildStop().location,
+                latitude: "0.000000",
+                longitude: "1.000000",
+              },
+            }),
+          ],
+        }),
+      );
+      let requests = 0;
+      cleanups.push(
+        registerEndpoint("/api/v1/settings/plant-location", (event) => {
+          requests += 1;
+          if (requests === 1) return failWith(503, "Servicio temporalmente no disponible")(event);
+          return { latitude: "0.000000", longitude: "0.000000" };
+        }),
+      );
+
+      await renderDetail();
+      expect(await screen.findByText(/No se pudo preparar el recorrido/)).toBeTruthy();
+      await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar recorrido" }));
+
+      expect(await screen.findByRole("link", { name: "Abrir recorrido en Maps" })).toBeTruthy();
     });
 
     it("subir una parada manda la lista COMPLETA en el orden nuevo; primera no sube, última no baja", async () => {

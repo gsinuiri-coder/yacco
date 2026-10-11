@@ -44,6 +44,7 @@ const stopError = ref<string | null>(null);
 const plantLocation = ref<PlantLocation | null>(null);
 const plantLocationLoaded = ref(false);
 const plantLocationFailure = ref<string | null>(null);
+const plantLocationLoading = ref(false);
 const routeToolsError = ref<string | null>(null);
 const proposedStopIds = ref<string[] | null>(null);
 const ordering = ref(false);
@@ -77,11 +78,13 @@ async function loadPlantLocation(): Promise<void> {
   if (plantLocationLoaded.value) return;
   if (plantLocationRequest !== null) return plantLocationRequest;
   plantLocationRequest = (async () => {
+    plantLocationLoading.value = true;
     try {
       plantLocation.value = await api.request<PlantLocation>("/settings/plant-location");
     } catch (error) {
-      plantLocationFailure.value = `No se pudo cargar la ubicación de la planta. ${describeApiFailure(error)}`;
+      plantLocationFailure.value = describeApiFailure(error);
     } finally {
+      plantLocationLoading.value = false;
       plantLocationLoaded.value = true;
       plantLocationRequest = null;
     }
@@ -101,7 +104,7 @@ async function proposeNearbyOrder(): Promise<void> {
   }
   await loadPlantLocation();
   if (plantLocationFailure.value !== null) {
-    routeToolsError.value = plantLocationFailure.value;
+    routeToolsError.value = `No se pudo cargar la ubicación de la planta. ${plantLocationFailure.value}`;
     return;
   }
   const origin = plantLocation.value;
@@ -118,6 +121,13 @@ async function proposeNearbyOrder(): Promise<void> {
       longitude: stop.location.longitude,
     })),
   );
+}
+
+async function retryPlantLocation(): Promise<void> {
+  plantLocation.value = null;
+  plantLocationLoaded.value = false;
+  plantLocationFailure.value = null;
+  await loadPlantLocation();
 }
 
 async function applyProposedOrder(): Promise<void> {
@@ -322,13 +332,14 @@ function markDone(result: RouteStop): void {
             Revísalo antes de cambiar la hoja de ruta. La propuesta empieza en la planta.
           </p>
         </div>
-        <ol class="grid list-decimal gap-2 pl-5 sm:grid-cols-2">
+        <ol class="list-decimal space-y-2 pl-5">
           <li
             v-for="stop in proposedStops"
             :key="stop.id"
-            class="text-sm marker:font-semibold marker:text-muted"
+            class="pl-1 text-sm marker:font-semibold marker:text-muted"
           >
-            <span class="text-highlighted">{{ stop.location.customer.name }}</span>
+            <p class="font-medium text-highlighted">{{ stop.location.customer.name }}</p>
+            <p class="text-muted">{{ stop.location.name }} · {{ stop.location.address }}</p>
           </li>
         </ol>
         <p v-if="stopsWithoutLocation.length > 0" class="text-sm text-warning">
@@ -350,6 +361,36 @@ function markDone(result: RouteStop): void {
             @click="proposedStopIds = null"
           />
         </div>
+      </div>
+
+      <div
+        v-if="isOffice && stops.length > 0 && plantLocationLoaded && mapLegs.length === 0"
+        class="space-y-2 text-sm text-muted"
+      >
+        <template v-if="plantLocationFailure !== null">
+          <p>No se pudo preparar el recorrido. {{ plantLocationFailure }}</p>
+          <UButton
+            color="neutral"
+            variant="outline"
+            size="sm"
+            label="Reintentar recorrido"
+            :loading="plantLocationLoading"
+            @click="retryPlantLocation"
+          />
+        </template>
+        <p
+          v-else-if="
+            plantLocation === null ||
+            plantLocation.latitude === null ||
+            plantLocation.longitude === null
+          "
+        >
+          Configura la ubicación de la planta para abrir el recorrido en Maps.
+        </p>
+        <p v-else>
+          Ninguna parada entra al recorrido porque falta su ubicación. Completa la ubicación de
+          {{ stopsWithoutLocation.map((stop) => stop.location.customer.name).join(", ") }}.
+        </p>
       </div>
 
       <div v-if="mapLegs.length > 0" class="flex flex-wrap items-center gap-2">

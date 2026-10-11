@@ -228,6 +228,11 @@ export function gcloudDictFlag(pairs) {
  */
 export function deployCommands({ projectId, region, config, envName, imageRef, commit }) {
   const environment = ENVIRONMENTS[envName];
+  const plantLatitude = config.PLANT_LATITUDE?.trim();
+  const plantLongitude = config.PLANT_LONGITUDE?.trim();
+  if (!plantLatitude || !plantLongitude) {
+    throw new Error("PLANT_LATITUDE y PLANT_LONGITUDE son obligatorias para desplegar la API.");
+  }
 
   const secrets = gcloudDictFlag(
     SECRET_KEYS.map(([variable, suffix]) => `${variable}=yacco-${envName}-${suffix}:latest`),
@@ -241,6 +246,8 @@ export function deployCommands({ projectId, region, config, envName, imageRef, c
     `JWT_ACCESS_EXPIRES_IN=${(config.JWT_ACCESS_EXPIRES_IN ?? "15m").trim()}`,
     `JWT_REFRESH_EXPIRES_IN=${(config.JWT_REFRESH_EXPIRES_IN ?? "30d").trim()}`,
     `WEB_ORIGIN=${(config.WEB_ORIGIN ?? environment.webOriginDefault).trim()}`,
+    `PLANT_LATITUDE=${plantLatitude}`,
+    `PLANT_LONGITUDE=${plantLongitude}`,
     `DEPLOYED_COMMIT=${commit}`,
     // `envName` ya es "demo" o "production": los mismos dos valores que
     // env.validation.ts acepta para APP_ENV. Lo que /health expone con esto es
