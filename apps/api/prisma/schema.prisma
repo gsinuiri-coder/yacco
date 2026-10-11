@@ -169,6 +169,7 @@ model User {
   containerMovements            ContainerMovement[]
   containerCounts               ContainerCount[]
   orders                        Order[]
+  orderGroups                   OrderGroup[]
   routesAsDriver                Route[]              @relation("RouteDriver")
   routesCreated                 Route[]              @relation("RouteCreatedBy")
   routeStopsAdded               RouteStop[]          @relation("RouteStopAddedBy")
@@ -272,10 +273,11 @@ model Customer {
   // below, which partials over a NOT NULL boolean and has no such shortcut).
   externalCode String?  @unique @map("external_code")
 
-  zone      Zone?              @relation(fields: [zoneId], references: [id], onDelete: Restrict)
-  locations CustomerLocation[]
-  prices    CustomerPrice[]
-  payments  Payment[]
+  zone        Zone?              @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  locations   CustomerLocation[]
+  prices      CustomerPrice[]
+  payments    Payment[]
+  orderGroups OrderGroup[]
 
   @@map("customers")
 }
@@ -492,18 +494,37 @@ model ContainerCount {
 
 // --- Orders & routes --------------------------------------------------------
 
-model Order {
-  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  locationId   String      @map("location_id") @db.Uuid
-  deliveryDate DateTime    @map("delivery_date") @db.Date
-  status       OrderStatus @default(PENDING)
-  createdById  String      @map("created_by") @db.Uuid
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+model OrderGroup {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId     String   @map("customer_id") @db.Uuid
+  createdById    String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  idempotencyKey String?  @unique @map("idempotency_key") @db.Uuid
 
-  location  CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  createdBy User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  items     OrderItem[]
-  routeStop RouteStop?
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  orders    Order[]
+
+  @@map("order_groups")
+}
+
+model Order {
+  id                     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId             String      @map("location_id") @db.Uuid
+  orderGroupId           String?     @map("order_group_id") @db.Uuid
+  rescheduledFromOrderId String?     @unique @map("rescheduled_from_order_id") @db.Uuid
+  deliveryDate           DateTime    @map("delivery_date") @db.Date
+  status                 OrderStatus @default(PENDING)
+  createdById            String      @map("created_by") @db.Uuid
+  createdAt              DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  location        CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  orderGroup      OrderGroup?      @relation(fields: [orderGroupId], references: [id], onDelete: Restrict)
+  rescheduledFrom Order?           @relation("OrderRescheduling", fields: [rescheduledFromOrderId], references: [id], onDelete: Restrict)
+  rescheduledTo   Order?           @relation("OrderRescheduling")
+  createdBy       User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  items           OrderItem[]
+  routeStop       RouteStop?
 
   @@index([status, deliveryDate])
   @@map("orders")

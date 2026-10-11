@@ -71,6 +71,45 @@ async function createOrder(
   return response.body.id;
 }
 
+let multiLocationSequence = 0;
+async function createCustomerWithThreeLocations() {
+  multiLocationSequence++;
+  const suffix = multiLocationSequence;
+  const customer = await request(server())
+    .post("/api/v1/customers")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: `Cliente con tres locales ${suffix}`,
+      phone: `94400${String(suffix).padStart(4, "0")}`,
+      address: "Av. Principal 100",
+      addressReference: "Local principal",
+    })
+    .expect(201);
+  const prisma = ctx.app.get(PrismaService);
+  const primaryLocation = await prisma.customerLocation.findFirstOrThrow({
+    where: { customerId: customer.body.id, isPrimary: true },
+  });
+  const secondLocation = await prisma.customerLocation.create({
+    data: {
+      customerId: customer.body.id,
+      name: "Tienda Norte",
+      address: "Av. Norte 200",
+      addressReference: "Frente al parque",
+      phone: `94500${String(suffix).padStart(4, "0")}`,
+    },
+  });
+  const thirdLocation = await prisma.customerLocation.create({
+    data: {
+      customerId: customer.body.id,
+      name: "Tienda Sur",
+      address: "Av. Sur 300",
+      addressReference: "Puerta azul",
+      phone: `94600${String(suffix).padStart(4, "0")}`,
+    },
+  });
+  return { customerId: customer.body.id as string, primaryLocation, secondLocation, thirdLocation };
+}
+
 beforeAll(async () => {
   ctx = await startTestApp();
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
@@ -359,6 +398,127 @@ describe("POST /api/v1/orders", () => {
 
     expect(response.status).toBe(400);
     expect(messagesOf(response)).toContain("no es una fecha válida");
+  });
+});
+
+describe("POST /api/v1/orders/batch", () => {
+  test("crea un pedido por cada local con cantidades y enlaza los creados juntos", async () => {
+    const { customerId, primaryLocation, secondLocation, thirdLocation } =
+      await createCustomerWithThreeLocations();
+    const prisma = ctx.app.get(PrismaService);
+
+    const response = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        customerId,
+        deliveryDate: "2026-10-15",
+        idempotencyKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        locations: [
+          {
+            locationId: primaryLocation.id,
+            items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+          },
+          {
+            locationId: secondLocation.id,
+            items: [{ productId: containerProductId, quantity: 1, unitPrice: "35.00" }],
+          },
+          { locationId: thirdLocation.id, items: [] },
+        ],
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toHaveLength(2);
+    expect(response.body.map((order: { locationId: string }) => order.locationId)).toEqual([
+      primaryLocation.id,
+      secondLocation.id,
+    ]);
+    expect(
+      new Set(response.body.map((order: { orderGroupId: string }) => order.orderGroupId)),
+    ).toEqual(new Set([response.body[0].orderGroupId]));
+    expect(response.body[0].orderGroupId).toEqual(expect.any(String));
+
+    const persisted = await prisma.order.findMany({
+      where: { orderGroupId: response.body[0].orderGroupId },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(persisted.map((order) => order.locationId)).toEqual([
+      primaryLocation.id,
+      secondLocation.id,
+    ]);
+  });
+
+  test("una línea inválida en el segundo local no deja ningún pedido ni grupo", async () => {
+    const { customerId, primaryLocation, secondLocation } =
+      await createCustomerWithThreeLocations();
+    const prisma = ctx.app.get(PrismaService);
+    const idempotencyKey = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+    const response = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        customerId,
+        deliveryDate: "2026-10-16",
+        idempotencyKey,
+        locations: [
+          {
+            locationId: primaryLocation.id,
+            items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+          },
+          {
+            locationId: secondLocation.id,
+            items: [{ productId: containerProductId, quantity: 0, unitPrice: "35.00" }],
+          },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(await prisma.orderGroup.count({ where: { idempotencyKey } })).toBe(0);
+    expect(
+      await prisma.order.count({
+        where: { locationId: { in: [primaryLocation.id, secondLocation.id] } },
+      }),
+    ).toBe(0);
+  });
+
+  test("repetir el mismo envío devuelve el mismo grupo sin crear pedidos de más", async () => {
+    const { customerId, primaryLocation, secondLocation } =
+      await createCustomerWithThreeLocations();
+    const prisma = ctx.app.get(PrismaService);
+    const idempotencyKey = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const body = {
+      customerId,
+      deliveryDate: "2026-10-17",
+      idempotencyKey,
+      locations: [
+        {
+          locationId: primaryLocation.id,
+          items: [{ productId: refillProductId, quantity: 2, unitPrice: "12.50" }],
+        },
+        {
+          locationId: secondLocation.id,
+          items: [{ productId: containerProductId, quantity: 1, unitPrice: "35.00" }],
+        },
+      ],
+    };
+
+    const first = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send(body)
+      .expect(201);
+    const replay = await request(server())
+      .post("/api/v1/orders/batch")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send(body)
+      .expect(201);
+
+    expect(replay.body.map((order: { id: string }) => order.id)).toEqual(
+      first.body.map((order: { id: string }) => order.id),
+    );
+    const group = await prisma.orderGroup.findUniqueOrThrow({ where: { idempotencyKey } });
+    expect(await prisma.order.count({ where: { orderGroupId: group.id } })).toBe(2);
   });
 });
 

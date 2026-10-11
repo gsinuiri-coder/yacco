@@ -31,6 +31,8 @@ export function buildCustomer(overrides: Partial<Customer> = {}): Customer {
 export function buildOrder(overrides: Partial<Order> = {}): Order {
   return {
     id: "o-1",
+    locationId: "location-1",
+    orderGroupId: null,
     customerId: "11111111-1111-4111-8111-111111111111",
     customer: {
       id: "11111111-1111-4111-8111-111111111111",

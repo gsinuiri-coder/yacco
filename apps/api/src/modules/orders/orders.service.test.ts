@@ -17,10 +17,15 @@ const OTHER_PRODUCT_ID = "33333333-3333-4333-8333-333333333333";
 const ORDER_ID = "44444444-4444-4444-8444-444444444444";
 const USER_ID = "55555555-5555-4555-8555-555555555555";
 const LOCATION_ID = "66666666-6666-4666-8666-666666666666";
+const OTHER_LOCATION_ID = "77777777-7777-4777-8777-777777777777";
+const ORDER_GROUP_ID = "88888888-8888-4888-8888-888888888888";
+const IDEMPOTENCY_KEY = "99999999-9999-4999-8999-999999999999";
 
 function buildOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: ORDER_ID,
+    locationId: LOCATION_ID,
+    orderGroupId: null,
     deliveryDate: new Date(Date.UTC(2026, 7, 25)),
     status: OrderStatus.PENDING,
     createdById: USER_ID,
@@ -74,8 +79,16 @@ function buildPrismaMock() {
       count: jest.fn<() => Promise<unknown>>(),
       updateMany: jest.fn<() => Promise<unknown>>(),
     },
+    orderGroup: {
+      create: jest.fn<() => Promise<unknown>>(),
+      findUnique: jest.fn<() => Promise<unknown>>(),
+      findUniqueOrThrow: jest.fn<() => Promise<unknown>>(),
+    },
     customer: { findUnique: jest.fn<() => Promise<unknown>>() },
-    customerLocation: { findFirst: jest.fn<() => Promise<unknown>>() },
+    customerLocation: {
+      findFirst: jest.fn<() => Promise<unknown>>(),
+      findMany: jest.fn<() => Promise<unknown>>(),
+    },
     product: { findMany: jest.fn<() => Promise<unknown>>() },
     $transaction: jest.fn<(arg: unknown) => Promise<unknown>>(),
   };
@@ -378,6 +391,115 @@ describe("OrdersService", () => {
 
       // 0.10 * 3 + 0.20 * 1 = 0.5000000000000001 in binary floating point.
       expect(result.total).toBe("0.50");
+    });
+  });
+
+  describe("createBatch", () => {
+    const batchDto = () => ({
+      customerId: CUSTOMER_ID,
+      deliveryDate: "2026-10-15",
+      idempotencyKey: IDEMPOTENCY_KEY,
+      locations: [
+        { locationId: LOCATION_ID, items: validItems() },
+        {
+          locationId: OTHER_LOCATION_ID,
+          items: [{ productId: OTHER_PRODUCT_ID, quantity: 1, unitPrice: "35.00" }],
+        },
+        { locationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", items: [] },
+      ],
+    });
+
+    it("creates one group and one order per non-empty location in the same transaction", async () => {
+      prisma.orderGroup.findUnique.mockResolvedValue(null);
+      prisma.customer.findUnique.mockResolvedValue(activeCustomer());
+      prisma.customerLocation.findMany.mockResolvedValue([
+        { id: LOCATION_ID, name: "Principal", customerId: CUSTOMER_ID, active: true },
+        { id: OTHER_LOCATION_ID, name: "Norte", customerId: CUSTOMER_ID, active: true },
+        {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          name: "Sur",
+          customerId: CUSTOMER_ID,
+          active: true,
+        },
+      ]);
+      prisma.product.findMany.mockResolvedValue([
+        activeProduct(),
+        activeProduct({ id: OTHER_PRODUCT_ID, name: "Bidón nuevo" }),
+      ]);
+      prisma.orderGroup.create.mockResolvedValue({ id: ORDER_GROUP_ID });
+      prisma.order.create
+        .mockResolvedValueOnce(buildOrder({ orderGroupId: ORDER_GROUP_ID }))
+        .mockResolvedValueOnce(
+          buildOrder({
+            id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            locationId: OTHER_LOCATION_ID,
+            orderGroupId: ORDER_GROUP_ID,
+          }),
+        );
+
+      const result = await service.createBatch(batchDto(), USER_ID);
+
+      expect(result).toHaveLength(2);
+      expect(prisma.orderGroup.create).toHaveBeenCalledWith({
+        data: {
+          customerId: CUSTOMER_ID,
+          createdById: USER_ID,
+          idempotencyKey: IDEMPOTENCY_KEY,
+        },
+      });
+      expect(prisma.order.create).toHaveBeenCalledTimes(2);
+    });
+
+    it("replays the existing orders when the same idempotency key carries the same request", async () => {
+      prisma.orderGroup.findUnique.mockResolvedValue({
+        id: ORDER_GROUP_ID,
+        customerId: CUSTOMER_ID,
+        createdById: USER_ID,
+        createdAt: new Date(),
+        idempotencyKey: IDEMPOTENCY_KEY,
+        orders: [
+          buildOrder({
+            orderGroupId: ORDER_GROUP_ID,
+            deliveryDate: new Date(Date.UTC(2026, 9, 15)),
+          }),
+          buildOrder({
+            id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            locationId: OTHER_LOCATION_ID,
+            orderGroupId: ORDER_GROUP_ID,
+            deliveryDate: new Date(Date.UTC(2026, 9, 15)),
+            items: [
+              {
+                id: "item-2",
+                productId: OTHER_PRODUCT_ID,
+                product: { id: OTHER_PRODUCT_ID, name: "Bidón nuevo" },
+                quantity: 1,
+                unitPrice: new Prisma.Decimal("35.00"),
+              },
+            ],
+          }),
+        ],
+      });
+
+      const result = await service.createBatch(batchDto(), USER_ID);
+
+      expect(result.map((order) => order.locationId)).toEqual([LOCATION_ID, OTHER_LOCATION_ID]);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects reusing an idempotency key for a different submission", async () => {
+      prisma.orderGroup.findUnique.mockResolvedValue({
+        id: ORDER_GROUP_ID,
+        customerId: CUSTOMER_ID,
+        createdById: USER_ID,
+        createdAt: new Date(),
+        idempotencyKey: IDEMPOTENCY_KEY,
+        orders: [buildOrder({ orderGroupId: ORDER_GROUP_ID })],
+      });
+
+      await expect(service.createBatch(batchDto(), USER_ID)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 

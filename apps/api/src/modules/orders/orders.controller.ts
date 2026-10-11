@@ -27,6 +27,7 @@ import { viewerFrom } from "../../common/viewer.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { CreateOrderDto } from "./dto/create-order.dto.js";
+import { CreateOrdersBatchDto } from "./dto/create-orders-batch.dto.js";
 import { ListOrdersQueryDto } from "./dto/list-orders-query.dto.js";
 import { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.dto.js";
 import { OrdersService } from "./orders.service.js";
@@ -55,6 +56,22 @@ export class OrdersController {
   ): Promise<OrderResponseDto> {
     // createdById comes from the access token, never from the body.
     return this.ordersService.create(dto, request.user.sub);
+  }
+
+  @ApiOperation({
+    summary: "Registra un pedido por cada local con productos, todos o ninguno",
+  })
+  @ApiResponse({ status: 201, type: OrderResponseDto, isArray: true })
+  @ApiBadRequestResponse({
+    description: "Validation failed, or a customer, location or product cannot be used",
+  })
+  @ApiConflictResponse({ description: "idempotencyKey was reused for a different submission" })
+  @Post("batch")
+  createBatch(
+    @Body() dto: CreateOrdersBatchDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<OrderResponseDto[]> {
+    return this.ordersService.createBatch(dto, request.user.sub);
   }
 
   @ApiOperation({

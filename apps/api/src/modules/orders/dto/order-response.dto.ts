@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { OrderStatus } from "@prisma/client";
 
 /** Minimum the office needs to recognise the customer without a second call. */
@@ -42,6 +42,12 @@ export class OrderItemResponseDto {
 export class OrderResponseDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
+
+  @ApiProperty({ format: "uuid" })
+  locationId!: string;
+
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
+  orderGroupId!: string | null;
 
   @ApiProperty({ format: "uuid" })
   customerId!: string;

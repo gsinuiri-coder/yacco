@@ -10,6 +10,10 @@ import type { Viewer } from "../../common/viewer.js";
 import { ORDER_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateOrderDto } from "./dto/create-order.dto.js";
+import type {
+  CreateLocationOrderDto,
+  CreateOrdersBatchDto,
+} from "./dto/create-orders-batch.dto.js";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto.js";
 import type { OrderResponseDto, PaginatedOrdersDto } from "./dto/order-response.dto.js";
 
@@ -29,7 +33,16 @@ const ORDER_INCLUDE = {
   items: { include: { product: { select: { id: true, name: true } } } },
 } satisfies Prisma.OrderInclude;
 
+const ORDER_GROUP_INCLUDE = {
+  orders: { include: ORDER_INCLUDE },
+} satisfies Prisma.OrderGroupInclude;
+
 type OrderWithRelations = Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
+type OrderGroupWithOrders = Prisma.OrderGroupGetPayload<{ include: typeof ORDER_GROUP_INCLUDE }>;
+
+function isPrismaKnownError(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
 
 /**
  * `orders.delivery_date` is a calendar DATE in America/Lima, not an instant.
@@ -65,6 +78,8 @@ function computeOrderTotal(items: { quantity: number; unitPrice: Prisma.Decimal 
 function toOrderResponse(order: OrderWithRelations): OrderResponseDto {
   return {
     id: order.id,
+    locationId: order.locationId,
+    orderGroupId: order.orderGroupId,
     customerId: order.location.customer.id,
     customer: { ...order.location.customer, phone: order.location.phone },
     deliveryDate: formatBusinessDate(order.deliveryDate),
@@ -80,6 +95,23 @@ function toOrderResponse(order: OrderWithRelations): OrderResponseDto {
     })),
     total: computeOrderTotal(order.items),
   };
+}
+
+function sameOrderItems(
+  persisted: OrderWithRelations["items"],
+  requested: CreateLocationOrderDto["items"],
+): boolean {
+  if (persisted.length !== requested.length) return false;
+  const persistedLines = persisted
+    .map((item) => `${item.productId}|${item.quantity}|${item.unitPrice.toFixed(2)}`)
+    .sort();
+  const requestedLines = requested
+    .map(
+      (item) =>
+        `${item.productId}|${item.quantity}|${new Prisma.Decimal(item.unitPrice).toFixed(2)}`,
+    )
+    .sort();
+  return persistedLines.every((line, index) => line === requestedLines[index]);
 }
 
 @Injectable()
@@ -166,6 +198,167 @@ export class OrdersService {
     });
 
     return toOrderResponse(order);
+  }
+
+  /**
+   * Creates one linked order per location that carries at least one item.
+   * The group row and every order/item commit in one transaction, so an
+   * invalid second location never leaves the first one behind.
+   */
+  async createBatch(dto: CreateOrdersBatchDto, createdById: string): Promise<OrderResponseDto[]> {
+    const deliveryDate = parseBusinessDate(dto.deliveryDate, "La fecha de entrega");
+    const requestedLocations = dto.locations.filter((location) => location.items.length > 0);
+    if (requestedLocations.length === 0) {
+      throw new BadRequestException("Ingresa al menos un producto en uno de los locales");
+    }
+
+    if (dto.idempotencyKey !== undefined) {
+      const existing = await this.prisma.orderGroup.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+        include: ORDER_GROUP_INCLUDE,
+      });
+      if (existing !== null) {
+        return this.buildBatchReplay(existing, dto, deliveryDate);
+      }
+    }
+
+    try {
+      const orders = await this.prisma.$transaction(async (tx) => {
+        const customer = await tx.customer.findUnique({
+          where: { id: dto.customerId },
+          select: { id: true, name: true, active: true },
+        });
+        if (customer === null) {
+          throw new BadRequestException(`El cliente "${dto.customerId}" no existe`);
+        }
+        if (!customer.active) {
+          throw new BadRequestException(
+            `El cliente "${customer.name}" está desactivado; reactívalo antes de tomarle un pedido`,
+          );
+        }
+
+        const locationIds = dto.locations.map((location) => location.locationId);
+        const locations = await tx.customerLocation.findMany({
+          where: { id: { in: locationIds } },
+          select: { id: true, name: true, customerId: true, active: true },
+        });
+        const foundLocationIds = new Set(locations.map((location) => location.id));
+        const missingLocationIds = locationIds.filter((id) => !foundLocationIds.has(id));
+        if (missingLocationIds.length > 0) {
+          throw new BadRequestException(`No existen los locales: ${missingLocationIds.join(", ")}`);
+        }
+        const foreignLocation = locations.find(
+          (location) => location.customerId !== dto.customerId,
+        );
+        if (foreignLocation !== undefined) {
+          throw new BadRequestException(
+            `El local "${foreignLocation.name}" no pertenece a este cliente`,
+          );
+        }
+        const inactiveLocations = locations.filter((location) => !location.active);
+        if (inactiveLocations.length > 0) {
+          throw new BadRequestException(
+            `Ya no están activos los locales: ${inactiveLocations
+              .map((location) => `"${location.name}"`)
+              .join(", ")}`,
+          );
+        }
+
+        const requestedProductIds = [
+          ...new Set(
+            requestedLocations.flatMap((location) => location.items.map((item) => item.productId)),
+          ),
+        ];
+        const products = await tx.product.findMany({
+          where: { id: { in: requestedProductIds } },
+          select: { id: true, name: true, active: true },
+        });
+        if (products.length !== requestedProductIds.length) {
+          const found = new Set(products.map((product) => product.id));
+          const missing = requestedProductIds.filter((id) => !found.has(id));
+          throw new BadRequestException(`No existen los productos: ${missing.join(", ")}`);
+        }
+        const inactiveProducts = products.filter((product) => !product.active);
+        if (inactiveProducts.length > 0) {
+          throw new BadRequestException(
+            `Ya no están a la venta los productos: ${inactiveProducts
+              .map((product) => `"${product.name}"`)
+              .join(", ")}`,
+          );
+        }
+
+        const group = await tx.orderGroup.create({
+          data: {
+            customerId: dto.customerId,
+            createdById,
+            idempotencyKey: dto.idempotencyKey ?? null,
+          },
+        });
+        const created: OrderWithRelations[] = [];
+        for (const location of requestedLocations) {
+          created.push(
+            await tx.order.create({
+              data: {
+                locationId: location.locationId,
+                orderGroupId: group.id,
+                deliveryDate,
+                createdById,
+                items: {
+                  create: location.items.map((item) => ({
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    unitPrice: new Prisma.Decimal(item.unitPrice),
+                  })),
+                },
+              },
+              include: ORDER_INCLUDE,
+            }),
+          );
+        }
+        return created;
+      });
+
+      return orders.map(toOrderResponse);
+    } catch (error) {
+      if (dto.idempotencyKey !== undefined && isPrismaKnownError(error, "P2002")) {
+        const existing = await this.prisma.orderGroup.findUniqueOrThrow({
+          where: { idempotencyKey: dto.idempotencyKey },
+          include: ORDER_GROUP_INCLUDE,
+        });
+        return this.buildBatchReplay(existing, dto, deliveryDate);
+      }
+      throw error;
+    }
+  }
+
+  private buildBatchReplay(
+    existing: OrderGroupWithOrders,
+    dto: CreateOrdersBatchDto,
+    deliveryDate: Date,
+  ): OrderResponseDto[] {
+    const requestedLocations = dto.locations.filter((location) => location.items.length > 0);
+    const existingByLocation = new Map(
+      existing.orders.map((order) => [order.locationId, order] as const),
+    );
+    const sameRequest =
+      existing.customerId === dto.customerId &&
+      existing.orders.length === requestedLocations.length &&
+      requestedLocations.every((location) => {
+        const order = existingByLocation.get(location.locationId);
+        return (
+          order !== undefined &&
+          order.deliveryDate.getTime() === deliveryDate.getTime() &&
+          sameOrderItems(order.items, location.items)
+        );
+      });
+    if (!sameRequest) {
+      throw new ConflictException(
+        `La clave de idempotencia "${dto.idempotencyKey}" ya se usó para otro pedido. Genera una clave nueva para este envío.`,
+      );
+    }
+    return requestedLocations.map((location) =>
+      toOrderResponse(existingByLocation.get(location.locationId) as OrderWithRelations),
+    );
   }
 
   /** Always paginated; the count runs against the same filter as the page. */

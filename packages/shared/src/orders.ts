@@ -19,6 +19,8 @@ export interface OrderItem {
 /** OrderResponseDto. `createdAt` is an instant. */
 export interface Order {
   id: string;
+  locationId: string;
+  orderGroupId: string | null;
   customerId: string;
   customer: { id: string; name: string; phone: string };
   deliveryDate: string;
@@ -58,6 +60,18 @@ export interface CreateOrderBody {
   customerId: string;
   deliveryDate: string;
   items: CreateOrderItemBody[];
+}
+
+export interface CreateLocationOrderBody {
+  locationId: string;
+  items: CreateOrderItemBody[];
+}
+
+export interface CreateOrdersBatchBody {
+  customerId: string;
+  deliveryDate: string;
+  idempotencyKey?: string;
+  locations: CreateLocationOrderBody[];
 }
 
 /** MAX_LIMIT in list-orders-query.dto.ts. */
