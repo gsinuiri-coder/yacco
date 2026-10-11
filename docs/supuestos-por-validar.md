@@ -130,12 +130,12 @@ cuándo, y tres líneas:
 - **Construido encima:** nada todavía. Se construye `contact_name`, `latitude` y `longitude` en `customer_locations`, y «locales sin ubicación» en «Puesta en marcha».
 - **Si resulta que no:** bajo. Son columnas nullable y botones; se dejan de mostrar sin tocar datos.
 
-### Fase 2: el código de lote se genera solo si queda vacío
+### Fase 2: todas las llenadas del día pertenecen al mismo lote
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 2 de «Fase 2 en local».
-- **Asumimos:** que la planta no tiene una numeración de lotes propia y le sirve `L-DDMMYYYY` (día de Lima), con `-2`, `-3`… para el segundo lote del día. El campo viene precargado y se puede cambiar.
-- **Construido encima:** nada todavía. Se construye en el registro de lotes.
-- **Si resulta que no:** bajo. Cambiar el formato es tocar el generador; los códigos ya guardados no cambian.
+- **Asumimos:** que todas las llenadas de una misma fecha de lote son un único lote auditable. La primera crea `L-DDMMYYYY` (día de Lima) o el código que escriba la oficina; las siguientes se suman al lote existente como renglones nuevos, nunca editando una llenada anterior. Si ya hay varios lotes históricos para esa fecha, se usa `L-DDMMYYYY` o, si no existe, el primero por código, sin fusionarlos.
+- **Construido encima:** nada todavía. Se construye en el registro y detalle de lotes, con autor, hora y nota por llenada, consumo FIFO entre renglones y concurrencia sin duplicar el lote ni responder 409.
+- **Si resulta que no:** medio. Cambiar el formato predeterminado es local al generador, pero volver a separar llenadas exige cambiar cómo se elige el lote y cómo se presentan sus renglones; los lotes y movimientos ya escritos no se fusionan, editan ni borran.
 
 ### Fase 2: a una ruta en curso se le puede agregar carga
 
