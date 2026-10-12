@@ -189,7 +189,7 @@ export class RosterLoaderService {
         where: { name: refillName },
         select: { containerTypeId: true },
       });
-      if (refill === null) {
+      if (refill === null || refill.containerTypeId === null) {
         issues.push({
           file: "(config)",
           line: 0,

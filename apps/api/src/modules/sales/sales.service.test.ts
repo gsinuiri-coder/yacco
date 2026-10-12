@@ -74,6 +74,11 @@ function buildTxMock() {
     sale: { create: jest.fn<() => Promise<unknown>>() },
     payment: { create: jest.fn<() => Promise<unknown>>() },
     customerContainerBalance: { findMany: jest.fn<() => Promise<unknown>>() },
+    accessoryStock: {
+      findUnique: jest.fn<() => Promise<unknown>>(),
+      upsert: jest.fn<() => Promise<unknown>>(),
+    },
+    accessoryMovement: { create: jest.fn<() => Promise<unknown>>() },
   };
 }
 
@@ -658,6 +663,11 @@ describe("SalesService.voidStopDeliveryWithinTransaction", () => {
       payment: { updateMany: jest.fn<() => Promise<unknown>>() },
       customer: { update: jest.fn<() => Promise<unknown>>() },
       containerMovement: { findMany: jest.fn<() => Promise<unknown>>() },
+      accessoryMovement: {
+        findMany: jest.fn<() => Promise<unknown>>(),
+        create: jest.fn<() => Promise<unknown>>(),
+      },
+      accessoryStock: { upsert: jest.fn<() => Promise<unknown>>() },
     };
   }
 
@@ -714,6 +724,7 @@ describe("SalesService.voidStopDeliveryWithinTransaction", () => {
     tx.sale.findFirst.mockResolvedValue(saleRow());
     tx.sale.updateMany.mockResolvedValue({ count: 1 });
     tx.containerMovement.findMany.mockResolvedValue([]);
+    tx.accessoryMovement.findMany.mockResolvedValue([]);
   });
 
   it("sin venta vigente no escribe nada y no falla: la parada no tenía qué anular", async () => {

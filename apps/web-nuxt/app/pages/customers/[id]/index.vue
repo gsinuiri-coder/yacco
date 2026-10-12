@@ -16,6 +16,11 @@ function paymentRegistered(debtBalance: string): void {
   if (customer.value) customer.value = { ...customer.value, debtBalance };
   statementRefresh.value++;
 }
+
+async function onStatementChanged(): Promise<void> {
+  await resource.reload();
+  statementRefresh.value++;
+}
 </script>
 
 <template>
@@ -134,6 +139,11 @@ function paymentRegistered(debtBalance: string): void {
           <CustomerContainersSection
             v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
             :customer-id="customer.id"
+          />
+          <CustomerAccessoriesSection
+            v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+            :customer-id="customer.id"
+            @statement-changed="onStatementChanged"
           />
         </div>
 

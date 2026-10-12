@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, ProductType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import type { CreateProductDto } from "./dto/create-product.dto.js";
 import type { ListProductsQueryDto } from "./dto/list-products-query.dto.js";
 import type { ProductResponseDto } from "./dto/product-response.dto.js";
 import type { ProductPriceChangeResponseDto } from "./dto/product-price-change-response.dto.js";
@@ -45,6 +46,62 @@ function toPriceChangeResponse(change: PriceChangeWithRelations): ProductPriceCh
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async create(dto: CreateProductDto): Promise<ProductResponseDto> {
+    const listPrice = new Prisma.Decimal(dto.listPrice);
+    if (listPrice.lte(0)) {
+      throw new BadRequestException("El precio de lista debe ser mayor que 0");
+    }
+    const trimmedName = dto.name.trim();
+    if (trimmedName.length === 0) {
+      throw new BadRequestException("El nombre del producto no puede estar vacío");
+    }
+
+    if (dto.type === ProductType.ACCESSORY) {
+      if (dto.containerTypeId !== undefined) {
+        throw new BadRequestException("Un accesorio no debe tener tipo de envase");
+      }
+    } else {
+      if (!dto.containerTypeId) {
+        throw new BadRequestException("Un producto que no es accesorio debe tener tipo de envase");
+      }
+      const containerType = await this.prisma.containerType.findUnique({
+        where: { id: dto.containerTypeId },
+        select: { id: true },
+      });
+      if (containerType === null) {
+        throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no existe`);
+      }
+    }
+
+    const product = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          name: trimmedName,
+          type: dto.type,
+          containerTypeId:
+            dto.type === ProductType.ACCESSORY ? null : (dto.containerTypeId ?? null),
+          listPrice,
+        },
+      });
+
+      if (dto.type === ProductType.ACCESSORY) {
+        await tx.accessoryStock.create({
+          data: {
+            productId: created.id,
+            quantity: 0,
+          },
+        });
+      }
+
+      return tx.product.findUniqueOrThrow({
+        where: { id: created.id },
+        include: PRODUCT_INCLUDE,
+      });
+    });
+
+    return toProductResponse(product);
+  }
 
   /**
    * No pagination: the catalog is a handful of hand-seeded rows on purpose

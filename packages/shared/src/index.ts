@@ -1,6 +1,7 @@
 // Contracts and formatting rules shared by the API's clients (@yacco/web-nuxt
 // today). A type or a rule lands here when two sides need it, never copied.
 export * from "./account-statement.js";
+export * from "./accessories.js";
 export * from "./auth.js";
 export * from "./business-date.js";
 export * from "./catalogs.js";

@@ -19,6 +19,7 @@ useHead({ title: "Productos · Yacco" });
 const TYPE_LABELS: Record<Product["type"], string> = {
   REFILL: "Recarga",
   CONTAINER_SALE: "Venta de bidón",
+  ACCESSORY: "Accesorio",
 };
 
 const session = useSession();
@@ -115,10 +116,59 @@ async function togglePriceChanges(productId: string): Promise<void> {
     loadingPriceChanges.value = false;
   }
 }
+
+// --- Alta de accesorio ---
+const newAccessoryOpen = ref(false);
+const newAccessoryName = ref("");
+const newAccessoryPrice = ref("");
+const creatingAccessory = ref(false);
+const newAccessoryError = ref<string | null>(null);
+
+function openNewAccessoryModal(): void {
+  newAccessoryName.value = "";
+  newAccessoryPrice.value = "";
+  newAccessoryError.value = null;
+  newAccessoryOpen.value = true;
+}
+
+async function createAccessory(): Promise<void> {
+  if (creatingAccessory.value) return;
+  const name = newAccessoryName.value.trim();
+  if (!name) {
+    newAccessoryError.value = "El nombre no puede estar vacío";
+    return;
+  }
+  const listPrice = newAccessoryPrice.value.trim();
+  if (!isMoneyInput(listPrice)) {
+    newAccessoryError.value = PRICE_FORMAT_MESSAGE;
+    return;
+  }
+  if (!isAboveZero(listPrice)) {
+    newAccessoryError.value = "El precio de lista debe ser mayor que 0";
+    return;
+  }
+  creatingAccessory.value = true;
+  newAccessoryError.value = null;
+  try {
+    await api.request<Product>("/products", {
+      method: "POST",
+      body: { name, type: "ACCESSORY", listPrice },
+    });
+    newAccessoryOpen.value = false;
+    await loadProducts();
+  } catch (error) {
+    newAccessoryError.value = describeApiFailure(error);
+  } finally {
+    creatingAccessory.value = false;
+  }
+}
 </script>
 
 <template>
   <AppPage title="Productos" :description="summary">
+    <template v-if="isAdmin" #actions>
+      <UButton icon="i-lucide-plus" label="Nuevo accesorio" @click="openNewAccessoryModal" />
+    </template>
     <div class="space-y-6">
       <UAlert
         v-if="isAdmin"
@@ -170,7 +220,7 @@ async function togglePriceChanges(productId: string): Promise<void> {
                 <tr>
                   <td class="px-4 py-3 font-medium text-highlighted">{{ product.name }}</td>
                   <td class="px-4 py-3">{{ TYPE_LABELS[product.type] }}</td>
-                  <td class="px-4 py-3">{{ product.containerType.name }}</td>
+                  <td class="px-4 py-3">{{ product.containerType?.name ?? "—" }}</td>
                   <td class="px-4 py-3 text-right">
                     <UInput
                       v-if="editingId === product.id"
@@ -251,5 +301,55 @@ async function togglePriceChanges(productId: string): Promise<void> {
         </div>
       </UCard>
     </div>
+
+    <UModal v-model:open="newAccessoryOpen" title="Nuevo accesorio">
+      <template #body>
+        <form class="space-y-4" @submit.prevent="createAccessory">
+          <UAlert
+            v-if="newAccessoryError"
+            role="alert"
+            color="error"
+            variant="subtle"
+            :title="newAccessoryError"
+          />
+
+          <UFormField label="Nombre del accesorio" required>
+            <UInput
+              v-model="newAccessoryName"
+              placeholder="Ej. Surtidor manual"
+              :disabled="creatingAccessory"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField
+            label="Precio de lista"
+            required
+            help="En soles, con hasta dos decimales (ej. 15.00)"
+          >
+            <UInput
+              v-model="newAccessoryPrice"
+              inputmode="decimal"
+              placeholder="15.00"
+              :disabled="creatingAccessory"
+              class="w-full"
+            >
+              <template #leading><span class="text-sm text-muted">S/</span></template>
+            </UInput>
+          </UFormField>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancelar"
+              :disabled="creatingAccessory"
+              @click="newAccessoryOpen = false"
+            />
+            <UButton type="submit" label="Guardar accesorio" :loading="creatingAccessory" />
+          </div>
+        </form>
+      </template>
+    </UModal>
   </AppPage>
 </template>

@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -23,6 +24,7 @@ import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
+import { CreateProductDto } from "./dto/create-product.dto.js";
 import { ListProductsQueryDto } from "./dto/list-products-query.dto.js";
 import { ProductResponseDto } from "./dto/product-response.dto.js";
 import { ProductPriceChangeResponseDto } from "./dto/product-price-change-response.dto.js";
@@ -50,6 +52,16 @@ export class ProductsController {
   @Get()
   findAll(@Query() query: ListProductsQueryDto): Promise<ProductResponseDto[]> {
     return this.productsService.findAll(query);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: "Crea un producto en el catálogo (solo ADMIN)" })
+  @ApiResponse({ status: 201, type: ProductResponseDto })
+  @ApiBadRequestResponse({ description: "Invalid payload or accessory with container type" })
+  @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
+  @Post()
+  create(@Body() dto: CreateProductDto): Promise<ProductResponseDto> {
+    return this.productsService.create(dto);
   }
 
   @Roles(UserRole.ADMIN)

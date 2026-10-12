@@ -34,8 +34,25 @@ enum UserRole {
 enum ProductType {
   REFILL
   CONTAINER_SALE
+  ACCESSORY
 
   @@map("product_type")
+}
+
+enum AccessoryMovementType {
+  ENTRY
+  SALE
+  SALE_VOID
+  LOAN
+  LOAN_VOID
+  LOAN_RETURN
+  LOAN_RETURN_VOID
+  LOAN_CHARGE
+  LOAN_CHARGE_VOID
+  WRITE_OFF
+  COUNT_ADJUSTMENT
+
+  @@map("accessory_movement_type")
 }
 
 enum ContainerMovementType {
@@ -226,6 +243,8 @@ model User {
   customerLocationPhotosHidden        CustomerLocationPhoto[]            @relation("CustomerLocationPhotoHiddenBy")
   customerLocationCoordinatesRequested CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateRequestedBy")
   customerLocationCoordinatesReviewed CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateReviewedBy")
+  accessoryMovementsRecorded          AccessoryMovement[]                 @relation("AccessoryMovementRecordedBy")
+  accessoryCountsRecorded             AccessoryCount[]                    @relation("AccessoryCountRecordedBy")
 
   @@map("users")
 }
@@ -367,23 +386,29 @@ model CustomerLocation {
   payments   Payment[]
   photos             CustomerLocationPhoto[]
   coordinateRequests CustomerLocationCoordinateRequest[]
+  accessoryBalances  CustomerAccessoryBalance[]
+  accessoryMovements AccessoryMovement[]
 
   @@map("customer_locations")
 }
 
 model Product {
   id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  containerTypeId String      @map("container_type_id") @db.Uuid
+  containerTypeId String?     @map("container_type_id") @db.Uuid
   name            String
   type            ProductType
   listPrice       Decimal     @map("list_price") @db.Decimal(10, 2)
   active          Boolean     @default(true)
 
-  containerType  ContainerType        @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
-  customerPrices CustomerPrice[]
-  orderItems     OrderItem[]
-  saleItems      SaleItem[]
-  priceChanges   ProductPriceChange[]
+  containerType              ContainerType?              @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  customerPrices             CustomerPrice[]
+  orderItems                 OrderItem[]
+  saleItems                  SaleItem[]
+  priceChanges               ProductPriceChange[]
+  accessoryStock             AccessoryStock?
+  customerAccessoryBalances CustomerAccessoryBalance[]
+  accessoryMovements        AccessoryMovement[]
+  accessoryCounts           AccessoryCount[]
 
   @@map("products")
 }
@@ -765,6 +790,7 @@ model Sale {
   voidedBy                  User?            @relation("SaleVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
   items                     SaleItem[]
   payments                  Payment[]
+  accessoryMovements        AccessoryMovement[]
 
   // A customer's account statement walks their sales by location, oldest
   // first (CustomersService.getAccountStatement). Expand-only, no column.
@@ -1064,3 +1090,67 @@ model CustomerLocationCoordinateRequest {
   @@index([locationId, status])
   @@map("customer_location_coordinate_requests")
 }
+
+// --- Accessories -------------------------------------------------------------
+
+model AccessoryStock {
+  productId String @id @map("product_id") @db.Uuid
+  quantity  Int    @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@map("accessory_stock")
+}
+
+model CustomerAccessoryBalance {
+  locationId String @map("location_id") @db.Uuid
+  productId  String @map("product_id") @db.Uuid
+  quantity   Int    @default(0)
+
+  location CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  product  Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@id([locationId, productId])
+  @@map("customer_accessory_balances")
+}
+
+model AccessoryMovement {
+  id                 String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId          String                @map("product_id") @db.Uuid
+  type               AccessoryMovementType
+  quantity           Int
+  locationId         String?               @map("location_id") @db.Uuid
+  saleId             String?               @map("sale_id") @db.Uuid
+  reason             String?
+  reversesMovementId String?               @unique @map("reverses_movement_id") @db.Uuid
+  recordedById       String                @map("recorded_by") @db.Uuid
+  occurredAt         DateTime              @map("occurred_at") @db.Timestamptz(6)
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product          Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location         CustomerLocation?  @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  sale             Sale?              @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  reversesMovement AccessoryMovement? @relation("AccessoryMovementReversal", fields: [reversesMovementId], references: [id], onDelete: Restrict)
+  reversedBy       AccessoryMovement? @relation("AccessoryMovementReversal")
+  recordedBy       User               @relation("AccessoryMovementRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([productId, occurredAt])
+  @@index([locationId, occurredAt])
+  @@map("accessory_movements")
+}
+
+model AccessoryCount {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  expectedQty Int      @map("expected_qty")
+  countedQty  Int      @map("counted_qty")
+  reason      String?
+  recordedById String  @map("recorded_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  recordedBy User    @relation("AccessoryCountRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@map("accessory_counts")
+}
+

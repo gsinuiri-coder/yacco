@@ -68,6 +68,13 @@ export interface RouteStopStockShortfall {
   requested: number;
 }
 
+export interface RouteStopAccessoryShortfall {
+  productId: string;
+  productName: string;
+  available: number;
+  requested: number;
+}
+
 /** RouteStopContainerBalanceDto: what the customer still holds, per type. */
 export interface RouteStopContainerBalance {
   containerTypeId: string;
@@ -98,6 +105,7 @@ export interface RouteStop {
   payment?: RouteStopPayment | null;
   containerBalances?: RouteStopContainerBalance[];
   stockShortfall?: RouteStopStockShortfall[];
+  accessoryShortfall?: RouteStopAccessoryShortfall[];
 }
 
 /** RouteResponseDto. Stops always come ordered by `position`. */

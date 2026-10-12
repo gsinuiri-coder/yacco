@@ -179,7 +179,7 @@ describe("Productos", () => {
     expect(screen.getByLabelText("Precio de lista de Recarga 20L con caño")).toBeTruthy();
   });
 
-  it("un vendedor ve los precios pero no puede cambiarlos", async () => {
+  it("un vendedor ve los precios pero no puede cambiarlos ni dar de alta accesorios", async () => {
     stubList([REFILL]);
 
     await renderPage(["SELLER"]);
@@ -187,6 +187,70 @@ describe("Productos", () => {
     const row = await rowOf("Recarga 20L con caño");
     expect(within(row).getByText("S/ 8.00")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Cambiar precio" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Nuevo accesorio" })).toBeNull();
     expect(screen.queryByText(/El precio nuevo se cobra/)).toBeNull();
+  });
+
+  it("el administrador da de alta un accesorio sin tipo de envase", async () => {
+    const ACCESSORY: Product = {
+      id: "acc-1",
+      name: "Surtidor manual",
+      type: "ACCESSORY",
+      containerType: null,
+      listPrice: "15.00",
+      active: true,
+    };
+    let currentList = [REFILL];
+    cleanups.push(
+      registerEndpoint("/api/v1/products", {
+        method: "GET",
+        handler: () => currentList,
+      }),
+    );
+    const postBodies = stubWrite(cleanups, "/api/v1/products", "POST", (_body) => {
+      currentList = [REFILL, ACCESSORY];
+      return ACCESSORY;
+    });
+    const user = userEvent.setup();
+
+    await renderPage(["ADMIN"]);
+
+    await user.click(screen.getByRole("button", { name: "Nuevo accesorio" }));
+    const nameInput = screen.getByLabelText(/Nombre del accesorio/);
+    await user.type(nameInput, "Surtidor manual");
+    const priceInput = screen.getByLabelText(/Precio de lista/);
+    await user.type(priceInput, "15.00");
+    await user.click(screen.getByRole("button", { name: "Guardar accesorio" }));
+
+    expect(postBodies).toEqual([
+      { name: "Surtidor manual", type: "ACCESSORY", listPrice: "15.00" },
+    ]);
+    const row = await rowOf("Surtidor manual");
+    expect(within(row).getByText("Accesorio")).toBeTruthy();
+    expect(within(row).getByText("—")).toBeTruthy();
+    expect(within(row).getByText("S/ 15.00")).toBeTruthy();
+  });
+
+  it("valida nombre y precio al crear un accesorio", async () => {
+    stubList([REFILL]);
+    const user = userEvent.setup();
+
+    await renderPage(["ADMIN"]);
+
+    await user.click(screen.getByRole("button", { name: "Nuevo accesorio" }));
+    await user.click(screen.getByRole("button", { name: "Guardar accesorio" }));
+    expect(await screen.findByText("El nombre no puede estar vacío")).toBeTruthy();
+
+    const nameInput = screen.getByLabelText(/Nombre del accesorio/);
+    await user.type(nameInput, "Surtidor manual");
+    const priceInput = screen.getByLabelText(/Precio de lista/);
+    await user.type(priceInput, "15");
+    await user.click(screen.getByRole("button", { name: "Guardar accesorio" }));
+    expect(await screen.findByText(/dos decimales/)).toBeTruthy();
+
+    await user.clear(priceInput);
+    await user.type(priceInput, "0.00");
+    await user.click(screen.getByRole("button", { name: "Guardar accesorio" }));
+    expect(await screen.findByText("El precio de lista debe ser mayor que 0")).toBeTruthy();
   });
 });

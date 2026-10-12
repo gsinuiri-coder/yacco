@@ -20,8 +20,8 @@ export class ProductResponseDto {
   @ApiProperty({ enum: ProductType })
   type!: ProductType;
 
-  @ApiProperty({ type: ProductContainerTypeDto })
-  containerType!: ProductContainerTypeDto;
+  @ApiProperty({ type: ProductContainerTypeDto, nullable: true })
+  containerType!: ProductContainerTypeDto | null;
 
   /** 2-decimal string: a NUMERIC(10,2) never round-trips through a JSON number. */
   @ApiProperty({ type: String, example: "8.00" })
