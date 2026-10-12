@@ -290,4 +290,39 @@ describe("Accesorios", () => {
 
     expect(postBodies).toEqual([{ reason: "Cliente trajo el accesorio" }]);
   });
+
+  it("valida campos en ingreso, baja y conteo", async () => {
+    stubList([DISPENSER]);
+    const user = userEvent.setup();
+
+    await renderPage(["ADMIN"]);
+    const row = await rowOf("Dispensador de mesa");
+
+    // Ingreso
+    await user.click(within(row).getByRole("button", { name: "Ingreso" }));
+    await user.click(screen.getByRole("button", { name: "Registrar ingreso" }));
+    expect(
+      await screen.findByText("La cantidad debe ser un número entero mayor que 0"),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    // Baja
+    await user.click(within(row).getByRole("button", { name: "Baja" }));
+    await user.click(screen.getByRole("button", { name: "Registrar baja" }));
+    expect(
+      await screen.findByText("La cantidad debe ser un número entero mayor que 0"),
+    ).toBeTruthy();
+    const qtyInput = screen.getByLabelText(/Cantidad que se da de baja/);
+    await user.type(qtyInput, "2");
+    await user.click(screen.getByRole("button", { name: "Registrar baja" }));
+    expect(await screen.findByText("Debes indicar el motivo de la baja")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    // Conteo
+    await user.click(within(row).getByRole("button", { name: "Contar" }));
+    const countInput = screen.getByLabelText(/Cantidad contada físicamente/);
+    await user.type(countInput, "8"); // stock is 10
+    await user.click(screen.getByRole("button", { name: "Confirmar diferencia" }));
+    expect(await screen.findByText("Debes indicar el motivo de la diferencia")).toBeTruthy();
+  });
 });

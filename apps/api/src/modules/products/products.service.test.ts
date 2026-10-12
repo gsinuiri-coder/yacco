@@ -25,6 +25,13 @@ function buildPrismaMock() {
       findMany: jest.fn<() => Promise<unknown>>(),
       findUniqueOrThrow: jest.fn<() => Promise<unknown>>(),
       update: jest.fn<() => Promise<unknown>>(),
+      create: jest.fn<() => Promise<unknown>>(),
+    },
+    containerType: {
+      findUnique: jest.fn<() => Promise<unknown>>(),
+    },
+    accessoryStock: {
+      create: jest.fn<() => Promise<unknown>>(),
     },
     productPriceChange: { create: jest.fn<() => Promise<unknown>>() },
     $transaction: jest.fn(),
@@ -124,6 +131,98 @@ describe("ProductsService", () => {
       await expect(service.update("product-1", { listPrice: "1.00" }, "admin-1")).rejects.toThrow(
         "boom",
       );
+    });
+  });
+
+  describe("create", () => {
+    it("refuses price <= 0 or empty name", async () => {
+      await expect(
+        service.create({ name: "Disp", type: ProductType.ACCESSORY, listPrice: "0.00" }),
+      ).rejects.toThrow("El precio de lista debe ser mayor que 0");
+
+      await expect(
+        service.create({ name: "   ", type: ProductType.ACCESSORY, listPrice: "10.00" }),
+      ).rejects.toThrow("El nombre del producto no puede estar vacío");
+    });
+
+    it("refuses accessory with containerTypeId", async () => {
+      await expect(
+        service.create({
+          name: "Disp",
+          type: ProductType.ACCESSORY,
+          listPrice: "10.00",
+          containerTypeId: CONTAINER_TYPE_ID,
+        }),
+      ).rejects.toThrow("Un accesorio no debe tener tipo de envase");
+    });
+
+    it("refuses non-accessory without containerTypeId or with unknown containerTypeId", async () => {
+      await expect(
+        service.create({
+          name: "Recarga",
+          type: ProductType.REFILL,
+          listPrice: "10.00",
+        }),
+      ).rejects.toThrow("Un producto que no es accesorio debe tener tipo de envase");
+
+      prisma.containerType.findUnique.mockResolvedValue(null);
+      await expect(
+        service.create({
+          name: "Recarga",
+          type: ProductType.REFILL,
+          listPrice: "10.00",
+          containerTypeId: "unknown-id",
+        }),
+      ).rejects.toThrow('El tipo de envase "unknown-id" no existe');
+    });
+
+    it("creates accessory and initializes accessoryStock to 0", async () => {
+      prisma.product.create.mockResolvedValue({ id: "acc-1" });
+      prisma.product.findUniqueOrThrow.mockResolvedValue(
+        buildProduct({
+          id: "acc-1",
+          name: "Dispensador",
+          type: ProductType.ACCESSORY,
+          containerType: null,
+          listPrice: new Prisma.Decimal("35.00"),
+        }),
+      );
+
+      const result = await service.create({
+        name: "Dispensador",
+        type: ProductType.ACCESSORY,
+        listPrice: "35.00",
+      });
+
+      expect(prisma.accessoryStock.create).toHaveBeenCalledWith({
+        data: { productId: "acc-1", quantity: 0 },
+      });
+      expect(result.id).toBe("acc-1");
+      expect(result.type).toBe(ProductType.ACCESSORY);
+    });
+
+    it("creates non-accessory when containerTypeId exists", async () => {
+      prisma.containerType.findUnique.mockResolvedValue({ id: CONTAINER_TYPE_ID });
+      prisma.product.create.mockResolvedValue({ id: "prod-1" });
+      prisma.product.findUniqueOrThrow.mockResolvedValue(
+        buildProduct({
+          id: "prod-1",
+          name: "Bidón nuevo",
+          type: ProductType.CONTAINER_SALE,
+          containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+          listPrice: new Prisma.Decimal("28.00"),
+        }),
+      );
+
+      const result = await service.create({
+        name: "Bidón nuevo",
+        type: ProductType.CONTAINER_SALE,
+        listPrice: "28.00",
+        containerTypeId: CONTAINER_TYPE_ID,
+      });
+
+      expect(result.id).toBe("prod-1");
+      expect(result.listPrice).toBe("28.00");
     });
   });
 });

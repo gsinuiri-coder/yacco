@@ -230,4 +230,27 @@ describe("Productos", () => {
     expect(within(row).getByText("—")).toBeTruthy();
     expect(within(row).getByText("S/ 15.00")).toBeTruthy();
   });
+
+  it("valida nombre y precio al crear un accesorio", async () => {
+    stubList([REFILL]);
+    const user = userEvent.setup();
+
+    await renderPage(["ADMIN"]);
+
+    await user.click(screen.getByRole("button", { name: "Nuevo accesorio" }));
+    await user.click(screen.getByRole("button", { name: "Guardar accesorio" }));
+    expect(await screen.findByText("El nombre no puede estar vacío")).toBeTruthy();
+
+    const nameInput = screen.getByLabelText(/Nombre del accesorio/);
+    await user.type(nameInput, "Surtidor manual");
+    const priceInput = screen.getByLabelText(/Precio de lista/);
+    await user.type(priceInput, "15");
+    await user.click(screen.getByRole("button", { name: "Guardar accesorio" }));
+    expect(await screen.findByText(/dos decimales/)).toBeTruthy();
+
+    await user.clear(priceInput);
+    await user.type(priceInput, "0.00");
+    await user.click(screen.getByRole("button", { name: "Guardar accesorio" }));
+    expect(await screen.findByText("El precio de lista debe ser mayor que 0")).toBeTruthy();
+  });
 });

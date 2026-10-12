@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AccessoryMovementType, Prisma, ProductType } from "@prisma/client";
 import { jest } from "@jest/globals";
@@ -534,6 +534,125 @@ describe("AccessoriesService Unit Tests", () => {
     });
   });
 
+  describe("listMovements", () => {
+    it("throws BadRequestException if product is missing or not an accessory", async () => {
+      prisma.product.findUnique.mockResolvedValue(null);
+      await expect(service.listMovements("missing-id", {})).rejects.toThrow(BadRequestException);
+
+      prisma.product.findUnique.mockResolvedValue({ id: "prod-1", type: ProductType.REFILL });
+      await expect(service.listMovements("prod-1", {})).rejects.toThrow(BadRequestException);
+    });
+
+    it("paginates and filters movements by type, location, and date range", async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        id: ACCESSORY_ID,
+        type: ProductType.ACCESSORY,
+      });
+      const now = new Date();
+      prisma.accessoryMovement.count.mockResolvedValue(1);
+      prisma.accessoryMovement.findMany.mockResolvedValue([
+        {
+          id: MOVEMENT_ID,
+          productId: ACCESSORY_ID,
+          type: AccessoryMovementType.ENTRY,
+          quantity: 5,
+          locationId: null,
+          location: null,
+          saleId: null,
+          reason: null,
+          reversesMovementId: null,
+          recordedById: USER_ID,
+          recordedBy: { name: "Admin" },
+          product: { name: "Dispensador" },
+          occurredAt: now,
+          createdAt: now,
+        },
+      ]);
+
+      const result = await service.listMovements(ACCESSORY_ID, {
+        page: 2,
+        limit: 10,
+        type: AccessoryMovementType.ENTRY,
+        locationId: LOCATION_ID,
+        startDate: "2026-10-01",
+        endDate: "2026-10-10",
+      });
+
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(10);
+      expect(result.total).toBe(1);
+      expect(result.totalPages).toBe(1);
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.type).toBe(AccessoryMovementType.ENTRY);
+    });
+  });
+
+  describe("listCustomerBalances", () => {
+    it("throws NotFoundException if location does not exist", async () => {
+      prisma.customerLocation.findUnique.mockResolvedValue(null);
+      await expect(service.listCustomerBalances("missing-loc")).rejects.toThrow();
+    });
+
+    it("returns location balances with agreed prices resolving location price first", async () => {
+      prisma.customerLocation.findUnique.mockResolvedValue({
+        id: LOCATION_ID,
+        customerId: CUSTOMER_ID,
+      });
+      prisma.customerAccessoryBalance.findMany.mockResolvedValue([
+        {
+          locationId: LOCATION_ID,
+          productId: ACCESSORY_ID,
+          quantity: 3,
+          product: {
+            id: ACCESSORY_ID,
+            name: "Dispensador",
+            listPrice: new Prisma.Decimal("40.00"),
+          },
+        },
+      ]);
+      prisma.customerPrice.findMany.mockResolvedValue([
+        {
+          customerId: CUSTOMER_ID,
+          productId: ACCESSORY_ID,
+          locationId: LOCATION_ID,
+          price: new Prisma.Decimal("35.00"),
+        },
+      ]);
+
+      const balances = await service.listCustomerBalances(LOCATION_ID);
+      expect(balances).toHaveLength(1);
+      expect(balances[0]?.agreedPrice).toBe("35.00");
+      expect(balances[0]?.listPrice).toBe("40.00");
+    });
+  });
+
+  describe("getBorrowedReport", () => {
+    it("returns list of borrowed accessories across customer locations", async () => {
+      const now = new Date();
+      prisma.customerAccessoryBalance.findMany.mockResolvedValue([
+        {
+          locationId: LOCATION_ID,
+          productId: ACCESSORY_ID,
+          quantity: 2,
+          location: {
+            name: "Sede Centro",
+            customer: { id: CUSTOMER_ID, name: "Bodega Don Pepe" },
+          },
+          product: { id: ACCESSORY_ID, name: "Dispensador" },
+        },
+      ]);
+      prisma.accessoryMovement.findFirst.mockResolvedValue({
+        occurredAt: now,
+      });
+
+      const report = await service.getBorrowedReport();
+      expect(report).toHaveLength(1);
+      expect(report[0]?.customerName).toBe("Bodega Don Pepe");
+      expect(report[0]?.quantity).toBe(2);
+      expect(report[0]?.lastMovementAt).toEqual(now);
+    });
+  });
+
   describe("reconciliation", () => {
     it("reports balanced when ledger matches stock and balances", async () => {
       prisma.product.findMany.mockResolvedValue([
@@ -564,6 +683,84 @@ describe("AccessoriesService Unit Tests", () => {
       expect(result.isBalanced).toBe(true);
       expect(result.stockDiscrepancies).toHaveLength(0);
       expect(result.customerBalanceDiscrepancies).toHaveLength(0);
+    });
+
+    it("detects discrepancies across various movement types", async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: ACCESSORY_ID,
+          name: "Dispensador",
+          accessoryStock: { quantity: 10 },
+        },
+      ]);
+      prisma.accessoryMovement.findMany
+        .mockResolvedValueOnce([
+          { type: AccessoryMovementType.ENTRY, quantity: 20 },
+          { type: AccessoryMovementType.SALE, quantity: 2 },
+          { type: AccessoryMovementType.SALE_VOID, quantity: 1 },
+          { type: AccessoryMovementType.LOAN, quantity: 5 },
+          { type: AccessoryMovementType.LOAN_RETURN, quantity: 2 },
+          { type: AccessoryMovementType.LOAN_RETURN_VOID, quantity: 1 },
+          { type: AccessoryMovementType.LOAN_VOID, quantity: 1 },
+          { type: AccessoryMovementType.WRITE_OFF, quantity: 2 },
+          { type: AccessoryMovementType.COUNT_ADJUSTMENT, quantity: -2 },
+          { type: AccessoryMovementType.LOAN_CHARGE, quantity: 1 },
+          { type: AccessoryMovementType.LOAN_CHARGE_VOID, quantity: 1 },
+        ])
+        .mockResolvedValueOnce([
+          { type: AccessoryMovementType.LOAN, quantity: 5 },
+          { type: AccessoryMovementType.LOAN_VOID, quantity: 1 },
+          { type: AccessoryMovementType.LOAN_RETURN, quantity: 1 },
+          { type: AccessoryMovementType.LOAN_RETURN_VOID, quantity: 1 },
+          { type: AccessoryMovementType.LOAN_CHARGE, quantity: 1 },
+          { type: AccessoryMovementType.LOAN_CHARGE_VOID, quantity: 1 },
+          { type: AccessoryMovementType.ENTRY, quantity: 10 },
+          { type: AccessoryMovementType.SALE, quantity: 2 },
+          { type: AccessoryMovementType.SALE_VOID, quantity: 1 },
+          { type: AccessoryMovementType.WRITE_OFF, quantity: 1 },
+          { type: AccessoryMovementType.COUNT_ADJUSTMENT, quantity: 1 },
+        ]);
+
+      prisma.customerAccessoryBalance.findMany.mockResolvedValue([
+        {
+          locationId: LOCATION_ID,
+          productId: ACCESSORY_ID,
+          quantity: 1, // differs from ledger
+          location: { name: "Sede Centro" },
+          product: { name: "Dispensador" },
+        },
+      ]);
+
+      const result = await service.reconciliation();
+      expect(result.isBalanced).toBe(false);
+      expect(result.stockDiscrepancies.length).toBeGreaterThan(0);
+      expect(result.customerBalanceDiscrepancies.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("voidCharge edge cases", () => {
+    it("throws if movement is not found or not LOAN_CHARGE or already reversed", async () => {
+      prisma.accessoryMovement.findUnique.mockResolvedValue(null);
+      await expect(service.voidCharge("missing", { reason: "test" }, USER_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+
+      prisma.accessoryMovement.findUnique.mockResolvedValue({
+        id: "mov-1",
+        type: AccessoryMovementType.ENTRY,
+      });
+      await expect(service.voidCharge("mov-1", { reason: "test" }, USER_ID)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      prisma.accessoryMovement.findUnique.mockResolvedValue({
+        id: "mov-2",
+        type: AccessoryMovementType.LOAN_CHARGE,
+        sale: { voidedAt: new Date() },
+      });
+      await expect(service.voidCharge("mov-2", { reason: "test" }, USER_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });
