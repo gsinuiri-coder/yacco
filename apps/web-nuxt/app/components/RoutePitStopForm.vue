@@ -116,7 +116,8 @@ const fifoPlans = computed(() => {
   if (!preview.value) return {};
   const plans: Record<string, ReturnType<typeof planFifoLoad>> = {};
   for (const c of preview.value.containers) {
-    const qty = countOrNull(loadsState[c.containerTypeId] ?? "") ?? 0;
+    const raw = String(loadsState[c.containerTypeId] ?? "").trim();
+    const qty = raw ? (countOrNull(raw) ?? 0) : 0;
     plans[c.containerTypeId] = planFifoLoad(batches.value, c.containerTypeId, qty);
   }
   return plans;
@@ -128,15 +129,17 @@ function getFifoPlan(containerTypeId: string) {
 
 // Dinero: cálculo de lo que conserva
 const cashPreserved = computed(() => {
-  if (!preview.value || cashDelivered.value.trim() === "") return null;
-  if (!isMoneyInput(cashDelivered.value.trim())) return null;
-  return subtractAmounts(preview.value.cash.cashExpected, cashDelivered.value.trim());
+  const raw = String(cashDelivered.value ?? "").trim();
+  if (!preview.value || raw === "") return null;
+  if (!isMoneyInput(raw)) return null;
+  return subtractAmounts(preview.value.cash.cashExpected, raw);
 });
 
 const cashDeliveredExceedsExpected = computed(() => {
-  if (!preview.value || cashDelivered.value.trim() === "") return false;
-  if (!isMoneyInput(cashDelivered.value.trim())) return false;
-  const diff = subtractAmounts(cashDelivered.value.trim(), preview.value.cash.cashExpected);
+  const raw = String(cashDelivered.value ?? "").trim();
+  if (!preview.value || raw === "") return false;
+  if (!isMoneyInput(raw)) return false;
+  const diff = subtractAmounts(raw, preview.value.cash.cashExpected);
   return !diff.startsWith("-") && diff !== "0.00";
 });
 
@@ -175,8 +178,9 @@ async function submit(): Promise<void> {
     }
     const diffFull = cFull - c.expectedFull;
     const diffEmpty = cEmpty - c.expectedEmpty;
+    const reason = String(state.differenceReason ?? "").trim();
     if (diffFull !== 0 || diffEmpty !== 0) {
-      if (!state.differenceReason.trim()) {
+      if (!reason) {
         validationError.value = `Hay una diferencia en ${c.containerTypeName}. El motivo de la diferencia es obligatorio.`;
         return;
       }
@@ -185,7 +189,7 @@ async function submit(): Promise<void> {
       containerTypeId: c.containerTypeId,
       countedFull: cFull,
       countedEmpty: cEmpty,
-      ...(state.differenceReason.trim() ? { differenceReason: state.differenceReason.trim() } : {}),
+      ...(reason ? { differenceReason: reason } : {}),
     });
   }
 
@@ -194,8 +198,9 @@ async function submit(): Promise<void> {
   const returnFullsPayload = [];
   for (const c of preview.value.containers) {
     const state = getUnloadState(c.containerTypeId);
-    if (state.unloadEmpties.trim()) {
-      const qty = countOrNull(state.unloadEmpties);
+    const rawEmpty = String(state.unloadEmpties ?? "").trim();
+    if (rawEmpty) {
+      const qty = countOrNull(rawEmpty);
       if (qty === null || qty < 0) {
         validationError.value = `La cantidad de vacíos a bajar de ${c.containerTypeName} debe ser un entero mayor o igual a 0.`;
         return;
@@ -204,8 +209,9 @@ async function submit(): Promise<void> {
         unloadEmptiesPayload.push({ containerTypeId: c.containerTypeId, quantity: qty });
       }
     }
-    if (state.returnFulls.trim()) {
-      const qty = countOrNull(state.returnFulls);
+    const rawFull = String(state.returnFulls ?? "").trim();
+    if (rawFull) {
+      const qty = countOrNull(rawFull);
       if (qty === null || qty < 0) {
         validationError.value = `La cantidad de llenos a retornar de ${c.containerTypeName} debe ser un entero mayor o igual a 0.`;
         return;
@@ -219,7 +225,7 @@ async function submit(): Promise<void> {
   // Validar Sube
   const loadsPayload = [];
   for (const c of preview.value.containers) {
-    const rawQty = loadsState[c.containerTypeId]?.trim() ?? "";
+    const rawQty = String(loadsState[c.containerTypeId] ?? "").trim();
     if (rawQty) {
       const qty = countOrNull(rawQty);
       if (qty === null || qty < 0) {
@@ -247,19 +253,22 @@ async function submit(): Promise<void> {
   // Validar Efectivo
   let cashDeliveredVal: string | undefined = undefined;
   let cashReasonVal: string | undefined = undefined;
-  if (cashDelivered.value.trim()) {
-    const val = cashDelivered.value.trim();
-    if (!isMoneyInput(val)) {
+  const rawCash = String(cashDelivered.value ?? "").trim();
+  const rawCashReason = String(cashReason.value ?? "").trim();
+  const rawNotes = String(notes.value ?? "").trim();
+
+  if (rawCash) {
+    if (!isMoneyInput(rawCash)) {
       validationError.value = "El monto de efectivo entregado no es válido (ejemplo: 50.00).";
       return;
     }
-    cashDeliveredVal = val;
+    cashDeliveredVal = rawCash;
     if (cashDeliveredExceedsExpected.value) {
-      if (!cashReason.value.trim()) {
-        validationError.value = "Al entregar más efectivo del esperado, el motivo es obligatorio.";
+      if (!rawCashReason) {
+        validationError.value = "Entregó más efectivo de lo esperado. El motivo es obligatorio.";
         return;
       }
-      cashReasonVal = cashReason.value.trim();
+      cashReasonVal = rawCashReason;
     }
   }
 
@@ -270,7 +279,7 @@ async function submit(): Promise<void> {
       ...(unloadEmptiesPayload.length > 0 ? { unloadEmpties: unloadEmptiesPayload } : {}),
       ...(returnFullsPayload.length > 0 ? { returnFulls: returnFullsPayload } : {}),
       ...(loadsPayload.length > 0 ? { loads: loadsPayload } : {}),
-      ...(notes.value.trim() ? { notes: notes.value.trim() } : {}),
+      ...(rawNotes ? { notes: rawNotes } : {}),
       ...(cashDeliveredVal ? { cashDelivered: cashDeliveredVal } : {}),
       ...(cashReasonVal ? { cashReason: cashReasonVal } : {}),
     };

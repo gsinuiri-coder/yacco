@@ -9,7 +9,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
 import { buildRoute } from "../support/fixtures";
-import { stubRouteDetail, stubWrite } from "../support/route-detail";
+import { failWith, stubRouteDetail, stubWrite } from "../support/route-detail";
 import { resetSession, signIn } from "../support/session";
 
 const cleanups: Array<() => void> = [];
@@ -262,5 +262,106 @@ describe("Paradas en planta (pits) en el detalle de ruta", () => {
       expect(patchBodies.length).toBe(1);
     });
     expect((patchBodies[0] as { voidReason: string }).voidReason).toBe("Error en conteo de llenos");
+  });
+
+  it("permite cancelar el formulario de parada en planta", async () => {
+    stubRouteDetail(cleanups, buildRoute({ id: ROUTE_ID, status: "IN_PROGRESS" }));
+    stubPitStops([]);
+
+    await renderRouteDetail();
+    const pitSection = await screen.findByRole("region", { name: "Paradas en planta" });
+    const user = userEvent.setup();
+    await user.click(within(pitSection).getByRole("button", { name: "Parada en planta" }));
+
+    expect(await screen.findByRole("heading", { name: "Nueva parada en planta" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Nueva parada en planta" })).toBeNull();
+    });
+  });
+
+  it("exige motivo si se entrega más efectivo de lo esperado", async () => {
+    stubRouteDetail(cleanups, buildRoute({ id: ROUTE_ID, status: "IN_PROGRESS" }));
+    stubPitStops([]);
+
+    await renderRouteDetail();
+    const pitSection = await screen.findByRole("region", { name: "Paradas en planta" });
+    const user = userEvent.setup();
+    await user.click(within(pitSection).getByRole("button", { name: "Parada en planta" }));
+
+    await screen.findByRole("heading", { name: "Nueva parada en planta" });
+    const cashInput = await screen.findByLabelText("Efectivo entregado");
+    await user.type(cashInput, "100.00");
+
+    const submitBtn = screen.getByRole("button", { name: "Registrar parada en planta" });
+    await user.click(submitBtn);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toBeTruthy();
+    expect(
+      screen.getByText("Entregó más efectivo de lo esperado. El motivo es obligatorio."),
+    ).toBeTruthy();
+  });
+
+  it("permite registrar una parada en planta con bajas y observaciones", async () => {
+    stubRouteDetail(cleanups, buildRoute({ id: ROUTE_ID, status: "IN_PROGRESS" }));
+    stubPitStops([]);
+    const postBodies = stubWrite(
+      cleanups,
+      `/api/v1/routes/${ROUTE_ID}/pit-stops`,
+      "POST",
+      () => SAMPLE_PIT_STOP,
+    );
+
+    await renderRouteDetail();
+    const pitSection = await screen.findByRole("region", { name: "Paradas en planta" });
+    const user = userEvent.setup();
+    await user.click(within(pitSection).getByRole("button", { name: "Parada en planta" }));
+
+    await screen.findByRole("heading", { name: "Nueva parada en planta" });
+
+    const unloadInput = await screen.findByLabelText("Vacíos que bajan de Con caño");
+    await user.type(unloadInput, "2");
+    const returnInput = await screen.findByLabelText("Llenos que vuelven al galpón de Con caño");
+    await user.type(returnInput, "1");
+
+    const notesInput = await screen.findByLabelText("Observaciones (opcional)");
+    await user.type(notesInput, "Todo conforme");
+
+    const submitBtn = screen.getByRole("button", { name: "Registrar parada en planta" });
+    await user.click(submitBtn);
+
+    await waitFor(() => {
+      expect(postBodies.length).toBe(1);
+    });
+    const payload = postBodies[0] as CreateRoutePitStopBody;
+    expect(payload.unloadEmpties).toEqual([{ containerTypeId: "ct-spigot", quantity: 2 }]);
+    expect(payload.returnFulls).toEqual([{ containerTypeId: "ct-spigot", quantity: 1 }]);
+    expect(payload.notes).toBe("Todo conforme");
+  });
+
+  it("muestra alerta de error cuando la API falla al registrar", async () => {
+    stubRouteDetail(cleanups, buildRoute({ id: ROUTE_ID, status: "IN_PROGRESS" }));
+    stubPitStops([]);
+    cleanups.push(
+      registerEndpoint(`/api/v1/routes/${ROUTE_ID}/pit-stops`, {
+        method: "POST",
+        handler: failWith(400, "Error de validación del servidor"),
+      }),
+    );
+
+    await renderRouteDetail();
+    const pitSection = await screen.findByRole("region", { name: "Paradas en planta" });
+    const user = userEvent.setup();
+    await user.click(within(pitSection).getByRole("button", { name: "Parada en planta" }));
+
+    await screen.findByRole("heading", { name: "Nueva parada en planta" });
+    const submitBtn = screen.getByRole("button", { name: "Registrar parada en planta" });
+    await user.click(submitBtn);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toBeTruthy();
+    expect(screen.getByText("Error de validación del servidor")).toBeTruthy();
   });
 });

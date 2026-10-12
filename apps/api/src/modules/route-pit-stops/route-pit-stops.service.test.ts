@@ -351,6 +351,175 @@ describe("RoutePitStopsService", () => {
       expect(result.cashExpected).toBe("80.00");
       expect(result.cashDelivered).toBe("50.00");
     });
+
+    it("permite registrar parada con descargas de vacíos y llenos, cargas FIFO y notas", async () => {
+      prisma.route.findUnique.mockResolvedValue({
+        id: ROUTE_ID,
+        driverId: DRIVER_ID,
+        status: RouteStatus.IN_PROGRESS,
+      });
+      containerMovements.getRouteFullStockByType.mockResolvedValue(
+        new Map([[CT_WITH_SPIGOT_ID, 10]]),
+      );
+      containerMovements.getRouteEmptyStockByType.mockResolvedValue(
+        new Map([[CT_WITH_SPIGOT_ID, 5]]),
+      );
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: decimal("100.00") } });
+      prisma.routePitStop.aggregate.mockResolvedValue({
+        _sum: { cashDelivered: decimal("20.00") },
+      });
+
+      const batchItemId = "bi-1";
+      const batchId = "batch-1";
+      prisma.batchItem.findUnique.mockResolvedValue({
+        id: batchItemId,
+        containerTypeId: CT_WITH_SPIGOT_ID,
+        availableQty: 20,
+        batchId,
+        batch: { id: batchId, date: new Date("2026-10-10") },
+      });
+      prisma.batchItem.findMany.mockResolvedValue([]);
+      prisma.batchItem.findFirst.mockResolvedValue(null);
+      prisma.batchItem.updateMany.mockResolvedValue({ count: 1 });
+      prisma.routeLoad.findMany.mockResolvedValue([
+        {
+          quantity: 10,
+          batchItem: {
+            containerTypeId: CT_WITH_SPIGOT_ID,
+            batch: { id: batchId, date: new Date("2026-10-10") },
+          },
+        },
+      ]);
+      prisma.containerMovement.findMany.mockResolvedValue([
+        {
+          id: "cm-1",
+          batchId,
+          quantity: 2,
+        },
+      ]);
+      prisma.batchItem.update.mockResolvedValue({});
+
+      const mockSaved = {
+        id: PIT_STOP_ID,
+        routeId: ROUTE_ID,
+        recordedById: ADMIN_ID,
+        recordedBy: { id: ADMIN_ID, name: "Admin" },
+        createdAt: new Date(),
+        notes: "Parada intermedia",
+        cashExpected: decimal("80.00"),
+        cashDelivered: decimal("80.00"),
+        cashReason: null,
+        voidedAt: null,
+        voidedById: null,
+        voidedBy: null,
+        voidReason: null,
+        counts: [
+          {
+            id: "cnt-1",
+            pitStopId: PIT_STOP_ID,
+            containerTypeId: CT_WITH_SPIGOT_ID,
+            containerType: { id: CT_WITH_SPIGOT_ID, name: "Con caño" },
+            expectedFull: 10,
+            countedFull: 10,
+            expectedEmpty: 5,
+            countedEmpty: 5,
+            differenceReason: null,
+          },
+        ],
+        loads: [
+          {
+            id: "ld-1",
+            batchItemId,
+            quantity: 5,
+            batchItem: {
+              id: batchItemId,
+              containerTypeId: CT_WITH_SPIGOT_ID,
+              containerType: { id: CT_WITH_SPIGOT_ID, name: "Con caño" },
+              batchId,
+              batch: { id: batchId, code: "L-1" },
+            },
+          },
+        ],
+        movements: [
+          {
+            id: "mv-1",
+            type: "EMPTY_UNLOAD",
+            containerTypeId: CT_WITH_SPIGOT_ID,
+            containerType: { id: CT_WITH_SPIGOT_ID, name: "Con caño" },
+            quantity: 3,
+          },
+          {
+            id: "mv-2",
+            type: "FULL_RETURN",
+            containerTypeId: CT_WITH_SPIGOT_ID,
+            containerType: { id: CT_WITH_SPIGOT_ID, name: "Con caño" },
+            quantity: 2,
+          },
+        ],
+      };
+      prisma.routePitStop.create.mockResolvedValue(mockSaved);
+      prisma.routePitStop.findUniqueOrThrow.mockResolvedValue(mockSaved);
+
+      const result = await service.create(
+        ROUTE_ID,
+        {
+          notes: "Parada intermedia",
+          counts: [{ containerTypeId: CT_WITH_SPIGOT_ID, countedFull: 10, countedEmpty: 5 }],
+          unloadEmpties: [{ containerTypeId: CT_WITH_SPIGOT_ID, quantity: 3 }],
+          returnFulls: [{ containerTypeId: CT_WITH_SPIGOT_ID, quantity: 2 }],
+          loads: [{ batchItemId, quantity: 5 }],
+          cashDelivered: "80.00",
+        },
+        ADMIN_ACTOR,
+      );
+
+      expect(result.id).toBe(PIT_STOP_ID);
+      expect(result.loads.length).toBe(1);
+      expect(result.unloads.length).toBe(2);
+      expect(result.notes).toBe("Parada intermedia");
+    });
+  });
+
+  describe("findAll", () => {
+    it("lanza NotFoundException si la ruta no existe", async () => {
+      prisma.route.findUnique.mockResolvedValue(null);
+      await expect(service.findAll(ROUTE_ID, ADMIN_ACTOR)).rejects.toThrow(NotFoundException);
+    });
+
+    it("lanza ForbiddenException si un chofer intenta listar una ruta ajena", async () => {
+      prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID, driverId: DRIVER_ID });
+      await expect(service.findAll(ROUTE_ID, OTHER_DRIVER_ACTOR)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it("devuelve las paradas en planta mapeadas", async () => {
+      prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID, driverId: DRIVER_ID });
+      prisma.routePitStop.findMany.mockResolvedValue([
+        {
+          id: PIT_STOP_ID,
+          routeId: ROUTE_ID,
+          recordedById: ADMIN_ID,
+          recordedBy: { id: ADMIN_ID, name: "Admin" },
+          createdAt: new Date(),
+          notes: null,
+          cashExpected: decimal("80.00"),
+          cashDelivered: decimal("50.00"),
+          cashReason: null,
+          voidedAt: null,
+          voidedById: null,
+          voidedBy: null,
+          voidReason: null,
+          counts: [],
+          loads: [],
+          movements: [],
+        },
+      ]);
+
+      const result = await service.findAll(ROUTE_ID, ADMIN_ACTOR);
+      expect(result.length).toBe(1);
+      expect(result[0]!.id).toBe(PIT_STOP_ID);
+    });
   });
 
   describe("voidPitStop", () => {
@@ -409,6 +578,82 @@ describe("RoutePitStopsService", () => {
       await expect(
         service.voidPitStop(ROUTE_ID, PIT_STOP_ID, { voidReason: "Error" }, ADMIN_ACTOR),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it("anula exitosamente la parada en planta emitiendo movimientos inversos", async () => {
+      prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID, status: RouteStatus.IN_PROGRESS });
+      prisma.routePitStop.findFirst
+        .mockResolvedValueOnce({
+          id: PIT_STOP_ID,
+          routeId: ROUTE_ID,
+          voidedAt: null,
+          createdAt: new Date("2026-10-11T12:00:00Z"),
+        })
+        .mockResolvedValueOnce(null);
+
+      prisma.routeLoad.findMany.mockResolvedValue([
+        {
+          id: "ld-1",
+          batchItemId: "bi-1",
+          quantity: 4,
+          batchItem: {
+            containerTypeId: CT_WITH_SPIGOT_ID,
+            batchId: "batch-1",
+          },
+        },
+      ]);
+
+      prisma.containerMovement.findMany.mockResolvedValue([
+        {
+          id: "cm-1",
+          type: "EMPTY_UNLOAD",
+          containerTypeId: CT_WITH_SPIGOT_ID,
+          quantity: 2,
+          batchId: null,
+        },
+        {
+          id: "cm-2",
+          type: "FULL_RETURN",
+          containerTypeId: CT_WITH_SPIGOT_ID,
+          quantity: 1,
+          batchId: "batch-1",
+        },
+      ]);
+
+      prisma.batchItem.findFirst.mockResolvedValue({
+        id: "bi-1",
+        availableQty: 5,
+      });
+
+      const mockVoided = {
+        id: PIT_STOP_ID,
+        routeId: ROUTE_ID,
+        recordedById: ADMIN_ID,
+        recordedBy: { id: ADMIN_ID, name: "Admin" },
+        createdAt: new Date(),
+        notes: null,
+        cashExpected: decimal("80.00"),
+        cashDelivered: decimal("50.00"),
+        cashReason: null,
+        voidedAt: new Date(),
+        voidedById: ADMIN_ID,
+        voidedBy: { id: ADMIN_ID, name: "Admin" },
+        voidReason: "Error en conteo",
+        counts: [],
+        loads: [],
+        movements: [],
+      };
+      prisma.routePitStop.findUniqueOrThrow.mockResolvedValue(mockVoided);
+
+      const result = await service.voidPitStop(
+        ROUTE_ID,
+        PIT_STOP_ID,
+        { voidReason: "Error en conteo" },
+        ADMIN_ACTOR,
+      );
+
+      expect(result.voidedAt).toBeTruthy();
+      expect(result.voidReason).toBe("Error en conteo");
     });
   });
 });
