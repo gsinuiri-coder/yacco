@@ -286,7 +286,7 @@ describe("Revisiones por vencer", () => {
 
     const card = await screen.findByRole("region", { name: "Revisiones por vencer" });
     expect(within(card).getByText("Camión 1")).toBeTruthy();
-    expect(within(card).getByText(/SOAT/)).toBeTruthy();
+    expect(within(card).getByText(/— SOAT/)).toBeTruthy();
     expect(within(card).getByText("Por vencer")).toBeTruthy();
   });
 

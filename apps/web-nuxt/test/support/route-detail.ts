@@ -35,6 +35,7 @@ export function stubRouteDetail(
       totalPages: 0,
     })),
     registerEndpoint("/api/v1/container-types", () => []),
+    registerEndpoint("/api/v1/vehicles", () => []),
   );
   return { gets: () => gets };
 }

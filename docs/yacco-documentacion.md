@@ -205,7 +205,7 @@ Coexisten dos modalidades de venta en campo:
 - **Preventa:** el pedido se captura por adelantado (vendedor o administrador) y la ruta lo entrega. Una sola toma puede incluir uno o varios locales activos del mismo cliente, pero conserva la unidad operativa: **un pedido = un local = una parada**. Los pedidos de esa toma se crean juntos, quedan enlazados y comparten la fecha de entrega; un local sin cantidades no crea pedido.
 - **Autoventa:** el repartidor vende en ruta a clientes no planificados, con el stock de su carga.
 
-Una **ruta** agrupa, para un día y un repartidor: la **carga** (llenos asignados FIFO por lote), las **paradas** (originadas en pedidos o creadas en campo) y lo ocurrido en cada una: entrega y canje, cobro o fiado, y evidencia fotográfica. La carga libre se registra únicamente mientras la ruta está planificada. Administrador y vendedor pueden agregar juntos pedidos pendientes del día al final de una ruta planificada o en curso; si el stock que queda arriba del camión no alcanza, el sistema advierte y no bloquea. Al cierre, la **liquidación** concilia envases (llenos salidos vs. entregados, vendidos y retornados; vacíos recogidos) y dinero (cobrado vs. fiado). Las rutas pueden ser **fijas** —por zona y día de reparto, con la cartera recurrente del repartidor— o **armarse cada día a partir de los pedidos**; ambas modalidades coexisten. La app del repartidor opera sin conexión y sincroniza en diferido.
+Una **ruta** agrupa, para un día y un repartidor: el **vehículo asignado** (obligatorio en rutas nuevas, con placa única, historial inmutable de asignaciones y cambio en ruta en curso auditado dentro de paradas en planta), la **carga** (llenos asignados FIFO por lote), las **paradas** (originadas en pedidos o creadas en campo) y lo ocurrido en cada una: entrega y canje, cobro o fiado, y evidencia fotográfica. La carga libre se registra únicamente mientras la ruta está planificada. Administrador y vendedor pueden agregar juntos pedidos pendientes del día al final de una ruta planificada o en curso; si el stock que queda arriba del camión no alcanza, el sistema advierte y no bloquea. Al cierre, la **liquidación** concilia envases (llenos salidos vs. entregados, vendidos y retornados; vacíos recogidos) y dinero (cobrado vs. fiado). Las rutas pueden ser **fijas** —por zona y día de reparto, con la cartera recurrente del repartidor— o **armarse cada día a partir de los pedidos**; ambas modalidades coexisten. La app del repartidor opera sin conexión y sincroniza en diferido.
 
 ```mermaid
 flowchart TD
@@ -268,7 +268,9 @@ De estas necesidades se derivan requisitos no funcionales que condicionan el dis
 | **Pedido**                              | Solicitud de un cliente (preventa) con productos, cantidades y fecha de entrega.                                                                              |
 | **Preventa**                            | Modalidad en la que el pedido se captura antes y la ruta lo entrega.                                                                                          |
 | **Autoventa**                           | Venta creada por el repartidor en campo, a clientes no planificados, contra el stock de su carga.                                                             |
-| **Ruta**                                | Plan de reparto de un día asignado a un repartidor: carga + paradas + resultados.                                                                             |
+| **Ruta**                                | Plan de reparto de un día asignado a un repartidor y un vehículo: carga + paradas + resultados.                                                               |
+| **Vehículo**                            | Unidad de transporte de la planta identificada por su placa única; tiene capacidad en bidones, revisiones y asignaciones.                                     |
+| **Revisión (vehicular)**                | Control reglamentario o de seguridad con vigencia (SOAT, técnica, extintor); su vencimiento avisa sin bloquear.                                               |
 | **Carga (de ruta)**                     | Bidones llenos asignados a la ruta, tomados FIFO por lote.                                                                                                    |
 | **Parada**                              | Visita a un cliente dentro de una ruta; se origina en un pedido o se crea en campo.                                                                           |
 | **Entrega**                             | Registro de lo ocurrido en la parada: llenos dejados, vacíos recogidos, resolución del canje, cobro y evidencia.                                              |
@@ -740,7 +742,12 @@ erDiagram
     orders ||--|{ order_items : ""
     products ||--o{ order_items : ""
     users ||--o{ routes : driver
+    vehicles |o--o{ routes : vehicle
     zones |o--o{ routes : ""
+    routes ||--|{ route_vehicle_assignments : ""
+    vehicles ||--o{ route_vehicle_assignments : ""
+    vehicles ||--o{ vehicle_reviews : ""
+    vehicle_review_types ||--o{ vehicle_reviews : ""
     routes ||--|{ route_loads : ""
     batch_items ||--o{ route_loads : "consume FIFO"
     routes ||--o{ route_stops : ""
@@ -836,8 +843,53 @@ erDiagram
         uuid id PK
         date date
         uuid driver_id FK
+        uuid vehicle_id FK "null"
         uuid zone_id FK "null"
         enum status
+    }
+    vehicles {
+        uuid id PK
+        string plate UK
+        string name
+        string brand
+        string model
+        int capacity_units "null"
+        string vehicle_class "null"
+        string circulation_card_number "null"
+        boolean active
+        uuid created_by FK
+        timestamptz created_at
+        uuid updated_by FK "null"
+        timestamptz updated_at "null"
+    }
+    vehicle_review_types {
+        uuid id PK
+        string name UK
+        boolean active
+        uuid created_by FK
+        timestamptz created_at
+    }
+    vehicle_reviews {
+        uuid id PK
+        uuid vehicle_id FK
+        uuid review_type_id FK
+        date starts_on
+        date ends_on
+        string notes "null"
+        uuid recorded_by FK
+        timestamptz created_at
+        timestamptz voided_at "null"
+        uuid voided_by FK "null"
+        string void_reason "null"
+    }
+    route_vehicle_assignments {
+        uuid id PK
+        uuid route_id FK
+        uuid vehicle_id FK
+        uuid assigned_by FK
+        timestamptz created_at
+        string reason "null"
+        uuid pit_stop_id FK "null"
     }
     route_loads {
         uuid id PK
@@ -936,7 +988,7 @@ erDiagram
     }
 ```
 
-Tablas de catálogo y soporte no detalladas en el diagrama por brevedad: `users` (id, name, username único, password_hash, active), `roles` y `user_roles` (roles múltiples), `zones` (id, name, delivery_days), `container_types` (sembrada: con caño, sin caño), `payment_methods` (sembrada: efectivo, transferencia, Yape, Plin), `order_items` y `sale_items` (product_id, quantity, unit_price).
+Tablas de catálogo y soporte no detalladas en el diagrama por brevedad: `users` (id, name, username único, password_hash, active, y datos de chofer para guías: document_type, document_number, license_number, license_category, license_expires_on), `roles` y `user_roles` (roles múltiples), `zones` (id, name, delivery_days), `container_types` (sembrada: con caño, sin caño), `payment_methods` (sembrada: efectivo, transferencia, Yape, Plin), `order_items` y `sale_items` (product_id, quantity, unit_price).
 
 ### Decisiones de diseño de datos
 
@@ -1077,7 +1129,20 @@ Endpoints de la API (prefijo `/api/v1`), tal como están en los controllers al 2
 | PATCH          | `/orders/:id/cancel`                             | Cancela un pedido pendiente                                                                                                                                                                                                                                                                            | ADMIN, SELLER                                          |
 | POST           | `/orders/:id/reschedule`                         | Reprograma un pedido no entregado una sola vez: conserva el original y crea otro pendiente, enlazado y con las mismas líneas y precios                                                                                                                                                                 | ADMIN, SELLER                                          |
 | POST           | `/orders/reschedule-by-date`                     | Reprograma todos los pedidos no entregados de una fecha, todos o ninguno                                                                                                                                                                                                                               | ADMIN, SELLER                                          |
-| POST           | `/routes`                                        | Planificación de la ruta: chofer, día y zona opcional                                                                                                                                                                                                                                                  | ADMIN, SELLER                                          |
+| POST           | `/routes`                                        | Planificación de la ruta: chofer, vehículo, día y zona opcional                                                                                                                                                                                                                                        | ADMIN, SELLER                                          |
+| PATCH          | `/routes/:id/vehicle`                            | Cambia el vehículo asignado a una ruta planificada                                                                                                                                                                                                                                                     | ADMIN, SELLER                                          |
+| GET            | `/vehicles`                                      | Lista vehículos del catálogo; admite `includeInactive=true` para ADMIN                                                                                                                                                                                                                                 | ADMIN, SELLER, DRIVER                                  |
+| GET            | `/vehicles/:id`                                  | Detalle de un vehículo                                                                                                                                                                                                                                                                                 | ADMIN, SELLER, DRIVER                                  |
+| POST           | `/vehicles`                                      | Alta de vehículo (placa única en mayúsculas sin guión ni espacios)                                                                                                                                                                                                                                     | ADMIN                                                  |
+| PATCH          | `/vehicles/:id`                                  | Modificación de datos o baja lógica; la placa no se cambia si ya estuvo en una ruta                                                                                                                                                                                                                    | ADMIN                                                  |
+| GET            | `/vehicles/upcoming-reviews`                     | Alertas de revisiones y licencias de conducir por vencer o vencidas                                                                                                                                                                                                                                    | ADMIN, SELLER                                          |
+| GET            | `/vehicles/:id/reviews`                          | Historial de revisiones de un vehículo                                                                                                                                                                                                                                                                 | ADMIN, SELLER, DRIVER                                  |
+| GET            | `/vehicles/:id/reviews-status`                   | Estado derivado de cada tipo de revisión para un vehículo                                                                                                                                                                                                                                              | ADMIN, SELLER, DRIVER                                  |
+| POST           | `/vehicles/:id/reviews`                          | Registra una nueva revisión con vigencia                                                                                                                                                                                                                                                               | ADMIN, SELLER                                          |
+| PATCH          | `/vehicles/:id/reviews/:reviewId/void`           | Anula una revisión con motivo obligatorio                                                                                                                                                                                                                                                              | ADMIN                                                  |
+| GET            | `/vehicle-review-types`                          | Catálogo de tipos de revisión vehicular                                                                                                                                                                                                                                                                | ADMIN, SELLER, DRIVER                                  |
+| POST           | `/vehicle-review-types`                          | Alta de tipo de revisión                                                                                                                                                                                                                                                                               | ADMIN                                                  |
+| PATCH          | `/vehicle-review-types/:id`                      | Activa o desactiva un tipo de revisión                                                                                                                                                                                                                                                                 | ADMIN                                                  |
 | GET            | `/routes`                                        | Listado de rutas; a quien es solo chofer, solo las suyas                                                                                                                                                                                                                                               | ADMIN, SELLER, DRIVER                                  |
 | GET            | `/routes/:id`                                    | Detalle de la ruta con paradas y carga; cada parada trae su venta y su cobro VIGENTES y el sello de corrección si la hubo — el listado de rutas no trae las ventas                                                                                                                                     | ADMIN, SELLER, DRIVER (solo su ruta)                   |
 | PATCH          | `/routes/:id/start`, `/routes/:id/finish`        | Sale a reparto; termina la ruta (exige todas las paradas resueltas)                                                                                                                                                                                                                                    | ADMIN, SELLER, DRIVER (solo su ruta)                   |
