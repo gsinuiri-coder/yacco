@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -22,10 +24,13 @@ import { UserRole } from "@prisma/client";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
+import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { CustomersService } from "./customers.service.js";
 import { AccountStatementQueryDto } from "./dto/account-statement-query.dto.js";
 import { AccountStatementResponseDto } from "./dto/account-statement-response.dto.js";
+import { CreateCustomerContactDto } from "./dto/create-customer-contact.dto.js";
 import { CreateCustomerDto } from "./dto/create-customer.dto.js";
+import { CustomerContactResponseDto } from "./dto/customer-contact-response.dto.js";
 import { CustomerResponseDto, PaginatedCustomersDto } from "./dto/customer-response.dto.js";
 import { ListCustomersQueryDto } from "./dto/list-customers-query.dto.js";
 import { UpdateCustomerDto } from "./dto/update-customer.dto.js";
@@ -105,5 +110,37 @@ export class CustomersController {
     @Query() query: AccountStatementQueryDto,
   ): Promise<AccountStatementResponseDto> {
     return this.customersService.getAccountStatement(id, query);
+  }
+
+  @ApiOperation({ summary: "Lista contactos activos de un cliente" })
+  @ApiResponse({ status: 200, type: CustomerContactResponseDto, isArray: true })
+  @ApiNotFoundResponse({ description: "Customer id does not exist" })
+  @Get(":id/contacts")
+  findContacts(@Param("id", ParseUUIDPipe) id: string): Promise<CustomerContactResponseDto[]> {
+    return this.customersService.findContacts(id);
+  }
+
+  @ApiOperation({ summary: "Agrega un contacto al cliente" })
+  @ApiResponse({ status: 201, type: CustomerContactResponseDto })
+  @ApiNotFoundResponse({ description: "Customer id does not exist" })
+  @Post(":id/contacts")
+  createContact(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: CreateCustomerContactDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<CustomerContactResponseDto> {
+    return this.customersService.createContact(id, dto, req.user.sub);
+  }
+
+  @ApiOperation({ summary: "Desactiva un contacto del cliente" })
+  @ApiResponse({ status: 200, type: CustomerContactResponseDto })
+  @ApiNotFoundResponse({ description: "Contact id does not exist" })
+  @Delete(":id/contacts/:contactId")
+  removeContact(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("contactId", ParseUUIDPipe) contactId: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<CustomerContactResponseDto> {
+    return this.customersService.removeContact(id, contactId, req.user.sub);
   }
 }

@@ -1,12 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { validateCustomerDocument } from "./customer-document.validator.js";
 import type { AccountStatementQueryDto } from "./dto/account-statement-query.dto.js";
 import type {
   AccountStatementEntryDto,
   AccountStatementResponseDto,
 } from "./dto/account-statement-response.dto.js";
+import type { CreateCustomerContactDto } from "./dto/create-customer-contact.dto.js";
 import type { CreateCustomerDto } from "./dto/create-customer.dto.js";
+import type { CustomerContactResponseDto } from "./dto/customer-contact-response.dto.js";
 import type { CustomerResponseDto, PaginatedCustomersDto } from "./dto/customer-response.dto.js";
 import type { ListCustomersQueryDto } from "./dto/list-customers-query.dto.js";
 import type { UpdateCustomerDto } from "./dto/update-customer.dto.js";
@@ -64,7 +67,10 @@ type CustomerWithRelations = Prisma.CustomerGetPayload<{ include: typeof CUSTOME
  * fixed 2-decimal strings: a NUMERIC(10,2) must never round-trip through a
  * JSON number, which is an IEEE-754 double.
  */
-function toCustomerResponse(customer: CustomerWithRelations): CustomerResponseDto {
+function toCustomerResponse(
+  customer: CustomerWithRelations,
+  duplicateWarning: string | null = null,
+): CustomerResponseDto {
   const primaryLocation = customer.locations[0];
   if (primaryLocation === undefined) {
     // Would mean the invariant "every customer has a primary location" was
@@ -89,12 +95,35 @@ function toCustomerResponse(customer: CustomerWithRelations): CustomerResponseDt
     active: customer.active,
     createdAt: customer.createdAt,
     externalCode: customer.externalCode,
+    documentType: customer.documentType,
+    documentNumber: customer.documentNumber,
+    legalName: customer.legalName,
+    fiscalAddress: customer.fiscalAddress,
+    duplicateDocumentWarning: duplicateWarning,
   };
 }
 
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async checkDuplicateDocument(
+    documentNumber: string,
+    excludeCustomerId?: string,
+  ): Promise<string | null> {
+    const existing = await this.prisma.customer.findFirst({
+      where: {
+        documentNumber: { equals: documentNumber, mode: Prisma.QueryMode.insensitive },
+        active: true,
+        ...(excludeCustomerId ? { id: { not: excludeCustomerId } } : {}),
+      },
+      select: { id: true, name: true, documentNumber: true },
+    });
+    if (existing) {
+      return `Ya existe otro cliente activo ("${existing.name}") con el documento ${existing.documentNumber}`;
+    }
+    return null;
+  }
 
   /**
    * `debtBalance` is not accepted here and is not passed to Prisma: a new
@@ -105,6 +134,14 @@ export class CustomersService {
    * customer never exists even briefly without one.
    */
   async create(dto: CreateCustomerDto): Promise<CustomerResponseDto> {
+    const docError = validateCustomerDocument(dto.documentType, dto.documentNumber);
+    if (docError !== null) {
+      throw new BadRequestException(docError);
+    }
+    const duplicateWarning = dto.documentNumber
+      ? await this.checkDuplicateDocument(dto.documentNumber.trim())
+      : null;
+
     try {
       const customer = await this.prisma.customer.create({
         data: {
@@ -112,6 +149,10 @@ export class CustomersService {
           zoneId: dto.zoneId ?? null,
           creditLimit: dto.creditLimit === undefined ? null : new Prisma.Decimal(dto.creditLimit),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
+          documentType: dto.documentType?.trim() || null,
+          documentNumber: dto.documentNumber?.trim() || null,
+          legalName: dto.legalName?.trim() || null,
+          fiscalAddress: dto.fiscalAddress?.trim() || null,
           locations: {
             create: {
               name: "Principal",
@@ -124,7 +165,7 @@ export class CustomersService {
         },
         include: CUSTOMER_INCLUDE,
       });
-      return toCustomerResponse(customer);
+      return toCustomerResponse(customer, duplicateWarning);
     } catch (error) {
       // P2003: the zone FK points at a zone that does not exist.
       if (isPrismaKnownError(error, "P2003")) {
@@ -155,7 +196,7 @@ export class CustomersService {
     ]);
 
     return {
-      data: customers.map(toCustomerResponse),
+      data: customers.map((c) => toCustomerResponse(c)),
       total,
       page,
       limit,
@@ -375,6 +416,30 @@ export class CustomersService {
    * can move it.
    */
   async update(id: string, dto: UpdateCustomerDto): Promise<CustomerResponseDto> {
+    let duplicateWarning: string | null = null;
+    if (dto.documentType !== undefined || dto.documentNumber !== undefined) {
+      let docType = dto.documentType;
+      let docNum = dto.documentNumber;
+      if (docType === undefined || docNum === undefined) {
+        const existingCustomer = await this.prisma.customer.findUnique({
+          where: { id },
+          select: { documentType: true, documentNumber: true },
+        });
+        if (existingCustomer === null) {
+          throw new NotFoundException(`El cliente "${id}" no existe`);
+        }
+        if (docType === undefined) docType = existingCustomer.documentType ?? undefined;
+        if (docNum === undefined) docNum = existingCustomer.documentNumber ?? undefined;
+      }
+      const docError = validateCustomerDocument(docType, docNum);
+      if (docError !== null) {
+        throw new BadRequestException(docError);
+      }
+      if (docNum) {
+        duplicateWarning = await this.checkDuplicateDocument(docNum.trim(), id);
+      }
+    }
+
     // address/addressReference/phone live on the primary location now; a
     // nested updateMany (scoped to isPrimary, never more than one row) moves
     // them in the same transaction as the customer's own fields, so a patch
@@ -404,13 +469,30 @@ export class CustomersService {
             ? { creditLimit: new Prisma.Decimal(dto.creditLimit) }
             : {}),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
+          ...(dto.documentType !== undefined
+            ? { documentType: dto.documentType === null ? null : dto.documentType.trim() || null }
+            : {}),
+          ...(dto.documentNumber !== undefined
+            ? {
+                documentNumber:
+                  dto.documentNumber === null ? null : dto.documentNumber.trim() || null,
+              }
+            : {}),
+          ...(dto.legalName !== undefined
+            ? { legalName: dto.legalName === null ? null : dto.legalName.trim() || null }
+            : {}),
+          ...(dto.fiscalAddress !== undefined
+            ? {
+                fiscalAddress: dto.fiscalAddress === null ? null : dto.fiscalAddress.trim() || null,
+              }
+            : {}),
           ...(Object.keys(locationPatch).length > 0
             ? { locations: { updateMany: { where: { isPrimary: true }, data: locationPatch } } }
             : {}),
         },
         include: CUSTOMER_INCLUDE,
       });
-      return toCustomerResponse(customer);
+      return toCustomerResponse(customer, duplicateWarning);
     } catch (error) {
       if (isPrismaKnownError(error, "P2025")) {
         throw new NotFoundException(`El cliente "${id}" no existe`);
@@ -420,6 +502,119 @@ export class CustomersService {
       }
       throw error;
     }
+  }
+
+  async findContacts(customerId: string): Promise<CustomerContactResponseDto[]> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+    if (customer === null) {
+      throw new NotFoundException(`El cliente "${customerId}" no existe`);
+    }
+
+    const contacts = await this.prisma.customerContact.findMany({
+      where: { customerId, active: true },
+      orderBy: { createdAt: "asc" },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+        removedBy: { select: { id: true, name: true } },
+      },
+    });
+
+    return contacts.map((c) => ({
+      id: c.id,
+      customerId: c.customerId,
+      name: c.name,
+      phone: c.phone,
+      active: c.active,
+      createdById: c.createdById,
+      createdAt: c.createdAt,
+      removedById: c.removedById,
+      removedAt: c.removedAt,
+      createdBy: c.createdBy,
+      removedBy: c.removedBy,
+    }));
+  }
+
+  async createContact(
+    customerId: string,
+    dto: CreateCustomerContactDto,
+    actorId: string,
+  ): Promise<CustomerContactResponseDto> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+    if (customer === null) {
+      throw new NotFoundException(`El cliente "${customerId}" no existe`);
+    }
+
+    const contact = await this.prisma.customerContact.create({
+      data: {
+        customerId,
+        name: dto.name.trim(),
+        phone: dto.phone?.trim() || null,
+        createdById: actorId,
+      },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+      },
+    });
+
+    return {
+      id: contact.id,
+      customerId: contact.customerId,
+      name: contact.name,
+      phone: contact.phone,
+      active: contact.active,
+      createdById: contact.createdById,
+      createdAt: contact.createdAt,
+      removedById: null,
+      removedAt: null,
+      createdBy: contact.createdBy,
+      removedBy: null,
+    };
+  }
+
+  async removeContact(
+    customerId: string,
+    contactId: string,
+    actorId: string,
+  ): Promise<CustomerContactResponseDto> {
+    const contact = await this.prisma.customerContact.findFirst({
+      where: { id: contactId, customerId },
+    });
+    if (contact === null) {
+      throw new NotFoundException(`El contacto "${contactId}" no existe`);
+    }
+
+    const updated = await this.prisma.customerContact.update({
+      where: { id: contactId },
+      data: {
+        active: false,
+        removedById: actorId,
+        removedAt: new Date(),
+      },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+        removedBy: { select: { id: true, name: true } },
+      },
+    });
+
+    return {
+      id: updated.id,
+      customerId: updated.customerId,
+      name: updated.name,
+      phone: updated.phone,
+      active: updated.active,
+      createdById: updated.createdById,
+      createdAt: updated.createdAt,
+      removedById: updated.removedById,
+      removedAt: updated.removedAt,
+      createdBy: updated.createdBy,
+      removedBy: updated.removedBy,
+    };
   }
 }
 

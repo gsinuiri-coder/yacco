@@ -109,24 +109,30 @@ function stubCustomerPage(setup: Setup = {}) {
     }),
   });
   endpoint("/api/v1/payment-methods", () => setup.methods ?? [CASH, YAPE]);
+  const defaultLocations: CustomerLocation[] = [
+    {
+      id: "location-primary",
+      name: "Principal",
+      address: "Av. Los Alamos 452",
+      addressReference: "Portón azul",
+      phone: "987654321",
+      contactName: setup.location?.contactName ?? null,
+      latitude: setup.location?.latitude ?? null,
+      longitude: setup.location?.longitude ?? null,
+      isPrimary: true,
+      active: true,
+    },
+  ];
+  const locations = setup.locations ?? defaultLocations;
   endpoint(`${BASE}/locations`, {
     method: "GET",
-    handler: () =>
-      setup.locations ?? [
-        {
-          id: "location-primary",
-          name: "Principal",
-          address: "Av. Los Alamos 452",
-          addressReference: "Portón azul",
-          phone: "987654321",
-          contactName: setup.location?.contactName ?? null,
-          latitude: setup.location?.latitude ?? null,
-          longitude: setup.location?.longitude ?? null,
-          isPrimary: true,
-          active: true,
-        },
-      ],
+    handler: () => locations,
   });
+  endpoint(`${BASE}/contacts`, () => []);
+  for (const loc of locations) {
+    endpoint(`/api/v1/customer-locations/${loc.id}/photos`, () => []);
+  }
+  endpoint("/api/v1/customer-locations/:id/photos", () => []);
   endpoint("/api/v1/products", () => [BIDON]);
   endpoint(`${BASE}/prices`, { method: "GET", handler: () => setup.prices ?? [] });
   endpoint(`${BASE}/effective-prices`, () => setup.effective ?? []);
@@ -410,6 +416,8 @@ describe("Ficha del cliente", () => {
       endpoint("/api/v1/products", () => []);
       endpoint(`${BASE}/prices`, { method: "GET", handler: () => [] });
       endpoint(`${BASE}/account-statement`, () => ({ entries: [], closingBalance: "0.00" }));
+      endpoint(`${BASE}/locations`, () => []);
+      endpoint(`${BASE}/contacts`, () => []);
 
       await renderSuspended(App, { route: `/customers/${ID}` });
       expect((await screen.findByRole("alert")).textContent).toContain(

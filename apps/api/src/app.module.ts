@@ -28,11 +28,13 @@ import { HealthModule } from "./modules/health/health.module.js";
 import { ZonesModule } from "./modules/zones/zones.module.js";
 import { SettingsModule } from "./modules/settings/settings.module.js";
 import { VehiclesModule } from "./modules/vehicles/vehicles.module.js";
+import { StorageModule } from "./modules/storage/storage.module.js";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     PrismaModule,
+    StorageModule,
     AuthModule,
     UsersModule,
     CustomersModule,
