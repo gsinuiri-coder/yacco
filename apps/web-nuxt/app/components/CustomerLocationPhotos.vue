@@ -140,7 +140,11 @@ async function confirmHide(): Promise<void> {
       </div>
 
       <div v-if="canUpload && photos.length < 10">
+        <label :for="`location-photo-file-${locationId}`" class="sr-only">
+          Subir foto del local
+        </label>
         <input
+          :id="`location-photo-file-${locationId}`"
           ref="fileInput"
           type="file"
           accept="image/jpeg,image/png,image/webp"

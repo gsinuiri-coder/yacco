@@ -335,11 +335,12 @@ describe("Customer Contacts", () => {
   });
 
   test("chofer no puede agregar contactos (403)", async () => {
-    await request(server())
+    const res = await request(server())
       .post(`/api/v1/customers/${customerId}/contacts`)
       .set("Authorization", `Bearer ${driverToken}`)
       .send({ name: "Contacto Chofer" })
       .expect(403);
+    expect(res.status).toBe(403);
   });
 
   test("listar contactos devuelve activos", async () => {
@@ -429,24 +430,27 @@ describe("Customer Location Photos", () => {
   });
 
   test("sin sesión la lectura de fotos da 401", async () => {
-    await request(server())
+    const res = await request(server())
       .get(`/api/v1/customer-locations/photos/${adminPhotoId}/raw`)
       .expect(401);
+    expect(res.status).toBe(401);
   });
 
   test("chofer no puede leer fotos de un local que no está en sus rutas (403)", async () => {
     // driverOtherToken no tiene customer 1 en sus rutas
-    await request(server())
+    const res = await request(server())
       .get(`/api/v1/customer-locations/photos/${adminPhotoId}/raw`)
       .set("Authorization", `Bearer ${driverOtherToken}`)
       .expect(403);
+    expect(res.status).toBe(403);
   });
 
   test("chofer con el local en su ruta sí puede leer fotos aprobadas (200)", async () => {
-    await request(server())
+    const res = await request(server())
       .get(`/api/v1/customer-locations/photos/${adminPhotoId}/raw`)
       .set("Authorization", `Bearer ${driverToken}`)
       .expect(200);
+    expect(res.status).toBe(200);
   });
 
   test("subida del chofer queda PENDING y NO aparece en la ficha del local", async () => {
@@ -480,11 +484,12 @@ describe("Customer Location Photos", () => {
   });
 
   test("vendedor no puede aprobar fotos del chofer (403)", async () => {
-    await request(server())
+    const res = await request(server())
       .patch(`/api/v1/customer-locations/photos/${driverPhotoId}/review`)
       .set("Authorization", `Bearer ${sellerToken}`)
       .send({ status: "APPROVED" })
       .expect(403);
+    expect(res.status).toBe(403);
   });
 
   test("rechazar foto sin motivo devuelve 400", async () => {
@@ -587,7 +592,7 @@ describe("Coordinate Requests", () => {
   let requestId: string;
 
   test("chofer no puede proponer coordenadas de un local ajeno (403)", async () => {
-    await request(server())
+    const res = await request(server())
       .post(`/api/v1/customer-locations/${otherLocationId}/coordinate-requests`)
       .set("Authorization", `Bearer ${driverToken}`)
       .send({
@@ -596,6 +601,7 @@ describe("Coordinate Requests", () => {
         accuracyM: "5.20",
       })
       .expect(403);
+    expect(res.status).toBe(403);
   });
 
   test("chofer propone coordenadas: queda PENDING y no cambia las del local", async () => {
@@ -642,11 +648,12 @@ describe("Coordinate Requests", () => {
   });
 
   test("vendedor no puede aprobar solicitud de coordenadas (403)", async () => {
-    await request(server())
+    const res = await request(server())
       .patch(`/api/v1/customer-locations/coordinate-requests/${requestId}/review`)
       .set("Authorization", `Bearer ${sellerToken}`)
       .send({ status: "APPROVED" })
       .expect(403);
+    expect(res.status).toBe(403);
   });
 
   test("rechazo de coordenadas sin motivo devuelve 400", async () => {
