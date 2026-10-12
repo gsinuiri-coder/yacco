@@ -236,14 +236,14 @@ export class TestDataSeeder {
 
   private containerTypeIds(): Record<TestContainerKey, string> {
     return {
-      CON_CANO: this.requireProduct(REFILL_PRODUCT_BY_CONTAINER.CON_CANO).containerType.id,
-      SIN_CANO: this.requireProduct(REFILL_PRODUCT_BY_CONTAINER.SIN_CANO).containerType.id,
+      CON_CANO: this.requireProduct(REFILL_PRODUCT_BY_CONTAINER.CON_CANO).containerType!.id,
+      SIN_CANO: this.requireProduct(REFILL_PRODUCT_BY_CONTAINER.SIN_CANO).containerType!.id,
     };
   }
 
   /** «Con caño» / «Sin caño», en minúscula para la frase. */
   private containerTypeName(key: TestContainerKey): string {
-    return this.requireProduct(REFILL_PRODUCT_BY_CONTAINER[key]).containerType.name.toLowerCase();
+    return this.requireProduct(REFILL_PRODUCT_BY_CONTAINER[key]).containerType!.name.toLowerCase();
   }
 
   /**

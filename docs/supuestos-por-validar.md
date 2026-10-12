@@ -207,12 +207,12 @@ cuándo, y tres líneas:
 - **Construido encima:** `route_stops` guarda `marked_latitude`, `marked_longitude` y `marked_accuracy_m` juntas o las tres en NULL. «Mi ruta» pide una sola lectura de ubicación al confirmar y, si el navegador no la entrega por rechazo, timeout o falta de soporte, registra igual sin esos campos. La corrección administrativa conserva el punto original y la oficina abre «Ver dónde se marcó» en Google Maps.
 - **Si resulta que no:** bajo. Se deja de pedir la ubicación; las columnas quedan en NULL.
 
-### Fase 2: los accesorios tienen stock propio y no mueven envases
+### Fase 3: accesorios con stock propio en planta, venta, préstamo por local, devolución, cobro y conteo
 
-- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 6 de «Fase 2 en local».
-- **Asumimos:** que la planta vende accesorios (sin envase) que se cobran como cualquier producto, y que necesita saber cuántos tiene: ingreso, venta, anulación y conteo, en un libro propio. Vender sin stock avisa y no bloquea.
-- **Construido encima:** nada todavía. Se construye `ACCESSORY` en `product_type`, `products.container_type_id` nullable solo para accesorios, el libro `accessory_movements` con su saldo y la pantalla «Accesorios».
-- **Si resulta que no:** medio. Si el dueño no lleva stock de accesorios, se deja de mostrar el saldo; si no los vende, se dejan de crear. El libro y el enum quedan.
+- **Decidido por Giancarlo (2026-10-11),** en conversación con Claude; fila 5 de «Fase 3 en local». Reemplaza la decisión de Fase 2.
+- **Asumimos:** que la planta tiene accesorios (surtidores y otros) que se venden o se prestan al cliente por local; se llevan por cantidad y no por número de serie; nunca mueven envases ni tocan la deuda de envases; tienen libro `accessory_movements` (solo INSERT, con movimientos inversos para correcciones y saldos materializados en la misma transacción: stock en planta por accesorio y prestados por local de cliente y accesorio); un accesorio prestado no devuelto o devuelto roto se le cobra al cliente (acción de administrador que baja del saldo de prestados sin volver a stock de planta y genera una venta al precio pactado o de lista, sumando a la deuda en S/ si es fiado); devolver más de lo prestado se rechaza; vender o prestar sin stock avisa y no bloquea; el conteo en planta auditable contra libro permite registrar ajustes.
+- **Construido encima:** tipo `ACCESSORY` en `product_type`, `products.container_type_id` nullable con CHECK para accesorios, tablas `accessory_movements`, `accessory_stock`, `customer_accessory_balances`, `accessory_counts`, endpoints bajo `/accessories` y `/customer-locations/:id/accessories`, pantallas «Accesorios», sección en la ficha del cliente y reporte «Accesorios prestados».
+- **Si resulta que no:** medio. Todo queda auditado en su propio libro sin haber tocado el libro de envases ni el saldo de dinero más que por ventas legítimas.
 
 ### Fase 2: la maquila es un libro aparte, que nunca toca los envases propios
 

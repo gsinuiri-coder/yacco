@@ -149,6 +149,11 @@ function stubCustomerPage(setup: Setup = {}) {
     const data = setup.balances ?? [];
     return { data, total: data.length, page: 1, limit: 100, totalPages: 1 };
   });
+  endpoint("/api/v1/accessories", () => []);
+  endpoint("/api/v1/customer-locations/:id/accessories", () => []);
+  for (const loc of locations) {
+    endpoint(`/api/v1/customer-locations/${loc.id}/accessories`, () => []);
+  }
 }
 
 async function renderCustomerPage() {

@@ -173,6 +173,20 @@ export class RouteStopStockShortfallDto {
   requested!: number;
 }
 
+export class RouteStopAccessoryShortfallDto {
+  @ApiProperty({ format: "uuid" })
+  productId!: string;
+
+  @ApiProperty({ example: "Dispensador de mesa" })
+  productName!: string;
+
+  @ApiProperty({ example: 0, description: "Lo que el libro decía que quedaba en planta" })
+  available!: number;
+
+  @ApiProperty({ example: 1, description: "Lo que se registró como vendido" })
+  requested!: number;
+}
+
 export class RouteStopResponseDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
@@ -231,6 +245,9 @@ export class RouteStopResponseDto {
 
   @ApiPropertyOptional({ type: RouteStopStockShortfallDto, isArray: true })
   stockShortfall?: RouteStopStockShortfallDto[];
+
+  @ApiPropertyOptional({ type: RouteStopAccessoryShortfallDto, isArray: true })
+  accessoryShortfall?: RouteStopAccessoryShortfallDto[];
 }
 
 export class RouteVehicleAssignmentResponseDto {

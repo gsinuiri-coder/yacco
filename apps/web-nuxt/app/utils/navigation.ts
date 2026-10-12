@@ -50,6 +50,11 @@ export const NAVIGATION: NavigationSection[] = [
         to: "/container-movements",
       },
       {
+        label: "Accesorios",
+        icon: "i-lucide-wrench",
+        to: "/accessories",
+      },
+      {
         label: "Cuadre de envases",
         icon: "i-lucide-scale",
         to: "/container-reconciliation",
@@ -79,6 +84,11 @@ export const NAVIGATION: NavigationSection[] = [
         icon: "i-lucide-container",
         to: "/reports/loaned-containers",
         onlyFor: "ADMIN",
+      },
+      {
+        label: "Accesorios prestados",
+        icon: "i-lucide-archive",
+        to: "/reports/borrowed-accessories",
       },
       {
         label: "Producción por período",

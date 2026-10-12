@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {
+  AccessoryMovementType,
   ContainerMovementType,
   ContainerState,
   PaymentStatus,
@@ -95,12 +96,20 @@ export interface StopDeliveryStockShortfallResult {
   requested: number;
 }
 
+export interface StopDeliveryAccessoryShortfallResult {
+  productId: string;
+  productName: string;
+  available: number;
+  requested: number;
+}
+
 export interface RegisterStopDeliveryResult {
   sale: StopDeliverySaleResult;
   payment: StopDeliveryPaymentResult | null;
   containerBalances: StopDeliveryContainerBalanceResult[];
   /** Vacío en el camino normal de entrega — ver `allowStockShortfall`. */
   stockShortfall: StopDeliveryStockShortfallResult[];
+  accessoryShortfall?: StopDeliveryAccessoryShortfallResult[];
 }
 
 export interface VoidStopDeliveryParams {
@@ -577,14 +586,23 @@ export class SalesService {
 
     // Stock check, aggregated per container type across REFILL and
     // CONTAINER_SALE items alike (both draw fulls off the same truck) —
-    // BEFORE any movement is written.
+    // BEFORE any movement is written. Accessories are excluded: they draw from
+    // plant stock, not the truck.
     const deliveredByContainerType = new Map<string, number>();
+    const deliveredAccessories = new Map<string, number>();
     for (const item of params.items) {
       const product = requireProduct(item.productId);
-      deliveredByContainerType.set(
-        product.containerTypeId,
-        (deliveredByContainerType.get(product.containerTypeId) ?? 0) + item.quantity,
-      );
+      if (product.containerTypeId !== null) {
+        deliveredByContainerType.set(
+          product.containerTypeId,
+          (deliveredByContainerType.get(product.containerTypeId) ?? 0) + item.quantity,
+        );
+      } else if (product.type === ProductType.ACCESSORY) {
+        deliveredAccessories.set(
+          product.id,
+          (deliveredAccessories.get(product.id) ?? 0) + item.quantity,
+        );
+      }
     }
     const stockShortfall: StopDeliveryStockShortfallResult[] = [];
     for (const [containerTypeId, requested] of deliveredByContainerType) {
@@ -613,6 +631,25 @@ export class SalesService {
         available,
         requested,
       });
+    }
+
+    const accessoryShortfall: StopDeliveryAccessoryShortfallResult[] = [];
+    for (const [productId, requested] of deliveredAccessories) {
+      const stock = await tx.accessoryStock.findUnique({
+        where: { productId },
+        select: { quantity: true },
+      });
+      const available = stock?.quantity ?? 0;
+      if (available < requested) {
+        // Alerta pero no bloquea
+        const product = requireProduct(productId);
+        accessoryShortfall.push({
+          productId,
+          productName: product.name,
+          available,
+          requested,
+        });
+      }
     }
 
     // Payment, if any: status comes from the method's requiresConfirmation,
@@ -709,11 +746,13 @@ export class SalesService {
     // loan (LOAN_DELIVERY, adds to the customer's container balance);
     // CONTAINER_SALE sells the container outright (FULL_SALE, leaves the
     // fleet, balance untouched) — see container-movement-transitions.ts and
-    // the spec glossary on FULL_SALE.
+    // the spec glossary on FULL_SALE. Accessories have containerTypeId === null
+    // and never touch container movements or container balances.
     const balanceTouchedContainerTypeIds = new Set<string>();
     const deliveryGroups = new Map<string, Map<ContainerMovementType, number>>();
     for (const item of params.items) {
       const product = requireProduct(item.productId);
+      if (product.containerTypeId === null) continue;
       const movementType =
         product.type === ProductType.REFILL
           ? ContainerMovementType.LOAN_DELIVERY
@@ -747,6 +786,27 @@ export class SalesService {
           { routeId: params.routeId, stopId: params.stopId, occurredAt },
         );
       }
+    }
+
+    // Accesorios entregados: descuentan del stock de planta y generan movimientos
+    // de tipo SALE con el saleId de la entrega.
+    for (const [productId, quantity] of deliveredAccessories) {
+      await tx.accessoryStock.upsert({
+        where: { productId },
+        update: { quantity: { decrement: quantity } },
+        create: { productId, quantity: -quantity },
+      });
+      await tx.accessoryMovement.create({
+        data: {
+          productId,
+          type: AccessoryMovementType.SALE,
+          quantity,
+          locationId: params.locationId,
+          saleId: sale.id,
+          recordedById: params.recordedById,
+          occurredAt,
+        },
+      });
     }
 
     // Envases devueltos: applied in full even on a partial return — the
@@ -789,6 +849,7 @@ export class SalesService {
         quantity: balance.quantity,
       })),
       stockShortfall,
+      accessoryShortfall,
     };
   }
 
@@ -895,6 +956,33 @@ export class SalesService {
     });
 
     const voidMovements = await this.emitStopVoidMovements(tx, params, sale.soldAt);
+
+    const unreversedAccessorySales = await tx.accessoryMovement.findMany({
+      where: {
+        saleId: sale.id,
+        type: AccessoryMovementType.SALE,
+        reversedBy: null,
+      },
+    });
+    for (const m of unreversedAccessorySales) {
+      await tx.accessoryStock.upsert({
+        where: { productId: m.productId },
+        update: { quantity: { increment: m.quantity } },
+        create: { productId: m.productId, quantity: m.quantity },
+      });
+      await tx.accessoryMovement.create({
+        data: {
+          productId: m.productId,
+          type: AccessoryMovementType.SALE_VOID,
+          quantity: m.quantity,
+          locationId: m.locationId,
+          saleId: sale.id,
+          reversesMovementId: m.id,
+          recordedById: params.voidedById,
+          occurredAt: sale.soldAt,
+        },
+      });
+    }
 
     return {
       // `soldAt` viaja de vuelta porque es de donde el camino de corrección

@@ -196,7 +196,7 @@ El responsable y la nota del lote corresponden a la **primera llenada** y no cam
 - **Límite de crédito por cliente:** al superarse con una nueva venta, el sistema **advierte pero no bloquea**; la operación puede continuar y la advertencia queda registrada.
 - **Precios:** existe un precio de lista por producto y la posibilidad de **precio personalizado por cliente**, que prevalece sobre la lista.
 
-El catálogo se limita a la **recarga de 20 L** y la **venta de envase**, cada una en sus dos tipos de envase (con caño / sin caño); no se comercializan accesorios ni otros formatos. Los cobros **distinguen siempre el medio de pago** (efectivo, transferencia, billeteras digitales como Yape y Plin), porque la planta necesita reportes de cobranza por cada tipo.
+El catálogo comprende la **recarga de 20 L** y la **venta de envase**, cada una en sus dos tipos de envase (con caño / sin caño), y **accesorios** (surtidores y otros productos sin tipo de envase, con precio de lista y precios pactados, que se venden o se prestan al cliente por local). Los accesorios no mueven envases ni tocan la deuda de envases; tienen libro propio (`accessory_movements`) y saldos materializados de stock en planta y de unidades prestadas por local de cliente. Los cobros **distinguen siempre el medio de pago** (efectivo, transferencia, billeteras digitales como Yape y Plin), porque la planta necesita reportes de cobranza por cada tipo.
 
 ### Reparto: preventa y autoventa
 
@@ -284,6 +284,8 @@ De estas necesidades se derivan requisitos no funcionales que condicionan el dis
 | **Pago (abono)**                        | Registro que reduce la deuda monetaria; puede ser parcial o total.                                                                                            |
 | **Estado de cuenta**                    | Historial de cargos y pagos de un cliente, con su saldo actual.                                                                                               |
 | **Medio de pago**                       | Forma en que se recibe un pago (efectivo, transferencia, Yape, Plin). Todo cobro lo registra y la cobranza se reporta por medio de pago.                      |
+| **Accesorio**                           | Producto sin tipo de envase (surtidores y otros) con stock propio en planta; se vende o se presta. No genera movimientos de envases.                          |
+| **Accesorio prestado**                  | Unidad de un accesorio entregada a un local de cliente en préstamo; no se cobra al prestar y se cobra como venta si no vuelve o vuelve roto.                  |
 | **Zona**                                | Agrupación geográfica de clientes usada para las rutas fijas por día de reparto; una ruta también puede armarse solo a partir de pedidos.                     |
 | **Sincronización diferida**             | La app móvil registra sin conexión y envía las operaciones al servidor cuando recupera señal, aplicándolas exactamente una vez.                               |
 

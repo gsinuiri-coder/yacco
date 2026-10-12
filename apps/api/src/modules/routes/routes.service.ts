@@ -283,6 +283,9 @@ function toStopResponse(
       payment: delivery.payment,
       containerBalances: delivery.containerBalances,
       stockShortfall: delivery.stockShortfall,
+      ...(delivery.accessoryShortfall !== undefined && delivery.accessoryShortfall.length > 0
+        ? { accessoryShortfall: delivery.accessoryShortfall }
+        : {}),
     };
   }
   if (!("sales" in stop)) {
