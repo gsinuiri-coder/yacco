@@ -19,9 +19,18 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
+import { setTimeout } from "node:timers/promises";
 
 import { REPO_ROOT, registerSecret, resolveCommand } from "./lib.mjs";
 
@@ -381,9 +390,19 @@ export async function arrancarVisor(options = {}) {
   });
   apiProcess.unref();
   writeStoredPid(apiPidFile, apiProcess.pid);
+  closeSync(apiLogFd);
 
   out.log(`Iniciando Web del visor en http://localhost:${VISOR_PORTS.web}...`);
-  const nuxtBin = join(visorRoot, "node_modules", "nuxt", "bin", "nuxt.mjs");
+  const nuxtBinCandidates = [
+    join(visorRoot, "apps", "web-nuxt", "node_modules", "nuxt", "bin", "nuxt.mjs"),
+    join(visorRoot, "node_modules", "nuxt", "bin", "nuxt.mjs"),
+  ];
+  const nuxtBin = nuxtBinCandidates.find(existsSync);
+  if (!nuxtBin) {
+    throw new Error(
+      "No se encontró el binario de Nuxt en apps/web-nuxt/node_modules/nuxt/bin/nuxt.mjs.",
+    );
+  }
   const webProcess = spawn(process.execPath, [nuxtBin, "dev"], {
     cwd: join(visorRoot, "apps", "web-nuxt"),
     env: { ...process.env, ...webEnv },
@@ -392,6 +411,28 @@ export async function arrancarVisor(options = {}) {
   });
   webProcess.unref();
   writeStoredPid(webPidFile, webProcess.pid);
+  closeSync(webLogFd);
+
+  out.log("Esperando que los servicios del visor comiencen a responder...");
+  for (let i = 0; i < 30; i++) {
+    await setTimeout(500);
+    const apiAlive = isPidAlive(apiProcess.pid);
+    const webAlive = isPidAlive(webProcess.pid);
+    if (!apiAlive || !webAlive) break;
+    try {
+      const apiOk = await fetch(`http://localhost:${VISOR_PORTS.api}/health`)
+        .then((r) => r.ok)
+        .catch(() => false);
+      const webOk = await fetch(`http://localhost:${VISOR_PORTS.web}/`)
+        .then((r) => r.ok)
+        .catch(() => false);
+      if (apiOk && webOk) {
+        break;
+      }
+    } catch {
+      // Continuar esperando
+    }
+  }
 
   out.log("\nVisor arrancado en segundo plano.");
   out.log(formatSummary(`http://localhost:${VISOR_PORTS.web}`, defaultCredentialsPath(visorRoot)));
