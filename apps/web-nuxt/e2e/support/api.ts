@@ -65,8 +65,26 @@ export async function driverWithRouteToday(
     id: string;
   }>;
 
+  const existingVehicles = (await (await api.get("vehicles")).json()) as Array<{ id: string }>;
+  const vehicleId =
+    existingVehicles.length > 0
+      ? existingVehicles[0]!.id
+      : (
+          await created<{ id: string }>(
+            await api.post("vehicles", {
+              data: {
+                plate: `VEH${unique.slice(-3).padStart(3, "0")}`,
+                name: `Vehículo ${label}`,
+                brand: "Toyota",
+                model: "Hilux",
+                capacityUnits: 50,
+              },
+            }),
+          )
+        ).id;
+
   const route = await created<Route>(
-    await api.post("routes", { data: { driverId: user.id, date: limaToday() } }),
+    await api.post("routes", { data: { driverId: user.id, date: limaToday(), vehicleId } }),
   );
   await created(
     await api.post(`routes/${route.id}/stops`, {
