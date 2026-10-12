@@ -31,6 +31,20 @@ const zoneModel = computed({
   },
 });
 
+const NO_DOC_TYPE = "__none__";
+const docTypeItems = [
+  { label: "Sin documento", value: NO_DOC_TYPE },
+  { label: "RUC", value: "RUC" },
+  { label: "DNI", value: "DNI" },
+  { label: "Carné de extranjería", value: "CE" },
+];
+const docTypeModel = computed({
+  get: () => (values.documentType === "" ? NO_DOC_TYPE : values.documentType),
+  set: (value: string) => {
+    values.documentType = value === NO_DOC_TYPE ? "" : value;
+  },
+});
+
 // Corregir un campo borra SU error, no el de los demás: revalidar todo en cada
 // tecla marcaría campos que el usuario todavía no terminó de escribir.
 for (const key of Object.keys(values) as Array<keyof CustomerFormValues>) {
@@ -100,6 +114,45 @@ function submit(): void {
             <template #leading><span class="text-sm text-muted">S/</span></template>
           </UInput>
         </UFormField>
+
+        <div class="sm:col-span-2 border-t border-default pt-4">
+          <p class="text-xs font-medium tracking-wide text-muted uppercase mb-4">
+            Comprobante y datos fiscales (opcional)
+          </p>
+          <div class="grid gap-5 sm:grid-cols-2">
+            <UFormField label="Tipo de documento" name="documentType" :error="errors.documentType">
+              <USelect v-model="docTypeModel" :items="docTypeItems" class="w-full" />
+            </UFormField>
+            <UFormField
+              label="Número de documento"
+              name="documentNumber"
+              :error="errors.documentNumber"
+            >
+              <UInput
+                v-model="values.documentNumber"
+                class="w-full"
+                autocomplete="off"
+                :placeholder="
+                  values.documentType === 'RUC'
+                    ? '11 dígitos'
+                    : values.documentType === 'DNI'
+                      ? '8 dígitos'
+                      : ''
+                "
+              />
+            </UFormField>
+            <UFormField
+              label="Razón social / Nombre legal"
+              name="legalName"
+              :error="errors.legalName"
+            >
+              <UInput v-model="values.legalName" class="w-full" autocomplete="off" />
+            </UFormField>
+            <UFormField label="Dirección fiscal" name="fiscalAddress" :error="errors.fiscalAddress">
+              <UInput v-model="values.fiscalAddress" class="w-full" autocomplete="off" />
+            </UFormField>
+          </div>
+        </div>
 
         <div class="sm:col-span-2">
           <slot name="summary" />

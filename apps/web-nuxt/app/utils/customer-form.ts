@@ -7,6 +7,10 @@ export interface CustomerFormValues {
   phone: string;
   address: string;
   addressReference: string;
+  documentType: string;
+  documentNumber: string;
+  legalName: string;
+  fiscalAddress: string;
   /** "" es "Sin zona". */
   zoneId: string;
   creditLimit: string;
@@ -26,6 +30,10 @@ export function blankCustomerForm(): CustomerFormValues {
     phone: "",
     address: "",
     addressReference: "",
+    documentType: "",
+    documentNumber: "",
+    legalName: "",
+    fiscalAddress: "",
     zoneId: "",
     creditLimit: "",
     active: true,
@@ -38,6 +46,10 @@ export function formFromCustomer(customer: Customer): CustomerFormValues {
     phone: customer.phone,
     address: customer.address,
     addressReference: customer.addressReference,
+    documentType: customer.documentType ?? "",
+    documentNumber: customer.documentNumber ?? "",
+    legalName: customer.legalName ?? "",
+    fiscalAddress: customer.fiscalAddress ?? "",
     zoneId: customer.zoneId ?? "",
     creditLimit: customer.creditLimit ?? "",
     active: customer.active,
@@ -74,6 +86,21 @@ export function checkCustomerForm(values: CustomerFormValues): CustomerFormError
   if (limit !== "" && !isMoneyInput(limit)) {
     errors.creditLimit = 'El límite de crédito debe ser un monto como "150.00"';
   }
+
+  const docType = values.documentType.trim();
+  const docNum = values.documentNumber.trim();
+  if (docType !== "" && docNum === "") {
+    errors.documentNumber = "El número de documento es obligatorio si se indica el tipo";
+  } else if (docNum !== "" && docType === "") {
+    errors.documentType = "El tipo de documento es obligatorio si se indica el número";
+  } else if (docType === "RUC" && !/^\d{11}$/.test(docNum)) {
+    errors.documentNumber = "El RUC debe tener 11 dígitos";
+  } else if (docType === "DNI" && !/^\d{8}$/.test(docNum)) {
+    errors.documentNumber = "El DNI debe tener 8 dígitos";
+  } else if (docType === "CE" && !/^[A-Za-z0-9]{4,20}$/.test(docNum)) {
+    errors.documentNumber = "El carné de extranjería debe tener entre 4 y 20 caracteres";
+  }
+
   return errors;
 }
 
@@ -85,6 +112,10 @@ export function checkCustomerForm(values: CustomerFormValues): CustomerFormError
 function commonBody(values: CustomerFormValues): CreateCustomerBody {
   const zoneId = values.zoneId.trim();
   const creditLimit = values.creditLimit.trim();
+  const docType = values.documentType.trim();
+  const docNum = values.documentNumber.trim();
+  const legalName = values.legalName.trim();
+  const fiscalAddress = values.fiscalAddress.trim();
   return {
     name: values.name.trim(),
     phone: values.phone.trim(),
@@ -92,6 +123,10 @@ function commonBody(values: CustomerFormValues): CreateCustomerBody {
     addressReference: values.addressReference.trim(),
     ...(zoneId === "" ? {} : { zoneId }),
     ...(creditLimit === "" ? {} : { creditLimit }),
+    ...(docType === "" ? {} : { documentType: docType }),
+    ...(docNum === "" ? {} : { documentNumber: docNum }),
+    ...(legalName === "" ? {} : { legalName }),
+    ...(fiscalAddress === "" ? {} : { fiscalAddress }),
   };
 }
 
@@ -100,7 +135,18 @@ export function createBodyFrom(values: CustomerFormValues): CreateCustomerBody {
 }
 
 export function updateBodyFrom(values: CustomerFormValues): UpdateCustomerBody {
-  return { ...commonBody(values), active: values.active };
+  const docType = values.documentType.trim();
+  const docNum = values.documentNumber.trim();
+  const legalName = values.legalName.trim();
+  const fiscalAddress = values.fiscalAddress.trim();
+  return {
+    ...commonBody(values),
+    documentType: docType || null,
+    documentNumber: docNum || null,
+    legalName: legalName || null,
+    fiscalAddress: fiscalAddress || null,
+    active: values.active,
+  };
 }
 
 /**

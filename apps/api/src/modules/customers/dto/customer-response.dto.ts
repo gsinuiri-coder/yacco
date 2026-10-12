@@ -69,6 +69,24 @@ export class CustomerResponseDto {
    */
   @ApiPropertyOptional({ type: String, nullable: true })
   externalCode!: string | null;
+
+  @ApiPropertyOptional({ example: "RUC", nullable: true })
+  documentType!: string | null;
+
+  @ApiPropertyOptional({ example: "20123456789", nullable: true })
+  documentNumber!: string | null;
+
+  @ApiPropertyOptional({ example: "Bodega Santa Rosa S.A.C.", nullable: true })
+  legalName!: string | null;
+
+  @ApiPropertyOptional({ example: "Av. Los Álamos 452", nullable: true })
+  fiscalAddress!: string | null;
+
+  @ApiPropertyOptional({
+    example: "Ya existe otro cliente con este documento",
+    nullable: true,
+  })
+  duplicateDocumentWarning?: string | null;
 }
 
 export class PaginatedCustomersDto {

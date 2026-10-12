@@ -57,4 +57,28 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsBoolean({ message: "El estado activo debe ser verdadero o falso" })
   active?: boolean;
+
+  @ApiPropertyOptional({ example: "RUC", description: "Tipo de documento (RUC, DNI, CE)" })
+  @IsOptional()
+  @IsString({ message: "El tipo de documento debe ser texto" })
+  @MaxLength(20, { message: "El tipo de documento no puede superar los 20 caracteres" })
+  documentType?: string;
+
+  @ApiPropertyOptional({ example: "20123456789", description: "Número de documento" })
+  @IsOptional()
+  @IsString({ message: "El número de documento debe ser texto" })
+  @MaxLength(30, { message: "El número de documento no puede superar los 30 caracteres" })
+  documentNumber?: string;
+
+  @ApiPropertyOptional({ example: "Bodega Santa Rosa S.A.C." })
+  @IsOptional()
+  @IsString({ message: "La razón social debe ser texto" })
+  @MaxLength(255, { message: "La razón social no puede superar los 255 caracteres" })
+  legalName?: string;
+
+  @ApiPropertyOptional({ example: "Av. Los Álamos 452" })
+  @IsOptional()
+  @IsString({ message: "La dirección fiscal debe ser texto" })
+  @MaxLength(255, { message: "La dirección fiscal no puede superar los 255 caracteres" })
+  fiscalAddress?: string;
 }

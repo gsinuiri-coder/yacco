@@ -53,6 +53,10 @@ function buildCustomer(
     active: true,
     createdAt: new Date("2026-08-21T15:00:00.000Z"),
     externalCode: null,
+    documentType: null,
+    documentNumber: null,
+    legalName: null,
+    fiscalAddress: null,
     locations: locations ?? [buildPrimaryLocation()],
     ...customerOverrides,
   };
@@ -77,7 +81,14 @@ function buildPrismaMock() {
       create: jest.fn<() => Promise<unknown>>(),
       findMany: jest.fn<() => Promise<unknown>>(),
       findUnique: jest.fn<() => Promise<unknown>>(),
+      findFirst: jest.fn<() => Promise<unknown>>(),
       count: jest.fn<() => Promise<unknown>>(),
+      update: jest.fn<() => Promise<unknown>>(),
+    },
+    customerContact: {
+      create: jest.fn<() => Promise<unknown>>(),
+      findMany: jest.fn<() => Promise<unknown>>(),
+      findFirst: jest.fn<() => Promise<unknown>>(),
       update: jest.fn<() => Promise<unknown>>(),
     },
     sale: {
@@ -762,6 +773,198 @@ describe("CustomersService", () => {
       // 8.33 + 24.99 - 20.33 = 12.99
       expect(result.closingBalance).toBe(customer.debtBalance.toFixed(2));
       expect(result.closingBalance).toBe("12.99");
+    });
+  });
+
+  describe("documents and duplicate warning (Fase 3, Fila 4)", () => {
+    it("saves customer with valid RUC and legal details", async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      prisma.customer.create.mockResolvedValue(
+        buildCustomer({
+          documentType: "RUC",
+          documentNumber: "20123456789",
+          legalName: "Bodega Santa Rosa S.A.C.",
+          fiscalAddress: "Av. Los Alamos 452",
+        }),
+      );
+
+      const result = await service.create({
+        name: "Bodega Santa Rosa",
+        phone: "987654321",
+        address: "Av. Los Alamos 452",
+        addressReference: "Porton azul",
+        documentType: "RUC",
+        documentNumber: "20123456789",
+        legalName: "Bodega Santa Rosa S.A.C.",
+        fiscalAddress: "Av. Los Alamos 452",
+      });
+
+      expect(result.documentType).toBe("RUC");
+      expect(result.documentNumber).toBe("20123456789");
+      expect(result.legalName).toBe("Bodega Santa Rosa S.A.C.");
+      expect(result.duplicateDocumentWarning).toBeNull();
+    });
+
+    it("rejects 10-digit RUC with 400", async () => {
+      await expect(
+        service.create({
+          name: "Bodega Santa Rosa",
+          phone: "987654321",
+          address: "Av. Los Alamos 452",
+          addressReference: "Porton azul",
+          documentType: "RUC",
+          documentNumber: "2012345678", // 10 digits
+        }),
+      ).rejects.toThrow("El RUC debe tener exactamente 11 dígitos");
+    });
+
+    it("rejects document number without type with 400", async () => {
+      await expect(
+        service.create({
+          name: "Bodega Santa Rosa",
+          phone: "987654321",
+          address: "Av. Los Alamos 452",
+          addressReference: "Porton azul",
+          documentNumber: "20123456789",
+        }),
+      ).rejects.toThrow("El tipo de documento es obligatorio si se indica el número");
+    });
+
+    it("warns on duplicate document and does NOT block save", async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        id: "customer-99",
+        name: "Bodega Existente",
+        documentNumber: "20123456789",
+      });
+      prisma.customer.create.mockResolvedValue(
+        buildCustomer({
+          documentType: "RUC",
+          documentNumber: "20123456789",
+        }),
+      );
+
+      const result = await service.create({
+        name: "Bodega Santa Rosa",
+        phone: "987654321",
+        address: "Av. Los Alamos 452",
+        addressReference: "Porton azul",
+        documentType: "RUC",
+        documentNumber: "20123456789",
+      });
+
+      expect(result.duplicateDocumentWarning).toContain("Bodega Existente");
+      expect(result.duplicateDocumentWarning).toContain("20123456789");
+    });
+
+    it("updates document and warns if another active customer already has it", async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        id: "customer-99",
+        name: "Bodega Repetida",
+        documentNumber: "20999999999",
+      });
+      prisma.customer.update.mockResolvedValue(
+        buildCustomer({
+          documentType: "RUC",
+          documentNumber: "20999999999",
+        }),
+      );
+
+      const result = await service.update("customer-1", {
+        documentType: "RUC",
+        documentNumber: "20999999999",
+      });
+
+      expect(result.duplicateDocumentWarning).toContain("Bodega Repetida");
+    });
+  });
+
+  describe("contacts (Fase 3, Fila 4)", () => {
+    const actorId = "user-admin-1";
+
+    it("findContacts throws 404 for unknown customer", async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+
+      await expect(service.findContacts("unknown-id")).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("findContacts returns active contacts sorted by createdAt", async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: "customer-1" });
+      prisma.customerContact.findMany.mockResolvedValue([
+        {
+          id: "contact-1",
+          customerId: "customer-1",
+          name: "Carlos Ruiz",
+          phone: "912345678",
+          active: true,
+          createdById: actorId,
+          createdAt: new Date("2026-08-01T10:00:00Z"),
+          removedById: null,
+          removedAt: null,
+          createdBy: { id: actorId, name: "Admin" },
+          removedBy: null,
+        },
+      ]);
+
+      const contacts = await service.findContacts("customer-1");
+      expect(contacts).toHaveLength(1);
+      expect(contacts[0]!.name).toBe("Carlos Ruiz");
+      expect(contacts[0]!.phone).toBe("912345678");
+    });
+
+    it("createContact creates contact with active:true and optional phone as null", async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: "customer-1" });
+      prisma.customerContact.create.mockResolvedValue({
+        id: "contact-2",
+        customerId: "customer-1",
+        name: "Maria Lopez",
+        phone: null,
+        active: true,
+        createdById: actorId,
+        createdAt: new Date(),
+        createdBy: { id: actorId, name: "Admin" },
+      });
+
+      const contact = await service.createContact("customer-1", { name: "Maria Lopez" }, actorId);
+
+      expect(contact.name).toBe("Maria Lopez");
+      expect(contact.phone).toBeNull();
+      expect(contact.active).toBe(true);
+      expect(contact.createdById).toBe(actorId);
+    });
+
+    it("removeContact deactivates contact and records removedBy and removedAt", async () => {
+      prisma.customerContact.findFirst.mockResolvedValue({
+        id: "contact-1",
+        customerId: "customer-1",
+      });
+      const now = new Date();
+      prisma.customerContact.update.mockResolvedValue({
+        id: "contact-1",
+        customerId: "customer-1",
+        name: "Carlos Ruiz",
+        phone: "912345678",
+        active: false,
+        createdById: "creator-1",
+        createdAt: new Date("2026-08-01T10:00:00Z"),
+        removedById: actorId,
+        removedAt: now,
+        createdBy: { id: "creator-1", name: "Creator" },
+        removedBy: { id: actorId, name: "Admin" },
+      });
+
+      const result = await service.removeContact("customer-1", "contact-1", actorId);
+
+      expect(result.active).toBe(false);
+      expect(result.removedById).toBe(actorId);
+      expect(result.removedAt).toEqual(now);
+    });
+
+    it("removeContact throws NotFoundException when contact does not exist", async () => {
+      prisma.customerContact.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.removeContact("customer-1", "missing-contact", actorId),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

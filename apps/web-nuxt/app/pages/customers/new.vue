@@ -13,7 +13,18 @@ async function register(values: CustomerFormValues): Promise<void> {
   submitting.value = true;
   submitError.value = null;
   try {
-    await api.request<Customer>("/customers", { method: "POST", body: createBodyFrom(values) });
+    const created = await api.request<Customer>("/customers", {
+      method: "POST",
+      body: createBodyFrom(values),
+    });
+    if (created.duplicateDocumentWarning) {
+      const toast = useToast();
+      toast.add({
+        title: "Aviso de documento",
+        description: created.duplicateDocumentWarning,
+        color: "warning",
+      });
+    }
     await navigateTo("/customers");
   } catch (error) {
     // El 400 de la API trae el motivo: mostrarlo tal cual vale más que un

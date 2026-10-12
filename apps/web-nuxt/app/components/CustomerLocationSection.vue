@@ -16,6 +16,7 @@ interface LocationDraft {
 
 const props = defineProps<{ customerId: string }>();
 const api = useApi();
+const session = useSession();
 const drafts = ref<LocationDraft[]>([]);
 const loading = ref(true);
 const loadError = ref<string | null>(null);
@@ -198,6 +199,13 @@ function mapsUrl(draft: LocationDraft): string | null {
             />
           </div>
         </form>
+
+        <CustomerLocationPhotos
+          :location-id="draft.location.id"
+          :location-name="draft.location.name"
+          :is-admin="session.hasRole('ADMIN')"
+          :can-upload="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+        />
       </fieldset>
     </div>
   </SectionCard>

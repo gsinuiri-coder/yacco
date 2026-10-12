@@ -152,6 +152,22 @@ enum Weekday {
   @@map("weekday")
 }
 
+enum LocationPhotoStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("location_photo_status")
+}
+
+enum CoordinateRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("coordinate_request_status")
+}
+
 // --- Security & catalogs ----------------------------------------------------
 
 model User {
@@ -203,6 +219,13 @@ model User {
   routeVehicleAssignments       RouteVehicleAssignment[] @relation("RouteVehicleAssignedBy")
   syncOperations                SyncOperation[]
   productPriceChanges           ProductPriceChange[]
+  customerContactsCreated             CustomerContact[]                  @relation("CustomerContactCreatedBy")
+  customerContactsRemoved             CustomerContact[]                  @relation("CustomerContactRemovedBy")
+  customerLocationPhotosUploaded      CustomerLocationPhoto[]            @relation("CustomerLocationPhotoUploadedBy")
+  customerLocationPhotosReviewed      CustomerLocationPhoto[]            @relation("CustomerLocationPhotoReviewedBy")
+  customerLocationPhotosHidden        CustomerLocationPhoto[]            @relation("CustomerLocationPhotoHiddenBy")
+  customerLocationCoordinatesRequested CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateRequestedBy")
+  customerLocationCoordinatesReviewed CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateReviewedBy")
 
   @@map("users")
 }
@@ -293,8 +316,15 @@ model Customer {
   // below, which partials over a NOT NULL boolean and has no such shortcut).
   externalCode String?  @unique @map("external_code")
 
+  // Document and tax details (Fase 3, Fila 4)
+  documentType   String?  @map("document_type") @db.VarChar(20)
+  documentNumber String?  @map("document_number") @db.VarChar(30)
+  legalName      String?  @map("legal_name")
+  fiscalAddress  String?  @map("fiscal_address")
+
   zone        Zone?              @relation(fields: [zoneId], references: [id], onDelete: Restrict)
   locations   CustomerLocation[]
+  contacts    CustomerContact[]
   prices      CustomerPrice[]
   payments    Payment[]
   orderGroups OrderGroup[]
@@ -335,6 +365,8 @@ model CustomerLocation {
   routeStops RouteStop[]
   sales      Sale[]
   payments   Payment[]
+  photos             CustomerLocationPhoto[]
+  coordinateRequests CustomerLocationCoordinateRequest[]
 
   @@map("customer_locations")
 }
@@ -964,4 +996,71 @@ model RouteVehicleAssignment {
 
   @@index([routeId, createdAt])
   @@map("route_vehicle_assignments")
+}
+
+model CustomerContact {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId  String    @map("customer_id") @db.Uuid
+  name        String
+  phone       String?
+  active      Boolean   @default(true)
+  createdById String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  removedById String?   @map("removed_by") @db.Uuid
+  removedAt   DateTime? @map("removed_at") @db.Timestamptz(6)
+
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy User     @relation("CustomerContactCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  removedBy User?    @relation("CustomerContactRemovedBy", fields: [removedById], references: [id], onDelete: Restrict)
+
+  @@index([customerId, active])
+  @@map("customer_contacts")
+}
+
+model CustomerLocationPhoto {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId      String              @map("location_id") @db.Uuid
+  objectKey       String              @map("object_key")
+  contentType     String              @map("content_type") @db.VarChar(100)
+  sizeBytes       Int                 @map("size_bytes")
+  status          LocationPhotoStatus
+  uploadedById    String              @map("uploaded_by") @db.Uuid
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  reviewedById    String?             @map("reviewed_by") @db.Uuid
+  reviewedAt      DateTime?           @map("reviewed_at") @db.Timestamptz(6)
+  rejectionReason String?             @map("rejection_reason") @db.Text
+  hiddenById      String?             @map("hidden_by") @db.Uuid
+  hiddenAt        DateTime?           @map("hidden_at") @db.Timestamptz(6)
+  hiddenReason    String?             @map("hidden_reason") @db.Text
+
+  location   CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  uploadedBy User             @relation("CustomerLocationPhotoUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  reviewedBy User?            @relation("CustomerLocationPhotoReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  hiddenBy   User?            @relation("CustomerLocationPhotoHiddenBy", fields: [hiddenById], references: [id], onDelete: Restrict)
+
+  @@index([locationId, status])
+  @@map("customer_location_photos")
+}
+
+model CustomerLocationCoordinateRequest {
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId        String                   @map("location_id") @db.Uuid
+  latitude          Decimal                  @db.Decimal(9, 6)
+  longitude         Decimal                  @db.Decimal(9, 6)
+  accuracyM         Decimal?                 @map("accuracy_m") @db.Decimal(10, 2)
+  previousLatitude  Decimal?                 @map("previous_latitude") @db.Decimal(9, 6)
+  previousLongitude Decimal?                 @map("previous_longitude") @db.Decimal(9, 6)
+  status            CoordinateRequestStatus
+  requestedById     String                   @map("requested_by") @db.Uuid
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  reviewedById      String?                  @map("reviewed_by") @db.Uuid
+  reviewedAt        DateTime?                @map("reviewed_at") @db.Timestamptz(6)
+  rejectionReason   String?                  @map("rejection_reason") @db.Text
+
+  location    CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  requestedBy User             @relation("CustomerLocationCoordinateRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedBy  User?            @relation("CustomerLocationCoordinateReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@index([locationId, status])
+  @@map("customer_location_coordinate_requests")
 }

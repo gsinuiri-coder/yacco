@@ -91,6 +91,12 @@ export const NAVIGATION: NavigationSection[] = [
   {
     label: "Administración",
     links: [
+      {
+        label: "Por aprobar",
+        icon: "i-lucide-badge-check",
+        to: "/pending-approvals",
+        onlyFor: "ADMIN",
+      },
       { label: "Vehículos", icon: "i-lucide-truck", to: "/vehicles" },
       { label: "Productos", icon: "i-lucide-droplets", to: "/products" },
       { label: "Zonas", icon: "i-lucide-map-pin", to: "/zones" },

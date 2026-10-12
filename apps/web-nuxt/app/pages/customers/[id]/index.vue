@@ -102,8 +102,30 @@ function paymentRegistered(debtBalance: string): void {
                 </dd>
                 <dd class="text-muted"><LinkedText :text="customer.addressReference" /></dd>
               </div>
+              <div
+                v-if="customer.documentType && customer.documentNumber"
+                class="sm:col-span-2 border-t border-default pt-4"
+              >
+                <dt class="text-muted">Documento ({{ customer.documentType }})</dt>
+                <dd class="font-medium text-highlighted tabular-nums">
+                  {{ customer.documentNumber }}
+                </dd>
+                <p v-if="customer.legalName" class="mt-1 text-xs text-muted">
+                  Razón social:
+                  <span class="font-medium text-highlighted">{{ customer.legalName }}</span>
+                </p>
+                <p v-if="customer.fiscalAddress" class="mt-1 text-xs text-muted">
+                  Dirección fiscal:
+                  <span class="font-medium text-highlighted">{{ customer.fiscalAddress }}</span>
+                </p>
+              </div>
             </dl>
           </section>
+
+          <CustomerContactsSection
+            :customer-id="customer.id"
+            :can-edit="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+          />
 
           <CustomerLocationSection :customer-id="customer.id" />
 

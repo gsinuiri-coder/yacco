@@ -18,10 +18,18 @@ async function save(values: CustomerFormValues): Promise<void> {
   submitting.value = true;
   submitError.value = null;
   try {
-    await api.request<Customer>(`/customers/${customerId}`, {
+    const updated = await api.request<Customer>(`/customers/${customerId}`, {
       method: "PATCH",
       body: updateBodyFrom(values),
     });
+    if (updated.duplicateDocumentWarning) {
+      const toast = useToast();
+      toast.add({
+        title: "Aviso de documento",
+        description: updated.duplicateDocumentWarning,
+        color: "warning",
+      });
+    }
     await navigateTo("/customers");
   } catch (error) {
     submitError.value = describeApiFailure(error);

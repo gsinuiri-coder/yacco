@@ -124,6 +124,12 @@ mostrar ninguno.
 | `PLANT_LONGITUDE`       | `.env` local | variable en claro    | —      | —                       |
 | `PORT`                  | 3200         | lo inyecta Cloud Run | —      | —                       |
 | `VERCEL_TOKEN`          | `.env.setup` | —                    | —      | Secret Manager, por WIF |
+| `S3_ENDPOINT`           | `.env` local | variable en claro    | —      | —                       |
+| `S3_REGION`             | `.env` local | variable en claro    | —      | —                       |
+| `S3_BUCKET`             | `.env` local | variable en claro    | —      | —                       |
+| `S3_ACCESS_KEY_ID`      | `.env` local | Secret Manager       | —      | —                       |
+| `S3_SECRET_ACCESS_KEY`  | `.env` local | Secret Manager       | —      | —                       |
+| `S3_FORCE_PATH_STYLE`   | `.env` local | variable en claro    | —      | —                       |
 
 El web (`apps/web-nuxt`) no tiene ninguna variable: le pide todo a `/api/v1`
 de su propio origen, y a qué API llega lo decide el host en las rutas del
@@ -135,3 +141,7 @@ descarga el navegador, así que nunca un secreto.
 siempre juntas. La API las valida al arrancar y la oficina las obtiene desde
 `GET /api/v1/settings/plant-location`; el navegador no recibe variables del
 entorno ni necesita conocer dónde corre la API.
+
+`S3_*` configuran el almacenamiento de fotos de locales (MinIO en local, S3 en producción).
+En local, `pnpm demo:up` no arranca MinIO por defecto para evitar sobrecarga en demos;
+cuando se requiere subir fotos en local, se levanta con `docker compose up -d minio`.

@@ -155,6 +155,31 @@ export class EnvironmentVariables {
   @IsString()
   @IsLongitude({ message: "PLANT_LONGITUDE must be a longitude between -180 and 180" })
   PLANT_LONGITUDE?: string;
+
+  /** S3 / MinIO storage configuration for customer location photos */
+  @IsOptional()
+  @IsString()
+  S3_ENDPOINT?: string;
+
+  @IsOptional()
+  @IsString()
+  S3_REGION?: string;
+
+  @IsOptional()
+  @IsString()
+  S3_BUCKET?: string;
+
+  @IsOptional()
+  @IsString()
+  S3_ACCESS_KEY_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  S3_SECRET_ACCESS_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  S3_FORCE_PATH_STYLE?: string;
 }
 
 /**
