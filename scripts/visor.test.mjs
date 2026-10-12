@@ -161,11 +161,11 @@ describe("visor — gestión de procesos y pids", () => {
     assert.equal(availableAfterClose, true);
   });
 
-  it("arrancarVisor y actualizarVisor rechazan si el visor no fue preparado", async () => {
-    const { arrancarVisor, actualizarVisor } = await import("./visor.mjs");
+  it("startVisor y updateVisor rechazan si el visor no fue preparado", async () => {
+    const { startVisor, updateVisor } = await import("./visor.mjs");
     const fakeRoot = join(REPO_ROOT, ".local", "non-existent-fake-root");
-    await assert.rejects(() => arrancarVisor({ root: fakeRoot }), /No se encontró el visor/);
-    await assert.rejects(() => actualizarVisor({ root: fakeRoot }), /No se encontró el visor/);
+    await assert.rejects(() => startVisor({ root: fakeRoot }), /No se encontró el visor/);
+    await assert.rejects(() => updateVisor({ root: fakeRoot }), /No se encontró el visor/);
   });
 
   it("startDetachedProcess inicia un proceso desacoplado y stopProcess lo detiene limpiamente", async () => {

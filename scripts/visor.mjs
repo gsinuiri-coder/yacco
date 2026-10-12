@@ -206,7 +206,7 @@ function clearStoredPid(filePath) {
   }
 }
 
-export async function prepararVisor(options = {}) {
+export async function prepareVisor(options = {}) {
   const { root = REPO_ROOT, out = console, ref = process.env.VISOR_REF ?? "main" } = options;
   const visorRoot = visorPath(root);
 
@@ -262,7 +262,7 @@ export async function prepararVisor(options = {}) {
   out.log(formatSummary(`http://localhost:${VISOR_PORTS.web}`, defaultCredentialsPath(visorRoot)));
 }
 
-export async function actualizarVisor(options = {}) {
+export async function updateVisor(options = {}) {
   const { root = REPO_ROOT, out = console, ref = process.env.VISOR_REF ?? "main" } = options;
   const visorRoot = visorPath(root);
 
@@ -282,7 +282,7 @@ export async function actualizarVisor(options = {}) {
 
   if (hadRunningProcesses) {
     out.log("Deteniendo procesos del visor antes de actualizar...");
-    await pararVisor({ root, out });
+    await stopVisor({ root, out });
   }
 
   out.log(`Obteniendo últimos cambios de origin/${ref}...`);
@@ -329,7 +329,7 @@ export async function actualizarVisor(options = {}) {
 
   if (hadRunningProcesses) {
     out.log("Reiniciando API y web del visor...");
-    await arrancarVisor({ root, out });
+    await startVisor({ root, out });
   } else {
     out.log("\nVisor actualizado con éxito.");
     out.log(
@@ -393,7 +393,7 @@ export function startDetachedProcess(options) {
   return child.pid;
 }
 
-export async function arrancarVisor(options = {}) {
+export async function startVisor(options = {}) {
   const { root = REPO_ROOT, out = console } = options;
   const visorRoot = visorPath(root);
 
@@ -497,7 +497,7 @@ export async function arrancarVisor(options = {}) {
   out.log(formatSummary(`http://localhost:${VISOR_PORTS.web}`, defaultCredentialsPath(visorRoot)));
 }
 
-export async function pararVisor(options = {}) {
+export async function stopVisor(options = {}) {
   const { root = REPO_ROOT, out = console } = options;
   const visorRoot = visorPath(root);
   const visorDir = join(visorRoot, ".visor");
@@ -545,16 +545,16 @@ async function main(argv = process.argv.slice(2)) {
   const command = argv[0];
   switch (command) {
     case "preparar":
-      await prepararVisor();
+      await prepareVisor();
       break;
     case "actualizar":
-      await actualizarVisor();
+      await updateVisor();
       break;
     case "arrancar":
-      await arrancarVisor();
+      await startVisor();
       break;
     case "parar":
-      await pararVisor();
+      await stopVisor();
       break;
     default:
       console.error(
