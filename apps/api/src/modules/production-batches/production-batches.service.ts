@@ -33,9 +33,7 @@ export function shouldFilterToOperatorFilling(user?: RequestUser): boolean {
   if (!user) return false;
   const canSeeAll = user.roles.some(
     (role) =>
-      role === UserRole.ADMIN ||
-      role === UserRole.SELLER ||
-      role === UserRole.PLANT_SUPERVISOR,
+      role === UserRole.ADMIN || role === UserRole.SELLER || role === UserRole.PLANT_SUPERVISOR,
   );
   return !canSeeAll && user.roles.includes(UserRole.PLANT_OPERATOR);
 }
