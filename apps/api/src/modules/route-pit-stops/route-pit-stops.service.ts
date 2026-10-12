@@ -132,7 +132,7 @@ export class RoutePitStopsService {
     }
     assertCanAccessRoute(actor, route);
 
-    const [containerTypes, fullMap, emptyMap, cashCollectedAgg, previousPitsAgg] =
+    const [containerTypes, fullMap, emptyMap, cashCollectedAgg, previousPitsAgg, previousCounts] =
       await Promise.all([
         this.prisma.containerType.findMany({
           where: { active: true },
@@ -153,7 +153,32 @@ export class RoutePitStopsService {
           where: { routeId, voidedAt: null },
           _sum: { cashDelivered: true },
         }),
+        this.prisma.routePitStopCount.findMany({
+          where: { pitStop: { routeId, voidedAt: null } },
+          select: {
+            containerTypeId: true,
+            expectedFull: true,
+            countedFull: true,
+            expectedEmpty: true,
+            countedEmpty: true,
+          },
+        }),
       ]);
+
+    const previousFullDiffMap = new Map<string, number>();
+    const previousEmptyDiffMap = new Map<string, number>();
+    for (const pc of previousCounts) {
+      const fullDiff = pc.countedFull - pc.expectedFull;
+      const emptyDiff = pc.countedEmpty - pc.expectedEmpty;
+      previousFullDiffMap.set(
+        pc.containerTypeId,
+        (previousFullDiffMap.get(pc.containerTypeId) ?? 0) + fullDiff,
+      );
+      previousEmptyDiffMap.set(
+        pc.containerTypeId,
+        (previousEmptyDiffMap.get(pc.containerTypeId) ?? 0) + emptyDiff,
+      );
+    }
 
     const cashCollected = cashCollectedAgg._sum.amount ?? new Prisma.Decimal(0);
     const cashDeliveredInPreviousPits = previousPitsAgg._sum.cashDelivered ?? new Prisma.Decimal(0);
@@ -168,6 +193,8 @@ export class RoutePitStopsService {
         containerTypeName: ct.name,
         expectedFull: fullMap.get(ct.id) ?? 0,
         expectedEmpty: emptyMap.get(ct.id) ?? 0,
+        previousFullDifferences: previousFullDiffMap.get(ct.id) ?? 0,
+        previousEmptyDifferences: previousEmptyDiffMap.get(ct.id) ?? 0,
       })),
       cash: {
         cashCollected: cashCollected.toFixed(2),

@@ -133,6 +133,12 @@ export class RoutePitStopContainerPreviewDto {
 
   @ApiProperty()
   expectedEmpty!: number;
+
+  @ApiProperty({ description: "Diferencia acumulada previa de llenos en paradas anteriores" })
+  previousFullDifferences!: number;
+
+  @ApiProperty({ description: "Diferencia acumulada previa de vacíos en paradas anteriores" })
+  previousEmptyDifferences!: number;
 }
 
 export class RoutePitStopCashPreviewDto {

@@ -86,7 +86,7 @@ async function confirmVoid(pitId: string): Promise<void> {
   try {
     await api.request<RoutePitStopResponse>(`/routes/${props.route.id}/pit-stops/${pitId}/void`, {
       method: "PATCH",
-      body: { reason: voidReason.value.trim() },
+      body: { voidReason: voidReason.value.trim() },
     });
     cancelVoiding();
     await loadPits();
@@ -257,11 +257,13 @@ async function confirmVoid(pitId: string): Promise<void> {
             <!-- Baja -->
             <div class="rounded-md bg-default p-3 space-y-1.5">
               <h4 class="font-semibold text-highlighted">Baja (descarga)</h4>
-              <div v-if="pit.movements.length === 0" class="text-dimmed">No hubo descarga</div>
+              <div v-if="!pit.unloads || pit.unloads.length === 0" class="text-dimmed">
+                No hubo descarga
+              </div>
               <ul v-else class="space-y-1 text-muted">
-                <li v-for="m in pit.movements" :key="m.id">
-                  {{ m.type === "EMPTY_UNLOAD" ? "Vacíos descargados" : "Llenos vueltos" }}:
-                  {{ m.quantity }} de {{ m.containerType.name }}
+                <li v-for="(u, uIndex) in pit.unloads" :key="uIndex">
+                  {{ u.type === "EMPTY_UNLOAD" ? "Vacíos descargados" : "Llenos vueltos" }}:
+                  {{ u.quantity }} de {{ u.containerType.name }}
                 </li>
               </ul>
             </div>
@@ -269,10 +271,13 @@ async function confirmVoid(pitId: string): Promise<void> {
             <!-- Sube -->
             <div class="rounded-md bg-default p-3 space-y-1.5">
               <h4 class="font-semibold text-highlighted">Sube (carga)</h4>
-              <div v-if="pit.loads.length === 0" class="text-dimmed">No hubo carga</div>
+              <div v-if="!pit.loads || pit.loads.length === 0" class="text-dimmed">
+                No hubo carga
+              </div>
               <ul v-else class="space-y-1 text-muted">
                 <li v-for="l in pit.loads" :key="l.id">
-                  {{ l.quantity }} de {{ l.containerType.name }} (Lote {{ l.batch.code }})
+                  {{ l.quantity }} de {{ l.batchItem.containerType.name }} (Lote
+                  {{ l.batchItem.batch.code }})
                 </li>
               </ul>
             </div>

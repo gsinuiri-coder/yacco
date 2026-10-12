@@ -499,11 +499,7 @@ async function submit(): Promise<void> {
           <div class="rounded-md bg-default p-3">
             <dt class="text-xs text-muted">Cobrado en ruta</dt>
             <dd class="font-medium text-highlighted">
-              {{
-                formatSoles(
-                  preview?.cash.cashCollectedInRoute ?? preview?.cash.cashCollected ?? "0.00",
-                )
-              }}
+              {{ formatSoles(preview?.cash.cashCollected ?? "0.00") }}
             </dd>
           </div>
           <div class="rounded-md bg-default p-3">

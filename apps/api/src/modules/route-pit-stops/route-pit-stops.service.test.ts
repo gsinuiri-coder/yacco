@@ -17,8 +17,8 @@ const PIT_STOP_ID = "22222222-2222-4222-8222-222222222222";
 const ADMIN_ID = "33333333-3333-4333-8333-333333333333";
 const DRIVER_ID = "44444444-4444-4444-8444-444444444444";
 const OTHER_DRIVER_ID = "55555555-5555-4555-8555-555555555555";
-const CT_CANO_ID = "66666666-6666-4666-8666-666666666666";
-const CT_SIN_ID = "77777777-7777-4777-8777-777777777777";
+const CT_WITH_SPIGOT_ID = "66666666-6666-4666-8666-666666666666";
+const CT_WITHOUT_SPIGOT_ID = "77777777-7777-4777-8777-777777777777";
 
 const ADMIN_ACTOR: RouteActor = { id: ADMIN_ID, roles: [UserRole.ADMIN] };
 const OTHER_DRIVER_ACTOR: RouteActor = { id: OTHER_DRIVER_ID, roles: [UserRole.DRIVER] };
@@ -42,6 +42,7 @@ function buildPrismaMock() {
     },
     routePitStopCount: {
       create: jest.fn<() => Promise<unknown>>(),
+      findMany: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     },
     routeLoad: {
       create: jest.fn<() => Promise<unknown>>(),
@@ -131,19 +132,19 @@ describe("RoutePitStopsService", () => {
         status: RouteStatus.IN_PROGRESS,
       });
       prisma.containerType.findMany.mockResolvedValue([
-        { id: CT_CANO_ID, name: "Con caño", active: true },
-        { id: CT_SIN_ID, name: "Sin caño", active: true },
+        { id: CT_WITH_SPIGOT_ID, name: "Con caño", active: true },
+        { id: CT_WITHOUT_SPIGOT_ID, name: "Sin caño", active: true },
       ]);
       containerMovements.getRouteFullStockByType.mockResolvedValue(
         new Map([
-          [CT_CANO_ID, 12],
-          [CT_SIN_ID, 5],
+          [CT_WITH_SPIGOT_ID, 12],
+          [CT_WITHOUT_SPIGOT_ID, 5],
         ]),
       );
       containerMovements.getRouteEmptyStockByType.mockResolvedValue(
         new Map([
-          [CT_CANO_ID, 8],
-          [CT_SIN_ID, 2],
+          [CT_WITH_SPIGOT_ID, 8],
+          [CT_WITHOUT_SPIGOT_ID, 2],
         ]),
       );
       prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: decimal("250.00") } });
@@ -155,16 +156,20 @@ describe("RoutePitStopsService", () => {
 
       expect(result.containers).toEqual([
         {
-          containerTypeId: CT_CANO_ID,
+          containerTypeId: CT_WITH_SPIGOT_ID,
           containerTypeName: "Con caño",
           expectedFull: 12,
           expectedEmpty: 8,
+          previousFullDifferences: 0,
+          previousEmptyDifferences: 0,
         },
         {
-          containerTypeId: CT_SIN_ID,
+          containerTypeId: CT_WITHOUT_SPIGOT_ID,
           containerTypeName: "Sin caño",
           expectedFull: 5,
           expectedEmpty: 2,
+          previousFullDifferences: 0,
+          previousEmptyDifferences: 0,
         },
       ]);
       expect(result.cash).toEqual({
@@ -181,7 +186,7 @@ describe("RoutePitStopsService", () => {
       await expect(
         service.create(
           ROUTE_ID,
-          { counts: [{ containerTypeId: CT_CANO_ID, countedFull: 0, countedEmpty: 0 }] },
+          { counts: [{ containerTypeId: CT_WITH_SPIGOT_ID, countedFull: 0, countedEmpty: 0 }] },
           ADMIN_ACTOR,
         ),
       ).rejects.toThrow(NotFoundException);
@@ -196,7 +201,7 @@ describe("RoutePitStopsService", () => {
       await expect(
         service.create(
           ROUTE_ID,
-          { counts: [{ containerTypeId: CT_CANO_ID, countedFull: 0, countedEmpty: 0 }] },
+          { counts: [{ containerTypeId: CT_WITH_SPIGOT_ID, countedFull: 0, countedEmpty: 0 }] },
           ADMIN_ACTOR,
         ),
       ).rejects.toThrow(ConflictException);
@@ -213,8 +218,8 @@ describe("RoutePitStopsService", () => {
           ROUTE_ID,
           {
             counts: [
-              { containerTypeId: CT_CANO_ID, countedFull: 2, countedEmpty: 1 },
-              { containerTypeId: CT_CANO_ID, countedFull: 3, countedEmpty: 0 },
+              { containerTypeId: CT_WITH_SPIGOT_ID, countedFull: 2, countedEmpty: 1 },
+              { containerTypeId: CT_WITH_SPIGOT_ID, countedFull: 3, countedEmpty: 0 },
             ],
           },
           ADMIN_ACTOR,
@@ -228,8 +233,12 @@ describe("RoutePitStopsService", () => {
         driverId: DRIVER_ID,
         status: RouteStatus.IN_PROGRESS,
       });
-      containerMovements.getRouteFullStockByType.mockResolvedValue(new Map([[CT_CANO_ID, 10]]));
-      containerMovements.getRouteEmptyStockByType.mockResolvedValue(new Map([[CT_CANO_ID, 5]]));
+      containerMovements.getRouteFullStockByType.mockResolvedValue(
+        new Map([[CT_WITH_SPIGOT_ID, 10]]),
+      );
+      containerMovements.getRouteEmptyStockByType.mockResolvedValue(
+        new Map([[CT_WITH_SPIGOT_ID, 5]]),
+      );
 
       await expect(
         service.create(
@@ -237,7 +246,7 @@ describe("RoutePitStopsService", () => {
           {
             counts: [
               {
-                containerTypeId: CT_CANO_ID,
+                containerTypeId: CT_WITH_SPIGOT_ID,
                 countedFull: 9,
                 countedEmpty: 5,
                 differenceReason: "",
@@ -255,8 +264,12 @@ describe("RoutePitStopsService", () => {
         driverId: DRIVER_ID,
         status: RouteStatus.IN_PROGRESS,
       });
-      containerMovements.getRouteFullStockByType.mockResolvedValue(new Map([[CT_CANO_ID, 10]]));
-      containerMovements.getRouteEmptyStockByType.mockResolvedValue(new Map([[CT_CANO_ID, 5]]));
+      containerMovements.getRouteFullStockByType.mockResolvedValue(
+        new Map([[CT_WITH_SPIGOT_ID, 10]]),
+      );
+      containerMovements.getRouteEmptyStockByType.mockResolvedValue(
+        new Map([[CT_WITH_SPIGOT_ID, 5]]),
+      );
       prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: decimal("100.00") } });
       prisma.routePitStop.aggregate.mockResolvedValue({
         _sum: { cashDelivered: decimal("20.00") },
@@ -266,7 +279,7 @@ describe("RoutePitStopsService", () => {
         service.create(
           ROUTE_ID,
           {
-            counts: [{ containerTypeId: CT_CANO_ID, countedFull: 10, countedEmpty: 5 }],
+            counts: [{ containerTypeId: CT_WITH_SPIGOT_ID, countedFull: 10, countedEmpty: 5 }],
             cashDelivered: "90.00", // esperado es 80.00
             cashReason: "",
           },
@@ -281,8 +294,12 @@ describe("RoutePitStopsService", () => {
         driverId: DRIVER_ID,
         status: RouteStatus.IN_PROGRESS,
       });
-      containerMovements.getRouteFullStockByType.mockResolvedValue(new Map([[CT_CANO_ID, 10]]));
-      containerMovements.getRouteEmptyStockByType.mockResolvedValue(new Map([[CT_CANO_ID, 5]]));
+      containerMovements.getRouteFullStockByType.mockResolvedValue(
+        new Map([[CT_WITH_SPIGOT_ID, 10]]),
+      );
+      containerMovements.getRouteEmptyStockByType.mockResolvedValue(
+        new Map([[CT_WITH_SPIGOT_ID, 5]]),
+      );
       prisma.payment.aggregate.mockResolvedValue({ _sum: { amount: decimal("100.00") } });
       prisma.routePitStop.aggregate.mockResolvedValue({
         _sum: { cashDelivered: decimal("20.00") },
@@ -306,8 +323,8 @@ describe("RoutePitStopsService", () => {
           {
             id: "count-1",
             pitStopId: PIT_STOP_ID,
-            containerTypeId: CT_CANO_ID,
-            containerType: { id: CT_CANO_ID, name: "Con caño" },
+            containerTypeId: CT_WITH_SPIGOT_ID,
+            containerType: { id: CT_WITH_SPIGOT_ID, name: "Con caño" },
             expectedFull: 10,
             countedFull: 10,
             expectedEmpty: 5,
@@ -324,7 +341,7 @@ describe("RoutePitStopsService", () => {
       const result = await service.create(
         ROUTE_ID,
         {
-          counts: [{ containerTypeId: CT_CANO_ID, countedFull: 10, countedEmpty: 5 }],
+          counts: [{ containerTypeId: CT_WITH_SPIGOT_ID, countedFull: 10, countedEmpty: 5 }],
           cashDelivered: "50.00",
         },
         ADMIN_ACTOR,

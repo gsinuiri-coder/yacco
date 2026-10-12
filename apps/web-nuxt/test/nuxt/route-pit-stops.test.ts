@@ -18,7 +18,7 @@ const ROUTE_ID = "r-1";
 const SAMPLE_PREVIEW: RoutePitStopPreviewResponse = {
   containers: [
     {
-      containerTypeId: "ct-cano",
+      containerTypeId: "ct-spigot",
       containerTypeName: "Con caño",
       expectedFull: 10,
       expectedEmpty: 2,
@@ -26,7 +26,7 @@ const SAMPLE_PREVIEW: RoutePitStopPreviewResponse = {
       previousEmptyDifferences: 0,
     },
     {
-      containerTypeId: "ct-sin",
+      containerTypeId: "ct-no-spigot",
       containerTypeName: "Sin caño",
       expectedFull: 5,
       expectedEmpty: 1,
@@ -35,7 +35,7 @@ const SAMPLE_PREVIEW: RoutePitStopPreviewResponse = {
     },
   ],
   cash: {
-    cashCollectedInRoute: "80.00",
+    cashCollected: "80.00",
     cashDeliveredInPreviousPits: "0.00",
     cashExpected: "80.00",
   },
@@ -44,6 +44,7 @@ const SAMPLE_PREVIEW: RoutePitStopPreviewResponse = {
 const SAMPLE_PIT_STOP: RoutePitStopResponse = {
   id: "pit-1",
   routeId: ROUTE_ID,
+  recordedById: "u-seller",
   recordedBy: { id: "u-seller", name: "Vendedor Uno" },
   createdAt: "2026-08-28T14:30:00.000Z",
   notes: "Primera parada en planta",
@@ -51,14 +52,15 @@ const SAMPLE_PIT_STOP: RoutePitStopResponse = {
   cashDelivered: "50.00",
   cashReason: null,
   voidedAt: null,
+  voidedById: null,
   voidedBy: null,
   voidReason: null,
   counts: [
     {
       id: "cnt-1",
       pitStopId: "pit-1",
-      containerTypeId: "ct-cano",
-      containerType: { id: "ct-cano", name: "Con caño" },
+      containerTypeId: "ct-spigot",
+      containerType: { id: "ct-spigot", name: "Con caño" },
       expectedFull: 10,
       countedFull: 10,
       expectedEmpty: 2,
@@ -68,8 +70,8 @@ const SAMPLE_PIT_STOP: RoutePitStopResponse = {
     {
       id: "cnt-2",
       pitStopId: "pit-1",
-      containerTypeId: "ct-sin",
-      containerType: { id: "ct-sin", name: "Sin caño" },
+      containerTypeId: "ct-no-spigot",
+      containerType: { id: "ct-no-spigot", name: "Sin caño" },
       expectedFull: 5,
       countedFull: 5,
       expectedEmpty: 1,
@@ -82,16 +84,21 @@ const SAMPLE_PIT_STOP: RoutePitStopResponse = {
       id: "ld-1",
       batchItemId: "bi-1",
       quantity: 4,
-      batch: { id: "b-1", code: "L-001", date: "2026-08-20" },
-      containerType: { id: "ct-cano", name: "Con caño" },
+      batchItem: {
+        id: "bi-1",
+        containerTypeId: "ct-spigot",
+        containerType: { id: "ct-spigot", name: "Con caño" },
+        batchId: "b-1",
+        batch: { id: "b-1", code: "L-001" },
+      },
     },
   ],
-  movements: [
+  unloads: [
     {
-      id: "mv-1",
       type: "EMPTY_UNLOAD",
+      containerTypeId: "ct-spigot",
+      containerType: { id: "ct-spigot", name: "Con caño" },
       quantity: 2,
-      containerType: { id: "ct-cano", name: "Con caño" },
     },
   ],
 };
@@ -172,9 +179,9 @@ describe("Paradas en planta (pits) en el detalle de ruta", () => {
     await user.click(within(pitSection).getByRole("button", { name: "Parada en planta" }));
 
     await screen.findByRole("heading", { name: "Nueva parada en planta" });
-    const inputLlenos = await screen.findByLabelText("Llenos contados de Con caño");
-    await user.clear(inputLlenos);
-    await user.type(inputLlenos, "8");
+    const countedFullInput = await screen.findByLabelText("Llenos contados de Con caño");
+    await user.clear(countedFullInput);
+    await user.type(countedFullInput, "8");
 
     // Intenta enviar sin motivo
     const submitBtn = screen.getByRole("button", { name: "Registrar parada en planta" });
@@ -243,8 +250,8 @@ describe("Paradas en planta (pits) en el detalle de ruta", () => {
 
     // Botón Anular
     const user = userEvent.setup();
-    const anularBtn = within(pitSection).getByRole("button", { name: "Anular parada" });
-    await user.click(anularBtn);
+    const voidButton = within(pitSection).getByRole("button", { name: "Anular parada" });
+    await user.click(voidButton);
 
     // Prompt de motivo
     const reasonInput = screen.getByPlaceholderText(/motivo de la anulación/i);
@@ -254,6 +261,6 @@ describe("Paradas en planta (pits) en el detalle de ruta", () => {
     await waitFor(() => {
       expect(patchBodies.length).toBe(1);
     });
-    expect((patchBodies[0] as { reason: string }).reason).toBe("Error en conteo de llenos");
+    expect((patchBodies[0] as { voidReason: string }).voidReason).toBe("Error en conteo de llenos");
   });
 });
