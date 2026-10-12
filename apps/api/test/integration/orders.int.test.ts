@@ -17,6 +17,7 @@ let customerId: string;
 let otherCustomerId: string;
 let refillProductId: string;
 let containerProductId: string;
+let vehicleId: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -169,6 +170,19 @@ beforeAll(async () => {
     .expect(201);
   customerId = first.body.id;
   otherCustomerId = second.body.id;
+
+  const adminUser = await prisma.user.findFirstOrThrow({ where: { username: ADMIN_USERNAME } });
+  const vehicle = await prisma.vehicle.create({
+    data: {
+      plate: "ORD101",
+      name: "Camión Pedidos",
+      brand: "Toyota",
+      model: "Dyna",
+      capacityUnits: 60,
+      createdById: adminUser.id,
+    },
+  });
+  vehicleId = vehicle.id;
 }, 180000);
 
 afterAll(async () => {
@@ -680,7 +694,7 @@ describe("GET /api/v1/orders?hasRouteStop", () => {
     const route = await request(server())
       .post("/api/v1/routes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ driverId, date: "2026-09-20" })
+      .send({ driverId, date: "2026-09-20", vehicleId })
       .expect(201);
 
     assignedOrderId = await createOrder(adminToken, { deliveryDate: "2026-09-20" });
@@ -888,7 +902,7 @@ describe("PATCH /api/v1/orders/:id/cancel", () => {
     const route = await request(server())
       .post("/api/v1/routes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ driverId, date: "2026-09-21" })
+      .send({ driverId, date: "2026-09-21", vehicleId })
       .expect(201);
     await request(server())
       .post(`/api/v1/routes/${route.body.id}/stops`)
@@ -951,7 +965,7 @@ describe("POST /api/v1/orders/:id/reschedule and /reschedule-by-date", () => {
     const route = await request(server())
       .post("/api/v1/routes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ driverId, date: deliveryDate })
+      .send({ driverId, date: deliveryDate, vehicleId })
       .expect(201);
     const stop = await request(server())
       .post(`/api/v1/routes/${route.body.id}/stops`)
@@ -1018,7 +1032,7 @@ describe("POST /api/v1/orders/:id/reschedule and /reschedule-by-date", () => {
     const route = await request(server())
       .post("/api/v1/routes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ driverId, date: deliveryDate })
+      .send({ driverId, date: deliveryDate, vehicleId })
       .expect(201);
     const stop = await request(server())
       .post(`/api/v1/routes/${route.body.id}/stops`)
@@ -1061,7 +1075,7 @@ describe("POST /api/v1/orders/:id/reschedule and /reschedule-by-date", () => {
     const route = await request(server())
       .post("/api/v1/routes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ driverId, date: deliveryDate })
+      .send({ driverId, date: deliveryDate, vehicleId })
       .expect(201);
     const stop1 = await request(server())
       .post(`/api/v1/routes/${route.body.id}/stops`)

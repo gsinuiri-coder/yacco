@@ -12,6 +12,10 @@ export class CreateRouteDto {
   @IsUUID("4", { message: "El chofer debe ser un identificador válido" })
   driverId!: string;
 
+  @ApiProperty({ format: "uuid", description: "Vehículo asignado a la ruta" })
+  @IsUUID("4", { message: "El vehículo debe ser un identificador válido" })
+  vehicleId!: string;
+
   @ApiProperty({ example: "2026-08-25", description: "Día de la ruta (America/Lima)" })
   @IsString({ message: `La fecha ${BUSINESS_DATE_MESSAGE}` })
   @Matches(BUSINESS_DATE_PATTERN, { message: `La fecha ${BUSINESS_DATE_MESSAGE}` })

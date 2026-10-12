@@ -44,6 +44,8 @@ import type { RouteActor } from "../modules/routes/routes.service.js";
 import { CreateUserDto } from "../modules/users/dto/create-user.dto.js";
 import { UpdateUserDto } from "../modules/users/dto/update-user.dto.js";
 import { UsersService } from "../modules/users/users.service.js";
+import { CreateVehicleDto } from "../modules/vehicles/dto/create-vehicle.dto.js";
+import { VehiclesService } from "../modules/vehicles/vehicles.service.js";
 import { ListZonesQueryDto } from "../modules/zones/dto/list-zones-query.dto.js";
 import { CreateZoneDto } from "../modules/zones/dto/create-zone.dto.js";
 import { UpdateZoneDto } from "../modules/zones/dto/update-zone.dto.js";
@@ -123,9 +125,15 @@ export class TestDataSeeder {
     const containerTypeIds = this.containerTypeIds();
     await this.ensureFleetEntry(containerTypeIds);
     await this.ensureBatch(containerTypeIds);
+    const vehicleId = await this.ensureVehicle();
     const customerId = await this.ensureCustomer(parqueZoneId);
     await this.ensureDay(
-      { customerId, driverId: userIds.get(TEST_DRIVER_1.username) as string, zoneId: parqueZoneId },
+      {
+        customerId,
+        driverId: userIds.get(TEST_DRIVER_1.username) as string,
+        zoneId: parqueZoneId,
+        vehicleId,
+      },
       containerTypeIds,
     );
     return { lines: this.lines, credentials: this.credentials };
@@ -337,12 +345,17 @@ export class TestDataSeeder {
    * retoma desde ahí y una ruta ya liquidada no se toca.
    */
   private async ensureDay(
-    { customerId, driverId, zoneId }: { customerId: string; driverId: string; zoneId: string },
+    {
+      customerId,
+      driverId,
+      zoneId,
+      vehicleId,
+    }: { customerId: string; driverId: string; zoneId: string; vehicleId: string },
     containerTypeIds: Record<TestContainerKey, string>,
   ): Promise<void> {
     const orderId = await this.ensureOrder(customerId);
     const order = await this.app.get(OrdersService).findOne(orderId);
-    let route = await this.ensureRoute(driverId, order.deliveryDate, zoneId);
+    let route = await this.ensureRoute(driverId, order.deliveryDate, zoneId, vehicleId);
 
     if (route.status === RouteStatus.PLANNED) {
       route = await this.planRoute(route, orderId, containerTypeIds);
@@ -356,6 +369,28 @@ export class TestDataSeeder {
     } else {
       this.lines.push("Liquidación: ya estaba.");
     }
+  }
+
+  private async ensureVehicle(): Promise<string> {
+    const vehicles = this.app.get(VehiclesService);
+    const existing = await vehicles.findAllVehicles(false);
+    const found = existing.find((v) => v.plate === "ABC123" || v.name === "Camión 1");
+    if (found) {
+      this.lines.push(`Vehículo "${found.name}" (${found.plate}): ya estaba.`);
+      return found.id;
+    }
+    const created = await vehicles.createVehicle(
+      await validated(CreateVehicleDto, {
+        plate: "ABC123",
+        name: "Camión 1",
+        brand: "Toyota",
+        model: "Dyna",
+        capacityUnits: 100,
+      }),
+      this.actor.id,
+    );
+    this.lines.push(`Vehículo "${created.name}" (${created.plate}): creado.`);
+    return created.id;
   }
 
   /**
@@ -389,6 +424,7 @@ export class TestDataSeeder {
     driverId: string,
     date: string,
     zoneId: string,
+    vehicleId: string,
   ): Promise<RouteResponseDto> {
     const routes = this.app.get(RoutesService);
     const found = await routes.findAll(
@@ -401,7 +437,7 @@ export class TestDataSeeder {
       return routes.findOne(existing.id, this.actor);
     }
     const created = await routes.create(
-      await validated(CreateRouteDto, { driverId, date, zoneId }),
+      await validated(CreateRouteDto, { driverId, date, zoneId, vehicleId }),
       this.actor.id,
     );
     this.lines.push(`Ruta de ${TEST_DRIVER_1.name} del ${date}: creada.`);

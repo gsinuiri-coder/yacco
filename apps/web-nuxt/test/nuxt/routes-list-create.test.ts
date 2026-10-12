@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { getQuery, readBody, setResponseStatus } from "h3";
 import type { H3Event } from "h3";
-import type { Route, User, Zone } from "@yacco/shared";
+import type { Route, User, Vehicle, Zone } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
 import { DRIVER, buildRoute, buildStop, pageOf } from "../support/fixtures";
@@ -11,13 +11,32 @@ import { resetSession, signIn } from "../support/session";
 
 const cleanups: Array<() => void> = [];
 const NORTE: Zone = { id: "z-norte", name: "Norte", deliveryDays: [], active: true };
+const VEHICLE: Vehicle = {
+  id: "v-1",
+  plate: "ABC123",
+  name: "Camión 1",
+  brand: "Toyota",
+  model: "Dyna",
+  capacityUnits: 80,
+  vehicleClass: null,
+  circulationCardNumber: null,
+  active: true,
+  createdById: "u-admin",
+  createdAt: "2026-08-28T12:00:00.000Z",
+  updatedById: null,
+  updatedAt: null,
+};
 type Query = Record<string, string>;
 
 function endpoint(...args: Parameters<typeof registerEndpoint>) {
   cleanups.push(registerEndpoint(...args));
 }
 
-function stubCatalogs(drivers: User[] | "falla" = [DRIVER], zones: Zone[] | "falla" = [NORTE]) {
+function stubCatalogs(
+  drivers: User[] | "falla" = [DRIVER],
+  zones: Zone[] | "falla" = [NORTE],
+  vehicles: Vehicle[] | "falla" = [VEHICLE],
+) {
   const userQueries: Query[] = [];
   const fail = (event: H3Event) => {
     setResponseStatus(event, 500);
@@ -28,6 +47,7 @@ function stubCatalogs(drivers: User[] | "falla" = [DRIVER], zones: Zone[] | "fal
     return drivers === "falla" ? fail(event) : drivers;
   });
   endpoint("/api/v1/zones", (event: H3Event) => (zones === "falla" ? fail(event) : zones));
+  endpoint("/api/v1/vehicles", (event: H3Event) => (vehicles === "falla" ? fail(event) : vehicles));
   return userQueries;
 }
 
@@ -200,6 +220,7 @@ describe("Planificar ruta", () => {
 
     await renderSuspended(App, { route: "/routes/new" });
     await choose("Chofer", "Luis Quispe");
+    await choose("Vehículo", "ABC123 (Camión 1)");
     await choose("Zona (opcional)", "Norte");
     await userEvent.setup().click(planButton());
 
@@ -208,6 +229,7 @@ describe("Planificar ruta", () => {
     expect(bodies).toEqual([
       {
         driverId: DRIVER.id,
+        vehicleId: "v-1",
         date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         zoneId: "z-norte",
       },
@@ -220,6 +242,7 @@ describe("Planificar ruta", () => {
 
     await renderSuspended(App, { route: "/routes/new" });
     await choose("Chofer", "Luis Quispe");
+    await choose("Vehículo", "ABC123 (Camión 1)");
     await userEvent.setup().click(planButton());
 
     await waitFor(() => expect(bodies).toHaveLength(1));
@@ -232,9 +255,22 @@ describe("Planificar ruta", () => {
 
     await renderSuspended(App, { route: "/routes/new" });
     await screen.findByLabelText("Chofer");
+    await choose("Vehículo", "ABC123 (Camión 1)");
     await userEvent.setup().click(planButton());
 
     expect(await screen.findByText("Elige el chofer que va a hacer la ruta")).toBeTruthy();
+    expect(bodies).toHaveLength(0);
+  });
+
+  it("sin vehículo no llama a la API y lo pide", async () => {
+    stubCatalogs();
+    const bodies = stubCreate();
+
+    await renderSuspended(App, { route: "/routes/new" });
+    await choose("Chofer", "Luis Quispe");
+    await userEvent.setup().click(planButton());
+
+    expect(await screen.findByText("Elige el vehículo asignado a la ruta")).toBeTruthy();
     expect(bodies).toHaveLength(0);
   });
 
@@ -249,6 +285,7 @@ describe("Planificar ruta", () => {
 
     await renderSuspended(App, { route: "/routes/new" });
     await choose("Chofer", "Luis Quispe");
+    await choose("Vehículo", "ABC123 (Camión 1)");
     await userEvent.setup().click(planButton());
 
     expect((await screen.findByRole("alert")).textContent).toContain(

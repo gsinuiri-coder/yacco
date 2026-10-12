@@ -32,6 +32,14 @@ function buildPrismaMock() {
     $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
     route: {
       findUnique: jest.fn<() => Promise<unknown>>(),
+      update: jest.fn<() => Promise<unknown>>(),
+    },
+    vehicle: {
+      findUnique: jest.fn<() => Promise<unknown>>(),
+    },
+    routeVehicleAssignment: {
+      create: jest.fn<() => Promise<unknown>>(),
+      findFirst: jest.fn<() => Promise<unknown>>().mockResolvedValue(null),
     },
     routePitStop: {
       create: jest.fn<() => Promise<unknown>>(),
@@ -654,6 +662,74 @@ describe("RoutePitStopsService", () => {
 
       expect(result.voidedAt).toBeTruthy();
       expect(result.voidReason).toBe("Error en conteo");
+    });
+
+    it("al anular un pit que cambió el vehículo revierte la ruta al vehículo anterior", async () => {
+      prisma.route.findUnique.mockResolvedValue({
+        id: ROUTE_ID,
+        status: RouteStatus.IN_PROGRESS,
+      });
+
+      const currentPit = {
+        id: PIT_STOP_ID,
+        routeId: ROUTE_ID,
+        createdAt: new Date("2026-10-11T12:00:00Z"),
+        voidedAt: null,
+      };
+      prisma.routePitStop.findFirst.mockResolvedValueOnce(currentPit).mockResolvedValueOnce(null);
+      prisma.routeLoad.findMany.mockResolvedValue([]);
+      prisma.containerMovement.findMany.mockResolvedValue([]);
+
+      const mockVoided = {
+        ...currentPit,
+        recordedById: ADMIN_ID,
+        recordedBy: { id: ADMIN_ID, name: "Admin" },
+        voidedAt: new Date(),
+        voidedById: ADMIN_ID,
+        voidedBy: { id: ADMIN_ID, name: "Admin" },
+        voidReason: "Cambio equivocado",
+        notes: null,
+        cashExpected: null,
+        cashDelivered: null,
+        cashReason: null,
+        counts: [],
+        loads: [],
+        movements: [],
+      };
+      prisma.routePitStop.findUniqueOrThrow.mockResolvedValue(mockVoided);
+
+      const VEHICLE_A = "aaaa1111-1111-1111-1111-111111111111";
+      const VEHICLE_B = "bbbb2222-2222-2222-2222-222222222222";
+
+      // El pit stop actual asignó VEHICLE_B
+      prisma.routeVehicleAssignment.findFirst
+        .mockResolvedValueOnce({
+          id: "assign-pit",
+          routeId: ROUTE_ID,
+          vehicleId: VEHICLE_B,
+          pitStopId: PIT_STOP_ID,
+          createdAt: new Date("2026-10-12T10:00:00Z"),
+        })
+        // La asignación anterior en la ruta era VEHICLE_A
+        .mockResolvedValueOnce({
+          id: "assign-initial",
+          routeId: ROUTE_ID,
+          vehicleId: VEHICLE_A,
+          pitStopId: null,
+          createdAt: new Date("2026-10-12T08:00:00Z"),
+        });
+
+      await service.voidPitStop(
+        ROUTE_ID,
+        PIT_STOP_ID,
+        { voidReason: "Cambio equivocado" },
+        ADMIN_ACTOR,
+      );
+
+      expect(prisma.route.update).toHaveBeenCalledWith({
+        where: { id: ROUTE_ID },
+        data: { vehicleId: VEHICLE_A },
+      });
     });
   });
 });

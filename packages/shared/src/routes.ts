@@ -1,4 +1,5 @@
 import type { PaymentStatus } from "./payments.js";
+import type { RouteVehicleAssignment, VehicleSummary } from "./vehicles.js";
 
 /**
  * Contracts derived from apps/api/src/modules/routes. `date` is a calendar day
@@ -105,12 +106,16 @@ export interface Route {
   date: string;
   driverId: string;
   driver: Named;
+  vehicleId: string | null;
+  vehicle: VehicleSummary | null;
   zoneId: string | null;
   zone: Named | null;
   status: RouteStatus;
   createdById: string;
   createdAt: string;
   stops: RouteStop[];
+  vehicleAssignments?: RouteVehicleAssignment[];
+  warnings?: string[];
 }
 
 /** ListRoutesQueryDto. */
@@ -128,6 +133,7 @@ export const ROUTES_PAGE_SIZE = 20;
 /** CreateRouteDto: born PLANNED and EMPTY. `zoneId` is only a label. */
 export interface CreateRouteBody {
   driverId: string;
+  vehicleId: string;
   date: string;
   zoneId?: string;
 }

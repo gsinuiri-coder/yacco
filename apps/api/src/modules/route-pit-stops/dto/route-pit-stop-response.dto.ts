@@ -119,6 +119,12 @@ export class RoutePitStopResponseDto {
 
   @ApiProperty({ type: [RoutePitStopUnloadDto] })
   unloads!: RoutePitStopUnloadDto[];
+
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
+  vehicleId?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  vehicleReason?: string | null;
 }
 
 export class RoutePitStopContainerPreviewDto {

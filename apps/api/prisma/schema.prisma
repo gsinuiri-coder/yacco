@@ -167,27 +167,40 @@ model User {
   // esta persona», nunca uno suelto.
   tokenVersion Int      @default(0) @map("token_version")
 
+  // Driver details for dispatch guides and verification (Fase 3, Fila 3)
+  documentType     String?   @map("document_type") @db.VarChar(20)
+  documentNumber   String?   @map("document_number") @db.VarChar(30)
+  licenseNumber    String?   @map("license_number") @db.VarChar(30)
+  licenseCategory  String?   @map("license_category") @db.VarChar(20)
+  licenseExpiresOn DateTime? @map("license_expires_on") @db.Date
+
   roles                         UserRoleAssignment[]
   productionBatches             ProductionBatch[]
-  batchItemsRecorded            BatchItem[]          @relation("BatchItemRecordedBy")
+  batchItemsRecorded            BatchItem[]              @relation("BatchItemRecordedBy")
   containerMovements            ContainerMovement[]
   containerCounts               ContainerCount[]
   orders                        Order[]
   orderGroups                   OrderGroup[]
-  routesAsDriver                Route[]              @relation("RouteDriver")
-  routesCreated                 Route[]              @relation("RouteCreatedBy")
-  routeStopsAdded               RouteStop[]          @relation("RouteStopAddedBy")
-  routeStopsCorrected           RouteStop[]          @relation("RouteStopCorrectedBy")
-  salesRecorded                 Sale[]               @relation("SaleRecordedBy")
-  salesPriceOverridesAuthorized Sale[]               @relation("SalePriceOverrideAuthorizedBy")
-  salesVoided                   Sale[]               @relation("SaleVoidedBy")
-  paymentsRecorded              Payment[]            @relation("PaymentRecordedBy")
-  paymentsConfirmed             Payment[]            @relation("PaymentConfirmedBy")
-  paymentsRejected              Payment[]            @relation("PaymentRejectedBy")
-  paymentsVoided                Payment[]            @relation("PaymentVoidedBy")
+  routesAsDriver                Route[]                  @relation("RouteDriver")
+  routesCreated                 Route[]                  @relation("RouteCreatedBy")
+  routeStopsAdded               RouteStop[]              @relation("RouteStopAddedBy")
+  routeStopsCorrected           RouteStop[]              @relation("RouteStopCorrectedBy")
+  salesRecorded                 Sale[]                   @relation("SaleRecordedBy")
+  salesPriceOverridesAuthorized Sale[]                   @relation("SalePriceOverrideAuthorizedBy")
+  salesVoided                   Sale[]                   @relation("SaleVoidedBy")
+  paymentsRecorded              Payment[]                @relation("PaymentRecordedBy")
+  paymentsConfirmed             Payment[]                @relation("PaymentConfirmedBy")
+  paymentsRejected              Payment[]                @relation("PaymentRejectedBy")
+  paymentsVoided                Payment[]                @relation("PaymentVoidedBy")
   routeSettlements              RouteSettlement[]
-  pitStopsRecorded              RoutePitStop[]       @relation("RoutePitStopRecordedBy")
-  pitStopsVoided                RoutePitStop[]       @relation("RoutePitStopVoidedBy")
+  pitStopsRecorded              RoutePitStop[]           @relation("RoutePitStopRecordedBy")
+  pitStopsVoided                RoutePitStop[]           @relation("RoutePitStopVoidedBy")
+  vehiclesCreated               Vehicle[]                @relation("VehicleCreatedBy")
+  vehiclesUpdated               Vehicle[]                @relation("VehicleUpdatedBy")
+  vehicleReviewTypesCreated     VehicleReviewType[]      @relation("VehicleReviewTypeCreatedBy")
+  vehicleReviewsRecorded        VehicleReview[]          @relation("VehicleReviewRecordedBy")
+  vehicleReviewsVoided          VehicleReview[]          @relation("VehicleReviewVoidedBy")
+  routeVehicleAssignments       RouteVehicleAssignment[] @relation("RouteVehicleAssignedBy")
   syncOperations                SyncOperation[]
   productPriceChanges           ProductPriceChange[]
 
@@ -556,19 +569,22 @@ model Route {
   id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   date        DateTime    @db.Date
   driverId    String      @map("driver_id") @db.Uuid
+  vehicleId   String?     @map("vehicle_id") @db.Uuid
   zoneId      String?     @map("zone_id") @db.Uuid
   status      RouteStatus @default(PLANNED)
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   createdById String      @map("created_by") @db.Uuid
 
-  driver     User                @relation("RouteDriver", fields: [driverId], references: [id], onDelete: Restrict)
-  createdBy  User                @relation("RouteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  zone       Zone?               @relation(fields: [zoneId], references: [id], onDelete: Restrict)
-  loads      RouteLoad[]
-  stops      RouteStop[]
-  pitStops   RoutePitStop[]
-  movements  ContainerMovement[]
-  settlement RouteSettlement?
+  driver             User                     @relation("RouteDriver", fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle            Vehicle?                 @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  createdBy          User                     @relation("RouteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  zone               Zone?                    @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  loads              RouteLoad[]
+  stops              RouteStop[]
+  pitStops           RoutePitStop[]
+  vehicleAssignments RouteVehicleAssignment[]
+  movements          ContainerMovement[]
+  settlement         RouteSettlement?
 
   // One route per driver per day: a second POST for the same pair is a
   // mistake (double planning), never a legitimate second route.
@@ -643,9 +659,10 @@ model RoutePitStop {
   route      Route                @relation(fields: [routeId], references: [id], onDelete: Restrict)
   recordedBy User                 @relation("RoutePitStopRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
   voidedBy   User?                @relation("RoutePitStopVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
-  counts     RoutePitStopCount[]
-  loads      RouteLoad[]
-  movements  ContainerMovement[]
+  counts             RoutePitStopCount[]
+  loads              RouteLoad[]
+  movements          ContainerMovement[]
+  vehicleAssignments RouteVehicleAssignment[]
 
   @@index([routeId, createdAt])
   @@map("route_pit_stops")
@@ -868,4 +885,83 @@ model SyncOperation {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@map("sync_operations")
+}
+
+// --- Vehicles & Fleet (Fase 3, Fila 3) ---------------------------------------
+
+model Vehicle {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  plate                 String    @unique @db.VarChar(20)
+  name                  String    @db.VarChar(100)
+  brand                 String    @db.VarChar(50)
+  model                 String    @db.VarChar(50)
+  capacityUnits         Int?      @map("capacity_units")
+  vehicleClass          String?   @map("vehicle_class") @db.VarChar(50)
+  circulationCardNumber String?   @map("circulation_card_number") @db.VarChar(50)
+  active                Boolean   @default(true)
+  createdById           String    @map("created_by") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedById           String?   @map("updated_by") @db.Uuid
+  updatedAt             DateTime? @map("updated_at") @db.Timestamptz(6)
+
+  createdBy   User                     @relation("VehicleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy   User?                    @relation("VehicleUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  reviews     VehicleReview[]
+  assignments RouteVehicleAssignment[]
+  routes      Route[]
+
+  @@map("vehicles")
+}
+
+model VehicleReviewType {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  active      Boolean  @default(true)
+  createdById String   @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  createdBy User            @relation("VehicleReviewTypeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reviews   VehicleReview[]
+
+  @@map("vehicle_review_types")
+}
+
+model VehicleReview {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicleId    String    @map("vehicle_id") @db.Uuid
+  reviewTypeId String    @map("review_type_id") @db.Uuid
+  startsOn     DateTime  @map("starts_on") @db.Date
+  endsOn       DateTime  @map("ends_on") @db.Date
+  notes        String?   @db.Text
+  recordedById String    @map("recorded_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  voidedAt     DateTime? @map("voided_at") @db.Timestamptz(6)
+  voidedById   String?   @map("voided_by") @db.Uuid
+  voidReason   String?   @map("void_reason") @db.Text
+
+  vehicle    Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  reviewType VehicleReviewType @relation(fields: [reviewTypeId], references: [id], onDelete: Restrict)
+  recordedBy User              @relation("VehicleReviewRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  voidedBy   User?             @relation("VehicleReviewVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+
+  @@index([vehicleId, reviewTypeId, endsOn])
+  @@map("vehicle_reviews")
+}
+
+model RouteVehicleAssignment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  routeId      String   @map("route_id") @db.Uuid
+  vehicleId    String   @map("vehicle_id") @db.Uuid
+  assignedById String   @map("assigned_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  reason       String?  @db.Text
+  pitStopId    String?  @map("pit_stop_id") @db.Uuid
+
+  route      Route         @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  vehicle    Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  assignedBy User          @relation("RouteVehicleAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  pitStop    RoutePitStop? @relation(fields: [pitStopId], references: [id], onDelete: Restrict)
+
+  @@index([routeId, createdAt])
+  @@map("route_vehicle_assignments")
 }

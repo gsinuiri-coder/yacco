@@ -21,6 +21,7 @@ import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
 import { SalesService } from "../sales/sales.service.js";
 import type { RegisterStopDeliveryResult } from "../sales/sales.service.js";
+import { VehiclesService } from "../vehicles/vehicles.service.js";
 import { RoutesService } from "./routes.service.js";
 import type { RouteActor } from "./routes.service.js";
 import { DEFAULT_LIMIT, DEFAULT_PAGE } from "./dto/list-routes-query.dto.js";
@@ -37,6 +38,8 @@ const DRIVER_ID = "22222222-2222-4222-8222-222222222222";
 const OTHER_DRIVER_ID = "33333333-3333-4333-8333-333333333333";
 const ADMIN_ID = "44444444-4444-4444-8444-444444444444";
 const SELLER_ID = "55555555-5555-4555-8555-555555555555";
+const VEHICLE_ID = "eeeeeeee-1111-4eee-8eee-111111111111";
+const OTHER_VEHICLE_ID = "eeeeeeee-2222-4eee-8eee-222222222222";
 const ZONE_ID = "66666666-6666-4666-8666-666666666666";
 const LOCATION_ID = "77777777-7777-4777-8777-777777777777";
 const CUSTOMER_ID = "7c7c7c7c-7c7c-47c7-87c7-7c7c7c7c7c7c";
@@ -59,13 +62,23 @@ function buildRoute(overrides: Record<string, unknown> = {}) {
     id: ROUTE_ID,
     date: new Date(Date.UTC(2026, 7, 25)),
     driverId: DRIVER_ID,
+    vehicleId: VEHICLE_ID,
     zoneId: ZONE_ID,
     status: RouteStatus.PLANNED,
     createdById: ADMIN_ID,
     createdAt: new Date("2026-08-20T15:00:00.000Z"),
     driver: { id: DRIVER_ID, name: "Juan Chofer" },
+    vehicle: {
+      id: VEHICLE_ID,
+      plate: "ABC123",
+      name: "Camión 1",
+      brand: "Toyota",
+      model: "Dyna",
+      capacityUnits: 100,
+    },
     zone: { id: ZONE_ID, name: "Zona Norte" },
     stops: [],
+    vehicleAssignments: [],
     ...overrides,
   };
 }
@@ -244,9 +257,19 @@ function buildPrismaMock() {
     route: {
       create: jest.fn<() => Promise<unknown>>(),
       findUnique: jest.fn<(args: RouteFindUniqueArgs) => Promise<unknown>>(),
+      findUniqueOrThrow: jest.fn<() => Promise<unknown>>(),
       findMany: jest.fn<() => Promise<unknown>>(),
       count: jest.fn<() => Promise<unknown>>(),
       updateMany: jest.fn<() => Promise<unknown>>(),
+      update: jest.fn<() => Promise<unknown>>(),
+    },
+    vehicle: {
+      findUnique: jest.fn<() => Promise<unknown>>(),
+      findFirst: jest.fn<() => Promise<unknown>>(),
+    },
+    routeVehicleAssignment: {
+      create: jest.fn<() => Promise<unknown>>(),
+      findFirst: jest.fn<() => Promise<unknown>>(),
     },
     routeStop: {
       create: jest.fn<() => Promise<unknown>>(),
@@ -306,6 +329,14 @@ function buildSalesMock() {
   };
 }
 
+function buildVehiclesMock() {
+  return {
+    calculateVehicleAndDriverWarnings: jest.fn<() => Promise<string[]>>().mockResolvedValue([]),
+    getVehicleReviewsStatus: jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]),
+    getTodayLima: jest.fn<() => string>().mockReturnValue("2026-08-25"),
+  };
+}
+
 /** El no-op de anular: la parada no tenía ninguna venta vigente. */
 function buildVoidResult(overrides: Record<string, unknown> = {}) {
   return { sale: null, payments: [], debtDelta: "0.00", voidMovements: [], ...overrides };
@@ -328,6 +359,7 @@ describe("RoutesService", () => {
   let prisma: ReturnType<typeof buildPrismaMock>;
   let containerMovements: ReturnType<typeof buildContainerMovementsMock>;
   let sales: ReturnType<typeof buildSalesMock>;
+  let vehicles: ReturnType<typeof buildVehiclesMock>;
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
@@ -336,6 +368,26 @@ describe("RoutesService", () => {
     prisma.$transaction.mockImplementation((arg) =>
       Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: unknown) => Promise<unknown>)(prisma),
     );
+    prisma.vehicle.findUnique.mockResolvedValue({
+      id: VEHICLE_ID,
+      plate: "ABC123",
+      name: "Camión 1",
+      brand: "Toyota",
+      model: "Dyna",
+      capacityUnits: 100,
+      active: true,
+    });
+    prisma.route.create.mockResolvedValue(buildRoute());
+    prisma.route.findUniqueOrThrow.mockImplementation(async () => buildRoute());
+    prisma.routeVehicleAssignment.create.mockResolvedValue({
+      id: "assignment-1",
+      routeId: ROUTE_ID,
+      vehicleId: VEHICLE_ID,
+      assignedById: ADMIN_ID,
+      createdAt: new Date(),
+      reason: null,
+      pitStopId: null,
+    });
     prisma.sale.findFirst.mockResolvedValue(null);
     // Por defecto no quedan paradas pendientes: los tests de `finish` que van
     // sobre esa rama lo dicen explícitamente.
@@ -348,6 +400,7 @@ describe("RoutesService", () => {
     });
     containerMovements = buildContainerMovementsMock();
     sales = buildSalesMock();
+    vehicles = buildVehiclesMock();
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -355,6 +408,7 @@ describe("RoutesService", () => {
         { provide: PrismaService, useValue: prisma },
         { provide: ContainerMovementsService, useValue: containerMovements },
         { provide: SalesService, useValue: sales },
+        { provide: VehiclesService, useValue: vehicles },
       ],
     }).compile();
 
@@ -362,25 +416,37 @@ describe("RoutesService", () => {
   });
 
   describe("create", () => {
-    it("plans a route, born PLANNED, for an active driver", async () => {
+    it("plans a route, born PLANNED, for an active driver and vehicle", async () => {
       prisma.user.findUnique.mockResolvedValue(activeDriver());
       prisma.route.create.mockResolvedValue(buildRoute());
 
       const result = await service.create(
-        { driverId: DRIVER_ID, date: "2026-08-25", zoneId: ZONE_ID },
+        { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25", zoneId: ZONE_ID },
         ADMIN_ID,
       );
 
       expect(result.status).toBe(RouteStatus.PLANNED);
       expect(result.date).toBe("2026-08-25");
       expect(result.createdById).toBe(ADMIN_ID);
+      expect(result.vehicleId).toBe(VEHICLE_ID);
+      expect(prisma.routeVehicleAssignment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          routeId: ROUTE_ID,
+          vehicleId: VEHICLE_ID,
+          assignedById: ADMIN_ID,
+          pitStopId: null,
+        }),
+      });
     });
 
     it("refuses a driver id that does not exist", async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID),
+        service.create(
+          { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+          ADMIN_ID,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.route.create).not.toHaveBeenCalled();
     });
@@ -391,7 +457,10 @@ describe("RoutesService", () => {
       );
 
       await expect(
-        service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID),
+        service.create(
+          { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+          ADMIN_ID,
+        ),
       ).rejects.toThrow("no tiene el rol de chofer");
       expect(prisma.route.create).not.toHaveBeenCalled();
     });
@@ -400,9 +469,64 @@ describe("RoutesService", () => {
       prisma.user.findUnique.mockResolvedValue(activeDriver({ active: false }));
 
       await expect(
-        service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID),
+        service.create(
+          { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+          ADMIN_ID,
+        ),
       ).rejects.toThrow("desactivado");
       expect(prisma.route.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses when vehicleId is missing", async () => {
+      prisma.user.findUnique.mockResolvedValue(activeDriver());
+
+      await expect(
+        service.create({ driverId: DRIVER_ID, vehicleId: "", date: "2026-08-25" }, ADMIN_ID),
+      ).rejects.toThrow("El vehículo es obligatorio para crear una ruta");
+    });
+
+    it("refuses a vehicle id that does not exist", async () => {
+      prisma.user.findUnique.mockResolvedValue(activeDriver());
+      prisma.vehicle.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.create(
+          { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+          ADMIN_ID,
+        ),
+      ).rejects.toThrow(`El vehículo "${VEHICLE_ID}" no existe`);
+    });
+
+    it("refuses a deactivated vehicle", async () => {
+      prisma.user.findUnique.mockResolvedValue(activeDriver());
+      prisma.vehicle.findUnique.mockResolvedValue({
+        id: VEHICLE_ID,
+        plate: "ABC123",
+        name: "Camión 1",
+        active: false,
+      });
+
+      await expect(
+        service.create(
+          { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+          ADMIN_ID,
+        ),
+      ).rejects.toThrow('El vehículo "ABC123" está desactivado');
+    });
+
+    it("creates route and reports warnings when vehicle or driver have expired reviews/license", async () => {
+      prisma.user.findUnique.mockResolvedValue(activeDriver());
+      vehicles.calculateVehicleAndDriverWarnings.mockResolvedValue([
+        'El vehículo tiene la revisión "SOAT" vencida',
+      ]);
+
+      const result = await service.create(
+        { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+        ADMIN_ID,
+      );
+
+      expect(result.warnings).toContain('El vehículo tiene la revisión "SOAT" vencida');
+      expect(result.id).toBe(ROUTE_ID);
     });
 
     it("refuses an unknown zone", async () => {
@@ -410,7 +534,10 @@ describe("RoutesService", () => {
       prisma.zone.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.create({ driverId: DRIVER_ID, date: "2026-08-25", zoneId: ZONE_ID }, ADMIN_ID),
+        service.create(
+          { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25", zoneId: ZONE_ID },
+          ADMIN_ID,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.route.create).not.toHaveBeenCalled();
     });
@@ -421,11 +548,17 @@ describe("RoutesService", () => {
         Object.assign(new Error("Unique constraint"), { code: "P2002" }),
       );
 
-      const attempt = service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID);
+      const attempt = service.create(
+        { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+        ADMIN_ID,
+      );
 
       await expect(attempt).rejects.toBeInstanceOf(BadRequestException);
       await expect(
-        service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID),
+        service.create(
+          { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+          ADMIN_ID,
+        ),
       ).rejects.toThrow("ya tiene una ruta planificada");
     });
 
@@ -437,12 +570,116 @@ describe("RoutesService", () => {
         Object.assign(new Error("Unique constraint"), { code: "P2002" }),
       );
 
-      const attempt = service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID);
+      const attempt = service.create(
+        { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+        ADMIN_ID,
+      );
 
       await expect(attempt).rejects.toThrow("para el 25/08/2026");
       await expect(
-        service.create({ driverId: DRIVER_ID, date: "2026-08-25" }, ADMIN_ID),
+        service.create(
+          { driverId: DRIVER_ID, vehicleId: VEHICLE_ID, date: "2026-08-25" },
+          ADMIN_ID,
+        ),
       ).rejects.not.toThrow("2026-08-25");
+    });
+  });
+
+  describe("assignVehicle", () => {
+    it("changes vehicle on a PLANNED route and records RouteVehicleAssignment", async () => {
+      prisma.route.findUnique.mockResolvedValue({
+        id: ROUTE_ID,
+        driverId: DRIVER_ID,
+        status: RouteStatus.PLANNED,
+        date: new Date(Date.UTC(2026, 7, 25)),
+      });
+      prisma.vehicle.findUnique.mockResolvedValue({
+        id: OTHER_VEHICLE_ID,
+        plate: "XYZ789",
+        name: "Camión 2",
+        active: true,
+      });
+      prisma.route.findUniqueOrThrow.mockResolvedValue(buildRoute({ vehicleId: OTHER_VEHICLE_ID }));
+
+      const result = await service.assignVehicle(
+        ROUTE_ID,
+        { vehicleId: OTHER_VEHICLE_ID, reason: "Asignación inicial corregida" },
+        adminActor,
+      );
+
+      expect(prisma.route.update).toHaveBeenCalledWith({
+        where: { id: ROUTE_ID },
+        data: { vehicleId: OTHER_VEHICLE_ID },
+      });
+      expect(prisma.routeVehicleAssignment.create).toHaveBeenCalledWith({
+        data: {
+          routeId: ROUTE_ID,
+          vehicleId: OTHER_VEHICLE_ID,
+          assignedById: ADMIN_ID,
+          reason: "Asignación inicial corregida",
+          pitStopId: null,
+        },
+      });
+      expect(result.vehicleId).toBe(OTHER_VEHICLE_ID);
+    });
+
+    it("refuses to change vehicle on an IN_PROGRESS route", async () => {
+      prisma.route.findUnique.mockResolvedValue({
+        id: ROUTE_ID,
+        driverId: DRIVER_ID,
+        status: RouteStatus.IN_PROGRESS,
+        date: new Date(Date.UTC(2026, 7, 25)),
+      });
+
+      await expect(
+        service.assignVehicle(ROUTE_ID, { vehicleId: OTHER_VEHICLE_ID }, adminActor),
+      ).rejects.toThrow("Solo se puede cambiar el vehículo en una ruta planificada");
+    });
+
+    it("refuses to change vehicle on a FINISHED route", async () => {
+      prisma.route.findUnique.mockResolvedValue({
+        id: ROUTE_ID,
+        driverId: DRIVER_ID,
+        status: RouteStatus.FINISHED,
+        date: new Date(Date.UTC(2026, 7, 25)),
+      });
+
+      await expect(
+        service.assignVehicle(ROUTE_ID, { vehicleId: OTHER_VEHICLE_ID }, adminActor),
+      ).rejects.toThrow("Solo se puede cambiar el vehículo en una ruta planificada");
+    });
+
+    it("refuses an unknown vehicle", async () => {
+      prisma.route.findUnique.mockResolvedValue({
+        id: ROUTE_ID,
+        driverId: DRIVER_ID,
+        status: RouteStatus.PLANNED,
+        date: new Date(Date.UTC(2026, 7, 25)),
+      });
+      prisma.vehicle.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.assignVehicle(ROUTE_ID, { vehicleId: OTHER_VEHICLE_ID }, adminActor),
+      ).rejects.toThrow(`El vehículo "${OTHER_VEHICLE_ID}" no existe`);
+    });
+
+    it("refuses a deactivated vehicle", async () => {
+      prisma.route.findUnique.mockResolvedValue({
+        id: ROUTE_ID,
+        driverId: DRIVER_ID,
+        status: RouteStatus.PLANNED,
+        date: new Date(Date.UTC(2026, 7, 25)),
+      });
+      prisma.vehicle.findUnique.mockResolvedValue({
+        id: OTHER_VEHICLE_ID,
+        plate: "XYZ789",
+        name: "Camión 2",
+        active: false,
+      });
+
+      await expect(
+        service.assignVehicle(ROUTE_ID, { vehicleId: OTHER_VEHICLE_ID }, adminActor),
+      ).rejects.toThrow('El vehículo "XYZ789" está desactivado');
     });
   });
 

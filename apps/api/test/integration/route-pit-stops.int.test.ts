@@ -22,6 +22,7 @@ let driverToken: string;
 let driverId: string;
 let zoneId: string;
 let cashPaymentMethodId: string;
+let vehicleId: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -124,7 +125,7 @@ async function createRoute(): Promise<string> {
   const response = await request(server())
     .post("/api/v1/routes")
     .set("Authorization", `Bearer ${adminToken}`)
-    .send({ driverId, date: nextDate(), zoneId })
+    .send({ driverId, date: nextDate(), zoneId, vehicleId })
     .expect(201);
   return response.body.id;
 }
@@ -206,6 +207,19 @@ describe("RoutePitStops (integration)", () => {
     cashPaymentMethodId = (
       await prisma.paymentMethod.findFirstOrThrow({ where: { name: "Efectivo" } })
     ).id;
+
+    const adminUser = await prisma.user.findFirstOrThrow({ where: { username: ADMIN_USERNAME } });
+    const vehicle = await prisma.vehicle.create({
+      data: {
+        plate: "PIT101",
+        name: "Camión Pit",
+        brand: "Toyota",
+        model: "Dyna",
+        capacityUnits: 60,
+        createdById: adminUser.id,
+      },
+    });
+    vehicleId = vehicle.id;
   }, 180000);
 
   afterAll(async () => {
@@ -282,7 +296,7 @@ describe("RoutePitStops (integration)", () => {
       const otherRouteRes = await request(server())
         .post("/api/v1/routes")
         .set("Authorization", `Bearer ${adminToken}`)
-        .send({ driverId: otherDriver.id, date: nextDate(), zoneId })
+        .send({ driverId: otherDriver.id, date: nextDate(), zoneId, vehicleId })
         .expect(201);
       const otherRouteId = otherRouteRes.body.id;
 

@@ -364,4 +364,41 @@ describe("Paradas en planta (pits) en el detalle de ruta", () => {
     expect(alert).toBeTruthy();
     expect(screen.getByText("Error de validación del servidor")).toBeTruthy();
   });
+
+  it("muestra el aviso de cambio de vehículo en la parada de planta", async () => {
+    stubRouteDetail(cleanups, buildRoute({ id: ROUTE_ID, status: "IN_PROGRESS" }));
+    stubPitStops([
+      {
+        ...SAMPLE_PIT_STOP,
+        id: "pit-veh-1",
+        vehicleId: "v-2",
+        vehicleReason: "Falla mecánica",
+      },
+    ]);
+
+    await renderRouteDetail();
+
+    expect(await screen.findByText("Cambio de vehículo en esta parada")).toBeTruthy();
+    expect(screen.getByText("— Motivo: Falla mecánica")).toBeTruthy();
+  });
+
+  it("muestra el aviso de cambio de vehículo revertido si la parada fue anulada", async () => {
+    stubRouteDetail(cleanups, buildRoute({ id: ROUTE_ID, status: "IN_PROGRESS" }));
+    stubPitStops([
+      {
+        ...SAMPLE_PIT_STOP,
+        id: "pit-veh-void",
+        vehicleId: "v-2",
+        vehicleReason: "Falla mecánica",
+        voidedAt: "2026-08-28T15:00:00.000Z",
+        voidedById: "u-admin",
+        voidedBy: { id: "u-admin", name: "Admin" },
+        voidReason: "Error",
+      },
+    ]);
+
+    await renderRouteDetail();
+
+    expect(await screen.findByText("(Revertido al anular la parada)")).toBeTruthy();
+  });
 });

@@ -109,6 +109,8 @@ export function buildRoute(overrides: Partial<Route> = {}): Route {
     date: "2026-08-28",
     driverId: DRIVER.id,
     driver: { id: DRIVER.id, name: DRIVER.name },
+    vehicleId: null,
+    vehicle: null,
     zoneId: "z-norte",
     zone: { id: "z-norte", name: "Norte" },
     status: "PLANNED",

@@ -92,6 +92,13 @@ function closeAllModes(): void {
   rolesDraft.value = [];
   rolesError.value = null;
   routesAtRisk.value = null;
+  driverTarget.value = null;
+  driverDocumentType.value = "";
+  driverDocumentNumber.value = "";
+  driverLicenseNumber.value = "";
+  driverLicenseCategory.value = "";
+  driverLicenseExpiresOn.value = "";
+  driverError.value = null;
 }
 
 // --- Alta ---
@@ -100,6 +107,11 @@ const newName = ref("");
 const newUsername = ref("");
 const newPassword = ref("");
 const newRoles = ref<UserRole[]>([]);
+const newDocumentType = ref("");
+const newDocumentNumber = ref("");
+const newLicenseNumber = ref("");
+const newLicenseCategory = ref("");
+const newLicenseExpiresOn = ref("");
 const createError = ref<string | null>(null);
 const creating = ref(false);
 
@@ -110,6 +122,11 @@ function startAdd(): void {
   newUsername.value = "";
   newPassword.value = "";
   newRoles.value = [];
+  newDocumentType.value = "";
+  newDocumentNumber.value = "";
+  newLicenseNumber.value = "";
+  newLicenseCategory.value = "";
+  newLicenseExpiresOn.value = "";
 }
 
 async function submitCreate(): Promise<void> {
@@ -135,9 +152,30 @@ async function submitCreate(): Promise<void> {
   creating.value = true;
   createError.value = null;
   try {
+    const isDriver = newRoles.value.includes("DRIVER");
     await api.request("/users", {
       method: "POST",
-      body: { name, username, password: newPassword.value, roles: newRoles.value },
+      body: {
+        name,
+        username,
+        password: newPassword.value,
+        roles: newRoles.value,
+        ...(isDriver && newDocumentType.value.trim()
+          ? { documentType: newDocumentType.value.trim() }
+          : {}),
+        ...(isDriver && newDocumentNumber.value.trim()
+          ? { documentNumber: newDocumentNumber.value.trim() }
+          : {}),
+        ...(isDriver && newLicenseNumber.value.trim()
+          ? { licenseNumber: newLicenseNumber.value.trim() }
+          : {}),
+        ...(isDriver && newLicenseCategory.value.trim()
+          ? { licenseCategory: newLicenseCategory.value.trim() }
+          : {}),
+        ...(isDriver && newLicenseExpiresOn.value.trim()
+          ? { licenseExpiresOn: newLicenseExpiresOn.value.trim() }
+          : {}),
+      },
     });
     adding.value = false;
     newPassword.value = "";
@@ -328,6 +366,51 @@ const rolesSubmitLabel = computed(() => {
   if (savingRoles.value) return "Guardando…";
   return routesAtRisk.value ? "Sí, guardar los roles" : "Guardar roles";
 });
+
+// --- Datos de chofer ---
+const driverTarget = ref<User | null>(null);
+const driverDocumentType = ref("");
+const driverDocumentNumber = ref("");
+const driverLicenseNumber = ref("");
+const driverLicenseCategory = ref("");
+const driverLicenseExpiresOn = ref("");
+const driverError = ref<string | null>(null);
+const savingDriver = ref(false);
+
+function startDriver(target: User): void {
+  closeAllModes();
+  driverTarget.value = target;
+  driverDocumentType.value = target.documentType ?? "";
+  driverDocumentNumber.value = target.documentNumber ?? "";
+  driverLicenseNumber.value = target.licenseNumber ?? "";
+  driverLicenseCategory.value = target.licenseCategory ?? "";
+  driverLicenseExpiresOn.value = target.licenseExpiresOn ?? "";
+}
+
+async function submitDriver(): Promise<void> {
+  if (savingDriver.value || driverTarget.value === null) return;
+  const target = driverTarget.value;
+  savingDriver.value = true;
+  driverError.value = null;
+  try {
+    const updated = await api.request<User>(`/users/${target.id}`, {
+      method: "PATCH",
+      body: {
+        documentType: driverDocumentType.value.trim() || "",
+        documentNumber: driverDocumentNumber.value.trim() || "",
+        licenseNumber: driverLicenseNumber.value.trim() || "",
+        licenseCategory: driverLicenseCategory.value.trim() || "",
+        licenseExpiresOn: driverLicenseExpiresOn.value.trim() || "",
+      },
+    });
+    replaceUser(updated);
+    driverTarget.value = null;
+  } catch (error) {
+    driverError.value = describeApiFailure(error);
+  } finally {
+    savingDriver.value = false;
+  }
+}
 </script>
 
 <template>
@@ -411,6 +494,56 @@ const rolesSubmitLabel = computed(() => {
               <p class="mt-1 text-xs text-muted">
                 Puede tener más de uno: alguien que vende y además reparte.
               </p>
+            </div>
+            <div
+              v-if="newRoles.includes('DRIVER')"
+              class="space-y-3 rounded-lg border border-default bg-elevated/40 p-4"
+            >
+              <span class="text-xs font-semibold uppercase tracking-wider text-muted">
+                Datos del chofer (para guías de remisión)
+              </span>
+              <div class="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                <UFormField label="Tipo de documento">
+                  <UInput
+                    v-model="newDocumentType"
+                    placeholder="DNI"
+                    :disabled="creating"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Número de documento">
+                  <UInput
+                    v-model="newDocumentNumber"
+                    placeholder="12345678"
+                    :disabled="creating"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="N° de licencia">
+                  <UInput
+                    v-model="newLicenseNumber"
+                    placeholder="Q12345678"
+                    :disabled="creating"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Categoría">
+                  <UInput
+                    v-model="newLicenseCategory"
+                    placeholder="A-IIb"
+                    :disabled="creating"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Vencimiento de licencia">
+                  <UInput
+                    v-model="newLicenseExpiresOn"
+                    type="date"
+                    :disabled="creating"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
             </div>
             <div class="flex justify-end gap-2 border-t border-default pt-4">
               <UButton
@@ -559,6 +692,85 @@ const rolesSubmitLabel = computed(() => {
         </form>
       </UCard>
 
+      <UCard v-if="driverTarget">
+        <form
+          class="space-y-4"
+          novalidate
+          :aria-label="`Datos de chofer de ${driverTarget.name}`"
+          @submit.prevent="submitDriver"
+        >
+          <h2 class="text-lg font-semibold text-highlighted">
+            Datos de chofer de {{ driverTarget.name }}
+          </h2>
+          <p class="text-xs text-muted">
+            Datos de brevete y documento de identidad necesarios para las guías de remisión.
+          </p>
+          <div class="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+            <UFormField label="Tipo de documento">
+              <UInput
+                v-model="driverDocumentType"
+                placeholder="DNI"
+                :disabled="savingDriver"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Número de documento">
+              <UInput
+                v-model="driverDocumentNumber"
+                placeholder="12345678"
+                :disabled="savingDriver"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="N° de licencia">
+              <UInput
+                v-model="driverLicenseNumber"
+                placeholder="Q12345678"
+                :disabled="savingDriver"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Categoría">
+              <UInput
+                v-model="driverLicenseCategory"
+                placeholder="A-IIb"
+                :disabled="savingDriver"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Vencimiento de licencia">
+              <UInput
+                v-model="driverLicenseExpiresOn"
+                type="date"
+                :disabled="savingDriver"
+                class="w-full"
+              />
+            </UFormField>
+          </div>
+          <UAlert
+            v-if="driverError"
+            role="alert"
+            color="error"
+            variant="subtle"
+            :title="driverError"
+          />
+          <div class="flex justify-end gap-2 border-t border-default pt-4">
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancelar"
+              :disabled="savingDriver"
+              @click="closeAllModes"
+            />
+            <UButton
+              type="submit"
+              :label="savingDriver ? 'Guardando…' : 'Guardar datos de chofer'"
+              :disabled="savingDriver"
+            />
+          </div>
+        </form>
+      </UCard>
+
       <UCard :ui="{ body: 'p-0 sm:p-0' }">
         <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
           <UFormField label="Rol" class="w-44">
@@ -656,7 +868,17 @@ const rolesSubmitLabel = computed(() => {
                     class="w-full"
                     @update:model-value="(value: string | number) => (editName = String(value))"
                   />
-                  <span v-else class="font-medium text-highlighted">{{ row.name }}</span>
+                  <div v-else>
+                    <div class="font-medium text-highlighted">{{ row.name }}</div>
+                    <div v-if="row.roles.includes('DRIVER')" class="mt-0.5 text-xs text-muted">
+                      <span v-if="row.licenseNumber">
+                        Licencia {{ row.licenseNumber }}
+                        <span v-if="row.licenseCategory">({{ row.licenseCategory }})</span>
+                        <span v-if="row.licenseExpiresOn"> · Vence {{ row.licenseExpiresOn }}</span>
+                      </span>
+                      <span v-else class="italic text-dimmed">Sin brevete registrado</span>
+                    </div>
+                  </div>
                 </td>
                 <td class="px-4 py-3 text-muted">{{ row.username }}</td>
                 <td class="px-4 py-3">{{ describeRoles(row.roles) }}</td>
@@ -740,6 +962,15 @@ const rolesSubmitLabel = computed(() => {
                       label="Roles"
                       :disabled="savingAction || resetting"
                       @click="startRoles(row)"
+                    />
+                    <UButton
+                      v-if="row.roles.includes('DRIVER')"
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      label="Datos de chofer"
+                      :disabled="savingAction || resetting"
+                      @click="startDriver(row)"
                     />
                     <template v-if="row.active">
                       <!-- Desactivarse a uno mismo es cerrarse la puerta desde adentro. -->

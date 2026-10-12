@@ -18,6 +18,7 @@ const today = formatCalendarDay(limaToday());
         <p class="mt-2 text-muted">Busca un cliente por nombre o teléfono para abrir su ficha.</p>
       </div>
       <CustomerQuickSearch />
+      <UpcomingReviewsCard v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')" />
       <SetupChecklistCard v-if="session.hasRole('ADMIN')" />
     </section>
   </AppPage>

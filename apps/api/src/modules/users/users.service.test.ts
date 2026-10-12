@@ -257,6 +257,41 @@ describe("UsersService", () => {
 
         expect(result.active).toBe(false);
       });
+
+      it("actualiza campos de chofer: licencia, documento y fecha de vencimiento", async () => {
+        prisma.user.update.mockResolvedValue({
+          id: "driver-1",
+          name: "Carlos Repartidor",
+          username: "crepartidor",
+          active: true,
+          documentType: "DNI",
+          documentNumber: "12345678",
+          licenseNumber: "Q12345678",
+          licenseCategory: "A-IIb",
+          licenseExpiresOn: new Date("2026-12-31T00:00:00.000Z"),
+        });
+        prisma.userRoleAssignment.findMany.mockResolvedValue([{ role: { name: UserRole.DRIVER } }]);
+
+        const result = await service.update(
+          "driver-1",
+          {
+            licenseNumber: "Q12345678",
+            licenseCategory: "A-IIb",
+            licenseExpiresOn: "2026-12-31",
+          },
+          ADMIN_ACTOR,
+        );
+
+        expect(prisma.user.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              licenseNumber: "Q12345678",
+              licenseCategory: "A-IIb",
+            }),
+          }),
+        );
+        expect(result.licenseNumber).toBe("Q12345678");
+      });
     });
   });
 });

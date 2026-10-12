@@ -1112,4 +1112,85 @@ describe("Detalle de ruta", () => {
       ).toBeNull();
     });
   });
+
+  describe("Vehículo de la ruta y asignaciones", () => {
+    it("muestra el vehículo actual y el historial de asignaciones", async () => {
+      stubRouteDetail(
+        cleanups,
+        buildRoute({
+          vehicleId: "v-1",
+          vehicle: {
+            id: "v-1",
+            plate: "ABC123",
+            name: "Camión Principal",
+            brand: "Toyota",
+            model: "Dyna",
+            capacityUnits: 80,
+          },
+          vehicleAssignments: [
+            {
+              id: "asg-1",
+              routeId: "r-1",
+              vehicleId: "v-1",
+              vehicle: {
+                id: "v-1",
+                plate: "ABC123",
+                name: "Camión Principal",
+                brand: "Toyota",
+                model: "Dyna",
+                capacityUnits: 80,
+              },
+              assignedById: "u-admin",
+              assignedBy: { id: "u-admin", name: "Administrador" },
+              createdAt: "2026-08-28T07:00:00.000Z",
+              reason: "Asignación inicial",
+              pitStopId: null,
+            },
+          ],
+        }),
+      );
+
+      await renderDetail();
+
+      expect(screen.getAllByText("ABC123").length).toBeGreaterThan(0);
+      expect(screen.getByText("— Camión Principal")).toBeTruthy();
+      expect(screen.getByText(/80 bidones/)).toBeTruthy();
+      expect(screen.getByText("Asignación inicial")).toBeTruthy();
+    });
+
+    it("permite cambiar el vehículo en una ruta planificada", async () => {
+      cleanups.push(
+        registerEndpoint("/api/v1/vehicles", {
+          method: "GET",
+          handler: () => [
+            { id: "v-1", plate: "ABC123", name: "Camión 1", active: true },
+            { id: "v-2", plate: "XYZ789", name: "Furgón 2", active: true },
+          ],
+        }),
+      );
+      stubRouteDetail(
+        cleanups,
+        buildRoute({
+          status: "PLANNED",
+          vehicleId: "v-1",
+          vehicle: {
+            id: "v-1",
+            plate: "ABC123",
+            name: "Camión 1",
+            brand: "Toyota",
+            model: "Dyna",
+            capacityUnits: 80,
+          },
+        }),
+      );
+      const user = userEvent.setup();
+
+      await renderDetail();
+
+      const changeBtn = screen.getByRole("button", { name: "Cambiar vehículo" });
+      await user.click(changeBtn);
+
+      expect(screen.getByText("Cambiar vehículo de la ruta")).toBeTruthy();
+    });
+  });
 });

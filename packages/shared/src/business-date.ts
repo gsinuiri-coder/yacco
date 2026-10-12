@@ -77,3 +77,16 @@ export function formatInstantInLima(iso: string): string {
   const pick = (type: Intl.DateTimeFormatPartTypes) => byType.get(type) ?? "";
   return `${pick("day")}/${pick("month")}/${pick("year")} ${pick("hour")}:${pick("minute")}`;
 }
+
+/**
+ * Diferencia en días enteros entre dos fechas calendario "AAAA-MM-DD" (toDay - fromDay).
+ * Positivo si toDay es posterior, negativo si es anterior, 0 si son el mismo día.
+ */
+export function diffCalendarDays(fromDay: string, toDay: string): number {
+  const parts1 = CALENDAR_DAY.exec(fromDay);
+  const parts2 = CALENDAR_DAY.exec(toDay);
+  if (!parts1 || !parts2) return 0;
+  const utc1 = Date.UTC(Number(parts1[1]), Number(parts1[2]) - 1, Number(parts1[3]));
+  const utc2 = Date.UTC(Number(parts2[1]), Number(parts2[2]) - 1, Number(parts2[3]));
+  return Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
+}

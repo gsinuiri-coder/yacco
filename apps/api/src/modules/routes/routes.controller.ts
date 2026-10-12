@@ -42,6 +42,7 @@ import {
   RouteResponseDto,
   RouteStopResponseDto,
 } from "./dto/route-response.dto.js";
+import { AssignRouteVehicleDto } from "../vehicles/dto/assign-route-vehicle.dto.js";
 import { RoutesService } from "./routes.service.js";
 import type { RouteActor } from "./routes.service.js";
 
@@ -83,6 +84,20 @@ export class RoutesController {
   ): Promise<RouteResponseDto> {
     // createdById comes from the access token, never from the body.
     return this.routesService.create(dto, request.user.sub);
+  }
+
+  @ApiOperation({ summary: "Cambia el vehículo asignado a una ruta planificada" })
+  @ApiResponse({ status: 200, type: RouteResponseDto })
+  @ApiBadRequestResponse({ description: "El vehículo no existe o está inactivo" })
+  @ApiConflictResponse({ description: "Solo se puede cambiar el vehículo en una ruta planificada" })
+  @Roles(UserRole.ADMIN, UserRole.SELLER)
+  @Patch(":id/vehicle")
+  assignVehicle(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: AssignRouteVehicleDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RouteResponseDto> {
+    return this.routesService.assignVehicle(id, dto, actorFrom(request));
   }
 
   @ApiOperation({ summary: "Lista rutas paginadas, con filtros por fecha, chofer, zona y estado" })

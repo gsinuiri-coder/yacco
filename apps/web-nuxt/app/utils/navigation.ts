@@ -91,6 +91,7 @@ export const NAVIGATION: NavigationSection[] = [
   {
     label: "Administración",
     links: [
+      { label: "Vehículos", icon: "i-lucide-truck", to: "/vehicles" },
       { label: "Productos", icon: "i-lucide-droplets", to: "/products" },
       { label: "Zonas", icon: "i-lucide-map-pin", to: "/zones" },
       { label: "Usuarios", icon: "i-lucide-user-cog", to: "/users" },

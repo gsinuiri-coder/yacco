@@ -179,6 +179,13 @@ cuándo, y tres líneas:
 - **Construido encima:** `route_pit_stops`, `route_pit_stop_counts`, `route_loads.pit_stop_id`, `container_movements.pit_stop_id`, `route_settlements.total_cash_delivered_in_pits`, los endpoints bajo `/routes/:id/pit-stops`, y la sección y formulario de «Parada en planta» en el detalle de ruta.
 - **Si resulta que no:** medio. Los movimientos y registros ya escritos quedan auditados e inmutables; se deja de ofrecer el formulario o se ajustan las reglas sin perder el historial.
 
+### Fase 3: catálogo de vehículos, revisiones con vencimiento y vehículo en la ruta con cambio auditado
+
+- **Decidido por Giancarlo (2026-10-11),** sin reunión posible con el dueño; fila 3 de «Fase 3 en local».
+- **Asumimos:** que la planta necesita gestionar sus vehículos con placa única normalizada (mayúsculas, sin guión ni espacios), alias, marca, modelo, capacidad en bidones, y datos para guías de remisión; que los vehículos no se borran sino que se desactivan, y que la placa no se puede modificar si ya estuvo en una ruta; que las revisiones (SOAT, técnica, extintor) se registran con vigencia (`starts_on` y `ends_on`), son inmutables (solo anular con motivo) y su vencimiento avisa sin bloquear; que los choferes guardan datos de brevete/licencia para guías; y que toda ruta nueva exige chofer y vehículo, con asignaciones inmutables auditadas (solo INSERT) donde el cambio en ruta en curso se realiza dentro de un pit.
+- **Construido encima:** tablas `vehicles`, `vehicle_review_types`, `vehicle_reviews`, `route_vehicle_assignments`, `routes.vehicle_id`, columnas de licencia en `users`, endpoints en `/vehicles`, `/vehicle-review-types` y `/routes/:id/vehicle`, y pantallas web «Vehículos», «Tipos de revisión», avisos en Panel, y asignación de vehículo en rutas y pit.
+- **Si resulta que no:** medio. Tablas y columnas son aditivas y auditadas; se deja de exigir el vehículo o se adaptan las pantallas sin tocar el libro de operaciones.
+
 ### Fase 2: el orden por cercanía se propone, no se impone
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 4 de «Fase 2 en local».
