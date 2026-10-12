@@ -30,8 +30,12 @@ type MockPrisma = {
   routeVehicleAssignment: {
     count: MockFn;
   };
+  route: {
+    findFirst: MockFn;
+  };
   user: {
     findMany: MockFn;
+    findUnique: MockFn;
   };
 };
 
@@ -69,8 +73,12 @@ describe("VehiclesService", () => {
       routeVehicleAssignment: {
         count: jest.fn(),
       },
+      route: {
+        findFirst: jest.fn(),
+      },
       user: {
         findMany: jest.fn(),
+        findUnique: jest.fn(),
       },
     };
 
@@ -498,6 +506,75 @@ describe("VehiclesService", () => {
       expect(alerts[1]!.type).toBe("VEHICLE_REVIEW");
       expect(alerts[1]!.status).toBe("POR_VENCER");
       expect(alerts[1]!.targetName).toBe("ABC123 (Camión 1)");
+    });
+  });
+
+  describe("findAllReviewsByVehicle", () => {
+    it("devuelve las revisiones de un vehículo ordenadas", async () => {
+      prisma.vehicleReview.findMany.mockResolvedValueOnce([
+        {
+          id: "r-1",
+          vehicleId: VEHICLE_ID,
+          reviewTypeId: REVIEW_TYPE_ID,
+          reviewType: { id: REVIEW_TYPE_ID, name: "SOAT" },
+          startsOn: new Date("2026-01-01T00:00:00Z"),
+          endsOn: new Date("2027-01-01T00:00:00Z"),
+          notes: "Nota",
+          recordedById: ADMIN_ID,
+          recordedBy: { id: ADMIN_ID, name: "Admin" },
+          createdAt: new Date(),
+          voidedAt: null,
+          voidedById: null,
+          voidedBy: null,
+          voidReason: null,
+        },
+      ]);
+      const res = await service.findAllReviewsByVehicle(VEHICLE_ID);
+      expect(res.length).toBe(1);
+      expect(res[0]!.id).toBe("r-1");
+    });
+  });
+
+  describe("calculateVehicleAndDriverWarnings", () => {
+    it("genera advertencias para revisión vencida, licencia por vencer y vehículo en otra ruta", async () => {
+      prisma.vehicle.findUnique.mockResolvedValue({ id: VEHICLE_ID });
+      prisma.vehicleReviewType.findMany.mockResolvedValue([
+        { id: REVIEW_TYPE_ID, name: "SOAT", active: true },
+      ]);
+      prisma.vehicleReview.findMany.mockResolvedValue([
+        {
+          id: "rev-vencida",
+          vehicleId: VEHICLE_ID,
+          reviewTypeId: REVIEW_TYPE_ID,
+          reviewType: { id: REVIEW_TYPE_ID, name: "SOAT" },
+          startsOn: new Date("2025-01-01T00:00:00Z"),
+          endsOn: new Date("2026-01-01T00:00:00Z"),
+          notes: null,
+          recordedById: ADMIN_ID,
+          recordedBy: { id: ADMIN_ID, name: "Admin" },
+          createdAt: new Date(),
+          voidedAt: null,
+          voidedById: null,
+          voidedBy: null,
+          voidReason: null,
+        },
+      ]);
+      prisma.user.findUnique.mockResolvedValue({
+        id: "driver-id",
+        licenseExpiresOn: new Date("2026-10-20T00:00:00Z"),
+      });
+      prisma.route.findFirst.mockResolvedValue({ id: "other-route-id" });
+
+      const warnings = await service.calculateVehicleAndDriverWarnings(
+        VEHICLE_ID,
+        "driver-id",
+        "2026-10-12",
+      );
+      expect(warnings).toContain('El vehículo tiene la revisión "SOAT" vencida');
+      expect(warnings).toContain("La licencia de conducir del chofer está por vencer");
+      expect(warnings).toContain(
+        "El vehículo ya se encuentra en uso en otra ruta en curso el día de hoy",
+      );
     });
   });
 });

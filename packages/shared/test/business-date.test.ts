@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  diffCalendarDays,
   formatCalendarDay,
   formatInstantInLima,
   limaDayEnd,
@@ -60,5 +61,18 @@ describe("limaDayStart / limaDayEnd", () => {
   it("un día vacío o mal escrito no filtra", () => {
     expect(limaDayStart("")).toBeUndefined();
     expect(limaDayEnd("31/08/2026")).toBeUndefined();
+  });
+});
+
+describe("diffCalendarDays", () => {
+  it("calcula la diferencia exacta en días de calendario", () => {
+    expect(diffCalendarDays("2026-10-01", "2026-10-16")).toBe(15);
+    expect(diffCalendarDays("2026-10-16", "2026-10-01")).toBe(-15);
+    expect(diffCalendarDays("2026-10-01", "2026-10-01")).toBe(0);
+  });
+
+  it("devuelve 0 si alguna fecha no tiene formato AAAA-MM-DD", () => {
+    expect(diffCalendarDays("invalido", "2026-10-01")).toBe(0);
+    expect(diffCalendarDays("2026-10-01", "invalido")).toBe(0);
   });
 });
