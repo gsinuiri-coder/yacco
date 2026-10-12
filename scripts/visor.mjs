@@ -338,6 +338,61 @@ export async function actualizarVisor(options = {}) {
   }
 }
 
+export function startDetachedProcess(options) {
+  const { command, args = [], cwd, env = {}, logPath, scriptPath } = options;
+
+  if (process.platform === "win32") {
+    // En Windows, los procesos lanzados desde entornos automatizados (como runners de CI o agentes)
+    // pertenecen a un Job Object que se destruye al finalizar el subshell del runner.
+    // Para desacoplar el proceso y permitir que persista en segundo plano, se invoca a través de WMI.
+    const envLines = Object.entries(env)
+      .map(([k, v]) => `set "${k}=${v}"`)
+      .join("\r\n");
+    const formattedArgs = args.map((arg) => (arg.includes(" ") ? `"${arg}"` : arg)).join(" ");
+    const scriptBody = [
+      "@echo off",
+      envLines,
+      `"${command}" ${formattedArgs} >> "${logPath}" 2>&1`,
+      "",
+    ].join("\r\n");
+
+    writeFileSync(scriptPath, scriptBody, "utf8");
+
+    const psCommand = [
+      `$res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{`,
+      `  CommandLine = 'cmd.exe /c "${scriptPath.replace(/'/g, "''")}"';`,
+      `  CurrentDirectory = '${cwd.replace(/'/g, "''")}'`,
+      `};`,
+      `$res.ProcessId`,
+    ].join(" ");
+
+    const result = spawnSync("powershell", ["-NoProfile", "-Command", psCommand], {
+      encoding: "utf8",
+    });
+
+    if (result.status !== 0) {
+      throw new Error(`Fallo al iniciar proceso en segundo plano en Windows: ${result.stderr}`);
+    }
+
+    const pid = parsePid(result.stdout);
+    if (!pid) {
+      throw new Error(`No se pudo obtener el PID del proceso en segundo plano: ${result.stdout}`);
+    }
+    return pid;
+  }
+
+  const logFd = openSync(logPath, "a");
+  const child = spawn(command, args, {
+    cwd,
+    env: { ...process.env, ...env },
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+  });
+  child.unref();
+  closeSync(logFd);
+  return child.pid;
+}
+
 export async function arrancarVisor(options = {}) {
   const { root = REPO_ROOT, out = console } = options;
   const visorRoot = visorPath(root);
@@ -377,20 +432,20 @@ export async function arrancarVisor(options = {}) {
 
   const apiLogPath = join(visorDir, "api.log");
   const webLogPath = join(visorDir, "web.log");
-  const apiLogFd = openSync(apiLogPath, "a");
-  const webLogFd = openSync(webLogPath, "a");
+  const apiLaunchScript = join(visorDir, "start-api.cmd");
+  const webLaunchScript = join(visorDir, "start-web.cmd");
 
   out.log(`Iniciando API del visor en http://localhost:${VISOR_PORTS.api}...`);
   const apiEntry = join(visorRoot, "apps", "api", "dist", "main.js");
-  const apiProcess = spawn(process.execPath, [apiEntry], {
+  const apiPid = startDetachedProcess({
+    command: process.execPath,
+    args: [apiEntry],
     cwd: join(visorRoot, "apps", "api"),
-    env: { ...process.env, ...apiEnv },
-    detached: true,
-    stdio: ["ignore", apiLogFd, apiLogFd],
+    env: apiEnv,
+    logPath: apiLogPath,
+    scriptPath: apiLaunchScript,
   });
-  apiProcess.unref();
-  writeStoredPid(apiPidFile, apiProcess.pid);
-  closeSync(apiLogFd);
+  writeStoredPid(apiPidFile, apiPid);
 
   out.log(`Iniciando Web del visor en http://localhost:${VISOR_PORTS.web}...`);
   const nuxtBinCandidates = [
@@ -403,22 +458,26 @@ export async function arrancarVisor(options = {}) {
       "No se encontró el binario de Nuxt en apps/web-nuxt/node_modules/nuxt/bin/nuxt.mjs.",
     );
   }
-  const webProcess = spawn(process.execPath, [nuxtBin, "dev"], {
+  const webPid = startDetachedProcess({
+    command: process.execPath,
+    args: [nuxtBin, "dev"],
     cwd: join(visorRoot, "apps", "web-nuxt"),
-    env: { ...process.env, ...webEnv },
-    detached: true,
-    stdio: ["ignore", webLogFd, webLogFd],
+    env: webEnv,
+    logPath: webLogPath,
+    scriptPath: webLaunchScript,
   });
-  webProcess.unref();
-  writeStoredPid(webPidFile, webProcess.pid);
-  closeSync(webLogFd);
+  writeStoredPid(webPidFile, webPid);
 
   out.log("Esperando que los servicios del visor comiencen a responder...");
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 60; i++) {
     await setTimeout(500);
-    const apiAlive = isPidAlive(apiProcess.pid);
-    const webAlive = isPidAlive(webProcess.pid);
-    if (!apiAlive || !webAlive) break;
+    const apiAlive = isPidAlive(apiPid);
+    const webAlive = isPidAlive(webPid);
+    if (!apiAlive || !webAlive) {
+      throw new Error(
+        "Uno de los procesos del visor se detuvo inesperadamente. Revisá .visor/api.log y .visor/web.log.",
+      );
+    }
     try {
       const apiOk = await fetch(`http://localhost:${VISOR_PORTS.api}/health`)
         .then((r) => r.ok)
@@ -459,6 +518,24 @@ export async function pararVisor(options = {}) {
     stopProcess(webPid);
   }
   clearStoredPid(webPidFile);
+
+  for (let i = 0; i < 20; i++) {
+    const apiStillAlive = apiPid ? isPidAlive(apiPid) : false;
+    const webStillAlive = webPid ? isPidAlive(webPid) : false;
+    if (!apiStillAlive && !webStillAlive) break;
+    await setTimeout(200);
+  }
+
+  for (const scriptName of ["start-api.cmd", "start-web.cmd"]) {
+    const scriptPath = join(visorDir, scriptName);
+    if (existsSync(scriptPath)) {
+      try {
+        unlinkSync(scriptPath);
+      } catch {
+        // Ignorar si no se pudo eliminar
+      }
+    }
+  }
 
   out.log("\nProcesos del visor detenidos.");
   out.log(formatSummary(`http://localhost:${VISOR_PORTS.web}`, defaultCredentialsPath(visorRoot)));

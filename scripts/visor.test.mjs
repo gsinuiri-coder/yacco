@@ -167,4 +167,48 @@ describe("visor — gestión de procesos y pids", () => {
     await assert.rejects(() => arrancarVisor({ root: fakeRoot }), /No se encontró el visor/);
     await assert.rejects(() => actualizarVisor({ root: fakeRoot }), /No se encontró el visor/);
   });
+
+  it("startDetachedProcess inicia un proceso desacoplado y stopProcess lo detiene limpiamente", async () => {
+    const { startDetachedProcess, isPidAlive, stopProcess } = await import("./visor.mjs");
+    const { tmpdir } = await import("node:os");
+    const { unlinkSync, existsSync } = await import("node:fs");
+    const { setTimeout } = await import("node:timers/promises");
+
+    const tmpLog = join(tmpdir(), `visor-test-${Date.now()}.log`);
+    const tmpScript = join(tmpdir(), `visor-test-${Date.now()}.cmd`);
+
+    const pid = startDetachedProcess({
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => {}, 10000)"],
+      cwd: tmpdir(),
+      env: { TEST_VAR: "1" },
+      logPath: tmpLog,
+      scriptPath: tmpScript,
+    });
+
+    try {
+      assert.ok(Number.isInteger(pid) && pid > 0);
+      assert.equal(isPidAlive(pid), true);
+
+      stopProcess(pid);
+      await setTimeout(300);
+      assert.equal(isPidAlive(pid), false);
+    } finally {
+      stopProcess(pid);
+      if (existsSync(tmpLog)) {
+        try {
+          unlinkSync(tmpLog);
+        } catch {
+          // Ignorar
+        }
+      }
+      if (existsSync(tmpScript)) {
+        try {
+          unlinkSync(tmpScript);
+        } catch {
+          // Ignorar
+        }
+      }
+    }
+  });
 });
