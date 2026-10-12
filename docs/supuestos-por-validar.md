@@ -214,6 +214,13 @@ cuándo, y tres líneas:
 - **Construido encima:** tipo `ACCESSORY` en `product_type`, `products.container_type_id` nullable con CHECK para accesorios, tablas `accessory_movements`, `accessory_stock`, `customer_accessory_balances`, `accessory_counts`, endpoints bajo `/accessories` y `/customer-locations/:id/accessories`, pantallas «Accesorios», sección en la ficha del cliente y reporte «Accesorios prestados».
 - **Si resulta que no:** medio. Todo queda auditado en su propio libro sin haber tocado el libro de envases ni el saldo de dinero más que por ventas legítimas.
 
+### Fase 3: roles de planta (supervisor y operador) con producción auditable
+
+- **Decidido por Giancarlo (2026-10-11),** en conversación con Claude; fila 6 de «Fase 3 en local».
+- **Asumimos:** dos roles nuevos de planta. El **supervisor de planta** ve toda la producción (todos los lotes y todas las llenadas de todos los usuarios), registra llenadas en el lote del día, ingresos de envases nuevos a la flota, bajas de envases en planta (rotos o perdidos) y conteos físicos de la planta, y corrige con lo que ya existe para producción e inventario de planta (movimiento inverso, anulación con motivo); no ve clientes, pedidos, rutas, precios, ventas, cobros, deudas ni reportes de dinero, ni administra usuarios ni catálogos. El **operador de planta** registra llenadas en el lote del día y ve solo las llenadas que registró él (filtrado por la API con `batch_items.recorded_by`), junto con el stock de vacíos y llenos de la planta que necesita para trabajar; no corrige, no anula, no da de baja, no cuenta y no registra ingresos (lo solicita al supervisor); no ve nada fuera de eso. Al entrar a la web, ambos van directo a «Producción».
+- **Construido encima:** enum `UserRole` (`PLANT_SUPERVISOR`, `PLANT_OPERATOR`), control de acceso `@Roles` en controllers de API (`production-batches`, `container-movements`, `container-counts`, `container-types`), filtro de operador en `ProductionBatchesService`, menú lateral en `apps/web-nuxt` y redirección en el middleware de autenticación.
+- **Si resulta que no:** medio. Los permisos y filtros de visibilidad se ajustan en la API y el menú sin tocar el libro de envases ni las tablas operacionales.
+
 ### Fase 2: la maquila es un libro aparte, que nunca toca los envases propios
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 7 de «Fase 2 en local».

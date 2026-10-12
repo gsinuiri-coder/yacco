@@ -16,7 +16,9 @@ const grandTotal = computed(() => rows.value.reduce((sum, row) => sum + row.tota
 const isEmpty = computed(() => resource.data.value !== null && resource.data.value.length === 0);
 
 const session = useSession();
-const isAdmin = computed(() => session.hasRole("ADMIN"));
+const canCountPlant = computed(
+  () => session.hasRole("ADMIN") || session.hasRole("PLANT_SUPERVISOR"),
+);
 const counting = ref(false);
 const lastCount = ref<string | null>(null);
 
@@ -131,7 +133,7 @@ function onCounted(count: PlantCount): void {
         </UCard>
 
         <SectionCard
-          v-if="isAdmin"
+          v-if="canCountPlant"
           id="conteo-planta"
           title="Conteo de la planta"
           description="Cuenta en el galpón los vacíos o los llenos de un tipo de envase: el inventario pasa a decir lo contado."

@@ -6,13 +6,21 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   SELLER: "Vendedor",
   DRIVER: "Chofer",
   VIEWER: "Cuenta de verificación",
+  PLANT_SUPERVISOR: "Supervisor de planta",
+  PLANT_OPERATOR: "Operador de planta",
 };
 
 /** Los roles que se le asignan a una persona. VIEWER no: ver ROLE_DISPLAY_ORDER. */
 export type AssignableRole = Exclude<UserRole, "VIEWER">;
 
 /** Los que ofrecen el alta, la corrección de roles y el filtro de Usuarios. */
-export const ROLE_ORDER: readonly AssignableRole[] = ["ADMIN", "SELLER", "DRIVER"];
+export const ROLE_ORDER: readonly AssignableRole[] = [
+  "ADMIN",
+  "SELLER",
+  "DRIVER",
+  "PLANT_SUPERVISOR",
+  "PLANT_OPERATOR",
+];
 
 /**
  * Para describir los roles de alguien que YA existe. VIEWER es la cuenta
@@ -31,6 +39,9 @@ export const ROLE_EXPLANATION: Record<AssignableRole, string> = {
   ADMIN: "Ve y hace todo: precios, cobranzas, usuarios y el cuadre de envases.",
   SELLER: "Toma pedidos y planifica rutas. Ve y opera las rutas de todos los choferes.",
   DRIVER: "Sale a repartir. Ve y opera solo las rutas que tiene a su nombre.",
+  PLANT_SUPERVISOR:
+    "Ve y registra toda la producción, ingresos de flota, bajas y conteos de la planta.",
+  PLANT_OPERATOR: "Registra llenadas del día y ve solo su propia producción.",
 };
 
 export function describeRoles(roles: readonly UserRole[]): string {

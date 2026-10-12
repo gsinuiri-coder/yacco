@@ -50,8 +50,8 @@ export class ContainerCountsController {
   }
 
   /**
-   * Solo ADMIN: el conteo de la planta cambia el stock con que se cargan las
-   * rutas (descuenta llenos de los lotes), así que no es trabajo de oficina.
+   * ADMIN y PLANT_SUPERVISOR: el conteo de la planta cambia el stock con que se cargan las
+   * rutas (descuenta llenos de los lotes).
    */
   @ApiOperation({
     summary: "Registra el conteo de vacíos o llenos en la planta y ajusta el libro a lo contado",
@@ -61,7 +61,7 @@ export class ContainerCountsController {
     description:
       "Validation failed, the container type does not exist, or more fulls were counted than the ledger has",
   })
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.PLANT_SUPERVISOR)
   @Post("plant")
   countPlant(
     @Body() dto: CreatePlantCountDto,

@@ -18,9 +18,14 @@ useHead({ title: "Producción · Yacco" });
 
 const session = useSession();
 const api = useApi();
-const isAdmin = computed(() => session.hasRole("ADMIN"));
+const canRegisterFilling = computed(
+  () =>
+    session.hasRole("ADMIN") ||
+    session.hasRole("PLANT_SUPERVISOR") ||
+    session.hasRole("PLANT_OPERATOR"),
+);
 
-// --- Registrar lote (ADMIN) ---
+// --- Registrar lote (ADMIN, PLANT_SUPERVISOR, PLANT_OPERATOR) ---
 const code = ref("");
 const date = ref(limaToday());
 const notes = ref("");
@@ -43,7 +48,7 @@ const catalog = useCatalog<ContainerType>("/container-types");
 
 let proposalRequest = 0;
 async function loadCodeProposal(): Promise<void> {
-  if (!isAdmin.value || date.value === "") return;
+  if (!canRegisterFilling.value || date.value === "") return;
   const request = ++proposalRequest;
   const requestedDate = date.value;
   const codeBeforeRequest = code.value;
@@ -153,7 +158,7 @@ function fillingAudit(item: ProductionBatch["items"][number]): string | null {
   <AppPage title="Producción" :description="summary">
     <div class="space-y-6">
       <SectionCard
-        v-if="isAdmin"
+        v-if="canRegisterFilling"
         title="Registrar llenada"
         description="Cada registro queda separado dentro del lote de su fecha."
       >

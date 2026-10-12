@@ -363,6 +363,22 @@ describe("Producción", () => {
     expect(screen.queryByRole("form", { name: "Registrar llenada" })).toBeNull();
   });
 
+  it("un supervisor de planta ve el formulario de registrar llenada", async () => {
+    stubPage();
+
+    await renderProduction(["PLANT_SUPERVISOR"]);
+
+    expect(await screen.findByRole("form", { name: "Registrar llenada" })).toBeTruthy();
+  });
+
+  it("un operador de planta ve el formulario de registrar llenada", async () => {
+    stubPage();
+
+    await renderProduction(["PLANT_OPERATOR"]);
+
+    expect(await screen.findByRole("form", { name: "Registrar llenada" })).toBeTruthy();
+  });
+
   // HU-01 E4: el detalle separa hora, responsable, tipo, cantidad y nota de cada llenada.
   it("lista código, fecha, responsable, lo producido y lo que queda sin cargar (o «Todo cargado»)", async () => {
     stubPage([

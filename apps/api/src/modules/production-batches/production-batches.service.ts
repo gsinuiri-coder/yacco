@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { ContainerMovementType, ContainerState, Prisma } from "@prisma/client";
+import { ContainerMovementType, ContainerState, Prisma, UserRole } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import {
   ContainerMovementsService,
@@ -22,6 +22,20 @@ import type { ListProductionBatchesQueryDto } from "./dto/list-production-batche
 
 function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+export interface RequestUser {
+  sub: string;
+  roles: UserRole[];
+}
+
+export function shouldFilterToOperatorFilling(user?: RequestUser): boolean {
+  if (!user) return false;
+  const canSeeAll = user.roles.some(
+    (role) =>
+      role === UserRole.ADMIN || role === UserRole.SELLER || role === UserRole.PLANT_SUPERVISOR,
+  );
+  return !canSeeAll && user.roles.includes(UserRole.PLANT_OPERATOR);
 }
 
 /** Everything the wire shape needs, and nothing else. */
@@ -63,7 +77,13 @@ async function findCanonicalBatch(
   });
 }
 
-function toBatchResponse(batch: BatchWithRelations): ProductionBatchResponseDto {
+function toBatchResponse(
+  batch: BatchWithRelations,
+  operatorRecordedById?: string,
+): ProductionBatchResponseDto {
+  const items = operatorRecordedById
+    ? batch.items.filter((item) => item.recordedById === operatorRecordedById)
+    : batch.items;
   return {
     id: batch.id,
     code: batch.code,
@@ -71,7 +91,7 @@ function toBatchResponse(batch: BatchWithRelations): ProductionBatchResponseDto 
     filledById: batch.filledById,
     filledBy: batch.filledBy,
     notes: batch.notes,
-    items: batch.items.map((item) => ({
+    items: items.map((item) => ({
       id: item.id,
       containerTypeId: item.containerTypeId,
       containerType: item.containerType,
@@ -123,6 +143,7 @@ export class ProductionBatchesService {
   async create(
     dto: CreateProductionBatchDto,
     filledById: string,
+    user?: RequestUser,
   ): Promise<CreateProductionBatchResponseDto> {
     const date = parseBusinessDate(dto.date, "La fecha del lote");
     const requestedCode = dto.code?.trim() ?? "";
@@ -216,7 +237,8 @@ export class ProductionBatchesService {
         return { batch: created, warnings };
       });
 
-      return { ...toBatchResponse(batch), warnings };
+      const operatorRecordedById = shouldFilterToOperatorFilling(user) ? filledById : undefined;
+      return { ...toBatchResponse(batch, operatorRecordedById), warnings };
     } catch (error) {
       // production_batches_code_key: the office reuses codes across days by
       // mistake more often than any other input here.
@@ -236,9 +258,13 @@ export class ProductionBatchesService {
   }
 
   /** Always paginated; the count runs against the same filter as the page. */
-  async findAll(query: ListProductionBatchesQueryDto): Promise<PaginatedProductionBatchesDto> {
+  async findAll(
+    query: ListProductionBatchesQueryDto,
+    user?: RequestUser,
+  ): Promise<PaginatedProductionBatchesDto> {
     const { page, limit } = query;
-    const where = buildBatchFilter(query);
+    const operatorRecordedById = shouldFilterToOperatorFilling(user) ? user!.sub : undefined;
+    const where = buildBatchFilter(query, operatorRecordedById);
 
     const [total, batches] = await this.prisma.$transaction([
       this.prisma.productionBatch.count({ where }),
@@ -252,7 +278,7 @@ export class ProductionBatchesService {
     ]);
 
     return {
-      data: batches.map(toBatchResponse),
+      data: batches.map((batch) => toBatchResponse(batch, operatorRecordedById)),
       total,
       page,
       limit,
@@ -260,7 +286,8 @@ export class ProductionBatchesService {
     };
   }
 
-  async findOne(id: string): Promise<ProductionBatchResponseDto> {
+  async findOne(id: string, user?: RequestUser): Promise<ProductionBatchResponseDto> {
+    const operatorRecordedById = shouldFilterToOperatorFilling(user) ? user!.sub : undefined;
     const batch = await this.prisma.productionBatch.findUnique({
       where: { id },
       include: BATCH_INCLUDE,
@@ -268,7 +295,11 @@ export class ProductionBatchesService {
     if (batch === null) {
       throw new NotFoundException(`El lote "${id}" no existe`);
     }
-    return toBatchResponse(batch);
+    const response = toBatchResponse(batch, operatorRecordedById);
+    if (operatorRecordedById !== undefined && response.items.length === 0) {
+      throw new NotFoundException(`El lote "${id}" no existe`);
+    }
+    return response;
   }
 }
 
@@ -286,7 +317,10 @@ async function appendFilling(
   });
 }
 
-function buildBatchFilter(query: ListProductionBatchesQueryDto): Prisma.ProductionBatchWhereInput {
+function buildBatchFilter(
+  query: ListProductionBatchesQueryDto,
+  operatorRecordedById?: string,
+): Prisma.ProductionBatchWhereInput {
   const { dateFrom, dateTo, withStock } = query;
   const from = dateFrom === undefined ? undefined : parseBusinessDate(dateFrom, "La fecha desde");
   const to = dateTo === undefined ? undefined : parseBusinessDate(dateTo, "La fecha hasta");
@@ -294,6 +328,13 @@ function buildBatchFilter(query: ListProductionBatchesQueryDto): Prisma.Producti
   if (from !== undefined && to !== undefined && from > to) {
     throw new BadRequestException("La fecha desde no puede ser posterior a la fecha hasta");
   }
+
+  const itemsFilter: Prisma.BatchItemWhereInput = {
+    ...(operatorRecordedById ? { recordedById: operatorRecordedById } : {}),
+    ...(withStock === true ? { availableQty: { gt: 0 } } : {}),
+  };
+
+  const hasItemsCondition = operatorRecordedById !== undefined || withStock !== undefined;
 
   return {
     ...(from !== undefined || to !== undefined
@@ -304,11 +345,15 @@ function buildBatchFilter(query: ListProductionBatchesQueryDto): Prisma.Producti
           },
         }
       : {}),
-    // `some` y no un filtro sobre `items` en el include: el lote entra o no
-    // entra en la página, y sus líneas siguen viajando completas — una línea
-    // agotada de un lote que todavía tiene otra con stock es información que
-    // la pantalla de carga necesita para no ofrecerla.
-    ...(withStock === true ? { items: { some: { availableQty: { gt: 0 } } } } : {}),
-    ...(withStock === false ? { items: { every: { availableQty: { lte: 0 } } } } : {}),
+    ...(hasItemsCondition
+      ? withStock === false
+        ? {
+            items: {
+              ...(operatorRecordedById ? { some: { recordedById: operatorRecordedById } } : {}),
+              every: { availableQty: { lte: 0 } },
+            },
+          }
+        : { items: { some: itemsFilter } }
+      : {}),
   };
 }
