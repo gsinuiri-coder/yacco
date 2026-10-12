@@ -74,6 +74,35 @@ imagen que va a Cloud Run, corriendo en Docker contra esta base, y el smoke de
 solo lectura contra ella (`docs/DEPLOY.md`, «E2E local antes del deploy
 final»).
 
+## Visor
+
+Herramienta del entorno local para ver y probar la aplicación terminada en una copia
+aislada (`../v2-visor`) mientras el agente o relevo continúa trabajando en este repositorio.
+
+Muestra **solo lo que ya está mergeado en `main`**. Corre en otra copia del código,
+otra base de datos y otros puertos, de modo que nunca interfiere con las migraciones,
+procesos ni pruebas del relevo:
+
+- **Base de datos (Postgres en Docker Compose `yacco-visor`):** `:5442`
+- **Almacenamiento (MinIO en Docker Compose `yacco-visor`):** `:9010` (API) y `:9011` (Consola)
+- **API del visor:** `:3300`
+- **Web del visor:** `:3301` (`http://localhost:3301`)
+
+No lee ni escribe ningún archivo `.env*`: las variables de configuración se pasan directamente por el entorno del proceso, con secretos JWT aleatorios generados en memoria en cada arranque.
+
+### Comandos del visor
+
+Se ejecutan desde el repositorio principal de siempre:
+
+```bash
+pnpm visor:preparar    # Una vez: clona en ../v2-visor, instala, levanta Docker Compose (5442, 9010, 9011), migra, siembra y carga datos de prueba
+pnpm visor:arrancar    # Inicia la API (3300) y la web (3301) en segundo plano (PIDs en ../v2-visor/.visor/)
+pnpm visor:actualizar  # Trae origin/main en ../v2-visor, pnpm install, migra, siembra y reinicia si estaban corriendo
+pnpm visor:parar       # Detiene solo los procesos del visor
+```
+
+Al terminar cada comando, imprime en la consola la URL (`http://localhost:3301`) y la ruta a las contraseñas de prueba generadas en `../v2-visor/.local/credenciales-prueba.txt`.
+
 ## La rama `demo` de Neon
 
 Queda como está: no se borra ni se resetea (D-006), y ningún servicio la usa.
