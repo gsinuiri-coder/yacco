@@ -22,4 +22,5 @@ export * from "./route-settlement.js";
 export * from "./routes.js";
 export * from "./settings.js";
 export * from "./users.js";
+export * from "./vehicles.js";
 export * from "./zones.js";

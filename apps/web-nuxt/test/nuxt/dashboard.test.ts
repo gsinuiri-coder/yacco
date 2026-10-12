@@ -255,3 +255,47 @@ describe("Panel — Puesta en marcha", () => {
     expect(calls()).toBe(0);
   });
 });
+
+describe("Revisiones por vencer", () => {
+  beforeEach(async () => {
+    resetSession();
+    cleanups.push(signIn(["ADMIN"]));
+    await navigateTo("/login");
+  });
+
+  afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+
+  it("muestra las alertas de revisiones y licencias cuando existen", async () => {
+    cleanups.push(
+      registerEndpoint("/api/v1/vehicles/upcoming-reviews", () => [
+        {
+          type: "VEHICLE_REVIEW",
+          targetId: "v-1",
+          targetName: "Camión 1",
+          detail: "SOAT",
+          expiresOn: "2026-10-20",
+          daysRemaining: 8,
+          status: "POR_VENCER",
+        },
+      ]),
+    );
+
+    await renderSuspended(App, { route: "/" });
+
+    const card = await screen.findByRole("region", { name: "Revisiones por vencer" });
+    expect(within(card).getByText("Camión 1")).toBeTruthy();
+    expect(within(card).getByText(/SOAT/)).toBeTruthy();
+    expect(within(card).getByText("Por vencer")).toBeTruthy();
+  });
+
+  it("sin alertas la tarjeta no se muestra", async () => {
+    cleanups.push(registerEndpoint("/api/v1/vehicles/upcoming-reviews", () => []));
+
+    await renderSuspended(App, { route: "/" });
+    await screen.findByLabelText("Buscar cliente");
+
+    expect(screen.queryByRole("region", { name: "Revisiones por vencer" })).toBeNull();
+  });
+});

@@ -1,6 +1,14 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
-import { ArrayMinSize, ArrayUnique, IsArray, IsEnum, IsString, MinLength } from "class-validator";
+import {
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+} from "class-validator";
 
 export class CreateUserDto {
   @ApiProperty({ example: "Juana Pérez" })
@@ -24,4 +32,29 @@ export class CreateUserDto {
   @ArrayUnique()
   @IsEnum(UserRole, { each: true })
   roles!: UserRole[];
+
+  @ApiPropertyOptional({ example: "DNI" })
+  @IsOptional()
+  @IsString()
+  documentType?: string;
+
+  @ApiPropertyOptional({ example: "12345678" })
+  @IsOptional()
+  @IsString()
+  documentNumber?: string;
+
+  @ApiPropertyOptional({ example: "Q12345678" })
+  @IsOptional()
+  @IsString()
+  licenseNumber?: string;
+
+  @ApiPropertyOptional({ example: "A-IIb" })
+  @IsOptional()
+  @IsString()
+  licenseCategory?: string;
+
+  @ApiPropertyOptional({ example: "2027-10-12" })
+  @IsOptional()
+  @IsString()
+  licenseExpiresOn?: string;
 }

@@ -703,4 +703,40 @@ describe("Usuarios", () => {
     expect(screen.queryByRole("button", { name: "Cambiar contraseña" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Desactivar" })).toBeNull();
   });
+
+  it("muestra los datos de brevete de un chofer y permite editarlos", async () => {
+    const driverWithLic: User = {
+      ...DRIVER,
+      documentType: "DNI",
+      documentNumber: "12345678",
+      licenseNumber: "Q12345678",
+      licenseCategory: "A-IIb",
+      licenseExpiresOn: "2027-10-12",
+    };
+    stubList([SELF, driverWithLic]);
+
+    const bodies = stubWrite(cleanups, `/api/v1/users/${DRIVER_ID}`, "PATCH", () => ({
+      ...driverWithLic,
+      licenseNumber: "Q99999999",
+    }));
+
+    await renderPage();
+
+    expect(await screen.findByText(/Licencia Q12345678/)).toBeTruthy();
+    expect(screen.getByText(/\(A-IIb\)/)).toBeTruthy();
+
+    const user = userEvent.setup();
+    const row = await rowOf("Luis Quispe");
+    await user.click(within(row).getByRole("button", { name: "Datos de chofer" }));
+
+    await screen.findByRole("heading", { name: "Datos de chofer de Luis Quispe" });
+    const licenseInput = screen.getByLabelText("N° de licencia");
+    await user.clear(licenseInput);
+    await user.type(licenseInput, "Q99999999");
+
+    await user.click(screen.getByRole("button", { name: "Guardar datos de chofer" }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect((bodies[0] as Record<string, unknown>).licenseNumber).toBe("Q99999999");
+  });
 });

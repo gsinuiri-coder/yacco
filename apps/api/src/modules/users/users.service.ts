@@ -19,6 +19,11 @@ interface UserScalars {
   name: string;
   username: string;
   active: boolean;
+  documentType?: string | null;
+  documentNumber?: string | null;
+  licenseNumber?: string | null;
+  licenseCategory?: string | null;
+  licenseExpiresOn?: Date | null;
 }
 
 interface UserWithRoleAssignments extends UserScalars {
@@ -36,6 +41,13 @@ function toSafeUser(user: UserScalars, roles: UserRole[]): UserResponseDto {
     username: user.username,
     active: user.active,
     roles,
+    documentType: user.documentType ?? null,
+    documentNumber: user.documentNumber ?? null,
+    licenseNumber: user.licenseNumber ?? null,
+    licenseCategory: user.licenseCategory ?? null,
+    licenseExpiresOn: user.licenseExpiresOn
+      ? user.licenseExpiresOn.toISOString().slice(0, 10)
+      : null,
   };
 }
 
@@ -67,7 +79,18 @@ export class UsersService {
         const roleByName = new Map(roles.map((role) => [role.name, role.id]));
 
         const user = await tx.user.create({
-          data: { name: dto.name, username: dto.username, passwordHash },
+          data: {
+            name: dto.name,
+            username: dto.username,
+            passwordHash,
+            documentType: dto.documentType?.trim() || null,
+            documentNumber: dto.documentNumber?.trim() || null,
+            licenseNumber: dto.licenseNumber?.trim() || null,
+            licenseCategory: dto.licenseCategory?.trim() || null,
+            licenseExpiresOn: dto.licenseExpiresOn
+              ? new Date(`${dto.licenseExpiresOn}T00:00:00.000Z`)
+              : null,
+          },
         });
 
         await tx.userRoleAssignment.createMany({
@@ -149,6 +172,25 @@ export class UsersService {
             ...(dto.name !== undefined ? { name: dto.name } : {}),
             ...(dto.active !== undefined ? { active: dto.active } : {}),
             ...(passwordHash !== undefined ? { passwordHash } : {}),
+            ...(dto.documentType !== undefined
+              ? { documentType: dto.documentType.trim() || null }
+              : {}),
+            ...(dto.documentNumber !== undefined
+              ? { documentNumber: dto.documentNumber.trim() || null }
+              : {}),
+            ...(dto.licenseNumber !== undefined
+              ? { licenseNumber: dto.licenseNumber.trim() || null }
+              : {}),
+            ...(dto.licenseCategory !== undefined
+              ? { licenseCategory: dto.licenseCategory.trim() || null }
+              : {}),
+            ...(dto.licenseExpiresOn !== undefined
+              ? {
+                  licenseExpiresOn: dto.licenseExpiresOn
+                    ? new Date(`${dto.licenseExpiresOn}T00:00:00.000Z`)
+                    : null,
+                }
+              : {}),
             // Contraseña nueva o desactivación: las sesiones abiertas de esta
             // persona dejan de poder renovarse (D-024). Reactivar NO la baja, así
             // que un token de antes de desactivar no revive.

@@ -151,11 +151,18 @@ async function transition(action: "start" | "finish"): Promise<void> {
       >
         <template v-if="route">
           <dl
-            class="grid gap-5 rounded-lg border border-default bg-default p-5 text-sm sm:grid-cols-4"
+            class="grid gap-5 rounded-lg border border-default bg-default p-5 text-sm sm:grid-cols-5"
           >
             <div>
               <dt class="text-muted">Chofer</dt>
               <dd class="font-medium text-highlighted">{{ route.driver.name }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted">Vehículo</dt>
+              <dd class="font-medium text-highlighted">
+                <span v-if="route.vehicle" class="font-mono">{{ route.vehicle.plate }}</span>
+                <span v-else class="text-dimmed">Sin vehículo</span>
+              </dd>
             </div>
             <div>
               <dt class="text-muted">Estado</dt>
@@ -183,6 +190,7 @@ async function transition(action: "start" | "finish"): Promise<void> {
             </div>
           </dl>
 
+          <RouteVehiclesSection :route="route" @changed="resource.reload" />
           <RouteStopsSection
             :route="route"
             @changed="resource.reload"

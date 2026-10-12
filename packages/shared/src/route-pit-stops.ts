@@ -57,6 +57,8 @@ export interface RoutePitStop {
   counts: RoutePitStopCount[];
   loads: RoutePitStopLoad[];
   unloads: RoutePitStopUnload[];
+  vehicleId?: string | null;
+  vehicleReason?: string | null;
 }
 
 export type RoutePitStopResponse = RoutePitStop;
@@ -108,6 +110,8 @@ export interface CreateRoutePitStopBody {
   cashDelivered?: string;
   cashReason?: string;
   notes?: string;
+  vehicleId?: string;
+  vehicleReason?: string;
 }
 
 export interface VoidRoutePitStopBody {

@@ -7,6 +7,11 @@ export interface User {
   username: string;
   active: boolean;
   roles: UserRole[];
+  documentType?: string | null;
+  documentNumber?: string | null;
+  licenseNumber?: string | null;
+  licenseCategory?: string | null;
+  licenseExpiresOn?: string | null;
 }
 
 /** ListUsersQueryDto. Unpaginated; with no `active`, the API lists only active users. */
@@ -21,6 +26,11 @@ export interface CreateUserBody {
   username: string;
   password: string;
   roles: UserRole[];
+  documentType?: string;
+  documentNumber?: string;
+  licenseNumber?: string;
+  licenseCategory?: string;
+  licenseExpiresOn?: string;
 }
 
 /** UpdateUserDto: one change per PATCH on the users screen. */
@@ -29,6 +39,11 @@ export interface UpdateUserBody {
   active?: boolean;
   password?: string;
   roles?: UserRole[];
+  documentType?: string;
+  documentNumber?: string;
+  licenseNumber?: string;
+  licenseCategory?: string;
+  licenseExpiresOn?: string;
 }
 
 /** `@MinLength(8)` on both CreateUserDto.password and UpdateUserDto.password. */

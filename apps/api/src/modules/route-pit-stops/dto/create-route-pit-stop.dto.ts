@@ -109,4 +109,14 @@ export class CreateRoutePitStopDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ format: "uuid", description: "Cambiar vehículo en este pit (opcional)" })
+  @IsOptional()
+  @IsUUID("4", { message: "El vehículo debe ser un identificador válido" })
+  vehicleId?: string;
+
+  @ApiPropertyOptional({ description: "Motivo del cambio de vehículo en el pit" })
+  @IsOptional()
+  @IsString()
+  vehicleReason?: string;
 }

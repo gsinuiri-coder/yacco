@@ -96,7 +96,17 @@ async function main() {
     create: { userId: admin.id, roleId: adminRole.id },
   });
 
-  console.log("Seed completed: roles, container types, products, payment methods, admin user.");
+  for (const name of ["SOAT", "Revisión técnica", "Extintor"]) {
+    await prisma.vehicleReviewType.upsert({
+      where: { name },
+      update: {},
+      create: { name, createdById: admin.id },
+    });
+  }
+
+  console.log(
+    "Seed completed: roles, container types, products, payment methods, admin user, vehicle review types.",
+  );
 }
 
 main()

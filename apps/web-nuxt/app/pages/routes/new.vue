@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { limaToday } from "@yacco/shared";
-import type { Route, User, Zone } from "@yacco/shared";
+import type { Route, User, Vehicle, Zone } from "@yacco/shared";
 
 /**
- * Planificar es decidir el día y el chofer: POST /routes crea la ruta VACÍA.
+ * Planificar es decidir el día, el chofer y el vehículo: POST /routes crea la ruta VACÍA.
  * Las paradas y la carga se agregan desde el detalle, y la zona es sólo una
  * etiqueta para agrupar: no arma la ruta con los clientes de esa zona. La
  * pantalla lo dice para que nadie espere lo contrario.
@@ -13,21 +13,30 @@ useHead({ title: "Planificar ruta · Yacco" });
 const api = useApi();
 const NO_ZONE = "none";
 
-// Choferes activos: la API ya excluye a los desactivados y rechaza a uno
+// Choferes y vehículos activos: la API ya excluye a los desactivados y rechaza a uno
 // inactivo con 400; ofrecerlo sería construir un error.
 const drivers = useCatalog<User>("/users", { role: "DRIVER" });
+const vehicles = useCatalog<Vehicle>("/vehicles", { active: true });
 const zones = useCatalog<Zone>("/zones", { active: true });
 
 const date = ref(limaToday());
 const driverId = ref<string | undefined>(undefined);
+const vehicleId = ref<string | undefined>(undefined);
 const zoneId = ref(NO_ZONE);
 const driverError = ref<string | undefined>(undefined);
+const vehicleError = ref<string | undefined>(undefined);
 const submitting = ref(false);
 const submitError = ref<string | null>(null);
 const slow = useSlowRequest(submitting);
 
 const driverItems = computed(() =>
   drivers.items.value.map((driver) => ({ label: driver.name, value: driver.id })),
+);
+const vehicleItems = computed(() =>
+  vehicles.items.value.map((vehicle) => ({
+    label: `${vehicle.plate} (${vehicle.name})`,
+    value: vehicle.id,
+  })),
 );
 const zoneItems = computed(() => [
   { label: "Sin zona", value: NO_ZONE },
@@ -37,15 +46,25 @@ const zoneItems = computed(() => [
 const noDrivers = computed(
   () => !drivers.loading.value && !drivers.failed.value && drivers.items.value.length === 0,
 );
+const noVehicles = computed(
+  () => !vehicles.loading.value && !vehicles.failed.value && vehicles.items.value.length === 0,
+);
 
 watch(driverId, () => {
   driverError.value = undefined;
+});
+watch(vehicleId, () => {
+  vehicleError.value = undefined;
 });
 
 async function submit(): Promise<void> {
   if (submitting.value) return;
   if (driverId.value === undefined) {
     driverError.value = "Elige el chofer que va a hacer la ruta";
+    return;
+  }
+  if (vehicleId.value === undefined) {
+    vehicleError.value = "Elige el vehículo asignado a la ruta";
     return;
   }
   submitting.value = true;
@@ -55,6 +74,7 @@ async function submit(): Promise<void> {
       method: "POST",
       body: {
         driverId: driverId.value,
+        vehicleId: vehicleId.value,
         date: date.value,
         ...(zoneId.value === NO_ZONE ? {} : { zoneId: zoneId.value }),
       },
@@ -117,6 +137,13 @@ async function submit(): Promise<void> {
           variant="subtle"
           title="No hay choferes activos para asignar. Da de alta un usuario con rol de chofer antes de planificar la ruta."
         />
+        <UAlert
+          v-if="noVehicles"
+          role="status"
+          color="warning"
+          variant="subtle"
+          title="No hay vehículos activos para asignar. Da de alta un vehículo antes de planificar la ruta."
+        />
 
         <div class="grid gap-5 sm:grid-cols-2">
           <UFormField label="Día de la ruta" name="routeDate">
@@ -137,16 +164,29 @@ async function submit(): Promise<void> {
             />
           </UFormField>
           <UFormField
+            label="Vehículo"
+            name="routeVehicle"
+            :error="vehicleError"
+            help="Vehículo asignado para el recorrido del día."
+          >
+            <USelect
+              v-model="vehicleId"
+              :items="vehicleItems"
+              placeholder="Elige un vehículo"
+              :disabled="submitting || noVehicles || vehicles.failed.value"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
             label="Zona (opcional)"
             name="routeZone"
             help="Sólo sirve para agrupar y filtrar rutas; no agrega los clientes de la zona."
-            class="sm:col-span-2"
           >
             <USelect
               v-model="zoneId"
               :items="zoneItems"
               :disabled="submitting"
-              class="w-full sm:w-1/2"
+              class="w-full"
             />
           </UFormField>
         </div>
@@ -169,7 +209,7 @@ async function submit(): Promise<void> {
           />
           <UButton
             type="submit"
-            :disabled="submitting || noDrivers || drivers.failed.value"
+            :disabled="submitting || noDrivers || noVehicles || drivers.failed.value || vehicles.failed.value"
             :label="submitting ? 'Planificando…' : 'Planificar ruta'"
           />
         </div>

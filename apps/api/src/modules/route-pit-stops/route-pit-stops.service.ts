@@ -59,11 +59,16 @@ const PIT_STOP_INCLUDE = {
     include: { containerType: { select: { id: true, name: true } } },
     orderBy: { occurredAt: "asc" },
   },
+  vehicleAssignments: {
+    select: { vehicleId: true, reason: true },
+    take: 1,
+  },
 } satisfies Prisma.RoutePitStopInclude;
 
 type PitStopWithRelations = Prisma.RoutePitStopGetPayload<{ include: typeof PIT_STOP_INCLUDE }>;
 
 function toPitStopResponse(pit: PitStopWithRelations): RoutePitStopResponseDto {
+  const assignment = pit.vehicleAssignments?.[0];
   return {
     id: pit.id,
     routeId: pit.routeId,
@@ -78,6 +83,8 @@ function toPitStopResponse(pit: PitStopWithRelations): RoutePitStopResponseDto {
     voidedById: pit.voidedById,
     voidedBy: pit.voidedBy,
     voidReason: pit.voidReason,
+    vehicleId: assignment?.vehicleId ?? null,
+    vehicleReason: assignment?.reason ?? null,
     counts: pit.counts.map((c) => ({
       id: c.id,
       pitStopId: c.pitStopId,
@@ -489,6 +496,34 @@ export class RoutePitStopsService {
           }
         }
 
+        // 6. Cambio de vehículo en el pit (opcional)
+        if (dto.vehicleId !== undefined && dto.vehicleId !== null) {
+          const vehicle = await tx.vehicle.findUnique({
+            where: { id: dto.vehicleId },
+            select: { id: true, plate: true, active: true },
+          });
+          if (vehicle === null) {
+            throw new BadRequestException(`El vehículo "${dto.vehicleId}" no existe`);
+          }
+          if (!vehicle.active) {
+            throw new BadRequestException(`El vehículo "${vehicle.plate}" está desactivado`);
+          }
+
+          await tx.routeVehicleAssignment.create({
+            data: {
+              routeId,
+              vehicleId: dto.vehicleId,
+              assignedById: actor.id,
+              reason: dto.vehicleReason?.trim() || null,
+              pitStopId: pitStop.id,
+            },
+          });
+          await tx.route.update({
+            where: { id: routeId },
+            data: { vehicleId: dto.vehicleId },
+          });
+        }
+
         return tx.routePitStop.findUniqueOrThrow({
           where: { id: pitStop.id },
           include: PIT_STOP_INCLUDE,
@@ -655,6 +690,28 @@ export class RoutePitStopsService {
               },
             );
           }
+        }
+
+        // 3. Revertir vehículo si este pit stop cambió el vehículo
+        const pitAssignment = await tx.routeVehicleAssignment.findFirst({
+          where: { pitStopId },
+        });
+        if (pitAssignment !== null) {
+          const previousAssignment = await tx.routeVehicleAssignment.findFirst({
+            where: {
+              routeId,
+              id: { not: pitAssignment.id },
+              OR: [
+                { pitStopId: null },
+                { pitStop: { voidedAt: null, id: { not: pitStopId } } },
+              ],
+            },
+            orderBy: { createdAt: "desc" },
+          });
+          await tx.route.update({
+            where: { id: routeId },
+            data: { vehicleId: previousAssignment ? previousAssignment.vehicleId : null },
+          });
         }
 
         return tx.routePitStop.findUniqueOrThrow({

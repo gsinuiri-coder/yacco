@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { PaymentStatus, RouteStatus, StopOrigin, StopStatus } from "@prisma/client";
+import { VehicleSummaryDto } from "../../vehicles/dto/vehicle-response.dto.js";
 
 export class RouteDriverDto {
   @ApiProperty({ format: "uuid" })
@@ -232,6 +233,38 @@ export class RouteStopResponseDto {
   stockShortfall?: RouteStopStockShortfallDto[];
 }
 
+export class RouteVehicleAssignmentResponseDto {
+  @ApiProperty({ format: "uuid" })
+  id!: string;
+
+  @ApiProperty({ format: "uuid" })
+  routeId!: string;
+
+  @ApiProperty({ format: "uuid" })
+  vehicleId!: string;
+
+  @ApiProperty({ type: VehicleSummaryDto })
+  vehicle!: VehicleSummaryDto;
+
+  @ApiProperty({ format: "uuid" })
+  assignedById!: string;
+
+  @ApiProperty({ type: RouteDriverDto })
+  assignedBy!: RouteDriverDto;
+
+  @ApiProperty({ format: "date-time" })
+  createdAt!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  reason!: string | null;
+
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
+  pitStopId!: string | null;
+
+  @ApiPropertyOptional({ description: "Indica si la asignación proviene de un pit stop que fue anulado" })
+  isVoided?: boolean;
+}
+
 export class RouteResponseDto {
   @ApiProperty({ format: "uuid" })
   id!: string;
@@ -250,6 +283,12 @@ export class RouteResponseDto {
   driver!: RouteDriverDto;
 
   @ApiPropertyOptional({ format: "uuid", nullable: true })
+  vehicleId!: string | null;
+
+  @ApiPropertyOptional({ type: VehicleSummaryDto, nullable: true })
+  vehicle!: VehicleSummaryDto | null;
+
+  @ApiPropertyOptional({ format: "uuid", nullable: true })
   zoneId!: string | null;
 
   @ApiPropertyOptional({ type: RouteZoneDto, nullable: true })
@@ -266,6 +305,12 @@ export class RouteResponseDto {
 
   @ApiProperty({ type: RouteStopResponseDto, isArray: true })
   stops!: RouteStopResponseDto[];
+
+  @ApiPropertyOptional({ type: [RouteVehicleAssignmentResponseDto] })
+  vehicleAssignments?: RouteVehicleAssignmentResponseDto[];
+
+  @ApiPropertyOptional({ type: [String] })
+  warnings?: string[];
 }
 
 export class PaginatedRoutesDto {

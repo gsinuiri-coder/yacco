@@ -13,6 +13,7 @@ import type {
   RoutePitStopContainerPreview,
   RoutePitStopPreviewResponse,
   RoutePitStopResponse,
+  Vehicle,
 } from "@yacco/shared";
 import { planFifoLoad } from "~/utils/fifo-load";
 import { countOrNull, formatDifference } from "~/utils/settlement";
@@ -33,10 +34,13 @@ const validationError = ref<string | null>(null);
 
 const preview = ref<RoutePitStopPreviewResponse | null>(null);
 const batches = ref<ProductionBatch[]>([]);
+const vehicles = ref<Vehicle[]>([]);
 
 const notes = ref("");
 const cashDelivered = ref("");
 const cashReason = ref("");
+const selectedVehicleId = ref<string | null>(null);
+const vehicleReason = ref("");
 
 interface CountStateItem {
   countedFull: string;
@@ -80,14 +84,16 @@ async function loadData(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    const [previewRes, batchesPage] = await Promise.all([
+    const [previewRes, batchesPage, vehiclesList] = await Promise.all([
       api.request<RoutePitStopPreviewResponse>(`/routes/${props.route.id}/pit-stops/preview`),
       api.request<Page<ProductionBatch>>("/production-batches", {
         query: { withStock: true, limit: PRODUCTION_BATCHES_MAX_LIMIT },
       }),
+      api.request<Vehicle[]>("/vehicles", { query: { active: true } }),
     ]);
     preview.value = previewRes;
     batches.value = batchesPage.data;
+    vehicles.value = vehiclesList;
 
     // Inicializar estado de cuadre con lo esperado por defecto
     for (const c of previewRes.containers) {
@@ -282,6 +288,12 @@ async function submit(): Promise<void> {
       ...(rawNotes ? { notes: rawNotes } : {}),
       ...(cashDeliveredVal ? { cashDelivered: cashDeliveredVal } : {}),
       ...(cashReasonVal ? { cashReason: cashReasonVal } : {}),
+      ...(selectedVehicleId.value && selectedVehicleId.value !== props.route.vehicleId
+        ? {
+            vehicleId: selectedVehicleId.value,
+            ...(vehicleReason.value.trim() ? { vehicleReason: vehicleReason.value.trim() } : {}),
+          }
+        : {}),
     };
 
     const res = await api.request<RoutePitStopResponse>(`/routes/${props.route.id}/pit-stops`, {
@@ -553,6 +565,41 @@ async function submit(): Promise<void> {
             />
           </UFormField>
         </div>
+      </div>
+
+      <!-- CAMBIO DE VEHÍCULO (OPCIONAL) -->
+      <div class="space-y-3 rounded-lg border border-default bg-elevated/40 p-4">
+        <div class="space-y-1">
+          <h4 class="font-semibold text-highlighted">Cambio de vehículo (opcional)</h4>
+          <p class="text-xs text-muted">
+            El cuadre de esta parada corresponde al vehículo que se deja. Si la ruta cambia de vehículo
+            en este pit, el nuevo vehículo pasará a ser el actual.
+          </p>
+        </div>
+
+        <UFormField label="Cambia a vehículo">
+          <USelect
+            v-model="selectedVehicleId"
+            :items="[
+              { label: 'Conservar vehículo actual', value: null },
+              ...vehicles.map((v) => ({ label: `${v.plate} (${v.name})`, value: v.id })),
+            ]"
+            :disabled="submitting"
+            class="w-full sm:w-1/2"
+          />
+        </UFormField>
+
+        <UFormField
+          v-if="selectedVehicleId && selectedVehicleId !== route.vehicleId"
+          label="Motivo del cambio de vehículo"
+        >
+          <UInput
+            v-model="vehicleReason"
+            placeholder="Ejemplo: Falla mecánica, cambio de chofer o mantenimiento"
+            :disabled="submitting"
+            class="w-full"
+          />
+        </UFormField>
       </div>
 
       <!-- NOTAS -->

@@ -25,6 +25,8 @@ import { OLDEST_BATCH_ITEM_FIRST } from "../production-batches/oldest-batch-firs
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { RegisterStopDeliveryResult } from "../sales/sales.service.js";
 import { SalesService } from "../sales/sales.service.js";
+import { VehiclesService } from "../vehicles/vehicles.service.js";
+import type { AssignRouteVehicleDto } from "../vehicles/dto/assign-route-vehicle.dto.js";
 import type { CorrectRouteStopDto } from "./dto/correct-route-stop.dto.js";
 import type { CreateRouteLoadDto } from "./dto/create-route-load.dto.js";
 import type { CreateRouteDto } from "./dto/create-route.dto.js";
@@ -153,6 +155,16 @@ const STOP_DETAIL_INCLUDE = {
 
 const ROUTE_INCLUDE = {
   driver: { select: { id: true, name: true } },
+  vehicle: {
+    select: {
+      id: true,
+      plate: true,
+      name: true,
+      brand: true,
+      model: true,
+      capacityUnits: true,
+    },
+  },
   zone: { select: { id: true, name: true } },
   stops: { include: STOP_INCLUDE, orderBy: { position: "asc" } },
 } satisfies Prisma.RouteInclude;
@@ -167,6 +179,23 @@ const ROUTE_INCLUDE = {
 const ROUTE_DETAIL_INCLUDE = {
   ...ROUTE_INCLUDE,
   stops: { include: STOP_DETAIL_INCLUDE, orderBy: { position: "asc" } },
+  vehicleAssignments: {
+    include: {
+      vehicle: {
+        select: {
+          id: true,
+          plate: true,
+          name: true,
+          brand: true,
+          model: true,
+          capacityUnits: true,
+        },
+      },
+      assignedBy: { select: { id: true, name: true } },
+      pitStop: { select: { id: true, voidedAt: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  },
 } satisfies Prisma.RouteInclude;
 
 const LOAD_INCLUDE = {
@@ -288,18 +317,70 @@ function toLoadResponse(load: LoadWithRelations): RouteLoadResponseDto {
   };
 }
 
-function toRouteResponse(route: AnyRouteWithRelations): RouteResponseDto {
+function toRouteResponse(
+  route: AnyRouteWithRelations & {
+    vehicleAssignments?: {
+      id: string;
+      routeId: string;
+      vehicleId: string;
+      vehicle: {
+        id: string;
+        plate: string;
+        name: string;
+        brand: string;
+        model: string;
+        capacityUnits: number | null;
+      };
+      assignedById: string;
+      assignedBy: { id: string; name: string };
+      createdAt: Date;
+      reason: string | null;
+      pitStopId: string | null;
+      pitStop?: { id: string; voidedAt: Date | null } | null;
+    }[];
+  },
+  warnings?: string[],
+): RouteResponseDto {
+  const assignments =
+    "vehicleAssignments" in route && Array.isArray(route.vehicleAssignments)
+      ? route.vehicleAssignments.map((a) => ({
+          id: a.id,
+          routeId: a.routeId,
+          vehicleId: a.vehicleId,
+          vehicle: a.vehicle,
+          assignedById: a.assignedById,
+          assignedBy: a.assignedBy,
+          createdAt: a.createdAt.toISOString(),
+          reason: a.reason,
+          pitStopId: a.pitStopId,
+          isVoided: a.pitStop?.voidedAt != null,
+        }))
+      : undefined;
+
   return {
     id: route.id,
     date: formatBusinessDate(route.date),
     driverId: route.driverId,
     driver: route.driver,
+    vehicleId: route.vehicleId,
+    vehicle: route.vehicle
+      ? {
+          id: route.vehicle.id,
+          plate: route.vehicle.plate,
+          name: route.vehicle.name,
+          brand: route.vehicle.brand,
+          model: route.vehicle.model,
+          capacityUnits: route.vehicle.capacityUnits,
+        }
+      : null,
     zoneId: route.zoneId,
     zone: route.zone,
     status: route.status,
     createdById: route.createdById,
     createdAt: route.createdAt,
     stops: route.stops.map((stop) => toStopResponse(stop)),
+    ...(assignments !== undefined ? { vehicleAssignments: assignments } : {}),
+    ...(warnings && warnings.length > 0 ? { warnings } : {}),
   };
 }
 
@@ -320,6 +401,7 @@ export class RoutesService {
     private readonly prisma: PrismaService,
     private readonly containerMovementsService: ContainerMovementsService,
     private readonly salesService: SalesService,
+    private readonly vehiclesService: VehiclesService,
   ) {}
 
   /**
@@ -356,6 +438,21 @@ export class RoutesService {
       throw new BadRequestException(`El chofer "${driver.name}" está desactivado`);
     }
 
+    if (!dto.vehicleId) {
+      throw new BadRequestException("El vehículo es obligatorio para crear una ruta");
+    }
+
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id: dto.vehicleId },
+      select: { id: true, plate: true, name: true, active: true },
+    });
+    if (vehicle === null) {
+      throw new BadRequestException(`El vehículo "${dto.vehicleId}" no existe`);
+    }
+    if (!vehicle.active) {
+      throw new BadRequestException(`El vehículo "${vehicle.plate}" está desactivado`);
+    }
+
     if (dto.zoneId !== undefined) {
       const zone = await this.prisma.zone.findUnique({
         where: { id: dto.zoneId },
@@ -366,12 +463,41 @@ export class RoutesService {
       }
     }
 
+    const warnings = await this.vehiclesService.calculateVehicleAndDriverWarnings(
+      dto.vehicleId,
+      dto.driverId,
+      dto.date,
+    );
+
     try {
-      const route = await this.prisma.route.create({
-        data: { driverId: dto.driverId, date, zoneId: dto.zoneId ?? null, createdById },
-        include: ROUTE_INCLUDE,
+      const route = await this.prisma.$transaction(async (tx) => {
+        const createdRoute = await tx.route.create({
+          data: {
+            driverId: dto.driverId,
+            vehicleId: dto.vehicleId,
+            date,
+            zoneId: dto.zoneId ?? null,
+            createdById,
+          },
+        });
+
+        await tx.routeVehicleAssignment.create({
+          data: {
+            routeId: createdRoute.id,
+            vehicleId: dto.vehicleId,
+            assignedById: createdById,
+            reason: null,
+            pitStopId: null,
+          },
+        });
+
+        return tx.route.findUniqueOrThrow({
+          where: { id: createdRoute.id },
+          include: ROUTE_DETAIL_INCLUDE,
+        });
       });
-      return toRouteResponse(route);
+
+      return toRouteResponse(route, warnings);
     } catch (error) {
       if (isPrismaKnownError(error, "P2002")) {
         throw new BadRequestException(
@@ -380,6 +506,72 @@ export class RoutesService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Cambia el vehículo asignado a una ruta planificada (PLANNED).
+   * En rutas en curso debe realizarse exclusivamente a través de una parada en planta (pit stop).
+   */
+  async assignVehicle(
+    routeId: string,
+    dto: AssignRouteVehicleDto,
+    actor: RouteActor,
+  ): Promise<RouteResponseDto> {
+    const route = await this.prisma.route.findUnique({
+      where: { id: routeId },
+      select: { id: true, driverId: true, status: true, date: true },
+    });
+    if (route === null) {
+      throw new NotFoundException(`La ruta "${routeId}" no existe`);
+    }
+    if (route.status !== RouteStatus.PLANNED) {
+      throw new ConflictException(
+        "Solo se puede cambiar el vehículo en una ruta planificada; para una ruta en curso debe realizarse en una parada en planta (pit stop)",
+      );
+    }
+
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id: dto.vehicleId },
+      select: { id: true, plate: true, name: true, active: true },
+    });
+    if (vehicle === null) {
+      throw new BadRequestException(`El vehículo "${dto.vehicleId}" no existe`);
+    }
+    if (!vehicle.active) {
+      throw new BadRequestException(`El vehículo "${vehicle.plate}" está desactivado`);
+    }
+
+    const dateStr = formatBusinessDate(route.date);
+    const warnings = await this.vehiclesService.calculateVehicleAndDriverWarnings(
+      dto.vehicleId,
+      route.driverId,
+      dateStr,
+      route.id,
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.route.update({
+        where: { id: routeId },
+        data: { vehicleId: dto.vehicleId },
+      });
+
+      await tx.routeVehicleAssignment.create({
+        data: {
+          routeId,
+          vehicleId: dto.vehicleId,
+          assignedById: actor.id,
+          reason: dto.reason?.trim() || null,
+          pitStopId: null,
+        },
+      });
+
+      return tx.route.findUniqueOrThrow({
+        where: { id: routeId },
+        include: ROUTE_DETAIL_INCLUDE,
+      });
+    });
+
+    return toRouteResponse(updated, warnings);
   }
 
   /** Always paginated; a DRIVER's own routes only, regardless of ?driverId. */
@@ -399,7 +591,7 @@ export class RoutesService {
     ]);
 
     return {
-      data: routes.map(toRouteResponse),
+      data: routes.map((r) => toRouteResponse(r)),
       total,
       page,
       limit,
