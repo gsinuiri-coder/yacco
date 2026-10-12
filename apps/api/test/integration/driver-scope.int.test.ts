@@ -67,12 +67,14 @@ async function createOrder(customerId: string, productId: string): Promise<strin
   return response.body.id;
 }
 
+let vehicleId: string;
+
 /** Una ruta del chofer con el pedido como parada. */
 async function routeWithOrder(driverId: string, orderId: string): Promise<void> {
   const route = await request(server())
     .post("/api/v1/routes")
     .set("Authorization", `Bearer ${adminToken}`)
-    .send({ driverId, date: ROUTE_DATE })
+    .send({ driverId, date: ROUTE_DATE, vehicleId })
     .expect(201);
   await request(server())
     .post(`/api/v1/routes/${route.body.id}/stops`)
@@ -85,6 +87,18 @@ beforeAll(async () => {
   ctx = await startTestApp();
   prisma = ctx.app.get(PrismaService);
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
+  const adminUser = await prisma.user.findFirstOrThrow();
+  const vehicle = await prisma.vehicle.create({
+    data: {
+      plate: "SCO101",
+      name: "Camión Alcance",
+      brand: "Toyota",
+      model: "Dyna",
+      capacityUnits: 60,
+      createdById: adminUser.id,
+    },
+  });
+  vehicleId = vehicle.id;
   const driverA = await createDriver("chofer-alcance-a");
   const driverB = await createDriver("chofer-alcance-b");
   driverAToken = driverA.token;

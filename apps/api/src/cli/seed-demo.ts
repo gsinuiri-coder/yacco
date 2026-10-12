@@ -345,6 +345,22 @@ async function createDriver(token: string): Promise<UserResponse> {
   }
 }
 
+async function ensureVehicle(token: string): Promise<string> {
+  const existing = await apiFetch<Array<{ id: string; plate: string }>>("/vehicles", token);
+  if (existing.length > 0) return existing[0]!.id;
+  const created = await apiFetch<{ id: string }>("/vehicles", token, {
+    method: "POST",
+    body: {
+      plate: "ABC123",
+      name: "Camión 1",
+      brand: "Toyota",
+      model: "Dyna",
+      capacityUnits: 100,
+    },
+  });
+  return created.id;
+}
+
 async function createCustomers(token: string): Promise<Map<string, string>> {
   const locationIdByKey = new Map<string, string>();
   for (const customer of DEMO_CUSTOMERS) {
@@ -512,6 +528,7 @@ async function deliverRouteStops(
 async function runRouteForDay(
   token: string,
   driverId: string,
+  vehicleId: string,
   date: string,
   dayDeliveries: DemoDeliveryPlan[],
   loadsNeeded: Partial<Record<ContainerTypeKey, number>>,
@@ -522,7 +539,7 @@ async function runRouteForDay(
 ): Promise<string> {
   const route = await apiFetch<RouteResponse>("/routes", token, {
     method: "POST",
-    body: { driverId, date },
+    body: { driverId, date, vehicleId },
   });
 
   await loadRouteContainers(token, route.id, loadsNeeded, containerTypeIdByKey);
@@ -678,6 +695,7 @@ export async function run(): Promise<void> {
 
   await seedFleetEntry(token, containerTypeIdByKey);
   const driver = await createDriver(token);
+  const vehicleId = await ensureVehicle(token);
   const locationIdByKey = await createCustomers(token);
 
   const dates = businessDatesGoingBack(DEMO_HISTORY_DAYS, new Date());
@@ -697,6 +715,7 @@ export async function run(): Promise<void> {
     const routeId = await runRouteForDay(
       token,
       driver.id,
+      vehicleId,
       date,
       dayDeliveries,
       loadsGroupedByDay.get(dayIndex) ?? {},

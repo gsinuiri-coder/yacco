@@ -42,6 +42,7 @@ let containerSaleProductId: string;
 let adminUserId: string;
 let cashPaymentMethodId: string;
 let yapePaymentMethodId: string;
+let vehicleId: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -155,7 +156,7 @@ async function createRoute(): Promise<string> {
   const response = await request(server())
     .post("/api/v1/routes")
     .set("Authorization", `Bearer ${adminToken}`)
-    .send({ driverId, date: nextDate(), zoneId })
+    .send({ driverId, date: nextDate(), zoneId, vehicleId })
     .expect(201);
   return response.body.id;
 }
@@ -330,6 +331,18 @@ beforeAll(async () => {
   ).id;
   yapePaymentMethodId = (await prisma.paymentMethod.findFirstOrThrow({ where: { name: "Yape" } }))
     .id;
+
+  const vehicle = await prisma.vehicle.create({
+    data: {
+      plate: "SET101",
+      name: "Camión Liquidación",
+      brand: "Toyota",
+      model: "Dyna",
+      capacityUnits: 60,
+      createdById: adminUserId,
+    },
+  });
+  vehicleId = vehicle.id;
 }, 180000);
 
 afterAll(async () => {

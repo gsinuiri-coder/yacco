@@ -33,6 +33,7 @@ let containerTypeId: string;
 let refillProductId: string;
 let cashPaymentMethodId: string;
 let yapePaymentMethodId: string;
+let vehicleId: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -130,7 +131,7 @@ async function deliverWithPayment(
   const route = await request(server())
     .post("/api/v1/routes")
     .set("Authorization", `Bearer ${adminToken}`)
-    .send({ driverId, date: nextDate(), zoneId })
+    .send({ driverId, date: nextDate(), zoneId, vehicleId })
     .expect(201);
   const routeId = route.body.id;
   await request(server())
@@ -178,7 +179,7 @@ async function createCustomerWithDebt(
   const route = await request(server())
     .post("/api/v1/routes")
     .set("Authorization", `Bearer ${adminToken}`)
-    .send({ driverId, date: nextDate(), zoneId })
+    .send({ driverId, date: nextDate(), zoneId, vehicleId })
     .expect(201);
   const routeId = route.body.id;
   await request(server())
@@ -238,6 +239,18 @@ beforeAll(async () => {
   ).id;
   yapePaymentMethodId = (await prisma.paymentMethod.findFirstOrThrow({ where: { name: "Yape" } }))
     .id;
+
+  const vehicle = await prisma.vehicle.create({
+    data: {
+      plate: "PAY101",
+      name: "Camión Pagos",
+      brand: "Toyota",
+      model: "Dyna",
+      capacityUnits: 60,
+      createdById: adminUserId,
+    },
+  });
+  vehicleId = vehicle.id;
 }, 180000);
 
 afterAll(async () => {

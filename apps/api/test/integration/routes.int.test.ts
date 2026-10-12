@@ -56,6 +56,7 @@ let containerTypeId: string;
 let adminUserId: string;
 let cashPaymentMethodId: string;
 let yapePaymentMethodId: string;
+let vehicleId: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -88,7 +89,7 @@ function messagesOf(response: { body: { message?: string | string[] } }): string
 }
 
 function validRoute(overrides: Record<string, unknown> = {}) {
-  return { driverId, date: ROUTE_DATE, zoneId, ...overrides };
+  return { driverId, date: ROUTE_DATE, zoneId, vehicleId, ...overrides };
 }
 
 async function createRoute(
@@ -296,6 +297,18 @@ beforeAll(async () => {
   ).id;
   yapePaymentMethodId = (await prisma.paymentMethod.findFirstOrThrow({ where: { name: "Yape" } }))
     .id;
+
+  const vehicle = await prisma.vehicle.create({
+    data: {
+      plate: "RUT101",
+      name: "Camión de Rutas",
+      brand: "Toyota",
+      model: "Dyna",
+      capacityUnits: 60,
+      createdById: adminUserId,
+    },
+  });
+  vehicleId = vehicle.id;
 }, 180000);
 
 afterAll(async () => {
@@ -367,10 +380,20 @@ describe("POST /api/v1/routes", () => {
     const response = await request(server())
       .post("/api/v1/routes")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ driverId, date: "2026-08-28" });
+      .send({ driverId, date: "2026-08-28", vehicleId });
 
     expect(response.status).toBe(201);
     expect(response.body.zone).toBeNull();
+  });
+
+  test("rejects when vehicleId is missing", async () => {
+    const response = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date: "2026-08-28" });
+
+    expect(response.status).toBe(400);
+    expect(messagesOf(response)).toContain("El vehículo debe ser un identificador válido");
   });
 
   test("rejects a driver id that does not exist", async () => {
