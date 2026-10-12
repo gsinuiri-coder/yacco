@@ -29,4 +29,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (isDriverOnly(session.user.value.roles) && to.path !== MY_ROUTE_PATH) {
     return navigateTo(MY_ROUTE_PATH, { replace: true });
   }
+
+  // Quien trabaja sólo en planta entra directo a «Producción», y cualquier otra
+  // pantalla fuera de su alcance lo redirige allí.
+  if (isPlantOnly(session.user.value.roles)) {
+    const allowed = session.hasRole("PLANT_SUPERVISOR")
+      ? ["/production", "/inventory", "/container-movements"]
+      : ["/production", "/inventory"];
+    if (!allowed.includes(to.path)) {
+      return navigateTo("/production", { replace: true });
+    }
+  }
 });

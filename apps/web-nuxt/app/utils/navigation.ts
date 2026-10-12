@@ -125,17 +125,62 @@ const MY_ROUTE: NavigationLink = { label: "Mi ruta", icon: "i-lucide-map", to: M
  * negaría (supuesto 12 de docs/supuestos-por-validar.md).
  */
 export function isDriverOnly(roles: readonly UserRole[]): boolean {
-  return roles.includes("DRIVER") && !roles.includes("ADMIN") && !roles.includes("SELLER");
+  return (
+    roles.includes("DRIVER") &&
+    !roles.includes("ADMIN") &&
+    !roles.includes("SELLER") &&
+    !roles.includes("PLANT_SUPERVISOR") &&
+    !roles.includes("PLANT_OPERATOR")
+  );
+}
+
+/**
+ * Quien trabaja sólo en la planta (supervisor u operador). No tiene pantallas
+ * de la oficina ni de reparto: su trabajo es en Envases y producción.
+ */
+export function isPlantOnly(roles: readonly UserRole[]): boolean {
+  return (
+    (roles.includes("PLANT_SUPERVISOR") || roles.includes("PLANT_OPERATOR")) &&
+    !roles.includes("ADMIN") &&
+    !roles.includes("SELLER") &&
+    !roles.includes("DRIVER")
+  );
 }
 
 /** Los roles de una persona. VIEWER es la cuenta técnica del smoke del deploy. */
-const PEOPLE_ROLES: readonly UserRole[] = ["ADMIN", "SELLER", "DRIVER"];
+const PEOPLE_ROLES: readonly UserRole[] = [
+  "ADMIN",
+  "SELLER",
+  "DRIVER",
+  "PLANT_SUPERVISOR",
+  "PLANT_OPERATOR",
+];
 
 export function visibleNavigation(roles: readonly UserRole[]): NavigationSection[] {
   // La cuenta del smoke no tiene menú: no es de nadie de la planta, y cada
   // pantalla le devolvería 403 salvo los catálogos.
   if (!roles.some((role) => PEOPLE_ROLES.includes(role))) return [];
   if (isDriverOnly(roles)) return [{ label: "Reparto", links: [MY_ROUTE] }];
+  // Sin roles de oficina (ADMIN ni SELLER), solo ve reparto si es chofer y su parte de planta
+  if (!roles.includes("ADMIN") && !roles.includes("SELLER")) {
+    const sections: NavigationSection[] = [];
+    if (roles.includes("DRIVER")) {
+      sections.push({ label: "Reparto", links: [MY_ROUTE] });
+    }
+    const plantLinks: NavigationLink[] = [
+      { label: "Producción", icon: "i-lucide-factory", to: "/production" },
+      { label: "Inventario de envases", icon: "i-lucide-package-open", to: "/inventory" },
+    ];
+    if (roles.includes("PLANT_SUPERVISOR")) {
+      plantLinks.push({
+        label: "Movimientos de envases",
+        icon: "i-lucide-package-search",
+        to: "/container-movements",
+      });
+    }
+    sections.push({ label: "Envases y producción", links: plantLinks });
+    return sections;
+  }
   return NAVIGATION.map((section, index) => ({
     ...section,
     links: [

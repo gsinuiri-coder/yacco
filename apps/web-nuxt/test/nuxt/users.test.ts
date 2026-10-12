@@ -171,6 +171,17 @@ describe("Usuarios", () => {
     expect(screen.queryByLabelText("Cuenta de verificación")).toBeNull();
   });
 
+  it("el alta ofrece Supervisor de planta y Operador de planta", async () => {
+    stubList([SELF]);
+    const user = userEvent.setup();
+
+    await renderPage();
+    await user.click(await screen.findByRole("button", { name: "Nuevo usuario" }));
+
+    expect(screen.getByLabelText("Supervisor de planta")).toBeTruthy();
+    expect(screen.getByLabelText("Operador de planta")).toBeTruthy();
+  });
+
   it("si la cuenta de verificación existe, la lista dice qué es y no ofrece cambiarla", async () => {
     stubList([
       SELF,

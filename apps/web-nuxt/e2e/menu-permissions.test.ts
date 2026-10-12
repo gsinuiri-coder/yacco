@@ -19,7 +19,14 @@ import { signIn, waitForHydration } from "./support/session";
 // Si aparece uno, el permiso NO se decide en el test: es una decisión de
 // producto (el menú se lo esconde a ese rol, o la API se lo abre).
 
-const PEOPLE: UserRole[][] = [["ADMIN"], ["SELLER"], ["DRIVER"], ["DRIVER", "SELLER"]];
+const PEOPLE: UserRole[][] = [
+  ["ADMIN"],
+  ["SELLER"],
+  ["DRIVER"],
+  ["DRIVER", "SELLER"],
+  ["PLANT_SUPERVISOR"],
+  ["PLANT_OPERATOR"],
+];
 
 let api: APIRequestContext;
 const unique = String(Date.now());

@@ -23,9 +23,11 @@ afterAll(async () => {
   await container?.stop();
 });
 
-test("las migraciones solas dejan la fila de VIEWER, y sólo esa", async () => {
+test("las migraciones solas dejan las filas de VIEWER y roles de planta, y sólo esas", async () => {
   // Sin seed, ADMIN/SELLER/DRIVER no existen: si apareciera alguno, esta base
   // se habría sembrado y el test no probaría la migración.
   const roles = await prisma.role.findMany({ select: { name: true } });
-  expect(roles.map((role) => role.name)).toEqual(["VIEWER"]);
+  expect(roles.map((role) => role.name).sort()).toEqual(
+    ["PLANT_OPERATOR", "PLANT_SUPERVISOR", "VIEWER"].sort(),
+  );
 });

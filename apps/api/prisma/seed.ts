@@ -20,7 +20,14 @@ const catalog = JSON.parse(
 
 // Idempotent: every insert is an upsert on a unique key, safe to re-run.
 async function main() {
-  for (const name of [UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER, UserRole.VIEWER]) {
+  for (const name of [
+    UserRole.ADMIN,
+    UserRole.SELLER,
+    UserRole.DRIVER,
+    UserRole.PLANT_SUPERVISOR,
+    UserRole.PLANT_OPERATOR,
+    UserRole.VIEWER,
+  ]) {
     await prisma.role.upsert({
       where: { name },
       update: {},

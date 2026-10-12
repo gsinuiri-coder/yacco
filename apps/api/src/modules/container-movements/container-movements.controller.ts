@@ -29,9 +29,9 @@ import { ListContainerMovementsQueryDto } from "./dto/list-container-movements-q
  */
 @ApiTags("container-movements")
 @ApiBearerAuth()
-@ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
+@ApiForbiddenResponse({ description: "Authenticated but missing the required role" })
 @UseGuards(JwtAccessGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.SELLER)
+@Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.PLANT_SUPERVISOR)
 @Controller("container-movements")
 export class ContainerMovementsController {
   constructor(private readonly containerMovementsService: ContainerMovementsService) {}
@@ -74,6 +74,7 @@ export class ContainerMovementsController {
     summary: "Inventario: cantidad por tipo de envase y por estado, derivado del libro",
   })
   @ApiResponse({ status: 200, type: ContainerInventoryItemDto, isArray: true })
+  @Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.PLANT_SUPERVISOR, UserRole.PLANT_OPERATOR)
   @Get("inventory")
   inventory(): Promise<ContainerInventoryItemDto[]> {
     return this.containerMovementsService.inventory();

@@ -50,7 +50,15 @@ import { UpdateContainerTypeDto } from "./dto/update-container-type.dto.js";
 // DRIVER lee el catálogo (el formulario de parada de «Mi ruta»); escribir
 // sigue siendo ADMIN, por el @Roles de cada método.
 // VIEWER: la cuenta del smoke lee los catálogos, que no tienen datos de clientes.
-@Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.DRIVER, UserRole.VIEWER)
+// PLANT_SUPERVISOR y PLANT_OPERATOR leen el catálogo para registrar lotes e inventario.
+@Roles(
+  UserRole.ADMIN,
+  UserRole.SELLER,
+  UserRole.DRIVER,
+  UserRole.VIEWER,
+  UserRole.PLANT_SUPERVISOR,
+  UserRole.PLANT_OPERATOR,
+)
 @Controller("container-types")
 export class ContainerTypesController {
   constructor(private readonly containerTypesService: ContainerTypesService) {}

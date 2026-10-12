@@ -60,15 +60,17 @@ export class ProductionBatchesController {
       "Validation failed, a container type does not exist or is inactive, or a repeated line",
   })
   @ApiConflictResponse({ description: "A batch with this code already exists" })
-  @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
-  @Roles(UserRole.ADMIN)
+  @ApiForbiddenResponse({
+    description: "Authenticated but missing the ADMIN, PLANT_SUPERVISOR or PLANT_OPERATOR role",
+  })
+  @Roles(UserRole.ADMIN, UserRole.PLANT_SUPERVISOR, UserRole.PLANT_OPERATOR)
   @Post()
   create(
     @Body() dto: CreateProductionBatchDto,
     @Req() request: AuthenticatedRequest,
   ): Promise<CreateProductionBatchResponseDto> {
     // filledById comes from the access token, never from the body.
-    return this.productionBatchesService.create(dto, request.user.sub);
+    return this.productionBatchesService.create(dto, request.user.sub, request.user);
   }
 
   @ApiOperation({
@@ -76,8 +78,10 @@ export class ProductionBatchesController {
   })
   @ApiResponse({ status: 200, type: ProductionBatchCodeProposalDto })
   @ApiBadRequestResponse({ description: "The date is not a valid calendar day" })
-  @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
-  @Roles(UserRole.ADMIN)
+  @ApiForbiddenResponse({
+    description: "Authenticated but missing the ADMIN, PLANT_SUPERVISOR or PLANT_OPERATOR role",
+  })
+  @Roles(UserRole.ADMIN, UserRole.PLANT_SUPERVISOR, UserRole.PLANT_OPERATOR)
   @Get("code-proposals")
   proposeCode(
     @Query() query: ProductionBatchCodeProposalQueryDto,
@@ -91,11 +95,17 @@ export class ProductionBatchesController {
       "Ordenados por fecha ascendente, que es el orden FIFO de consumo; ?withStock=true es lo que la carga de ruta necesita",
   })
   @ApiResponse({ status: 200, type: PaginatedProductionBatchesDto })
-  @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
-  @Roles(UserRole.ADMIN, UserRole.SELLER)
+  @ApiForbiddenResponse({
+    description:
+      "Authenticated but missing the ADMIN, SELLER, PLANT_SUPERVISOR or PLANT_OPERATOR role",
+  })
+  @Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.PLANT_SUPERVISOR, UserRole.PLANT_OPERATOR)
   @Get()
-  findAll(@Query() query: ListProductionBatchesQueryDto): Promise<PaginatedProductionBatchesDto> {
-    return this.productionBatchesService.findAll(query);
+  findAll(
+    @Query() query: ListProductionBatchesQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<PaginatedProductionBatchesDto> {
+    return this.productionBatchesService.findAll(query, request.user);
   }
 
   // Sin consumidor en apps/web-nuxt, y así se queda: pasa por el mismo
@@ -107,10 +117,16 @@ export class ProductionBatchesController {
   @ApiOperation({ summary: "Lote de producción con sus líneas" })
   @ApiResponse({ status: 200, type: ProductionBatchResponseDto })
   @ApiNotFoundResponse({ description: "Batch id does not exist" })
-  @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN or SELLER role" })
-  @Roles(UserRole.ADMIN, UserRole.SELLER)
+  @ApiForbiddenResponse({
+    description:
+      "Authenticated but missing the ADMIN, SELLER, PLANT_SUPERVISOR or PLANT_OPERATOR role",
+  })
+  @Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.PLANT_SUPERVISOR, UserRole.PLANT_OPERATOR)
   @Get(":id")
-  findOne(@Param("id", ParseUUIDPipe) id: string): Promise<ProductionBatchResponseDto> {
-    return this.productionBatchesService.findOne(id);
+  findOne(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ProductionBatchResponseDto> {
+    return this.productionBatchesService.findOne(id, request.user);
   }
 }
