@@ -231,6 +231,12 @@ export async function prepararVisor(options = {}) {
     env: apiEnv,
   });
 
+  out.log("Generando cliente de Prisma...");
+  runCommandSync("pnpm", ["--filter", "@yacco/api", "exec", "prisma", "generate"], {
+    cwd: visorRoot,
+    env: apiEnv,
+  });
+
   out.log("Sembrando catálogo inicial...");
   runCommandSync("pnpm", ["--filter", "@yacco/api", "db:seed"], {
     cwd: visorRoot,
@@ -290,6 +296,12 @@ export async function actualizarVisor(options = {}) {
 
   out.log("Aplicando migraciones...");
   runCommandSync("pnpm", ["--filter", "@yacco/api", "db:deploy"], {
+    cwd: visorRoot,
+    env: apiEnv,
+  });
+
+  out.log("Generando cliente de Prisma...");
+  runCommandSync("pnpm", ["--filter", "@yacco/api", "exec", "prisma", "generate"], {
     cwd: visorRoot,
     env: apiEnv,
   });
