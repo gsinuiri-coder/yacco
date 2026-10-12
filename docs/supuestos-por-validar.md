@@ -186,6 +186,13 @@ cuándo, y tres líneas:
 - **Construido encima:** tablas `vehicles`, `vehicle_review_types`, `vehicle_reviews`, `route_vehicle_assignments`, `routes.vehicle_id`, columnas de licencia en `users`, endpoints en `/vehicles`, `/vehicle-review-types` y `/routes/:id/vehicle`, y pantallas web «Vehículos», «Tipos de revisión», avisos en Panel, y asignación de vehículo en rutas y pit.
 - **Si resulta que no:** medio. Tablas y columnas son aditivas y auditadas; se deja de exigir el vehículo o se adaptan las pantallas sin tocar el libro de operaciones.
 
+### Fase 3: contactos por cliente, documento único, fotos por local y propuesta de ubicación
+
+- **Decidido por Giancarlo (2026-10-11),** sin reunión posible con el dueño; fila 4 de «Fase 3 en local».
+- **Asumimos:** que un cliente puede tener múltiples contactos (nombre obligatorio, teléfono opcional), administrados y desactivados de forma auditable; que el documento del cliente (RUC 11 dígitos, DNI 8 dígitos, carné de extranjería, razón social, dirección fiscal) es opcional y único por cliente (dos clientes con el mismo documento avisa al guardar y no bloquea); que cada local puede tener fotos (hasta 10 visibles, aprobadas de inmediato desde la web o solicitadas desde la app del chofer para aprobación del administrador, almacenadas en S3/MinIO y servidas a través de la API con sesión); y que el chofer puede proponer las coordenadas de un local de sus rutas con precisión en metros, que se aplican solo tras aprobación del administrador conservando las anteriores.
+- **Construido encima:** `customer_contacts`, `customers` (document_type, document_number, legal_name, fiscal_address), `customer_location_photos`, `customer_location_coordinate_requests`, endpoints en `/customers/:id/contacts`, `/customers/:id/document`, `/customer-locations/:id/photos`, `/customer-locations/:id/coordinate-requests`, bandeja «Por aprobar» (fotos y ubicaciones) y vistas correspondientes en la web.
+- **Si resulta que no:** medio. Las tablas y columnas son aditivas y auditadas; las fotos y contactos se conservan en la base; se pueden simplificar o retirar las bandejas sin tocar saldos ni el libro de envases o dinero.
+
 ### Fase 2: el orden por cercanía se propone, no se impone
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 4 de «Fase 2 en local».
