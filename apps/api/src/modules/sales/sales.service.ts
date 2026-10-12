@@ -752,7 +752,8 @@ export class SalesService {
     const deliveryGroups = new Map<string, Map<ContainerMovementType, number>>();
     for (const item of params.items) {
       const product = requireProduct(item.productId);
-      if (product.containerTypeId === null) continue;
+      if (product.containerTypeId === null || product.type === ProductType.MAQUILA_SERVICE)
+        continue;
       const movementType =
         product.type === ProductType.REFILL
           ? ContainerMovementType.LOAN_DELIVERY

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatInstantInLima, formatSoles, isAboveZero, isMoneyInput } from "@yacco/shared";
-import type { Product, ProductPriceChange } from "@yacco/shared";
+import type { ContainerType, Product, ProductPriceChange } from "@yacco/shared";
 
 /**
  * El catálogo de productos y su precio de lista: el que paga un cliente que
@@ -20,6 +20,7 @@ const TYPE_LABELS: Record<Product["type"], string> = {
   REFILL: "Recarga",
   CONTAINER_SALE: "Venta de bidón",
   ACCESSORY: "Accesorio",
+  MAQUILA_SERVICE: "Servicio de maquila",
 };
 
 const session = useSession();
@@ -42,7 +43,20 @@ async function loadProducts(): Promise<void> {
     loading.value = false;
   }
 }
-onMounted(loadProducts);
+
+const containerTypes = ref<ContainerType[]>([]);
+async function loadContainerTypes(): Promise<void> {
+  try {
+    containerTypes.value = await api.request<ContainerType[]>("/container-types");
+  } catch {
+    // Silently continue
+  }
+}
+
+onMounted(() => {
+  void loadProducts();
+  void loadContainerTypes();
+});
 
 const summary = computed(() =>
   loading.value
@@ -162,12 +176,74 @@ async function createAccessory(): Promise<void> {
     creatingAccessory.value = false;
   }
 }
+
+// --- Alta de servicio de maquila ---
+const newMaquilaOpen = ref(false);
+const newMaquilaName = ref("");
+const newMaquilaContainerTypeId = ref("");
+const newMaquilaPrice = ref("");
+const creatingMaquila = ref(false);
+const newMaquilaError = ref<string | null>(null);
+
+function openNewMaquilaModal(): void {
+  newMaquilaName.value = "";
+  newMaquilaContainerTypeId.value = containerTypes.value[0]?.id ?? "";
+  newMaquilaPrice.value = "";
+  newMaquilaError.value = null;
+  newMaquilaOpen.value = true;
+}
+
+async function createMaquilaService(): Promise<void> {
+  if (creatingMaquila.value) return;
+  const name = newMaquilaName.value.trim();
+  if (!name) {
+    newMaquilaError.value = "El nombre no puede estar vacío";
+    return;
+  }
+  if (!newMaquilaContainerTypeId.value) {
+    newMaquilaError.value = "Debes seleccionar un tipo de envase";
+    return;
+  }
+  const listPrice = newMaquilaPrice.value.trim();
+  if (!isMoneyInput(listPrice)) {
+    newMaquilaError.value = PRICE_FORMAT_MESSAGE;
+    return;
+  }
+  if (!isAboveZero(listPrice)) {
+    newMaquilaError.value = "El precio de lista debe ser mayor que 0";
+    return;
+  }
+  creatingMaquila.value = true;
+  newMaquilaError.value = null;
+  try {
+    await api.request<Product>("/products", {
+      method: "POST",
+      body: {
+        name,
+        type: "MAQUILA_SERVICE",
+        containerTypeId: newMaquilaContainerTypeId.value,
+        listPrice,
+      },
+    });
+    newMaquilaOpen.value = false;
+    await loadProducts();
+  } catch (error) {
+    newMaquilaError.value = describeApiFailure(error);
+  } finally {
+    creatingMaquila.value = false;
+  }
+}
 </script>
 
 <template>
   <AppPage title="Productos" :description="summary">
     <template v-if="isAdmin" #actions>
       <UButton icon="i-lucide-plus" label="Nuevo accesorio" @click="openNewAccessoryModal" />
+      <UButton
+        icon="i-lucide-plus"
+        label="Nuevo servicio de maquila"
+        @click="openNewMaquilaModal"
+      />
     </template>
     <div class="space-y-6">
       <UAlert
@@ -347,6 +423,66 @@ async function createAccessory(): Promise<void> {
               @click="newAccessoryOpen = false"
             />
             <UButton type="submit" label="Guardar accesorio" :loading="creatingAccessory" />
+          </div>
+        </form>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="newMaquilaOpen" title="Nuevo servicio de maquila">
+      <template #body>
+        <form class="space-y-4" @submit.prevent="createMaquilaService">
+          <UAlert
+            v-if="newMaquilaError"
+            role="alert"
+            color="error"
+            variant="subtle"
+            :title="newMaquilaError"
+          />
+
+          <UFormField label="Nombre del servicio" required>
+            <UInput
+              v-model="newMaquilaName"
+              placeholder="Ej. Maquila con caño"
+              :disabled="creatingMaquila"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField label="Tipo de envase" required>
+            <USelect
+              v-model="newMaquilaContainerTypeId"
+              :items="containerTypes.map((t) => ({ label: t.name, value: t.id }))"
+              placeholder="Selecciona el tipo de envase"
+              :disabled="creatingMaquila"
+              class="w-full"
+            />
+          </UFormField>
+
+          <UFormField
+            label="Precio de lista"
+            required
+            help="En soles, con hasta dos decimales (ej. 3.50)"
+          >
+            <UInput
+              v-model="newMaquilaPrice"
+              inputmode="decimal"
+              placeholder="3.50"
+              :disabled="creatingMaquila"
+              class="w-full"
+            >
+              <template #leading><span class="text-sm text-muted">S/</span></template>
+            </UInput>
+          </UFormField>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancelar"
+              :disabled="creatingMaquila"
+              @click="newMaquilaOpen = false"
+            />
+            <UButton type="submit" label="Guardar servicio" :loading="creatingMaquila" />
           </div>
         </form>
       </template>

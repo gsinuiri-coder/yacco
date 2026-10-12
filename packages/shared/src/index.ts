@@ -12,6 +12,7 @@ export * from "./container-reconciliation.js";
 export * from "./debt-reconciliation.js";
 export * from "./customer-prices.js";
 export * from "./customers.js";
+export * from "./maquila.js";
 export * from "./money.js";
 export * from "./orders.js";
 export * from "./pagination.js";

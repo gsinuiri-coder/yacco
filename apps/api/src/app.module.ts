@@ -16,6 +16,7 @@ import { CustomersModule } from "./modules/customers/customers.module.js";
 import { OrdersModule } from "./modules/orders/orders.module.js";
 import { ProductsModule } from "./modules/products/products.module.js";
 import { AccessoriesModule } from "./modules/accessories/accessories.module.js";
+import { MaquilaModule } from "./modules/maquila/maquila.module.js";
 import { ProductionBatchesModule } from "./modules/production-batches/production-batches.module.js";
 import { ReportsModule } from "./modules/reports/reports.module.js";
 import { RosterLoaderModule } from "./modules/roster-loader/roster-loader.module.js";
@@ -44,6 +45,7 @@ import { StorageModule } from "./modules/storage/storage.module.js";
     OrdersModule,
     ProductsModule,
     AccessoriesModule,
+    MaquilaModule,
     ContainerTypesModule,
     ContainerMovementsModule,
     ContainerBalancesModule,

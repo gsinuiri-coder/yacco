@@ -37,8 +37,20 @@ enum ProductType {
   REFILL
   CONTAINER_SALE
   ACCESSORY
+  MAQUILA_SERVICE
 
   @@map("product_type")
+}
+
+enum MaquilaMovementType {
+  RECEIVED
+  FILLED
+  RETURNED
+  RECEIVED_VOID
+  FILLED_VOID
+  RETURNED_VOID
+
+  @@map("maquila_movement_type")
 }
 
 enum AccessoryMovementType {
@@ -247,6 +259,7 @@ model User {
   customerLocationCoordinatesReviewed CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateReviewedBy")
   accessoryMovementsRecorded          AccessoryMovement[]                 @relation("AccessoryMovementRecordedBy")
   accessoryCountsRecorded             AccessoryCount[]                    @relation("AccessoryCountRecordedBy")
+  maquilaMovementsRecorded            MaquilaContainerMovement[]          @relation("MaquilaMovementRecordedBy")
 
   @@map("users")
 }
@@ -294,6 +307,8 @@ model ContainerType {
   balances      CustomerContainerBalance[]
   counts        ContainerCount[]
   pitStopCounts RoutePitStopCount[]
+  maquilaBalances  MaquilaBalance[]
+  maquilaMovements MaquilaContainerMovement[]
 
   @@map("container_types")
 }
@@ -349,6 +364,8 @@ model Customer {
   prices      CustomerPrice[]
   payments    Payment[]
   orderGroups OrderGroup[]
+  maquilaBalances  MaquilaBalance[]
+  maquilaMovements MaquilaContainerMovement[]
 
   @@map("customers")
 }
@@ -793,6 +810,7 @@ model Sale {
   items                     SaleItem[]
   payments                  Payment[]
   accessoryMovements        AccessoryMovement[]
+  maquilaMovements          MaquilaContainerMovement[]
 
   // A customer's account statement walks their sales by location, oldest
   // first (CustomersService.getAccountStatement). Expand-only, no column.
@@ -1154,5 +1172,44 @@ model AccessoryCount {
   recordedBy User    @relation("AccessoryCountRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
 
   @@map("accessory_counts")
+}
+
+// --- Maquila -----------------------------------------------------------------
+
+model MaquilaBalance {
+  customerId      String @map("customer_id") @db.Uuid
+  containerTypeId String @map("container_type_id") @db.Uuid
+  emptyAtPlant    Int    @default(0) @map("empty_at_plant")
+  fullToReturn    Int    @default(0) @map("full_to_return")
+
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  containerType ContainerType @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+
+  @@id([customerId, containerTypeId])
+  @@map("maquila_balances")
+}
+
+model MaquilaContainerMovement {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId         String              @map("customer_id") @db.Uuid
+  containerTypeId    String              @map("container_type_id") @db.Uuid
+  type               MaquilaMovementType
+  quantity           Int
+  saleId             String?             @map("sale_id") @db.Uuid
+  reversesMovementId String?             @unique @map("reverses_movement_id") @db.Uuid
+  reason             String?
+  recordedById       String              @map("recorded_by") @db.Uuid
+  occurredAt         DateTime            @map("occurred_at") @db.Timestamptz(6)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer         Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  containerType    ContainerType             @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  sale             Sale?                     @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  reversesMovement MaquilaContainerMovement? @relation("MaquilaMovementReversal", fields: [reversesMovementId], references: [id], onDelete: Restrict)
+  reversedBy       MaquilaContainerMovement? @relation("MaquilaMovementReversal")
+  recordedBy       User                      @relation("MaquilaMovementRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([customerId, occurredAt])
+  @@map("maquila_container_movements")
 }
 

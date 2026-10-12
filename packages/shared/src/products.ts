@@ -1,7 +1,7 @@
 /** Contracts derived from apps/api/src/modules/products. `listPrice` is a 2-decimal string. */
 
 /** Prisma enum ProductType. */
-export type ProductType = "REFILL" | "CONTAINER_SALE" | "ACCESSORY";
+export type ProductType = "REFILL" | "CONTAINER_SALE" | "ACCESSORY" | "MAQUILA_SERVICE";
 
 /** ProductResponseDto. */
 export interface Product {
