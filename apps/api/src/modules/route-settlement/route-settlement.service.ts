@@ -41,6 +41,7 @@ interface Expected {
   totalCashCollected: Prisma.Decimal;
   totalPendingConfirmation: Prisma.Decimal;
   totalOnCredit: Prisma.Decimal;
+  totalCashDeliveredInPits: Prisma.Decimal;
 }
 
 function toExpectedDto(expected: Expected): RouteSettlementExpectedDto {
@@ -55,6 +56,7 @@ function toExpectedDto(expected: Expected): RouteSettlementExpectedDto {
     totalCashCollected: expected.totalCashCollected.toFixed(2),
     totalPendingConfirmation: expected.totalPendingConfirmation.toFixed(2),
     totalOnCredit: expected.totalOnCredit.toFixed(2),
+    totalCashDeliveredInPits: expected.totalCashDeliveredInPits.toFixed(2),
   };
 }
 
@@ -79,6 +81,7 @@ function toSettlementDto(
     totalCashCollected: settlement.totalCashCollected.toFixed(2),
     totalPendingConfirmation: settlement.totalPendingConfirmation.toFixed(2),
     totalOnCredit: settlement.totalOnCredit.toFixed(2),
+    totalCashDeliveredInPits: settlement.totalCashDeliveredInPits?.toFixed(2) ?? "0.00",
     notes: settlement.notes,
     settledById: settlement.settledById,
     settledAt: settlement.settledAt,
@@ -297,8 +300,15 @@ export class RouteSettlementService {
       collectedAgg,
       cashAgg,
       pendingAgg,
+      pitsCashAgg,
     ] = await Promise.all([
-      client.routeLoad.aggregate({ where: { routeId }, _sum: { quantity: true } }),
+      client.routeLoad.aggregate({
+        where: {
+          routeId,
+          OR: [{ pitStopId: null }, { pitStop: { voidedAt: null } }],
+        },
+        _sum: { quantity: true },
+      }),
       this.netSum(
         client,
         routeId,
@@ -348,6 +358,10 @@ export class RouteSettlementService {
         where: { stop: { routeId }, voidedAt: null, status: PaymentStatus.PENDING },
         _sum: { amount: true },
       }),
+      client.routePitStop.aggregate({
+        where: { routeId, voidedAt: null },
+        _sum: { cashDelivered: true },
+      }),
     ]);
 
     const totalSold = totalSoldAgg._sum.total ?? new Prisma.Decimal(0);
@@ -364,6 +378,7 @@ export class RouteSettlementService {
       totalCashCollected: cashAgg._sum.amount ?? new Prisma.Decimal(0),
       totalPendingConfirmation: pendingAgg._sum.amount ?? new Prisma.Decimal(0),
       totalOnCredit: totalSold.minus(totalCollected),
+      totalCashDeliveredInPits: pitsCashAgg._sum.cashDelivered ?? new Prisma.Decimal(0),
     };
   }
 
@@ -447,7 +462,10 @@ export class RouteSettlementService {
     actorId: string,
   ): Promise<void> {
     const loads: LoadOrigin[] = await tx.routeLoad.findMany({
-      where: { routeId },
+      where: {
+        routeId,
+        OR: [{ pitStopId: null }, { pitStop: { voidedAt: null } }],
+      },
       select: {
         batchItemId: true,
         quantity: true,
@@ -577,7 +595,10 @@ export class RouteSettlementService {
       // Los tipos que vuelven a la planta: los vacíos contados y los llenos
       // que cargó la ruta.
       const loadedTypes = await tx.routeLoad.findMany({
-        where: { routeId },
+        where: {
+          routeId,
+          OR: [{ pitStopId: null }, { pitStop: { voidedAt: null } }],
+        },
         select: { batchItem: { select: { containerTypeId: true } } },
       });
       await lockContainerTypes(tx, [
@@ -623,6 +644,7 @@ export class RouteSettlementService {
           totalCashCollected: expected.totalCashCollected,
           totalPendingConfirmation: expected.totalPendingConfirmation,
           totalOnCredit: expected.totalOnCredit,
+          totalCashDeliveredInPits: expected.totalCashDeliveredInPits,
           notes: dto.notes ?? null,
           settledById: actorId,
           settledAt: new Date(),

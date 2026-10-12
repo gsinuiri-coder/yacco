@@ -80,6 +80,7 @@ function stubSection(
     registerEndpoint("/api/v1/container-types", () => [
       { id: "ct-bidon", name: "Bidón 20L", active: true },
     ]),
+    registerEndpoint("/api/v1/routes/r-1/pit-stops", () => []),
   );
   return { batchQueries };
 }

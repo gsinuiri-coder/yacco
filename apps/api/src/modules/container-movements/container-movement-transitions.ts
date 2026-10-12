@@ -104,6 +104,16 @@ export const CONTAINER_MOVEMENT_TRANSITIONS: Record<ContainerMovementType, State
   // planta) y el libro no dice cuál fue. Vuelven al camión, que es de donde
   // sale toda venta de una parada, la única que esta feature corrige.
   [ContainerMovementType.FULL_SALE_VOID]: [{ from: null, to: ContainerState.FULL_ON_ROUTE }],
+  // Las tres anulaciones de parada en planta: emiten el camino inverso al movimiento original.
+  [ContainerMovementType.ROUTE_LOAD_VOID]: [
+    { from: ContainerState.FULL_ON_ROUTE, to: ContainerState.FULL_AT_PLANT },
+  ],
+  [ContainerMovementType.EMPTY_UNLOAD_VOID]: [
+    { from: ContainerState.EMPTY_AT_PLANT, to: ContainerState.EMPTY_ON_ROUTE },
+  ],
+  [ContainerMovementType.FULL_RETURN_VOID]: [
+    { from: ContainerState.FULL_AT_PLANT, to: ContainerState.FULL_ON_ROUTE },
+  ],
 };
 
 export function isValidContainerTransition(

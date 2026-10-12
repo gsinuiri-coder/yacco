@@ -135,6 +135,21 @@ describe("isValidContainerTransition", () => {
       ContainerState.EMPTY_ON_ROUTE,
       ContainerState.WITH_CUSTOMER,
     ],
+    [
+      ContainerMovementType.ROUTE_LOAD_VOID,
+      ContainerState.FULL_ON_ROUTE,
+      ContainerState.FULL_AT_PLANT,
+    ],
+    [
+      ContainerMovementType.EMPTY_UNLOAD_VOID,
+      ContainerState.EMPTY_AT_PLANT,
+      ContainerState.EMPTY_ON_ROUTE,
+    ],
+    [
+      ContainerMovementType.FULL_RETURN_VOID,
+      ContainerState.FULL_AT_PLANT,
+      ContainerState.FULL_ON_ROUTE,
+    ],
   ])("%s deshace su movimiento leyéndolo al revés", (type, from, to) => {
     expect(isValidContainerTransition(type, from, to)).toBe(true);
     // Y no en la dirección del movimiento que anula.

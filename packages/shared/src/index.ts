@@ -17,6 +17,7 @@ export * from "./pagination.js";
 export * from "./payments.js";
 export * from "./products.js";
 export * from "./reports.js";
+export * from "./route-pit-stops.js";
 export * from "./route-settlement.js";
 export * from "./routes.js";
 export * from "./settings.js";

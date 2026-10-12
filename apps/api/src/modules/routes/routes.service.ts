@@ -304,11 +304,11 @@ function toRouteResponse(route: AnyRouteWithRelations): RouteResponseDto {
 }
 
 /** ADMIN and SELLER see and operate every route; a DRIVER only their own. */
-function isPrivileged(actor: RouteActor): boolean {
+export function isPrivileged(actor: RouteActor): boolean {
   return actor.roles.includes(UserRole.ADMIN) || actor.roles.includes(UserRole.SELLER);
 }
 
-function assertCanAccessRoute(actor: RouteActor, route: { driverId: string }): void {
+export function assertCanAccessRoute(actor: RouteActor, route: { driverId: string }): void {
   if (!isPrivileged(actor) && route.driverId !== actor.id) {
     throw new ForbiddenException("Esta ruta es de otro chofer");
   }
@@ -1274,7 +1274,10 @@ export class RoutesService {
   async listLoads(routeId: string, actor: RouteActor): Promise<RouteLoadResponseDto[]> {
     await this.getOwnedRouteOrThrow(routeId, actor);
     const loads = await this.prisma.routeLoad.findMany({
-      where: { routeId },
+      where: {
+        routeId,
+        OR: [{ pitStopId: null }, { pitStop: { voidedAt: null } }],
+      },
       include: LOAD_INCLUDE,
     });
     return loads.map(toLoadResponse);
@@ -1291,7 +1294,13 @@ export class RoutesService {
   async truckStock(routeId: string, actor: RouteActor): Promise<RouteTruckStockLineDto[]> {
     await this.getOwnedRouteOrThrow(routeId, actor);
     const [loads, onBoardByType] = await Promise.all([
-      this.prisma.routeLoad.findMany({ where: { routeId }, include: LOAD_INCLUDE }),
+      this.prisma.routeLoad.findMany({
+        where: {
+          routeId,
+          OR: [{ pitStopId: null }, { pitStop: { voidedAt: null } }],
+        },
+        include: LOAD_INCLUDE,
+      }),
       this.containerMovementsService.getRouteFullStockByType(routeId),
     ]);
 
@@ -1411,7 +1420,7 @@ export class RoutesService {
  * incluido el pedido. No es un error de orden sino de stock, así que se deja
  * pasar para que lo reporte el UPDATE guardado de abajo con su mensaje.
  */
-async function assertIsOldestBatchItemWithStock(
+export async function assertIsOldestBatchItemWithStock(
   tx: Prisma.TransactionClient,
   batchItem: { id: string; containerTypeId: string },
 ): Promise<void> {
@@ -1539,7 +1548,7 @@ function assertRouteIsTouchable(status: RouteStatus, action: string): void {
  * Serializa una mutación de la carga con los cambios de estado de la ruta.
  * El orden es siempre ruta y después tipos de envase, igual que al liquidar.
  */
-async function lockRouteAndReadStatus(
+export async function lockRouteAndReadStatus(
   client: Prisma.TransactionClient,
   routeId: string,
 ): Promise<RouteStatus> {

@@ -34,6 +34,7 @@ export interface RouteMoneyTotals {
   totalCashCollected: string;
   totalPendingConfirmation: string;
   totalOnCredit: string;
+  totalCashDeliveredInPits?: string;
 }
 
 /** RouteSettlementExpectedDto: everything from the ledger, no physical count. */

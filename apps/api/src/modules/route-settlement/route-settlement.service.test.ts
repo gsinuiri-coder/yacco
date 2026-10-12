@@ -63,6 +63,7 @@ function settledRow(overrides: Record<string, unknown> = {}) {
     totalCashCollected: decimal("0.00"),
     totalPendingConfirmation: decimal("0.00"),
     totalOnCredit: decimal("0.00"),
+    totalCashDeliveredInPits: null,
     notes: null,
     settledById: ADMIN_ID,
     settledAt: new Date("2026-08-29T20:00:00.000Z"),
@@ -182,6 +183,11 @@ function buildPrismaMock() {
       findUnique: jest.fn<() => Promise<unknown>>(),
       create: jest.fn<() => Promise<unknown>>(),
     },
+    routePitStop: {
+      aggregate: jest
+        .fn<() => Promise<unknown>>()
+        .mockResolvedValue({ _sum: { cashDelivered: null } }),
+    },
     routeStop: {
       count: jest.fn<() => Promise<unknown>>(),
       // La última corrección de la ruta, de la que sale `settlementOutdated`.
@@ -269,6 +275,7 @@ describe("RouteSettlementService", () => {
         totalCashCollected: "150.00",
         totalPendingConfirmation: "130.00",
         totalOnCredit: "40.00",
+        totalCashDeliveredInPits: "0.00",
       });
     });
 
@@ -803,6 +810,38 @@ describe("RouteSettlementService", () => {
         service.settle(ROUTE_ID, { fullReturned: 0, emptiesCollected: [] }, ADMIN_ID),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.routeSettlement.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("settle congela totalCashDeliveredInPits en la liquidacion", async () => {
+      prisma.route.findUnique.mockResolvedValue({ id: ROUTE_ID, status: RouteStatus.FINISHED });
+      prisma.route.updateMany.mockResolvedValueOnce({ count: 1 });
+      mockLedger({ fullOut: 0, totalSold: "100.00", collected: "100.00", cash: "100.00" });
+      prisma.routePitStop.aggregate.mockResolvedValueOnce({
+        _sum: { cashDelivered: decimal("70.00") },
+      });
+      prisma.routeSettlement.create.mockResolvedValue(
+        settledRow({
+          totalSold: decimal("100.00"),
+          totalCollected: decimal("100.00"),
+          totalCashCollected: decimal("100.00"),
+          totalCashDeliveredInPits: decimal("70.00"),
+        }),
+      );
+
+      const result = await service.settle(
+        ROUTE_ID,
+        { fullReturned: 0, emptiesCollected: [] },
+        ADMIN_ID,
+      );
+
+      expect(prisma.routeSettlement.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            totalCashDeliveredInPits: decimal("70.00"),
+          }),
+        }),
+      );
+      expect(result.settlement.totalCashDeliveredInPits).toBe("70.00");
     });
   });
 });

@@ -189,6 +189,11 @@ async function transition(action: "start" | "finish"): Promise<void> {
             @marked="(outcome) => (markOutcome = outcome)"
           />
           <RouteLoadsSection :route="route" />
+          <RoutePitStopsSection
+            v-if="route.status !== 'PLANNED'"
+            :route="route"
+            @changed="resource.reload"
+          />
         </template>
       </ResourceState>
     </div>
