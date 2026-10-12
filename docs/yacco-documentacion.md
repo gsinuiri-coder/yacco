@@ -623,11 +623,34 @@ classDiagram
         +datetime appliedAt
         +SyncOperationStatus status
     }
+    class MaquilaBalance {
+        +int emptyAtPlant
+        +int fullToReturn
+    }
+    class MaquilaContainerMovement {
+        +uuid id
+        +datetime occurredAt
+        +MaquilaMovementType type
+        +int quantity
+        +string reason
+    }
     class UserRole {
         <<enumeration>>
         ADMIN
         SELLER
         DRIVER
+        PLANT_SUPERVISOR
+        PLANT_OPERATOR
+        VIEWER
+    }
+    class MaquilaMovementType {
+        <<enumeration>>
+        RECEIVED
+        FILLED
+        RETURNED
+        RECEIVED_VOID
+        FILLED_VOID
+        RETURNED_VOID
     }
     class ContainerMovementType {
         <<enumeration>>
@@ -651,6 +674,13 @@ classDiagram
     ProductionBatch "0..*" --> "1" User : filledBy
     Customer "1" *-- "0..*" CustomerContainerBalance
     CustomerContainerBalance "0..*" --> "1" ContainerType
+    Customer "1" *-- "0..*" MaquilaBalance
+    MaquilaBalance "0..*" --> "1" ContainerType
+    Customer "1" --> "0..*" MaquilaContainerMovement
+    MaquilaContainerMovement "0..*" --> "1" ContainerType
+    MaquilaContainerMovement "0..*" --> "0..1" Sale
+    MaquilaContainerMovement "0..*" --> "1" User : recordedBy
+    MaquilaContainerMovement "0..1" --> "0..1" MaquilaContainerMovement : reverses
     ContainerMovement "0..*" --> "1" ContainerType
     ContainerMovement "0..*" --> "0..1" Customer
     ContainerMovement "0..*" --> "0..1" ProductionBatch
@@ -693,6 +723,8 @@ classDiagram
 | **BatchItem**                | Renglón auditable de una llenada: cantidades producidas y aún disponibles de un tipo dentro del lote, con hora, responsable y nota propios.                                                                                                                                                                                                                                                                                                                                                                                 | batch, containerType, producedQty, availableQty, createdAt, recordedBy, notes                                                                                                                    | Consumido por RouteLoad en orden FIFO por fecha del lote; dentro del lote, por createdAt (NULL primero) e id. |
 | **ContainerMovement**        | Libro mayor inmutable de todo cambio del parque y de los saldos de clientes; fuente de verdad.                                                                                                                                                                                                                                                                                                                                                                                                                              | id, occurredAt, type, containerType, quantity, referencias opcionales (customer, batch, routeStop), recordedBy                                                                                   | Referencias según el tipo de movimiento.                                                                      |
 | **CustomerContainerBalance** | Saldo materializado de envases por cliente y tipo, para lectura rápida.                                                                                                                                                                                                                                                                                                                                                                                                                                                     | customer, containerType, quantity                                                                                                                                                                | Derivado de ContainerMovement.                                                                                |
+| **MaquilaContainerMovement** | Libro mayor inmutable de movimientos de bidones de clientes en maquila (recibido, llenado, devuelto y sus respectivas anulaciones).                                                                                                                                                                                                                                                                                                                                                                                         | id, customer, containerType, type, quantity, sale (opcional), reversesMovement (opcional), reason, recordedBy, occurredAt, createdAt                                                             | 1 por movimiento; devuelto enlaza a Sale; anulación enlaza al movimiento revertido.                           |
+| **MaquilaBalance**           | Saldo materializado de bidones de clientes por cliente y tipo: vacíos en planta y llenos por devolver (ambos no negativos).                                                                                                                                                                                                                                                                                                                                                                                                 | customer, containerType, emptyAtPlant, fullToReturn                                                                                                                                              | Derivado de MaquilaContainerMovement; 0..* por cliente.                                                       |
 | **Order**                    | Solicitud de preventa.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | id, customer, deliveryDate, status, createdBy                                                                                                                                                    | 1..* OrderItem; 0..1 RouteStop.                                                                               |
 | **OrderItem**                | Línea de pedido con el precio congelado al capturar.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | order, product, quantity, unitPrice                                                                                                                                                              | —                                                                                                             |
 | **Route**                    | Plan de reparto de un día para un repartidor; fija por zona o armada por pedidos.                                                                                                                                                                                                                                                                                                                                                                                                                                           | id, date, driver, zone (opcional), status                                                                                                                                                        | 1..* RouteLoad; 0..* RouteStop; 0..1 RouteSettlement.                                                         |
@@ -847,6 +879,25 @@ erDiagram
         uuid customer_id PK "FK"
         uuid container_type_id PK "FK"
         int quantity
+    }
+    maquila_balances {
+        uuid customer_id PK "FK"
+        uuid container_type_id PK "FK"
+        int empty_at_plant
+        int full_to_return
+    }
+    maquila_container_movements {
+        uuid id PK
+        uuid customer_id FK
+        uuid container_type_id FK
+        enum type
+        int quantity
+        uuid sale_id FK "null"
+        uuid reverses_movement_id FK "null, UK"
+        string reason "null"
+        uuid recorded_by FK
+        timestamptz occurred_at
+        timestamptz created_at
     }
     customer_locations {
         uuid id PK
@@ -1195,6 +1246,15 @@ Endpoints de la API (prefijo `/api/v1`), tal como están en los controllers al 2
 | GET/POST       | `/container-movements`                                      | Libro de envases; el POST registra a mano ingresos de envases nuevos y bajas por daño o pérdida                                                                                                                                                                                                        | ADMIN, SELLER                                                                    |
 | GET            | `/container-movements/inventory`                            | Stock de envases por estado y tipo                                                                                                                                                                                                                                                                     | ADMIN, SELLER                                                                    |
 | GET            | `/container-reconciliation`                                 | Cuadre de envases: saldo materializado contra el libro                                                                                                                                                                                                                                                 | ADMIN                                                                            |
+| POST           | `/maquila/receptions`                                       | Registra recepción de envases vacíos de cliente (maquila), incrementando vacíos en planta                                                                                                                                                                                                              | ADMIN, SELLER                                                                    |
+| POST           | `/maquila/fillings`                                         | Registra llenado de envases de cliente (maquila): descuenta vacíos en planta e incrementa llenos por devolver                                                                                                                                                                                          | ADMIN, PLANT_SUPERVISOR, PLANT_OPERATOR                                          |
+| POST           | `/maquila/returns`                                          | Registra devolución de envases llenos al cliente: descuenta llenos por devolver y genera venta y cobro en la misma transacción                                                                                                                                                                         | ADMIN, SELLER                                                                    |
+| POST           | `/maquila/movements/:id/void`                               | Anula un movimiento de maquila con motivo obligatorio (anular devuelto revierte venta y cobro)                                                                                                                                                                                                         | ADMIN, PLANT_SUPERVISOR (llenado)                                                |
+| GET            | `/maquila/customers`                                        | Clientes que tienen bidones de maquila en planta, con totales de vacíos y llenos y desglose por tipo                                                                                                                                                                                                   | ADMIN, SELLER, PLANT_SUPERVISOR, PLANT_OPERATOR                                  |
+| GET            | `/maquila/balances`                                         | Saldos de maquila por cliente y tipo de envase, con precio de maquila si existe                                                                                                                                                                                                                        | ADMIN, SELLER, PLANT_SUPERVISOR, PLANT_OPERATOR                                  |
+| GET            | `/maquila/customers/:customerId/balances`                   | Saldos de maquila de un cliente específico                                                                                                                                                                                                                                                             | ADMIN, SELLER, PLANT_SUPERVISOR, PLANT_OPERATOR                                  |
+| GET            | `/maquila/movements`                                        | Movimientos de maquila paginados; el operador de planta ve únicamente sus propios llenados                                                                                                                                                                                                             | ADMIN, SELLER, PLANT_SUPERVISOR, PLANT_OPERATOR                                  |
+| GET            | `/maquila/reconciliation`                                   | Cuadre y reconciliación de saldos materializados de maquila contra el libro inmutable                                                                                                                                                                                                                  | ADMIN                                                                            |
 | GET/POST/PATCH | `/container-types`, `/container-types/:id`                  | Tipos de envase                                                                                                                                                                                                                                                                                        | GET: ADMIN, SELLER, DRIVER, VIEWER · POST/PATCH: ADMIN                           |
 | GET/POST/PATCH | `/zones`, `/zones/:id`                                      | Zonas y sus días de reparto                                                                                                                                                                                                                                                                            | GET: ADMIN, SELLER · POST/PATCH: ADMIN                                           |
 | GET            | `/products`                                                 | Catálogo con precio de lista                                                                                                                                                                                                                                                                           | ADMIN, SELLER, DRIVER, VIEWER                                                    |

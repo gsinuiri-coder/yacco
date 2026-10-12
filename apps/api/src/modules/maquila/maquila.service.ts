@@ -855,14 +855,36 @@ export class MaquilaService {
       },
     });
 
-    const movements = await this.prisma.maquilaContainerMovement.findMany();
+    const movements = await this.prisma.maquilaContainerMovement.findMany({
+      include: {
+        customer: { select: { name: true } },
+        containerType: { select: { name: true } },
+      },
+    });
 
     // Sumar movimientos por cliente y tipo de envase
-    const ledger = new Map<string, { empty: number; full: number }>();
+    const ledger = new Map<
+      string,
+      {
+        empty: number;
+        full: number;
+        customerName: string;
+        containerTypeName: string;
+        customerId: string;
+        containerTypeId: string;
+      }
+    >();
 
     for (const m of movements) {
       const key = `${m.customerId}:${m.containerTypeId}`;
-      const current = ledger.get(key) ?? { empty: 0, full: 0 };
+      const current = ledger.get(key) ?? {
+        empty: 0,
+        full: 0,
+        customerName: m.customer.name,
+        containerTypeName: m.containerType.name,
+        customerId: m.customerId,
+        containerTypeId: m.containerTypeId,
+      };
 
       switch (m.type) {
         case MaquilaMovementType.RECEIVED:
@@ -891,10 +913,12 @@ export class MaquilaService {
     }
 
     const discrepancies: MaquilaDiscrepancyResponseDto[] = [];
+    const checkedKeys = new Set<string>();
 
     // Validar cada saldo materializado contra el ledger
     for (const b of balances) {
       const key = `${b.customerId}:${b.containerTypeId}`;
+      checkedKeys.add(key);
       const expected = ledger.get(key) ?? { empty: 0, full: 0 };
 
       if (b.emptyAtPlant !== expected.empty || b.fullToReturn !== expected.full) {
@@ -907,6 +931,22 @@ export class MaquilaService {
           bookFull: b.fullToReturn,
           ledgerEmpty: expected.empty,
           ledgerFull: expected.full,
+        });
+      }
+    }
+
+    // Validar pares en ledger con saldo distinto de cero que no tienen fila materializada
+    for (const [key, l] of ledger.entries()) {
+      if (!checkedKeys.has(key) && (l.empty !== 0 || l.full !== 0)) {
+        discrepancies.push({
+          customerId: l.customerId,
+          customerName: l.customerName,
+          containerTypeId: l.containerTypeId,
+          containerTypeName: l.containerTypeName,
+          bookEmpty: 0,
+          bookFull: 0,
+          ledgerEmpty: l.empty,
+          ledgerFull: l.full,
         });
       }
     }

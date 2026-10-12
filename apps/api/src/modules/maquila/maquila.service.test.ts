@@ -501,18 +501,24 @@ describe("MaquilaService Unit Tests", () => {
           containerTypeId: CONTAINER_TYPE_ID,
           type: MaquilaMovementType.RECEIVED,
           quantity: 10,
+          customer: { name: "Cliente 1" },
+          containerType: { name: "Con caño" },
         },
         {
           customerId: CUSTOMER_ID,
           containerTypeId: CONTAINER_TYPE_ID,
           type: MaquilaMovementType.FILLED,
           quantity: 6,
+          customer: { name: "Cliente 1" },
+          containerType: { name: "Con caño" },
         },
         {
           customerId: CUSTOMER_ID,
           containerTypeId: CONTAINER_TYPE_ID,
           type: MaquilaMovementType.RETURNED,
           quantity: 4,
+          customer: { name: "Cliente 1" },
+          containerType: { name: "Con caño" },
         },
       ]);
 
@@ -539,18 +545,24 @@ describe("MaquilaService Unit Tests", () => {
           containerTypeId: CONTAINER_TYPE_ID,
           type: MaquilaMovementType.RECEIVED,
           quantity: 10,
+          customer: { name: "Cliente 1" },
+          containerType: { name: "Con caño" },
         },
         {
           customerId: CUSTOMER_ID,
           containerTypeId: CONTAINER_TYPE_ID,
           type: MaquilaMovementType.FILLED,
           quantity: 6,
+          customer: { name: "Cliente 1" },
+          containerType: { name: "Con caño" },
         },
         {
           customerId: CUSTOMER_ID,
           containerTypeId: CONTAINER_TYPE_ID,
           type: MaquilaMovementType.RETURNED,
           quantity: 4,
+          customer: { name: "Cliente 1" },
+          containerType: { name: "Con caño" },
         },
       ]);
 
@@ -559,6 +571,27 @@ describe("MaquilaService Unit Tests", () => {
       expect(result.discrepancies).toHaveLength(1);
       expect(result.discrepancies[0]!.bookEmpty).toBe(10);
       expect(result.discrepancies[0]!.ledgerEmpty).toBe(4);
+    });
+
+    it("debe detectar descuadre si existen movimientos en el libro sin fila en saldos", async () => {
+      prisma.maquilaBalance.findMany.mockResolvedValue([]);
+
+      prisma.maquilaContainerMovement.findMany.mockResolvedValue([
+        {
+          customerId: CUSTOMER_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          type: MaquilaMovementType.RECEIVED,
+          quantity: 5,
+          customer: { name: "Cliente 1" },
+          containerType: { name: "Con caño" },
+        },
+      ]);
+
+      const result = await service.reconcile();
+      expect(result.isBalanced).toBe(false);
+      expect(result.discrepancies).toHaveLength(1);
+      expect(result.discrepancies[0]!.bookEmpty).toBe(0);
+      expect(result.discrepancies[0]!.ledgerEmpty).toBe(5);
     });
   });
 });
