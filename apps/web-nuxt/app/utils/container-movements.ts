@@ -18,6 +18,9 @@ export const MOVEMENT_TYPE_LABEL: Record<ContainerMovementType, string> = {
   LOAN_DELIVERY_VOID: "Anulación de entrega",
   EMPTY_PICKUP_VOID: "Anulación de recogida",
   FULL_SALE_VOID: "Anulación de venta",
+  ROUTE_LOAD_VOID: "Anulación de carga a ruta",
+  FULL_RETURN_VOID: "Anulación de devolución a planta",
+  EMPTY_UNLOAD_VOID: "Anulación de descarga de vacíos",
 };
 
 /**

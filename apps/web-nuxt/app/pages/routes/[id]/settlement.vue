@@ -5,6 +5,7 @@ import {
   formatCalendarDay,
   formatInstantInLima,
   formatSoles,
+  subtractAmounts,
 } from "@yacco/shared";
 import type {
   ContainerType,
@@ -275,13 +276,30 @@ const settledEmpties = computed(() =>
                abajo): repetirlo acá sólo invita a preguntar cuál vale. -->
           <template v-if="settlement === null">
             <h3 class="mt-6 mb-3 font-medium text-highlighted">Dinero</h3>
-            <dl class="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <dl class="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
               <StatTile label="Total vendido" :value="formatSoles(view.expected.totalSold)" />
               <StatTile label="Cobrado" :value="formatSoles(view.expected.totalCollected)" />
               <StatTile
                 label="En efectivo"
                 :value="formatSoles(view.expected.totalCashCollected)"
-                note="Es lo que el chofer trae en la mano."
+                note="Total cobrado en efectivo."
+              />
+              <StatTile
+                label="Entregado en pits"
+                :value="formatSoles(view.expected.totalCashDeliveredInPits ?? '0.00')"
+                note="Entregado en paradas en planta."
+              />
+              <StatTile
+                label="Falta entregar"
+                :value="
+                  formatSoles(
+                    subtractAmounts(
+                      view.expected.totalCashCollected,
+                      view.expected.totalCashDeliveredInPits ?? '0.00',
+                    ),
+                  )
+                "
+                note="Lo que el chofer trae en la mano."
               />
               <StatTile
                 label="Por confirmar"
@@ -470,10 +488,25 @@ const settledEmpties = computed(() =>
                     : `Estos son los montos del momento en que se liquidó. Desde entonces se resolvió algún pago que estaba por confirmar, así que el libro hoy dice ${formatSoles(view.expected.totalCollected)} cobrado.`
                 "
               />
-              <dl class="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <dl class="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
                 <StatTile label="Total vendido" :value="formatSoles(settlement.totalSold)" />
                 <StatTile label="Cobrado" :value="formatSoles(settlement.totalCollected)" />
                 <StatTile label="En efectivo" :value="formatSoles(settlement.totalCashCollected)" />
+                <StatTile
+                  label="Entregado en pits"
+                  :value="formatSoles(settlement.totalCashDeliveredInPits ?? '0.00')"
+                />
+                <StatTile
+                  label="Falta entregar"
+                  :value="
+                    formatSoles(
+                      subtractAmounts(
+                        settlement.totalCashCollected,
+                        settlement.totalCashDeliveredInPits ?? '0.00',
+                      ),
+                    )
+                  "
+                />
                 <StatTile
                   label="Por confirmar"
                   :value="formatSoles(settlement.totalPendingConfirmation)"

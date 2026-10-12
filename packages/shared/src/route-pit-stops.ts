@@ -10,7 +10,7 @@ interface Named {
 
 export interface RoutePitStopCount {
   id: string;
-  pitStopId: string;
+  pitStopId?: string;
   containerTypeId: string;
   containerType: Named;
   expectedFull: number;
@@ -24,13 +24,15 @@ export interface RoutePitStopLoad {
   id: string;
   batchItemId: string;
   quantity: number;
-  batchItem: {
-    id: string;
-    containerTypeId: string;
-    containerType: Named;
-    batchId: string;
-    batch: { id: string; code: string };
-  };
+  batch: { id: string; code: string; date: string };
+  containerType: Named;
+}
+
+export interface RoutePitStopMovement {
+  id: string;
+  type: string;
+  quantity: number;
+  containerType: Named;
 }
 
 export interface RoutePitStopUnload {
@@ -43,7 +45,7 @@ export interface RoutePitStopUnload {
 export interface RoutePitStop {
   id: string;
   routeId: string;
-  recordedById: string;
+  recordedById?: string;
   recordedBy: Named;
   createdAt: string;
   notes: string | null;
@@ -51,23 +53,29 @@ export interface RoutePitStop {
   cashDelivered: string | null;
   cashReason: string | null;
   voidedAt: string | null;
-  voidedById: string | null;
+  voidedById?: string | null;
   voidedBy: Named | null;
   voidReason: string | null;
   counts: RoutePitStopCount[];
   loads: RoutePitStopLoad[];
-  unloads: RoutePitStopUnload[];
+  unloads?: RoutePitStopUnload[];
+  movements: RoutePitStopMovement[];
 }
+
+export type RoutePitStopResponse = RoutePitStop;
 
 export interface RoutePitStopContainerPreview {
   containerTypeId: string;
   containerTypeName: string;
   expectedFull: number;
   expectedEmpty: number;
+  previousFullDifferences?: number;
+  previousEmptyDifferences?: number;
 }
 
 export interface RoutePitStopCashPreview {
-  cashCollected: string;
+  cashCollected?: string;
+  cashCollectedInRoute?: string;
   cashDeliveredInPreviousPits: string;
   cashExpected: string;
 }
@@ -76,6 +84,8 @@ export interface RoutePitStopPreview {
   containers: RoutePitStopContainerPreview[];
   cash: RoutePitStopCashPreview;
 }
+
+export type RoutePitStopPreviewResponse = RoutePitStopPreview;
 
 export interface CreateRoutePitStopCountBody {
   containerTypeId: string;
