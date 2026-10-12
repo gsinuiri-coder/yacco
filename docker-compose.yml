@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: yacco
       POSTGRES_DB: yacco_dev
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     # Postgres 18+ images store data in a major-version subdirectory
     # (/var/lib/postgresql/18/docker), so the mount goes one level up. Mounting
     # at /var/lib/postgresql/data — the pre-18 convention — makes the container
@@ -28,8 +28,8 @@ services:
       MINIO_ROOT_USER: yacco
       MINIO_ROOT_PASSWORD: yacco12345
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:

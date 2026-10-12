@@ -27,10 +27,41 @@ export const PRODUCTION_API_ORIGIN = "https://yacco-api-297699663114.us-east4.ru
 export const DEMO_API_ORIGIN = "https://yacco-api-demo-297699663114.us-east4.run.app";
 
 /**
+ * Destino del proxy local: configurable por LOCAL_API_ORIGIN o API_PORT para
+ * entornos aislados como el visor (3300), manteniendo http://localhost:3200 por defecto.
+ */
+export function resolveLocalApiOrigin(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (env.LOCAL_API_ORIGIN !== undefined && env.LOCAL_API_ORIGIN.trim() !== "") {
+    return env.LOCAL_API_ORIGIN.trim();
+  }
+  if (env.API_PORT !== undefined && env.API_PORT.trim() !== "") {
+    return `http://localhost:${env.API_PORT.trim()}`;
+  }
+  return "http://localhost:3200";
+}
+
+/**
+ * Puerto del servidor de desarrollo de Nuxt: configurable por PORT o NUXT_PORT
+ * (3301 para el visor), con 3201 por defecto.
+ */
+export function resolveDevServerPort(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const candidate = env.PORT ?? env.NUXT_PORT;
+  if (candidate !== undefined && candidate.trim() !== "") {
+    const parsed = Number(candidate);
+    if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  }
+  return 3201;
+}
+
+/**
  * `nuxt dev` le pega a la API local (PORT de .env.example). Es sólo el
  * servidor de desarrollo: en build esta regla no existe.
  */
-export const LOCAL_API_ORIGIN = "http://localhost:3200";
+export const LOCAL_API_ORIGIN = resolveLocalApiOrigin();
 
 /**
  * `/health` está fuera del prefijo `api/v1` en la API (configure-app.ts), así

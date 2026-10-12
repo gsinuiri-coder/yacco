@@ -4,6 +4,7 @@ import {
   DEMO_API_ORIGIN,
   LOCAL_API_ORIGIN,
   apiRouteRules,
+  resolveDevServerPort,
   vercelProxyRoutes,
 } from "./config/api-proxy";
 import { createLocalApiGuard, foreignApiResponse } from "./config/local-api-guard";
@@ -64,9 +65,8 @@ export default defineNuxtConfig({
     },
   },
 
-  // `nuxt dev` en el 3201, al lado de la API en el 3200: el 3000 de Nuxt por
-  // defecto lo comparten todos los proyectos de la máquina (docs/ENTORNOS.md).
-  devServer: { port: 3201 },
+  // `nuxt dev` en el 3201 por defecto, o PORT / NUXT_PORT cuando corre como visor.
+  devServer: { port: resolveDevServerPort() },
 
   $development: {
     routeRules: apiRouteRules(LOCAL_API_ORIGIN),

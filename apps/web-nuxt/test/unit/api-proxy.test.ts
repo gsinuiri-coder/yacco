@@ -5,6 +5,8 @@ import {
   LOCAL_API_ORIGIN,
   PRODUCTION_API_ORIGIN,
   PRODUCTION_WEB_HOST,
+  resolveDevServerPort,
+  resolveLocalApiOrigin,
   vercelProxyRoutes,
 } from "../../config/api-proxy";
 
@@ -67,5 +69,18 @@ describe("proxy de la API por host", () => {
       "X-Frame-Options": "DENY",
       "Content-Security-Policy": "frame-ancestors 'none'",
     });
+  });
+
+  it("permite configurar el origen de la API y el puerto de desarrollo por entorno", () => {
+    expect(resolveLocalApiOrigin({})).toBe("http://localhost:3200");
+    expect(resolveLocalApiOrigin({ LOCAL_API_ORIGIN: "http://localhost:3300" })).toBe(
+      "http://localhost:3300",
+    );
+    expect(resolveLocalApiOrigin({ API_PORT: "3300" })).toBe("http://localhost:3300");
+
+    expect(resolveDevServerPort({})).toBe(3201);
+    expect(resolveDevServerPort({ PORT: "3301" })).toBe(3301);
+    expect(resolveDevServerPort({ NUXT_PORT: "3301" })).toBe(3301);
+    expect(resolveDevServerPort({ PORT: "not-a-port" })).toBe(3201);
   });
 });

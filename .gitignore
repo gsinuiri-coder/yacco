@@ -64,3 +64,6 @@ playwright-report/
 
 # Archivos locales que escriben los scripts (contraseñas de pnpm demo:prueba).
 .local/
+
+# Estado y procesos en segundo plano de pnpm visor:* (.visor/api.pid, .visor/web.pid, logs).
+.visor/
