@@ -261,7 +261,9 @@ export class RouteVehicleAssignmentResponseDto {
   @ApiPropertyOptional({ format: "uuid", nullable: true })
   pitStopId!: string | null;
 
-  @ApiPropertyOptional({ description: "Indica si la asignación proviene de un pit stop que fue anulado" })
+  @ApiPropertyOptional({
+    description: "Indica si la asignación proviene de un pit stop que fue anulado",
+  })
   isVoided?: boolean;
 }
 

@@ -572,8 +572,8 @@ async function submit(): Promise<void> {
         <div class="space-y-1">
           <h4 class="font-semibold text-highlighted">Cambio de vehículo (opcional)</h4>
           <p class="text-xs text-muted">
-            El cuadre de esta parada corresponde al vehículo que se deja. Si la ruta cambia de vehículo
-            en este pit, el nuevo vehículo pasará a ser el actual.
+            El cuadre de esta parada corresponde al vehículo que se deja. Si la ruta cambia de
+            vehículo en este pit, el nuevo vehículo pasará a ser el actual.
           </p>
         </div>
 

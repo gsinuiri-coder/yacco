@@ -90,4 +90,3 @@ export function diffCalendarDays(fromDay: string, toDay: string): number {
   const utc2 = Date.UTC(Number(parts2[1]), Number(parts2[2]) - 1, Number(parts2[3]));
   return Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
 }
-

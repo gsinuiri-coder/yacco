@@ -238,10 +238,17 @@ async function confirmVoid(pitId: string): Promise<void> {
           </p>
 
           <!-- Detalles de la parada en planta -->
-          <div v-if="pit.vehicleId" class="rounded-md bg-primary/5 border border-primary/20 p-2.5 text-xs flex flex-wrap items-center gap-2">
+          <div
+            v-if="pit.vehicleId"
+            class="rounded-md bg-primary/5 border border-primary/20 p-2.5 text-xs flex flex-wrap items-center gap-2"
+          >
             <span class="font-semibold text-primary">Cambio de vehículo en esta parada</span>
-            <span v-if="pit.vehicleReason" class="text-muted">— Motivo: {{ pit.vehicleReason }}</span>
-            <span v-if="pit.voidedAt" class="text-error font-medium">(Revertido al anular la parada)</span>
+            <span v-if="pit.vehicleReason" class="text-muted"
+              >— Motivo: {{ pit.vehicleReason }}</span
+            >
+            <span v-if="pit.voidedAt" class="text-error font-medium"
+              >(Revertido al anular la parada)</span
+            >
           </div>
 
           <div class="grid gap-4 text-xs sm:grid-cols-2 lg:grid-cols-4">

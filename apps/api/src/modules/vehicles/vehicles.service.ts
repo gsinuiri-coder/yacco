@@ -162,7 +162,9 @@ export class VehiclesService {
         ...(dto.brand !== undefined ? { brand: dto.brand.trim() } : {}),
         ...(dto.model !== undefined ? { model: dto.model.trim() } : {}),
         ...(dto.capacityUnits !== undefined ? { capacityUnits: dto.capacityUnits } : {}),
-        ...(dto.vehicleClass !== undefined ? { vehicleClass: dto.vehicleClass?.trim() || null } : {}),
+        ...(dto.vehicleClass !== undefined
+          ? { vehicleClass: dto.vehicleClass?.trim() || null }
+          : {}),
         ...(dto.circulationCardNumber !== undefined
           ? { circulationCardNumber: dto.circulationCardNumber?.trim() || null }
           : {}),

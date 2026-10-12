@@ -2,7 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from "class-validator";
 
 export class CreateVehicleDto {
-  @ApiProperty({ description: "Placa única del vehículo (se normaliza en mayúsculas sin guiones)", example: "ABC123" })
+  @ApiProperty({
+    description: "Placa única del vehículo (se normaliza en mayúsculas sin guiones)",
+    example: "ABC123",
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(20)
@@ -32,7 +35,10 @@ export class CreateVehicleDto {
   @Min(0)
   capacityUnits?: number;
 
-  @ApiPropertyOptional({ description: "Categoría o clase del vehículo para guías de remisión", example: "N2" })
+  @ApiPropertyOptional({
+    description: "Categoría o clase del vehículo para guías de remisión",
+    example: "N2",
+  })
   @IsOptional()
   @IsString()
   @MaxLength(50)

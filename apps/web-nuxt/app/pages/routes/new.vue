@@ -182,12 +182,7 @@ async function submit(): Promise<void> {
             name="routeZone"
             help="Sólo sirve para agrupar y filtrar rutas; no agrega los clientes de la zona."
           >
-            <USelect
-              v-model="zoneId"
-              :items="zoneItems"
-              :disabled="submitting"
-              class="w-full"
-            />
+            <USelect v-model="zoneId" :items="zoneItems" :disabled="submitting" class="w-full" />
           </UFormField>
         </div>
 
@@ -209,7 +204,9 @@ async function submit(): Promise<void> {
           />
           <UButton
             type="submit"
-            :disabled="submitting || noDrivers || noVehicles || drivers.failed.value || vehicles.failed.value"
+            :disabled="
+              submitting || noDrivers || noVehicles || drivers.failed.value || vehicles.failed.value
+            "
             :label="submitting ? 'Planificando…' : 'Planificar ruta'"
           />
         </div>

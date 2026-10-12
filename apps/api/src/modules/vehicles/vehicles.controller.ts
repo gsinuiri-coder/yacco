@@ -45,7 +45,9 @@ import { VehiclesService } from "./vehicles.service.js";
 export class VehiclesController {
   constructor(private readonly vehiclesService: VehiclesService) {}
 
-  @ApiOperation({ summary: "Lista alertas de revisiones vehiculares y licencias por vencer o vencidas" })
+  @ApiOperation({
+    summary: "Lista alertas de revisiones vehiculares y licencias por vencer o vencidas",
+  })
   @ApiResponse({ status: 200, type: [UpcomingReviewAlertDto] })
   @Roles(UserRole.ADMIN, UserRole.SELLER)
   @Get("upcoming-reviews")
@@ -91,7 +93,9 @@ export class VehiclesController {
   @ApiOperation({ summary: "Actualiza datos o estado de un vehículo (solo ADMIN)" })
   @ApiResponse({ status: 200, type: VehicleResponseDto })
   @ApiNotFoundResponse({ description: "El vehículo no existe" })
-  @ApiConflictResponse({ description: "La placa no puede modificarse si ya estuvo en una ruta, o placa duplicada" })
+  @ApiConflictResponse({
+    description: "La placa no puede modificarse si ya estuvo en una ruta, o placa duplicada",
+  })
   @Roles(UserRole.ADMIN)
   @Patch(":id")
   update(
@@ -124,7 +128,9 @@ export class VehiclesController {
 
   @ApiOperation({ summary: "Registra una nueva revisión con fecha de vencimiento" })
   @ApiResponse({ status: 201, type: VehicleReviewResponseDto })
-  @ApiBadRequestResponse({ description: "Fecha de vencimiento anterior a fecha de inicio, o tipo inactivo" })
+  @ApiBadRequestResponse({
+    description: "Fecha de vencimiento anterior a fecha de inicio, o tipo inactivo",
+  })
   @ApiNotFoundResponse({ description: "El vehículo no existe" })
   @Roles(UserRole.ADMIN, UserRole.SELLER)
   @Post(":id/reviews")

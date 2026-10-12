@@ -413,7 +413,10 @@ describe("VehiclesService", () => {
       const created = await service.createReviewType({ name: "Seguro Todo Riesgo" }, ADMIN_ID);
       expect(created.name).toBe("Seguro Todo Riesgo");
 
-      prisma.vehicleReviewType.findFirst.mockResolvedValue({ id: "dup", name: "Seguro Todo Riesgo" });
+      prisma.vehicleReviewType.findFirst.mockResolvedValue({
+        id: "dup",
+        name: "Seguro Todo Riesgo",
+      });
       await expect(
         service.createReviewType({ name: "Seguro Todo Riesgo" }, ADMIN_ID),
       ).rejects.toThrow(ConflictException);
@@ -441,17 +444,15 @@ describe("VehiclesService", () => {
       expect(updated.active).toBe(false);
 
       prisma.vehicleReviewType.findUnique.mockResolvedValueOnce(null);
-      await expect(
-        service.updateReviewType("missing", { active: false }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.updateReviewType("missing", { active: false })).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe("getUpcomingReviewAlerts", () => {
     it("encuentra revisiones por vencer/vencidas de vehículos y licencias de choferes", async () => {
-      prisma.vehicle.findMany.mockResolvedValue([
-        { id: "v-1", plate: "ABC123", name: "Camión 1" },
-      ]);
+      prisma.vehicle.findMany.mockResolvedValue([{ id: "v-1", plate: "ABC123", name: "Camión 1" }]);
       prisma.vehicle.findUnique.mockResolvedValue({ id: "v-1" });
       prisma.vehicleReviewType.findMany.mockResolvedValue([
         { id: "rt-soat", name: "SOAT", active: true },

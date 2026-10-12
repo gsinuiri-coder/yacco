@@ -701,10 +701,7 @@ export class RoutePitStopsService {
             where: {
               routeId,
               id: { not: pitAssignment.id },
-              OR: [
-                { pitStopId: null },
-                { pitStop: { voidedAt: null, id: { not: pitStopId } } },
-              ],
+              OR: [{ pitStopId: null }, { pitStop: { voidedAt: null, id: { not: pitStopId } } }],
             },
             orderBy: { createdAt: "desc" },
           });

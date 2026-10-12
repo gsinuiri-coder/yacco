@@ -676,9 +676,7 @@ describe("RoutePitStopsService", () => {
         createdAt: new Date("2026-10-11T12:00:00Z"),
         voidedAt: null,
       };
-      prisma.routePitStop.findFirst
-        .mockResolvedValueOnce(currentPit)
-        .mockResolvedValueOnce(null);
+      prisma.routePitStop.findFirst.mockResolvedValueOnce(currentPit).mockResolvedValueOnce(null);
       prisma.routeLoad.findMany.mockResolvedValue([]);
       prisma.containerMovement.findMany.mockResolvedValue([]);
 

@@ -481,10 +481,7 @@ describe("RoutesService", () => {
       prisma.user.findUnique.mockResolvedValue(activeDriver());
 
       await expect(
-        service.create(
-          { driverId: DRIVER_ID, vehicleId: "", date: "2026-08-25" },
-          ADMIN_ID,
-        ),
+        service.create({ driverId: DRIVER_ID, vehicleId: "", date: "2026-08-25" }, ADMIN_ID),
       ).rejects.toThrow("El vehículo es obligatorio para crear una ruta");
     });
 
@@ -602,9 +599,7 @@ describe("RoutesService", () => {
         name: "Camión 2",
         active: true,
       });
-      prisma.route.findUniqueOrThrow.mockResolvedValue(
-        buildRoute({ vehicleId: OTHER_VEHICLE_ID }),
-      );
+      prisma.route.findUniqueOrThrow.mockResolvedValue(buildRoute({ vehicleId: OTHER_VEHICLE_ID }));
 
       const result = await service.assignVehicle(
         ROUTE_ID,
