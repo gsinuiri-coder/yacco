@@ -69,7 +69,8 @@ async function createUserAndLogin(
 }
 
 beforeAll(async () => {
-  minioContainer = await new GenericContainer("minio/minio:latest")
+  const minioImage = process.env.TESTCONTAINERS_MINIO_IMAGE ?? "cgr.dev/chainguard/minio:latest";
+  minioContainer = await new GenericContainer(minioImage)
     .withCommand(["server", "/data"])
     .withEnvironment({
       MINIO_ROOT_USER: "miniotest",
