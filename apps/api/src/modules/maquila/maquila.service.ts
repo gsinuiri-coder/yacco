@@ -4,9 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { MaquilaMovementType, PaymentStatus, Prisma, ProductType, UserRole } from "@prisma/client";
+import { MaquilaMovementType, Prisma, ProductType, UserRole } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import { MONEY_MESSAGE, MONEY_PATTERN } from "../customers/dto/create-customer.dto.js";
+import { SalesService } from "../sales/sales.service.js";
 import type { FillMaquilaDto } from "./dto/fill-maquila.dto.js";
 import type { ListMaquilaMovementsQueryDto } from "./dto/list-maquila-movements-query.dto.js";
 import type {
@@ -21,17 +21,6 @@ import type { ReceiveMaquilaDto } from "./dto/receive-maquila.dto.js";
 import type { ReturnMaquilaDto } from "./dto/return-maquila.dto.js";
 import type { VoidMaquilaMovementDto } from "./dto/void-maquila-movement.dto.js";
 
-function assertPositiveAmount(amount: string): Prisma.Decimal {
-  if (!MONEY_PATTERN.test(amount)) {
-    throw new BadRequestException(`El monto ${MONEY_MESSAGE}`);
-  }
-  const parsed = new Prisma.Decimal(amount);
-  if (parsed.lte(0)) {
-    throw new BadRequestException("El monto debe ser mayor que 0");
-  }
-  return parsed;
-}
-
 const MOVEMENT_INCLUDE = {
   customer: { select: { id: true, name: true } },
   containerType: { select: { id: true, name: true } },
@@ -45,7 +34,10 @@ type MovementWithRelations = Prisma.MaquilaContainerMovementGetPayload<{
 
 @Injectable()
 export class MaquilaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly salesService: SalesService,
+  ) {}
 
   private toMovementResponse(movement: MovementWithRelations): MaquilaMovementResponseDto {
     return {
@@ -198,7 +190,7 @@ export class MaquilaService {
   async return(dto: ReturnMaquilaDto, recordedById: string): Promise<MaquilaMovementResponseDto> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: dto.customerId },
-      select: { id: true, active: true, debtBalance: true, creditLimit: true },
+      select: { id: true, active: true },
     });
     if (!customer) {
       throw new BadRequestException(`El cliente "${dto.customerId}" no existe`);
@@ -242,7 +234,7 @@ export class MaquilaService {
         containerTypeId: dto.containerTypeId,
         active: true,
       },
-      select: { id: true, listPrice: true },
+      select: { id: true },
     });
 
     if (!maquilaProduct) {
@@ -264,67 +256,6 @@ export class MaquilaService {
       locationId = primaryLoc.id;
     }
 
-    // Resolver precio: precio pactado > precio de lista
-    const customerPrices = await this.prisma.customerPrice.findMany({
-      where: {
-        customerId: dto.customerId,
-        productId: maquilaProduct.id,
-        OR: [{ locationId: null }, { locationId }],
-      },
-    });
-
-    const locationPrice = customerPrices.find((p) => p.locationId === locationId);
-    const generalPrice = customerPrices.find((p) => p.locationId === null);
-    const agreedPrice = locationPrice ?? generalPrice;
-    const unitPrice = agreedPrice ? agreedPrice.price : maquilaProduct.listPrice;
-
-    if (unitPrice.lte(0)) {
-      throw new BadRequestException("Falta el precio de maquila de este cliente");
-    }
-
-    const total = unitPrice.times(dto.quantity);
-
-    // Pago (si se proporciona)
-    let resolvedPayment: {
-      amount: Prisma.Decimal;
-      status: PaymentStatus;
-      paymentMethodId: string;
-    } | null = null;
-
-    if (dto.payment) {
-      const amount = assertPositiveAmount(dto.payment.amount);
-      const paymentMethod = await this.prisma.paymentMethod.findUnique({
-        where: { id: dto.payment.paymentMethodId },
-        select: { id: true, active: true, requiresConfirmation: true },
-      });
-      if (!paymentMethod) {
-        throw new BadRequestException(
-          `El método de pago "${dto.payment.paymentMethodId}" no existe`,
-        );
-      }
-      if (!paymentMethod.active) {
-        throw new BadRequestException(
-          `El método de pago "${dto.payment.paymentMethodId}" no está activo`,
-        );
-      }
-      resolvedPayment = {
-        amount,
-        status: paymentMethod.requiresConfirmation
-          ? PaymentStatus.PENDING
-          : PaymentStatus.CONFIRMED,
-        paymentMethodId: paymentMethod.id,
-      };
-    }
-
-    const debtDelta =
-      resolvedPayment !== null && resolvedPayment.status === PaymentStatus.CONFIRMED
-        ? total.minus(resolvedPayment.amount)
-        : total;
-
-    const creditLimitExceeded =
-      customer.creditLimit !== null &&
-      customer.debtBalance.plus(debtDelta).gt(customer.creditLimit);
-
     const occurredAt = new Date();
 
     const movement = await this.prisma.$transaction(async (tx) => {
@@ -339,59 +270,23 @@ export class MaquilaService {
         data: { fullToReturn: { decrement: dto.quantity } },
       });
 
-      // 2. Incrementar deuda del cliente
-      await tx.customer.update({
-        where: { id: dto.customerId },
-        data: { debtBalance: { increment: debtDelta } },
+      const sale = await this.salesService.registerServiceSaleWithinTransaction(tx, {
+        locationId,
+        productId: maquilaProduct.id,
+        quantity: dto.quantity,
+        ...(dto.payment === undefined ? {} : { payment: dto.payment }),
+        recordedById,
+        occurredAt,
       });
 
-      // 3. Crear venta
-      const sale = await tx.sale.create({
-        data: {
-          locationId: locationId!,
-          soldAt: occurredAt,
-          total,
-          creditLimitExceeded,
-          recordedById,
-          items: {
-            create: [
-              {
-                productId: maquilaProduct.id,
-                quantity: dto.quantity,
-                unitPrice,
-              },
-            ],
-          },
-        },
-      });
-
-      // 4. Crear pago si se especificó
-      if (resolvedPayment !== null) {
-        const confirmed = resolvedPayment.status === PaymentStatus.CONFIRMED;
-        await tx.payment.create({
-          data: {
-            customerId: dto.customerId,
-            locationId: locationId!,
-            saleId: sale.id,
-            paymentMethodId: resolvedPayment.paymentMethodId,
-            paidAt: occurredAt,
-            amount: resolvedPayment.amount,
-            status: resolvedPayment.status,
-            confirmedAt: confirmed ? occurredAt : null,
-            confirmedById: confirmed ? recordedById : null,
-            recordedById,
-          },
-        });
-      }
-
-      // 5. Crear movimiento RETURNED
+      // Venta, cobro, deuda, saldo físico y libro se confirman o revierten juntos.
       return tx.maquilaContainerMovement.create({
         data: {
           customerId: dto.customerId,
           containerTypeId: dto.containerTypeId,
           type: MaquilaMovementType.RETURNED,
           quantity: dto.quantity,
-          saleId: sale.id,
+          saleId: sale.sale.id,
           recordedById,
           occurredAt,
         },
@@ -416,10 +311,7 @@ export class MaquilaService {
       where: { id },
       include: {
         sale: {
-          include: {
-            payments: true,
-            location: { select: { customerId: true } },
-          },
+          select: { id: true, voidedAt: true },
         },
         reversedBy: { select: { id: true } },
       },
@@ -570,7 +462,16 @@ export class MaquilaService {
 
       const occurredAt = new Date();
       const voidedMovement = await this.prisma.$transaction(async (tx) => {
-        // 1. Restaurar llenos por devolver
+        const voidedSale = await this.salesService.voidSaleWithinTransaction(tx, {
+          saleId: sale.id,
+          voidedById: actor.id,
+          voidReason: reason,
+        });
+        if (voidedSale.sale === null) {
+          throw new BadRequestException("La venta asociada ya está anulada");
+        }
+
+        // Venta, cobro, deuda, saldo físico y libro se confirman o revierten juntos.
         await tx.maquilaBalance.update({
           where: {
             customerId_containerTypeId: {
@@ -581,43 +482,6 @@ export class MaquilaService {
           data: { fullToReturn: { increment: movement.quantity } },
         });
 
-        // 2. Anular cobros y pagos
-        await tx.sale.update({
-          where: { id: sale.id },
-          data: {
-            voidedAt: occurredAt,
-            voidedById: actor.id,
-            voidReason: reason,
-          },
-        });
-
-        if (sale.payments.length > 0) {
-          await tx.payment.updateMany({
-            where: {
-              id: { in: sale.payments.map((p) => p.id) },
-              voidedAt: null,
-            },
-            data: {
-              voidedAt: occurredAt,
-              voidedById: actor.id,
-              voidReason: reason,
-            },
-          });
-        }
-
-        let debtDelta = sale.total.negated();
-        for (const payment of sale.payments) {
-          if (payment.status === PaymentStatus.CONFIRMED) {
-            debtDelta = debtDelta.plus(payment.amount);
-          }
-        }
-
-        await tx.customer.update({
-          where: { id: movement.customerId },
-          data: { debtBalance: { increment: debtDelta } },
-        });
-
-        // 3. Crear movimiento RETURNED_VOID
         return tx.maquilaContainerMovement.create({
           data: {
             customerId: movement.customerId,
