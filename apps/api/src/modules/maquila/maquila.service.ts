@@ -34,6 +34,11 @@ type MovementWithRelations = Prisma.MaquilaContainerMovementGetPayload<{
 
 type MaquilaReader = { id: string; roles: UserRole[] };
 
+type BalanceReference = {
+  customerId: string;
+  containerTypeId: string;
+};
+
 @Injectable()
 export class MaquilaService {
   constructor(
@@ -85,28 +90,78 @@ export class MaquilaService {
     }
   }
 
-  async receive(dto: ReceiveMaquilaDto, recordedById: string): Promise<MaquilaMovementResponseDto> {
+  private async assertActiveReferences(customerId: string, containerTypeId: string): Promise<void> {
     const customer = await this.prisma.customer.findUnique({
-      where: { id: dto.customerId },
+      where: { id: customerId },
       select: { id: true, active: true },
     });
     if (!customer) {
-      throw new BadRequestException(`El cliente "${dto.customerId}" no existe`);
+      throw new BadRequestException(`El cliente "${customerId}" no existe`);
     }
     if (!customer.active) {
-      throw new BadRequestException(`El cliente "${dto.customerId}" no está activo`);
+      throw new BadRequestException(`El cliente "${customerId}" no está activo`);
     }
 
     const containerType = await this.prisma.containerType.findUnique({
-      where: { id: dto.containerTypeId },
+      where: { id: containerTypeId },
       select: { id: true, active: true },
     });
     if (!containerType) {
-      throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no existe`);
+      throw new BadRequestException(`El tipo de envase "${containerTypeId}" no existe`);
     }
     if (!containerType.active) {
-      throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no está activo`);
+      throw new BadRequestException(`El tipo de envase "${containerTypeId}" no está activo`);
     }
+  }
+
+  private async withCommercialData<T extends BalanceReference>(
+    balances: T[],
+  ): Promise<Array<T & { productId: string | null; unitPrice: string | null }>> {
+    const containerTypeIds = [...new Set(balances.map((balance) => balance.containerTypeId))];
+    const maquilaProducts = await this.prisma.product.findMany({
+      where: {
+        type: ProductType.MAQUILA_SERVICE,
+        containerTypeId: { in: containerTypeIds },
+        active: true,
+      },
+      select: { id: true, containerTypeId: true, listPrice: true },
+    });
+    const productMap = new Map<string, { id: string; listPrice: Prisma.Decimal }>();
+    for (const product of maquilaProducts) {
+      if (product.containerTypeId) {
+        productMap.set(product.containerTypeId, {
+          id: product.id,
+          listPrice: product.listPrice,
+        });
+      }
+    }
+
+    const customerPrices = await this.prisma.customerPrice.findMany({
+      where: {
+        customerId: { in: [...new Set(balances.map((balance) => balance.customerId))] },
+        productId: { in: maquilaProducts.map((product) => product.id) },
+        locationId: null,
+      },
+    });
+
+    return balances.map((balance) => {
+      const product = productMap.get(balance.containerTypeId);
+      if (!product) {
+        return { ...balance, productId: null, unitPrice: null };
+      }
+      const customerPrice = customerPrices.find(
+        (price) => price.customerId === balance.customerId && price.productId === product.id,
+      );
+      return {
+        ...balance,
+        productId: product.id,
+        unitPrice: (customerPrice?.price ?? product.listPrice).toFixed(2),
+      };
+    });
+  }
+
+  async receive(dto: ReceiveMaquilaDto, recordedById: string): Promise<MaquilaMovementResponseDto> {
+    await this.assertActiveReferences(dto.customerId, dto.containerTypeId);
 
     const occurredAt = new Date();
     const movement = await this.prisma.$transaction(async (tx) => {
@@ -143,27 +198,7 @@ export class MaquilaService {
   }
 
   async fill(dto: FillMaquilaDto, recordedById: string): Promise<MaquilaMovementResponseDto> {
-    const customer = await this.prisma.customer.findUnique({
-      where: { id: dto.customerId },
-      select: { id: true, active: true },
-    });
-    if (!customer) {
-      throw new BadRequestException(`El cliente "${dto.customerId}" no existe`);
-    }
-    if (!customer.active) {
-      throw new BadRequestException(`El cliente "${dto.customerId}" no está activo`);
-    }
-
-    const containerType = await this.prisma.containerType.findUnique({
-      where: { id: dto.containerTypeId },
-      select: { id: true, active: true },
-    });
-    if (!containerType) {
-      throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no existe`);
-    }
-    if (!containerType.active) {
-      throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no está activo`);
-    }
+    await this.assertActiveReferences(dto.customerId, dto.containerTypeId);
 
     const balance = await this.prisma.maquilaBalance.findUnique({
       where: {
@@ -227,27 +262,7 @@ export class MaquilaService {
   }
 
   async return(dto: ReturnMaquilaDto, recordedById: string): Promise<MaquilaMovementResponseDto> {
-    const customer = await this.prisma.customer.findUnique({
-      where: { id: dto.customerId },
-      select: { id: true, active: true },
-    });
-    if (!customer) {
-      throw new BadRequestException(`El cliente "${dto.customerId}" no existe`);
-    }
-    if (!customer.active) {
-      throw new BadRequestException(`El cliente "${dto.customerId}" no está activo`);
-    }
-
-    const containerType = await this.prisma.containerType.findUnique({
-      where: { id: dto.containerTypeId },
-      select: { id: true, active: true },
-    });
-    if (!containerType) {
-      throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no existe`);
-    }
-    if (!containerType.active) {
-      throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no está activo`);
-    }
+    await this.assertActiveReferences(dto.customerId, dto.containerTypeId);
 
     const balance = await this.prisma.maquilaBalance.findUnique({
       where: {
@@ -608,59 +623,16 @@ export class MaquilaService {
       }));
     }
 
-    // Obtener los productos MAQUILA_SERVICE para los tipos de envase
-    const containerTypeIds = [...new Set(balances.map((b) => b.containerTypeId))];
-    const maquilaProducts = await this.prisma.product.findMany({
-      where: {
-        type: ProductType.MAQUILA_SERVICE,
-        containerTypeId: { in: containerTypeIds },
-        active: true,
-      },
-      select: { id: true, containerTypeId: true, listPrice: true },
-    });
-
-    const productMap = new Map<string, { id: string; listPrice: Prisma.Decimal }>();
-    for (const p of maquilaProducts) {
-      if (p.containerTypeId) {
-        productMap.set(p.containerTypeId, { id: p.id, listPrice: p.listPrice });
-      }
-    }
-
-    const customerIds = [...new Set(balances.map((b) => b.customerId))];
-    const productIds = maquilaProducts.map((p) => p.id);
-
-    const customerPrices = await this.prisma.customerPrice.findMany({
-      where: {
-        customerId: { in: customerIds },
-        productId: { in: productIds },
-        locationId: null,
-      },
-    });
-
-    return balances.map((b) => {
-      const prod = productMap.get(b.containerTypeId);
-      let unitPriceStr: string | null = null;
-      let productId: string | null = null;
-
-      if (prod) {
-        productId = prod.id;
-        const cp = customerPrices.find(
-          (p) => p.customerId === b.customerId && p.productId === prod.id,
-        );
-        const resolved = cp ? cp.price : prod.listPrice;
-        unitPriceStr = resolved.toFixed(2);
-      }
-
-      return {
-        customerId: b.customerId,
-        containerTypeId: b.containerTypeId,
-        containerTypeName: b.containerType.name,
-        emptyAtPlant: b.emptyAtPlant,
-        fullToReturn: b.fullToReturn,
-        unitPrice: unitPriceStr,
-        productId,
-      };
-    });
+    const balancesWithCommercialData = await this.withCommercialData(balances);
+    return balancesWithCommercialData.map((balance) => ({
+      customerId: balance.customerId,
+      containerTypeId: balance.containerTypeId,
+      containerTypeName: balance.containerType.name,
+      emptyAtPlant: balance.emptyAtPlant,
+      fullToReturn: balance.fullToReturn,
+      unitPrice: balance.unitPrice,
+      productId: balance.productId,
+    }));
   }
 
   async listCustomersWithBalances(
@@ -701,33 +673,7 @@ export class MaquilaService {
       return [...byCustomer.values()];
     }
 
-    const containerTypeIds = [...new Set(balances.map((b) => b.containerTypeId))];
-    const maquilaProducts = await this.prisma.product.findMany({
-      where: {
-        type: ProductType.MAQUILA_SERVICE,
-        containerTypeId: { in: containerTypeIds },
-        active: true,
-      },
-      select: { id: true, containerTypeId: true, listPrice: true },
-    });
-
-    const productMap = new Map<string, { id: string; listPrice: Prisma.Decimal }>();
-    for (const p of maquilaProducts) {
-      if (p.containerTypeId) {
-        productMap.set(p.containerTypeId, { id: p.id, listPrice: p.listPrice });
-      }
-    }
-
-    const customerIds = [...new Set(balances.map((b) => b.customerId))];
-    const productIds = maquilaProducts.map((p) => p.id);
-
-    const customerPrices = await this.prisma.customerPrice.findMany({
-      where: {
-        customerId: { in: customerIds },
-        productId: { in: productIds },
-        locationId: null,
-      },
-    });
+    const balancesWithCommercialData = await this.withCommercialData(balances);
 
     const byCustomer = new Map<
       string,
@@ -740,28 +686,15 @@ export class MaquilaService {
       }
     >();
 
-    for (const b of balances) {
-      const prod = productMap.get(b.containerTypeId);
-      let unitPriceStr: string | null = null;
-      let productId: string | null = null;
-
-      if (prod) {
-        productId = prod.id;
-        const cp = customerPrices.find(
-          (p) => p.customerId === b.customerId && p.productId === prod.id,
-        );
-        const resolved = cp ? cp.price : prod.listPrice;
-        unitPriceStr = resolved.toFixed(2);
-      }
-
+    for (const b of balancesWithCommercialData) {
       const balanceItem: MaquilaBalanceResponseDto = {
         customerId: b.customerId,
         containerTypeId: b.containerTypeId,
         containerTypeName: b.containerType.name,
         emptyAtPlant: b.emptyAtPlant,
         fullToReturn: b.fullToReturn,
-        unitPrice: unitPriceStr,
-        productId,
+        unitPrice: b.unitPrice,
+        productId: b.productId,
       };
 
       const existing = byCustomer.get(b.customerId) ?? {

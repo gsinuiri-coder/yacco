@@ -680,6 +680,155 @@ describe("MaquilaService Unit Tests", () => {
       expect(result[0]).not.toHaveProperty("productId");
     });
 
+    it("resuelve precio pactado, precio de lista y servicio faltante para oficina", async () => {
+      const otherContainerTypeId = "99999999-9999-4999-8999-999999999999";
+      const missingProductContainerTypeId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+      prisma.maquilaBalance.findMany.mockResolvedValue([
+        {
+          customerId: CUSTOMER_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          emptyAtPlant: 4,
+          fullToReturn: 2,
+          containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+        },
+        {
+          customerId: CUSTOMER_ID,
+          containerTypeId: otherContainerTypeId,
+          emptyAtPlant: 1,
+          fullToReturn: 0,
+          containerType: { id: otherContainerTypeId, name: "Sin caño" },
+        },
+        {
+          customerId: CUSTOMER_ID,
+          containerTypeId: missingProductContainerTypeId,
+          emptyAtPlant: 2,
+          fullToReturn: 0,
+          containerType: { id: missingProductContainerTypeId, name: "Especial" },
+        },
+      ]);
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: PRODUCT_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          listPrice: new Prisma.Decimal("3.50"),
+        },
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          containerTypeId: otherContainerTypeId,
+          listPrice: new Prisma.Decimal("4.20"),
+        },
+        {
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          containerTypeId: null,
+          listPrice: new Prisma.Decimal("9.99"),
+        },
+      ]);
+      prisma.customerPrice.findMany.mockResolvedValue([
+        {
+          customerId: CUSTOMER_ID,
+          productId: PRODUCT_ID,
+          price: new Prisma.Decimal("2.75"),
+        },
+      ]);
+
+      const result = await service.listBalances(CUSTOMER_ID, {
+        id: USER_ID,
+        roles: [UserRole.SELLER],
+      });
+
+      expect(result).toEqual([
+        expect.objectContaining({ productId: PRODUCT_ID, unitPrice: "2.75" }),
+        expect.objectContaining({
+          productId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          unitPrice: "4.20",
+        }),
+        expect.objectContaining({ productId: null, unitPrice: null }),
+      ]);
+    });
+
+    it("agrupa saldos físicos para planta sin consultar datos comerciales", async () => {
+      prisma.maquilaBalance.findMany.mockResolvedValue([
+        {
+          customerId: CUSTOMER_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          emptyAtPlant: 4,
+          fullToReturn: 2,
+          customer: { id: CUSTOMER_ID, name: "Cliente" },
+          containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+        },
+        {
+          customerId: CUSTOMER_ID,
+          containerTypeId: "99999999-9999-4999-8999-999999999999",
+          emptyAtPlant: 1,
+          fullToReturn: 3,
+          customer: { id: CUSTOMER_ID, name: "Cliente" },
+          containerType: {
+            id: "99999999-9999-4999-8999-999999999999",
+            name: "Sin caño",
+          },
+        },
+      ]);
+
+      const result = await service.listCustomersWithBalances({
+        id: USER_ID,
+        roles: [UserRole.PLANT_SUPERVISOR],
+      });
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          customerId: CUSTOMER_ID,
+          emptyAtPlantTotal: 5,
+          fullToReturnTotal: 5,
+          balances: [
+            expect.not.objectContaining({ unitPrice: expect.anything() }),
+            expect.not.objectContaining({ productId: expect.anything() }),
+          ],
+        }),
+      ]);
+      expect(prisma.product.findMany).not.toHaveBeenCalled();
+    });
+
+    it("agrupa saldos comerciales para oficina", async () => {
+      prisma.maquilaBalance.findMany.mockResolvedValue([
+        {
+          customerId: CUSTOMER_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          emptyAtPlant: 2,
+          fullToReturn: 1,
+          customer: { id: CUSTOMER_ID, name: "Cliente" },
+          containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+        },
+      ]);
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: PRODUCT_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          listPrice: new Prisma.Decimal("3.50"),
+        },
+      ]);
+      prisma.customerPrice.findMany.mockResolvedValue([]);
+
+      const result = await service.listCustomersWithBalances({
+        id: USER_ID,
+        roles: [UserRole.ADMIN],
+      });
+
+      expect(result).toEqual([
+        {
+          customerId: CUSTOMER_ID,
+          customerName: "Cliente",
+          emptyAtPlantTotal: 2,
+          fullToReturnTotal: 1,
+          balances: [
+            expect.objectContaining({
+              productId: PRODUCT_ID,
+              unitPrice: "3.50",
+            }),
+          ],
+        },
+      ]);
+    });
+
     it("limita al supervisor a llenados y no expone campos comerciales", async () => {
       prisma.maquilaContainerMovement.count.mockResolvedValue(1);
       prisma.maquilaContainerMovement.findMany.mockResolvedValue([
@@ -719,6 +868,75 @@ describe("MaquilaService Unit Tests", () => {
       });
       expect(result.data[0]).not.toHaveProperty("saleId");
       expect(result.data[0]).not.toHaveProperty("saleTotal");
+    });
+
+    it("filtra al operador por autor y conserva ocultos los datos comerciales", async () => {
+      prisma.maquilaContainerMovement.count.mockResolvedValue(0);
+      prisma.maquilaContainerMovement.findMany.mockResolvedValue([]);
+
+      await service.listMovements(
+        { page: 2, limit: 5 },
+        { id: USER_ID, roles: [UserRole.PLANT_OPERATOR] },
+      );
+
+      expect(prisma.maquilaContainerMovement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            type: MaquilaMovementType.FILLED,
+            recordedById: USER_ID,
+          },
+          skip: 5,
+          take: 5,
+        }),
+      );
+    });
+
+    it("aplica filtros comerciales y expone el total de venta a administración", async () => {
+      const occurredAt = new Date("2026-10-12T15:00:00.000Z");
+      prisma.maquilaContainerMovement.count.mockResolvedValue(1);
+      prisma.maquilaContainerMovement.findMany.mockResolvedValue([
+        {
+          id: MOVEMENT_ID,
+          customerId: CUSTOMER_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          type: MaquilaMovementType.RETURNED,
+          quantity: 2,
+          saleId: SALE_ID,
+          reversesMovementId: null,
+          reason: null,
+          recordedById: USER_ID,
+          occurredAt,
+          createdAt: occurredAt,
+          customer: { id: CUSTOMER_ID, name: "Cliente" },
+          containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+          recordedBy: { id: USER_ID, name: "Administrador" },
+          sale: { id: SALE_ID, total: new Prisma.Decimal("7.00") },
+        },
+      ]);
+
+      const result = await service.listMovements(
+        {
+          customerId: CUSTOMER_ID,
+          type: MaquilaMovementType.RETURNED,
+          startDate: "2026-10-01",
+          endDate: "2026-10-31",
+        },
+        { id: USER_ID, roles: [UserRole.ADMIN] },
+      );
+
+      expect(prisma.maquilaContainerMovement.count).toHaveBeenCalledWith({
+        where: {
+          customerId: CUSTOMER_ID,
+          type: MaquilaMovementType.RETURNED,
+          occurredAt: {
+            gte: new Date("2026-10-01"),
+            lte: new Date("2026-10-31T23:59:59.999Z"),
+          },
+        },
+      });
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({ saleId: SALE_ID, saleTotal: "7.00" }),
+      );
     });
   });
 
