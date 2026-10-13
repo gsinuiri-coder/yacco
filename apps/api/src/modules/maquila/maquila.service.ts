@@ -32,6 +32,8 @@ type MovementWithRelations = Prisma.MaquilaContainerMovementGetPayload<{
   include: typeof MOVEMENT_INCLUDE;
 }>;
 
+type MaquilaReader = { id: string; roles: UserRole[] };
+
 @Injectable()
 export class MaquilaService {
   constructor(
@@ -39,7 +41,10 @@ export class MaquilaService {
     private readonly salesService: SalesService,
   ) {}
 
-  private toMovementResponse(movement: MovementWithRelations): MaquilaMovementResponseDto {
+  private toMovementResponse(
+    movement: MovementWithRelations,
+    includeCommercialData = true,
+  ): MaquilaMovementResponseDto {
     return {
       id: movement.id,
       customerId: movement.customerId,
@@ -48,8 +53,12 @@ export class MaquilaService {
       containerTypeName: movement.containerType.name,
       type: movement.type,
       quantity: movement.quantity,
-      saleId: movement.saleId,
-      saleTotal: movement.sale ? movement.sale.total.toFixed(2) : null,
+      ...(includeCommercialData
+        ? {
+            saleId: movement.saleId,
+            saleTotal: movement.sale ? movement.sale.total.toFixed(2) : null,
+          }
+        : {}),
       reversesMovementId: movement.reversesMovementId,
       reason: movement.reason,
       recordedById: movement.recordedById,
@@ -57,6 +66,23 @@ export class MaquilaService {
       occurredAt: movement.occurredAt.toISOString(),
       createdAt: movement.createdAt.toISOString(),
     };
+  }
+
+  private canReadCommercialData(actor: MaquilaReader): boolean {
+    return actor.roles.includes(UserRole.ADMIN) || actor.roles.includes(UserRole.SELLER);
+  }
+
+  private async recordVoid(
+    operation: () => Promise<MovementWithRelations>,
+  ): Promise<MovementWithRelations> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new BadRequestException("El movimiento ya ha sido anulado previamente");
+      }
+      throw error;
+    }
   }
 
   async receive(dto: ReceiveMaquilaDto, recordedById: string): Promise<MaquilaMovementResponseDto> {
@@ -158,18 +184,31 @@ export class MaquilaService {
 
     const occurredAt = new Date();
     const movement = await this.prisma.$transaction(async (tx) => {
-      await tx.maquilaBalance.update({
+      const updated = await tx.maquilaBalance.updateMany({
         where: {
-          customerId_containerTypeId: {
-            customerId: dto.customerId,
-            containerTypeId: dto.containerTypeId,
-          },
+          customerId: dto.customerId,
+          containerTypeId: dto.containerTypeId,
+          emptyAtPlant: { gte: dto.quantity },
         },
         data: {
           emptyAtPlant: { decrement: dto.quantity },
           fullToReturn: { increment: dto.quantity },
         },
       });
+      if (updated.count === 0) {
+        const current = await tx.maquilaBalance.findUnique({
+          where: {
+            customerId_containerTypeId: {
+              customerId: dto.customerId,
+              containerTypeId: dto.containerTypeId,
+            },
+          },
+          select: { emptyAtPlant: true },
+        });
+        throw new BadRequestException(
+          `No hay suficientes vacíos en planta para llenar (hay ${current?.emptyAtPlant ?? 0}, se intentó llenar ${dto.quantity})`,
+        );
+      }
 
       return tx.maquilaContainerMovement.create({
         data: {
@@ -274,15 +313,28 @@ export class MaquilaService {
 
     const movement = await this.prisma.$transaction(async (tx) => {
       // 1. Descontar llenos por devolver
-      await tx.maquilaBalance.update({
+      const updated = await tx.maquilaBalance.updateMany({
         where: {
-          customerId_containerTypeId: {
-            customerId: dto.customerId,
-            containerTypeId: dto.containerTypeId,
-          },
+          customerId: dto.customerId,
+          containerTypeId: dto.containerTypeId,
+          fullToReturn: { gte: dto.quantity },
         },
         data: { fullToReturn: { decrement: dto.quantity } },
       });
+      if (updated.count === 0) {
+        const current = await tx.maquilaBalance.findUnique({
+          where: {
+            customerId_containerTypeId: {
+              customerId: dto.customerId,
+              containerTypeId: dto.containerTypeId,
+            },
+          },
+          select: { fullToReturn: true },
+        });
+        throw new BadRequestException(
+          `No hay suficientes llenos para devolver (hay ${current?.fullToReturn ?? 0}, se intentó devolver ${dto.quantity})`,
+        );
+      }
 
       const sale = await this.salesService.registerServiceSaleWithinTransaction(tx, {
         locationId,
@@ -373,31 +425,37 @@ export class MaquilaService {
       }
 
       const occurredAt = new Date();
-      const voidedMovement = await this.prisma.$transaction(async (tx) => {
-        await tx.maquilaBalance.update({
-          where: {
-            customerId_containerTypeId: {
+      const voidedMovement = await this.recordVoid(() =>
+        this.prisma.$transaction(async (tx) => {
+          const updated = await tx.maquilaBalance.updateMany({
+            where: {
               customerId: movement.customerId,
               containerTypeId: movement.containerTypeId,
+              emptyAtPlant: { gte: movement.quantity },
             },
-          },
-          data: { emptyAtPlant: { decrement: movement.quantity } },
-        });
+            data: { emptyAtPlant: { decrement: movement.quantity } },
+          });
+          if (updated.count === 0) {
+            throw new BadRequestException(
+              "No se puede anular el recibido: los vacíos en planta quedarían en negativo",
+            );
+          }
 
-        return tx.maquilaContainerMovement.create({
-          data: {
-            customerId: movement.customerId,
-            containerTypeId: movement.containerTypeId,
-            type: MaquilaMovementType.RECEIVED_VOID,
-            quantity: movement.quantity,
-            reversesMovementId: movement.id,
-            reason,
-            recordedById: actor.id,
-            occurredAt,
-          },
-          include: MOVEMENT_INCLUDE,
-        });
-      });
+          return tx.maquilaContainerMovement.create({
+            data: {
+              customerId: movement.customerId,
+              containerTypeId: movement.containerTypeId,
+              type: MaquilaMovementType.RECEIVED_VOID,
+              quantity: movement.quantity,
+              reversesMovementId: movement.id,
+              reason,
+              recordedById: actor.id,
+              occurredAt,
+            },
+            include: MOVEMENT_INCLUDE,
+          });
+        }),
+      );
 
       return this.toMovementResponse(voidedMovement);
     }
@@ -427,34 +485,40 @@ export class MaquilaService {
       }
 
       const occurredAt = new Date();
-      const voidedMovement = await this.prisma.$transaction(async (tx) => {
-        await tx.maquilaBalance.update({
-          where: {
-            customerId_containerTypeId: {
+      const voidedMovement = await this.recordVoid(() =>
+        this.prisma.$transaction(async (tx) => {
+          const updated = await tx.maquilaBalance.updateMany({
+            where: {
               customerId: movement.customerId,
               containerTypeId: movement.containerTypeId,
+              fullToReturn: { gte: movement.quantity },
             },
-          },
-          data: {
-            fullToReturn: { decrement: movement.quantity },
-            emptyAtPlant: { increment: movement.quantity },
-          },
-        });
+            data: {
+              fullToReturn: { decrement: movement.quantity },
+              emptyAtPlant: { increment: movement.quantity },
+            },
+          });
+          if (updated.count === 0) {
+            throw new BadRequestException(
+              "No se puede anular el llenado: los llenos por devolver quedarían en negativo",
+            );
+          }
 
-        return tx.maquilaContainerMovement.create({
-          data: {
-            customerId: movement.customerId,
-            containerTypeId: movement.containerTypeId,
-            type: MaquilaMovementType.FILLED_VOID,
-            quantity: movement.quantity,
-            reversesMovementId: movement.id,
-            reason,
-            recordedById: actor.id,
-            occurredAt,
-          },
-          include: MOVEMENT_INCLUDE,
-        });
-      });
+          return tx.maquilaContainerMovement.create({
+            data: {
+              customerId: movement.customerId,
+              containerTypeId: movement.containerTypeId,
+              type: MaquilaMovementType.FILLED_VOID,
+              quantity: movement.quantity,
+              reversesMovementId: movement.id,
+              reason,
+              recordedById: actor.id,
+              occurredAt,
+            },
+            include: MOVEMENT_INCLUDE,
+          });
+        }),
+      );
 
       return this.toMovementResponse(voidedMovement);
     }
@@ -475,42 +539,44 @@ export class MaquilaService {
       }
 
       const occurredAt = new Date();
-      const voidedMovement = await this.prisma.$transaction(async (tx) => {
-        const voidedSale = await this.salesService.voidSaleWithinTransaction(tx, {
-          saleId: sale.id,
-          voidedById: actor.id,
-          voidReason: reason,
-        });
-        if (voidedSale.sale === null) {
-          throw new BadRequestException("La venta asociada ya está anulada");
-        }
+      const voidedMovement = await this.recordVoid(() =>
+        this.prisma.$transaction(async (tx) => {
+          const voidedSale = await this.salesService.voidSaleWithinTransaction(tx, {
+            saleId: sale.id,
+            voidedById: actor.id,
+            voidReason: reason,
+          });
+          if (voidedSale.sale === null) {
+            throw new BadRequestException("La venta asociada ya está anulada");
+          }
 
-        // Venta, cobro, deuda, saldo físico y libro se confirman o revierten juntos.
-        await tx.maquilaBalance.update({
-          where: {
-            customerId_containerTypeId: {
+          // Venta, cobro, deuda, saldo físico y libro se confirman o revierten juntos.
+          await tx.maquilaBalance.update({
+            where: {
+              customerId_containerTypeId: {
+                customerId: movement.customerId,
+                containerTypeId: movement.containerTypeId,
+              },
+            },
+            data: { fullToReturn: { increment: movement.quantity } },
+          });
+
+          return tx.maquilaContainerMovement.create({
+            data: {
               customerId: movement.customerId,
               containerTypeId: movement.containerTypeId,
+              type: MaquilaMovementType.RETURNED_VOID,
+              quantity: movement.quantity,
+              saleId: movement.saleId,
+              reversesMovementId: movement.id,
+              reason,
+              recordedById: actor.id,
+              occurredAt,
             },
-          },
-          data: { fullToReturn: { increment: movement.quantity } },
-        });
-
-        return tx.maquilaContainerMovement.create({
-          data: {
-            customerId: movement.customerId,
-            containerTypeId: movement.containerTypeId,
-            type: MaquilaMovementType.RETURNED_VOID,
-            quantity: movement.quantity,
-            saleId: movement.saleId,
-            reversesMovementId: movement.id,
-            reason,
-            recordedById: actor.id,
-            occurredAt,
-          },
-          include: MOVEMENT_INCLUDE,
-        });
-      });
+            include: MOVEMENT_INCLUDE,
+          });
+        }),
+      );
 
       return this.toMovementResponse(voidedMovement);
     }
@@ -518,7 +584,10 @@ export class MaquilaService {
     throw new BadRequestException("Tipo de movimiento no soportado");
   }
 
-  async listBalances(customerId?: string): Promise<MaquilaBalanceResponseDto[]> {
+  async listBalances(
+    customerId: string | undefined,
+    actor: MaquilaReader,
+  ): Promise<MaquilaBalanceResponseDto[]> {
     const where: Prisma.MaquilaBalanceWhereInput = customerId ? { customerId } : {};
 
     const balances = await this.prisma.maquilaBalance.findMany({
@@ -528,6 +597,16 @@ export class MaquilaService {
       },
       orderBy: [{ customerId: "asc" }, { containerTypeId: "asc" }],
     });
+
+    if (!this.canReadCommercialData(actor)) {
+      return balances.map((balance) => ({
+        customerId: balance.customerId,
+        containerTypeId: balance.containerTypeId,
+        containerTypeName: balance.containerType.name,
+        emptyAtPlant: balance.emptyAtPlant,
+        fullToReturn: balance.fullToReturn,
+      }));
+    }
 
     // Obtener los productos MAQUILA_SERVICE para los tipos de envase
     const containerTypeIds = [...new Set(balances.map((b) => b.containerTypeId))];
@@ -584,7 +663,9 @@ export class MaquilaService {
     });
   }
 
-  async listCustomersWithBalances(): Promise<MaquilaCustomerSummaryResponseDto[]> {
+  async listCustomersWithBalances(
+    actor: MaquilaReader,
+  ): Promise<MaquilaCustomerSummaryResponseDto[]> {
     const balances = await this.prisma.maquilaBalance.findMany({
       where: {
         OR: [{ emptyAtPlant: { gt: 0 } }, { fullToReturn: { gt: 0 } }],
@@ -595,6 +676,30 @@ export class MaquilaService {
       },
       orderBy: [{ customer: { name: "asc" } }, { containerTypeId: "asc" }],
     });
+
+    if (!this.canReadCommercialData(actor)) {
+      const byCustomer = new Map<string, MaquilaCustomerSummaryResponseDto>();
+      for (const balance of balances) {
+        const existing = byCustomer.get(balance.customerId) ?? {
+          customerId: balance.customerId,
+          customerName: balance.customer.name,
+          emptyAtPlantTotal: 0,
+          fullToReturnTotal: 0,
+          balances: [],
+        };
+        existing.emptyAtPlantTotal += balance.emptyAtPlant;
+        existing.fullToReturnTotal += balance.fullToReturn;
+        existing.balances.push({
+          customerId: balance.customerId,
+          containerTypeId: balance.containerTypeId,
+          containerTypeName: balance.containerType.name,
+          emptyAtPlant: balance.emptyAtPlant,
+          fullToReturn: balance.fullToReturn,
+        });
+        byCustomer.set(balance.customerId, existing);
+      }
+      return [...byCustomer.values()];
+    }
 
     const containerTypeIds = [...new Set(balances.map((b) => b.containerTypeId))];
     const maquilaProducts = await this.prisma.product.findMany({
@@ -678,7 +783,7 @@ export class MaquilaService {
 
   async listMovements(
     query: ListMaquilaMovementsQueryDto,
-    actor: { id: string; roles: UserRole[] },
+    actor: MaquilaReader,
   ): Promise<PaginatedMaquilaMovementsResponseDto> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -688,14 +793,19 @@ export class MaquilaService {
       ...(query.type ? { type: query.type } : {}),
     };
 
-    // Operador de planta ve solo sus llenados
+    // Los roles de planta nunca ven operaciones comerciales. El supervisor ve
+    // todos los llenados y el operador únicamente los que registró él.
     const isOperator = actor.roles.includes(UserRole.PLANT_OPERATOR);
-    const isAdmin = actor.roles.includes(UserRole.ADMIN);
     const isSupervisor = actor.roles.includes(UserRole.PLANT_SUPERVISOR);
+    const canReadCommercialData = this.canReadCommercialData(actor);
 
-    if (isOperator && !isAdmin && !isSupervisor) {
-      where.recordedById = actor.id;
-      where.type = MaquilaMovementType.FILLED;
+    if (!canReadCommercialData) {
+      where.type = isSupervisor
+        ? { in: [MaquilaMovementType.FILLED, MaquilaMovementType.FILLED_VOID] }
+        : MaquilaMovementType.FILLED;
+      if (isOperator && !isSupervisor) {
+        where.recordedById = actor.id;
+      }
     }
 
     if (query.startDate || query.endDate) {
@@ -717,7 +827,7 @@ export class MaquilaService {
     ]);
 
     return {
-      data: movements.map((m) => this.toMovementResponse(m)),
+      data: movements.map((movement) => this.toMovementResponse(movement, canReadCommercialData)),
       total,
       page,
       limit,
@@ -726,19 +836,24 @@ export class MaquilaService {
   }
 
   async reconcile(): Promise<MaquilaReconciliationResponseDto> {
-    const balances = await this.prisma.maquilaBalance.findMany({
-      include: {
-        customer: { select: { name: true } },
-        containerType: { select: { name: true } },
-      },
-    });
-
-    const movements = await this.prisma.maquilaContainerMovement.findMany({
-      include: {
-        customer: { select: { name: true } },
-        containerType: { select: { name: true } },
-      },
-    });
+    const [balances, movements] = await this.prisma.$transaction(
+      async (tx) =>
+        Promise.all([
+          tx.maquilaBalance.findMany({
+            include: {
+              customer: { select: { name: true } },
+              containerType: { select: { name: true } },
+            },
+          }),
+          tx.maquilaContainerMovement.findMany({
+            include: {
+              customer: { select: { name: true } },
+              containerType: { select: { name: true } },
+            },
+          }),
+        ]),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
 
     // Sumar movimientos por cliente y tipo de envase
     const ledger = new Map<

@@ -165,6 +165,9 @@ describe("Maquila Module Integration Tests", () => {
       where: { location: { customerId: customer1Id } },
     });
     const initialBatches = await prisma.productionBatch.count();
+    const availableStock = async () =>
+      (await prisma.batchItem.aggregate({ _sum: { availableQty: true } }))._sum.availableQty ?? 0;
+    const initialAvailableStock = await availableStock();
 
     // 1. Recibe 10
     const recRes = await request(server())
@@ -203,6 +206,7 @@ describe("Maquila Module Integration Tests", () => {
       }),
     ).toBe(initialCustomerContainerBalances);
     expect(await prisma.productionBatch.count()).toBe(initialBatches);
+    expect(await availableStock()).toBe(initialAvailableStock);
 
     // 2. Llena 6
     const fillRes = await request(server())
@@ -234,6 +238,7 @@ describe("Maquila Module Integration Tests", () => {
 
     expect(await prisma.containerMovement.count()).toBe(initialContainerMovements);
     expect(await prisma.productionBatch.count()).toBe(initialBatches);
+    expect(await availableStock()).toBe(initialAvailableStock);
 
     // 3. Devuelve 4 pagando con Yape (S/ 2.50 pactado x 4 = S/ 10.00)
     // Yape requiere confirmación -> status PENDING -> la deuda en S/ aumenta en S/ 10.00
@@ -271,6 +276,7 @@ describe("Maquila Module Integration Tests", () => {
 
     expect(await prisma.containerMovement.count()).toBe(initialContainerMovements);
     expect(await prisma.productionBatch.count()).toBe(initialBatches);
+    expect(await availableStock()).toBe(initialAvailableStock);
 
     // 4. Devuelve 2 al fiado (S/ 2.50 x 2 = S/ 5.00)
     const ret2Res = await request(server())
@@ -309,6 +315,7 @@ describe("Maquila Module Integration Tests", () => {
       }),
     ).toBe(initialCustomerContainerBalances);
     expect(await prisma.productionBatch.count()).toBe(initialBatches);
+    expect(await availableStock()).toBe(initialAvailableStock);
   });
 
   it("Precio pactado contra precio de lista con dos clientes de precios distintos; sin precio se rechaza", async () => {
@@ -473,6 +480,81 @@ describe("Maquila Module Integration Tests", () => {
     expect(recRes.body.discrepancies).toHaveLength(0);
   });
 
+  it("rechaza un customerId inválido antes de consultar Prisma", async () => {
+    await request(server())
+      .get("/api/v1/maquila/balances?customerId=no-es-un-uuid")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(400);
+  });
+
+  it("serializa llenados y devoluciones concurrentes sin saldos negativos ni errores 500", async () => {
+    const customer = await request(server())
+      .post("/api/v1/customers")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        name: "Cliente Maquila Concurrente",
+        phone: "900111222",
+        address: "Av. Concurrente 10",
+        addressReference: "Puerta verde",
+      })
+      .expect(201);
+
+    await request(server())
+      .post("/api/v1/maquila/receptions")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send({
+        customerId: customer.body.id,
+        containerTypeId: containerTypeSpigot.id,
+        quantity: 1,
+      })
+      .expect(201);
+
+    const fills = await Promise.all(
+      [1, 2].map(() =>
+        request(server())
+          .post("/api/v1/maquila/fillings")
+          .set("Authorization", `Bearer ${operatorAToken}`)
+          .send({
+            customerId: customer.body.id,
+            containerTypeId: containerTypeSpigot.id,
+            quantity: 1,
+          }),
+      ),
+    );
+    expect(fills.map((response) => response.status).sort()).toEqual([201, 400]);
+    expect(fills.find((response) => response.status === 400)?.body.message).toContain(
+      "No hay suficientes vacíos en planta para llenar",
+    );
+
+    const returns = await Promise.all(
+      [1, 2].map(() =>
+        request(server())
+          .post("/api/v1/maquila/returns")
+          .set("Authorization", `Bearer ${sellerToken}`)
+          .send({
+            customerId: customer.body.id,
+            containerTypeId: containerTypeSpigot.id,
+            quantity: 1,
+          }),
+      ),
+    );
+    expect(returns.map((response) => response.status).sort()).toEqual([201, 400]);
+    expect(returns.find((response) => response.status === 400)?.body.message).toContain(
+      "No hay suficientes llenos para devolver",
+    );
+
+    const balance = await prisma.maquilaBalance.findUniqueOrThrow({
+      where: {
+        customerId_containerTypeId: {
+          customerId: customer.body.id,
+          containerTypeId: containerTypeSpigot.id,
+        },
+      },
+    });
+    expect(balance.emptyAtPlant).toBe(0);
+    expect(balance.fullToReturn).toBe(0);
+  });
+
   describe("Permisos por rol", () => {
     it("Operador llena y no puede recibir ni anular", async () => {
       // Operador puede llenar
@@ -531,7 +613,7 @@ describe("Maquila Module Integration Tests", () => {
 
     it("Operador ve solo sus llenados por la API", async () => {
       // Operador A llena 1
-      await request(server())
+      const operatorAFill = await request(server())
         .post("/api/v1/maquila/fillings")
         .set("Authorization", `Bearer ${operatorAToken}`)
         .send({
@@ -539,6 +621,12 @@ describe("Maquila Module Integration Tests", () => {
           containerTypeId: containerTypeSpigot.id,
           quantity: 1,
         })
+        .expect(201);
+
+      await request(server())
+        .post(`/api/v1/maquila/movements/${operatorAFill.body.id}/void`)
+        .set("Authorization", `Bearer ${supervisorToken}`)
+        .send({ reason: "Corrección del llenado para probar la lectura" })
         .expect(201);
 
       // Operador B llena 1
@@ -564,16 +652,84 @@ describe("Maquila Module Integration Tests", () => {
         expect(m.type).toBe(MaquilaMovementType.FILLED);
       }
 
-      // Supervisor consulta movimientos y ve todos los de todos
+      // Supervisor consulta movimientos y ve todos los llenados, pero ninguna operación comercial
       const resSup = await request(server())
         .get("/api/v1/maquila/movements")
         .set("Authorization", `Bearer ${supervisorToken}`)
         .expect(200);
 
+      for (const movement of resSup.body.data) {
+        expect([MaquilaMovementType.FILLED, MaquilaMovementType.FILLED_VOID]).toContain(
+          movement.type,
+        );
+        expect(movement).not.toHaveProperty("saleId");
+        expect(movement).not.toHaveProperty("saleTotal");
+      }
+      expect(
+        resSup.body.data.some(
+          (movement: { type: MaquilaMovementType }) =>
+            movement.type === MaquilaMovementType.FILLED_VOID,
+        ),
+      ).toBe(true);
       const recordedByIds = new Set(
         resSup.body.data.map((m: { recordedById: string }) => m.recordedById),
       );
       expect(recordedByIds.size).toBeGreaterThan(1);
+    });
+
+    it("Roles de planta ven saldos físicos sin precios ni productos", async () => {
+      const balances = await request(server())
+        .get(`/api/v1/maquila/customers/${customer1Id}/balances`)
+        .set("Authorization", `Bearer ${operatorAToken}`)
+        .expect(200);
+
+      expect(balances.body.length).toBeGreaterThan(0);
+      for (const balance of balances.body) {
+        expect(balance).not.toHaveProperty("unitPrice");
+        expect(balance).not.toHaveProperty("productId");
+      }
+
+      const customers = await request(server())
+        .get("/api/v1/maquila/customers")
+        .set("Authorization", `Bearer ${supervisorToken}`)
+        .expect(200);
+      for (const customer of customers.body) {
+        for (const balance of customer.balances) {
+          expect(balance).not.toHaveProperty("unitPrice");
+          expect(balance).not.toHaveProperty("productId");
+        }
+      }
+    });
+
+    it("serializa el alta para conservar un solo servicio activo por tipo de envase", async () => {
+      const create = (name: string) =>
+        request(server())
+          .post("/api/v1/products")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({
+            name,
+            type: ProductType.MAQUILA_SERVICE,
+            containerTypeId: containerTypeNoSpigot.id,
+            listPrice: "3.25",
+          });
+
+      const responses = await Promise.all([
+        create("Servicio maquila concurrente A"),
+        create("Servicio maquila concurrente B"),
+      ]);
+      expect(responses.map((response) => response.status).sort()).toEqual([201, 400]);
+      expect(responses.find((response) => response.status === 400)?.body.message).toContain(
+        "Ya existe un servicio de maquila activo para este tipo de envase",
+      );
+
+      const count = await prisma.product.count({
+        where: {
+          type: ProductType.MAQUILA_SERVICE,
+          containerTypeId: containerTypeNoSpigot.id,
+          active: true,
+        },
+      });
+      expect(count).toBe(1);
     });
   });
 });

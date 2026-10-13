@@ -38,8 +38,8 @@ export interface MaquilaBalanceItem {
   containerTypeName: string;
   emptyAtPlant: number;
   fullToReturn: number;
-  unitPrice: string | null;
-  productId: string | null;
+  unitPrice?: string | null;
+  productId?: string | null;
 }
 
 export interface MaquilaCustomerSummary {
@@ -58,8 +58,8 @@ export interface MaquilaMovementItem {
   containerTypeName: string;
   type: MaquilaMovementType;
   quantity: number;
-  saleId: string | null;
-  saleTotal: string | null;
+  saleId?: string | null;
+  saleTotal?: string | null;
   reversesMovementId: string | null;
   reason: string | null;
   recordedById: string;

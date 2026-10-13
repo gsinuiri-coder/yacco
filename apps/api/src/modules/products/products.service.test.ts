@@ -35,6 +35,7 @@ function buildPrismaMock() {
       create: jest.fn<() => Promise<unknown>>(),
     },
     productPriceChange: { create: jest.fn<() => Promise<unknown>>() },
+    $queryRaw: jest.fn<() => Promise<unknown>>(),
     $transaction: jest.fn(),
   };
 }
@@ -151,6 +152,7 @@ describe("ProductsService", () => {
       ).rejects.toThrow("Ya existe un servicio de maquila activo para este tipo de envase");
 
       expect(prisma.product.create).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).toHaveBeenCalled();
     });
 
     it("refuses price <= 0 or empty name", async () => {

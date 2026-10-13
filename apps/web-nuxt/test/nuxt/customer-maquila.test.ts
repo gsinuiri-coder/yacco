@@ -1,5 +1,5 @@
 import { registerEndpoint, renderSuspended } from "@nuxt/test-utils/runtime";
-import { screen } from "@testing-library/vue";
+import { screen, waitFor } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import type {
   ContainerType,
@@ -64,6 +64,7 @@ function stubCustomerMaquila(
   balances: MaquilaBalanceItem[] = [BALANCE_WITH_PRICE],
   movements: MaquilaMovementItem[] = [],
   effectivePrice = balances[0]?.unitPrice ?? null,
+  effectivePriceHandler?: () => EffectivePrice[] | Promise<EffectivePrice[]>,
 ) {
   cleanups.push(
     registerEndpoint(`/api/v1/maquila/customers/${CUST_ID}/balances`, {
@@ -105,8 +106,9 @@ function stubCustomerMaquila(
   cleanups.push(
     registerEndpoint(`/api/v1/customers/${CUST_ID}/effective-prices`, {
       method: "GET",
-      handler: () =>
-        effectivePrice === null || balances[0]?.productId === null
+      handler: () => {
+        if (effectivePriceHandler) return effectivePriceHandler();
+        return effectivePrice === null || balances[0]?.productId === null
           ? []
           : ([
               {
@@ -114,7 +116,8 @@ function stubCustomerMaquila(
                 price: effectivePrice,
                 source: "LOCATION",
               },
-            ] satisfies EffectivePrice[]),
+            ] satisfies EffectivePrice[]);
+      },
     }),
   );
 }
@@ -224,6 +227,53 @@ describe("CustomerMaquilaSection", () => {
     await userEvent.type(input, "9999999");
 
     expect(await screen.findByText("S/ 999,999,899,900,000.01")).toBeTruthy();
+  });
+
+  it("bloquea el envío mientras resuelve el precio y descarta respuestas anteriores", async () => {
+    const pending: Array<(prices: EffectivePrice[]) => void> = [];
+    stubCustomerMaquila(
+      [BALANCE_WITH_PRICE],
+      [],
+      "4.00",
+      () => new Promise<EffectivePrice[]>((resolve) => pending.push(resolve)),
+    );
+
+    await renderSection();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Devolver llenos" }));
+    await waitFor(() => expect(pending.length).toBeGreaterThan(0));
+    const firstOpenRequests = pending.length;
+    expect(
+      screen.getByRole("button", { name: "Registrar devolución" }).hasAttribute("disabled"),
+    ).toBe(true);
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await userEvent.click(screen.getByRole("button", { name: "Devolver llenos" }));
+    await waitFor(() => expect(pending.length).toBeGreaterThan(firstOpenRequests));
+
+    pending.at(-1)!([
+      {
+        product: { id: "prod-1", name: "Servicio de maquila" },
+        price: "7.00",
+        source: "LOCATION",
+      },
+    ]);
+    await screen.findAllByText("S/ 7.00");
+    const quantity = screen.getByLabelText("Cantidad que se lleva");
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "2");
+    expect(await screen.findByText("S/ 14.00")).toBeTruthy();
+
+    for (const resolve of pending.slice(0, firstOpenRequests)) {
+      resolve([
+        {
+          product: { id: "prod-1", name: "Servicio de maquila" },
+          price: "4.00",
+          source: "LOCATION",
+        },
+      ]);
+    }
+    await waitFor(() => expect(screen.getByText("S/ 14.00")).toBeTruthy());
   });
 
   it("muestra aviso y bloquea devolución cuando falta el precio de maquila", async () => {

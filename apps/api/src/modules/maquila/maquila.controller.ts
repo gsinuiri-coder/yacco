@@ -22,6 +22,7 @@ import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { FillMaquilaDto } from "./dto/fill-maquila.dto.js";
+import { ListMaquilaBalancesQueryDto } from "./dto/list-maquila-balances-query.dto.js";
 import { ListMaquilaMovementsQueryDto } from "./dto/list-maquila-movements-query.dto.js";
 import {
   MaquilaBalanceResponseDto,
@@ -97,16 +98,27 @@ export class MaquilaController {
   @ApiResponse({ status: 200, type: [MaquilaCustomerSummaryResponseDto] })
   @Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.PLANT_SUPERVISOR, UserRole.PLANT_OPERATOR)
   @Get("customers")
-  listCustomersWithBalances(): Promise<MaquilaCustomerSummaryResponseDto[]> {
-    return this.maquilaService.listCustomersWithBalances();
+  listCustomersWithBalances(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<MaquilaCustomerSummaryResponseDto[]> {
+    return this.maquilaService.listCustomersWithBalances({
+      id: req.user.sub,
+      roles: req.user.roles,
+    });
   }
 
   @ApiOperation({ summary: "Lista saldos de maquila por cliente y tipo de envase" })
   @ApiResponse({ status: 200, type: [MaquilaBalanceResponseDto] })
   @Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.PLANT_SUPERVISOR, UserRole.PLANT_OPERATOR)
   @Get("balances")
-  listBalances(@Query("customerId") customerId?: string): Promise<MaquilaBalanceResponseDto[]> {
-    return this.maquilaService.listBalances(customerId);
+  listBalances(
+    @Query() query: ListMaquilaBalancesQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<MaquilaBalanceResponseDto[]> {
+    return this.maquilaService.listBalances(query.customerId, {
+      id: req.user.sub,
+      roles: req.user.roles,
+    });
   }
 
   @ApiOperation({ summary: "Lista saldos de maquila de un cliente específico" })
@@ -115,8 +127,12 @@ export class MaquilaController {
   @Get("customers/:customerId/balances")
   getCustomerBalances(
     @Param("customerId", ParseUUIDPipe) customerId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<MaquilaBalanceResponseDto[]> {
-    return this.maquilaService.listBalances(customerId);
+    return this.maquilaService.listBalances(customerId, {
+      id: req.user.sub,
+      roles: req.user.roles,
+    });
   }
 
   @ApiOperation({ summary: "Lista movimientos de maquila paginados" })

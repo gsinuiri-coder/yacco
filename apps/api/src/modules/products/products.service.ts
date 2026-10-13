@@ -72,9 +72,12 @@ export class ProductsService {
       if (containerType === null) {
         throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no existe`);
       }
+    }
 
-      if (dto.type === ProductType.MAQUILA_SERVICE) {
-        const existingService = await this.prisma.product.findFirst({
+    const product = await this.prisma.$transaction(async (tx) => {
+      if (dto.type === ProductType.MAQUILA_SERVICE && dto.containerTypeId) {
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`maquila-service:${dto.containerTypeId}`}))`;
+        const existingService = await tx.product.findFirst({
           where: {
             type: ProductType.MAQUILA_SERVICE,
             containerTypeId: dto.containerTypeId,
@@ -88,9 +91,7 @@ export class ProductsService {
           );
         }
       }
-    }
 
-    const product = await this.prisma.$transaction(async (tx) => {
       const created = await tx.product.create({
         data: {
           name: trimmedName,

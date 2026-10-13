@@ -113,14 +113,17 @@ const payNow = ref(false);
 const returnPaymentMethodId = ref<string>("");
 const returnAmount = ref("");
 const effectiveUnitPrice = ref<string | null>(null);
+const effectivePriceLoading = ref(false);
 const returnSubmitting = ref(false);
 const returnError = ref<string | null>(null);
+let effectivePriceRequestId = 0;
 
 function openReturnModal(balance: MaquilaBalanceItem): void {
   targetBalance.value = balance;
   returnQuantity.value = String(Math.min(1, balance.fullToReturn));
   returnLocationId.value = locations.value[0]?.id ?? "";
-  effectiveUnitPrice.value = balance.unitPrice;
+  effectiveUnitPrice.value = null;
+  effectivePriceLoading.value = true;
   payNow.value = false;
   returnPaymentMethodId.value = paymentMethods.value[0]?.id ?? "";
   updateCalculatedReturnAmount();
@@ -131,9 +134,14 @@ function openReturnModal(balance: MaquilaBalanceItem): void {
 
 async function loadEffectiveReturnPrice(): Promise<void> {
   const productId = targetBalance.value?.productId;
+  const locationId = returnLocationId.value;
+  const requestId = ++effectivePriceRequestId;
+  effectiveUnitPrice.value = null;
+  effectivePriceLoading.value = true;
+  returnError.value = null;
+  updateCalculatedReturnAmount();
   if (!productId) {
-    effectiveUnitPrice.value = null;
-    updateCalculatedReturnAmount();
+    effectivePriceLoading.value = false;
     return;
   }
 
@@ -141,16 +149,28 @@ async function loadEffectiveReturnPrice(): Promise<void> {
     const prices = await api.request<EffectivePrice[]>(
       `/customers/${props.customerId}/effective-prices`,
       {
-        query: returnLocationId.value ? { locationId: returnLocationId.value } : {},
+        query: locationId ? { locationId } : {},
       },
     );
+    if (
+      requestId !== effectivePriceRequestId ||
+      locationId !== returnLocationId.value ||
+      productId !== targetBalance.value?.productId
+    ) {
+      return;
+    }
     effectiveUnitPrice.value =
       prices.find((price) => price.product.id === productId)?.price ?? null;
     updateCalculatedReturnAmount();
   } catch (error) {
+    if (requestId !== effectivePriceRequestId) return;
     effectiveUnitPrice.value = null;
     returnError.value = describeApiFailure(error);
     updateCalculatedReturnAmount();
+  } finally {
+    if (requestId === effectivePriceRequestId) {
+      effectivePriceLoading.value = false;
+    }
   }
 }
 
@@ -167,9 +187,15 @@ watch(returnQuantity, updateCalculatedReturnAmount);
 watch(returnLocationId, () => {
   if (returnModalOpen.value) void loadEffectiveReturnPrice();
 });
+watch(returnModalOpen, (open) => {
+  if (!open) {
+    effectivePriceRequestId += 1;
+    effectivePriceLoading.value = false;
+  }
+});
 
 async function submitReturn(): Promise<void> {
-  if (returnSubmitting.value || !targetBalance.value) return;
+  if (returnSubmitting.value || effectivePriceLoading.value || !targetBalance.value) return;
   const qty = positiveWhole(returnQuantity.value);
   if (qty === null) {
     returnError.value = "La cantidad debe ser un número entero mayor que 0";
@@ -346,7 +372,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               <p class="mt-1 text-xs text-muted">
                 Precio de maquila:
                 <span class="font-medium text-highlighted">
-                  {{ b.unitPrice !== null ? formatSoles(b.unitPrice) : "Sin precio registrado" }}
+                  {{ b.unitPrice != null ? formatSoles(b.unitPrice) : "Sin precio registrado" }}
                 </span>
               </p>
             </div>
@@ -496,16 +522,18 @@ function canVoid(mov: MaquilaMovementItem): boolean {
                 :class="effectiveUnitPrice ? 'text-highlighted' : 'text-error'"
               >
                 {{
-                  effectiveUnitPrice
-                    ? formatSoles(effectiveUnitPrice)
-                    : "Falta el precio de maquila de este cliente"
+                  effectivePriceLoading
+                    ? "Consultando precio…"
+                    : effectiveUnitPrice
+                      ? formatSoles(effectiveUnitPrice)
+                      : "Falta el precio de maquila de este cliente"
                 }}
               </span>
             </p>
           </div>
 
           <UAlert
-            v-if="targetBalance && !effectiveUnitPrice"
+            v-if="targetBalance && !effectivePriceLoading && !effectiveUnitPrice"
             color="error"
             variant="subtle"
             icon="i-lucide-alert-circle"
@@ -520,7 +548,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               :min="1"
               :max="targetBalance?.fullToReturn"
               :step="1"
-              :disabled="returnSubmitting || !effectiveUnitPrice"
+              :disabled="returnSubmitting || effectivePriceLoading || !effectiveUnitPrice"
               class="w-full"
             />
           </UFormField>
@@ -603,7 +631,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               type="submit"
               label="Registrar devolución"
               :loading="returnSubmitting"
-              :disabled="!effectiveUnitPrice"
+              :disabled="effectivePriceLoading || !effectiveUnitPrice"
             />
           </div>
         </form>

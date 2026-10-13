@@ -43,6 +43,7 @@ function buildPrismaMock() {
       findMany: jest.fn<() => Promise<unknown>>(),
       upsert: jest.fn<() => Promise<unknown>>(),
       update: jest.fn<() => Promise<unknown>>(),
+      updateMany: jest.fn<() => Promise<unknown>>(),
     },
     maquilaContainerMovement: {
       create: jest.fn<() => Promise<unknown>>(),
@@ -82,6 +83,7 @@ describe("MaquilaService Unit Tests", () => {
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
+    prisma.maquilaBalance.updateMany.mockResolvedValue({ count: 1 });
     sales = buildSalesMock();
 
     const moduleRef = await Test.createTestingModule({
@@ -211,8 +213,9 @@ describe("MaquilaService Unit Tests", () => {
 
       expect(result.quantity).toBe(6);
       expect(result.type).toBe(MaquilaMovementType.FILLED);
-      expect(prisma.maquilaBalance.update).toHaveBeenCalledWith(
+      expect(prisma.maquilaBalance.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: expect.objectContaining({ emptyAtPlant: { gte: 6 } }),
           data: {
             emptyAtPlant: { decrement: 6 },
             fullToReturn: { increment: 6 },
@@ -234,6 +237,41 @@ describe("MaquilaService Unit Tests", () => {
       ).rejects.toThrow(
         "No hay suficientes vacíos en planta para llenar (hay 5, se intentó llenar 7)",
       );
+    });
+
+    it("rechaza con mensaje de dominio si otro llenado consume el saldo primero", async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID, active: true });
+      prisma.containerType.findUnique.mockResolvedValue({ id: CONTAINER_TYPE_ID, active: true });
+      prisma.maquilaBalance.findUnique.mockResolvedValue({ emptyAtPlant: 1 });
+      prisma.maquilaBalance.updateMany.mockResolvedValue({ count: 0 });
+      prisma.maquilaBalance.update.mockResolvedValue({});
+      prisma.maquilaContainerMovement.create.mockResolvedValue({
+        id: MOVEMENT_ID,
+        customerId: CUSTOMER_ID,
+        containerTypeId: CONTAINER_TYPE_ID,
+        type: MaquilaMovementType.FILLED,
+        quantity: 1,
+        saleId: null,
+        reversesMovementId: null,
+        reason: null,
+        recordedById: USER_ID,
+        occurredAt: new Date(),
+        createdAt: new Date(),
+        customer: { id: CUSTOMER_ID, name: "Cliente" },
+        containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+        recordedBy: { id: USER_ID, name: "Operador" },
+        sale: null,
+      });
+
+      await expect(
+        service.fill(
+          { customerId: CUSTOMER_ID, containerTypeId: CONTAINER_TYPE_ID, quantity: 1 },
+          USER_ID,
+        ),
+      ).rejects.toThrow("No hay suficientes vacíos en planta para llenar");
+
+      expect(prisma.maquilaBalance.updateMany).toHaveBeenCalled();
+      expect(prisma.maquilaContainerMovement.create).not.toHaveBeenCalled();
     });
   });
 
@@ -300,6 +338,53 @@ describe("MaquilaService Unit Tests", () => {
           USER_ID,
         ),
       ).rejects.toThrow("No hay suficientes llenos para devolver (hay 3, se intentó devolver 5)");
+    });
+
+    it("rechaza con mensaje de dominio si otra devolución consume el saldo primero", async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID, active: true });
+      prisma.containerType.findUnique.mockResolvedValue({ id: CONTAINER_TYPE_ID, active: true });
+      prisma.maquilaBalance.findUnique.mockResolvedValue({ fullToReturn: 1 });
+      prisma.maquilaBalance.updateMany.mockResolvedValue({ count: 0 });
+      prisma.maquilaBalance.update.mockResolvedValue({});
+      prisma.product.findFirst.mockResolvedValue({ id: PRODUCT_ID });
+      prisma.customerLocation.findUnique.mockResolvedValue({
+        id: LOCATION_ID,
+        customerId: CUSTOMER_ID,
+        active: true,
+      });
+      sales.registerServiceSaleWithinTransaction.mockResolvedValue({ sale: { id: SALE_ID } });
+      prisma.maquilaContainerMovement.create.mockResolvedValue({
+        id: MOVEMENT_ID,
+        customerId: CUSTOMER_ID,
+        containerTypeId: CONTAINER_TYPE_ID,
+        type: MaquilaMovementType.RETURNED,
+        quantity: 1,
+        saleId: SALE_ID,
+        reversesMovementId: null,
+        reason: null,
+        recordedById: USER_ID,
+        occurredAt: new Date(),
+        createdAt: new Date(),
+        customer: { id: CUSTOMER_ID, name: "Cliente" },
+        containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+        recordedBy: { id: USER_ID, name: "Vendedor" },
+        sale: { id: SALE_ID, total: new Prisma.Decimal("3.50") },
+      });
+
+      await expect(
+        service.return(
+          {
+            customerId: CUSTOMER_ID,
+            containerTypeId: CONTAINER_TYPE_ID,
+            quantity: 1,
+            locationId: LOCATION_ID,
+          },
+          USER_ID,
+        ),
+      ).rejects.toThrow("No hay suficientes llenos para devolver");
+
+      expect(prisma.maquilaBalance.updateMany).toHaveBeenCalled();
+      expect(sales.registerServiceSaleWithinTransaction).not.toHaveBeenCalled();
     });
 
     it("debe devolver con precio pactado y pago confirmado", async () => {
@@ -487,6 +572,32 @@ describe("MaquilaService Unit Tests", () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it("convierte una anulación concurrente duplicada en un rechazo de dominio", async () => {
+      prisma.maquilaContainerMovement.findUnique.mockResolvedValue({
+        id: MOVEMENT_ID,
+        customerId: CUSTOMER_ID,
+        containerTypeId: CONTAINER_TYPE_ID,
+        type: MaquilaMovementType.RECEIVED,
+        quantity: 1,
+        reversedBy: null,
+      });
+      prisma.maquilaBalance.findUnique.mockResolvedValue({ emptyAtPlant: 1 });
+      prisma.$transaction.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("duplicate reversal", {
+          code: "P2002",
+          clientVersion: "test",
+        }),
+      );
+
+      await expect(
+        service.voidMovement(
+          MOVEMENT_ID,
+          { reason: "Duplicada" },
+          { id: USER_ID, roles: [UserRole.ADMIN] },
+        ),
+      ).rejects.toThrow("El movimiento ya ha sido anulado previamente");
+    });
+
     it("no permite anular llenado si los llenos por devolver quedarían en negativo", async () => {
       const mockFilledMovement = {
         id: MOVEMENT_ID,
@@ -536,6 +647,81 @@ describe("MaquilaService Unit Tests", () => {
     });
   });
 
+  describe("read scope", () => {
+    it("no consulta ni expone precios a un operador de planta", async () => {
+      prisma.maquilaBalance.findMany.mockResolvedValue([
+        {
+          customerId: CUSTOMER_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          emptyAtPlant: 4,
+          fullToReturn: 2,
+          containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+        },
+      ]);
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: PRODUCT_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          listPrice: new Prisma.Decimal("3.50"),
+        },
+      ]);
+      prisma.customerPrice.findMany.mockResolvedValue([]);
+
+      const result = await (
+        service.listBalances as unknown as (
+          customerId: string | undefined,
+          actor: { id: string; roles: UserRole[] },
+        ) => Promise<Array<Record<string, unknown>>>
+      )(CUSTOMER_ID, { id: USER_ID, roles: [UserRole.PLANT_OPERATOR] });
+
+      expect(prisma.product.findMany).not.toHaveBeenCalled();
+      expect(prisma.customerPrice.findMany).not.toHaveBeenCalled();
+      expect(result[0]).not.toHaveProperty("unitPrice");
+      expect(result[0]).not.toHaveProperty("productId");
+    });
+
+    it("limita al supervisor a llenados y no expone campos comerciales", async () => {
+      prisma.maquilaContainerMovement.count.mockResolvedValue(1);
+      prisma.maquilaContainerMovement.findMany.mockResolvedValue([
+        {
+          id: MOVEMENT_ID,
+          customerId: CUSTOMER_ID,
+          containerTypeId: CONTAINER_TYPE_ID,
+          type: MaquilaMovementType.FILLED,
+          quantity: 1,
+          saleId: null,
+          reversesMovementId: null,
+          reason: null,
+          recordedById: USER_ID,
+          occurredAt: new Date(),
+          createdAt: new Date(),
+          customer: { id: CUSTOMER_ID, name: "Cliente" },
+          containerType: { id: CONTAINER_TYPE_ID, name: "Con caño" },
+          recordedBy: { id: USER_ID, name: "Operador" },
+          sale: null,
+        },
+      ]);
+
+      const result = await service.listMovements(
+        {},
+        {
+          id: USER_ID,
+          roles: [UserRole.PLANT_SUPERVISOR],
+        },
+      );
+
+      expect(prisma.maquilaContainerMovement.count).toHaveBeenCalledWith({
+        where: {
+          type: {
+            in: [MaquilaMovementType.FILLED, MaquilaMovementType.FILLED_VOID],
+          },
+        },
+      });
+      expect(result.data[0]).not.toHaveProperty("saleId");
+      expect(result.data[0]).not.toHaveProperty("saleTotal");
+    });
+  });
+
   describe("reconcile", () => {
     it("debe reportar balanceado cuando saldos coinciden con el libro", async () => {
       prisma.maquilaBalance.findMany.mockResolvedValue([
@@ -579,6 +765,9 @@ describe("MaquilaService Unit Tests", () => {
       const result = await service.reconcile();
       expect(result.isBalanced).toBe(true);
       expect(result.discrepancies).toHaveLength(0);
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      });
     });
 
     it("debe detectar descuadre si los saldos materializados difieren del libro", async () => {

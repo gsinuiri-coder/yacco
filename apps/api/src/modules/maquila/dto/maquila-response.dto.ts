@@ -18,10 +18,10 @@ export class MaquilaBalanceResponseDto {
   fullToReturn!: number;
 
   @ApiPropertyOptional({ example: "2.50" })
-  unitPrice!: string | null;
+  unitPrice?: string | null;
 
   @ApiPropertyOptional({ format: "uuid" })
-  productId!: string | null;
+  productId?: string | null;
 }
 
 export class MaquilaCustomerSummaryResponseDto {
@@ -64,10 +64,10 @@ export class MaquilaMovementResponseDto {
   quantity!: number;
 
   @ApiPropertyOptional({ format: "uuid" })
-  saleId!: string | null;
+  saleId?: string | null;
 
   @ApiPropertyOptional({ example: "25.00" })
-  saleTotal!: string | null;
+  saleTotal?: string | null;
 
   @ApiPropertyOptional({ format: "uuid" })
   reversesMovementId!: string | null;
