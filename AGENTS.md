@@ -166,7 +166,10 @@ extraé lo compartido. Si dispara cobertura, escribí el test que falta.
 - Neon branches: never delete, reset or restore one (denied in
   `.claude/settings.json`, CLI and MCP alike), without exceptions. Creating a
   backup branch (D-006) is still allowed.
-- Don't add dependencies without asking. Don't read or write `.env*` files.
+- Don't add dependencies without asking. Don't open, read, print, copy, modify or
+  use values from `.env*` files. A repository tool (such as Prisma or the API
+  test configuration) loading one automatically does not violate this rule;
+  the agent must still only run tests against their isolated ephemeral database.
 - Don't edit applied migrations.
 - Ante una ambigüedad de dominio —qué debería pasar, no cómo implementarlo—
   parás y preguntás. No la resuelvas eligiendo la opción más fácil de

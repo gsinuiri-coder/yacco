@@ -22,7 +22,10 @@ preguntar: lo que en una sesión con persona sería «pará y preguntá», acá 
   default. Y nunca `prisma migrate reset`.
 - `--admin` en un merge, `git push --force` en cualquier forma, bajar un
   umbral de Sonar o agregar una exclusión.
-- Leer o escribir un `.env*`.
+- Abrir, leer, imprimir, copiar, modificar o usar valores de un `.env*`. Que
+  una herramienta del repo (como Prisma o la configuración de tests de la API)
+  lo cargue automáticamente no viola esta regla; el agente igual debe limitarse
+  a la base efímera y aislada del test.
 
 ## Ante cualquiera de esas, o una ambigüedad de dominio
 
