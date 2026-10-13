@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { formatInstantInLima, formatSoles, isAboveZero, isMoneyInput } from "@yacco/shared";
+import {
+  formatInstantInLima,
+  formatSoles,
+  isAboveZero,
+  isMoneyInput,
+  timesQuantity,
+} from "@yacco/shared";
 import type {
   ContainerType,
   CustomerLocation,
+  EffectivePrice,
   MaquilaBalanceItem,
   MaquilaMovementItem,
   MaquilaMovementType,
@@ -105,6 +112,7 @@ const returnLocationId = ref<string>("");
 const payNow = ref(false);
 const returnPaymentMethodId = ref<string>("");
 const returnAmount = ref("");
+const effectiveUnitPrice = ref<string | null>(null);
 const returnSubmitting = ref(false);
 const returnError = ref<string | null>(null);
 
@@ -112,24 +120,53 @@ function openReturnModal(balance: MaquilaBalanceItem): void {
   targetBalance.value = balance;
   returnQuantity.value = String(Math.min(1, balance.fullToReturn));
   returnLocationId.value = locations.value[0]?.id ?? "";
+  effectiveUnitPrice.value = balance.unitPrice;
   payNow.value = false;
   returnPaymentMethodId.value = paymentMethods.value[0]?.id ?? "";
   updateCalculatedReturnAmount();
   returnError.value = null;
   returnModalOpen.value = true;
+  void loadEffectiveReturnPrice();
+}
+
+async function loadEffectiveReturnPrice(): Promise<void> {
+  const productId = targetBalance.value?.productId;
+  if (!productId) {
+    effectiveUnitPrice.value = null;
+    updateCalculatedReturnAmount();
+    return;
+  }
+
+  try {
+    const prices = await api.request<EffectivePrice[]>(
+      `/customers/${props.customerId}/effective-prices`,
+      {
+        query: returnLocationId.value ? { locationId: returnLocationId.value } : {},
+      },
+    );
+    effectiveUnitPrice.value =
+      prices.find((price) => price.product.id === productId)?.price ?? null;
+    updateCalculatedReturnAmount();
+  } catch (error) {
+    effectiveUnitPrice.value = null;
+    returnError.value = describeApiFailure(error);
+    updateCalculatedReturnAmount();
+  }
 }
 
 function updateCalculatedReturnAmount(): void {
-  if (!targetBalance.value?.unitPrice) {
+  if (!effectiveUnitPrice.value) {
     returnAmount.value = "";
     return;
   }
   const qty = positiveWhole(returnQuantity.value) ?? 0;
-  const unit = Number(targetBalance.value.unitPrice);
-  returnAmount.value = (qty * unit).toFixed(2);
+  returnAmount.value = timesQuantity(effectiveUnitPrice.value, qty);
 }
 
 watch(returnQuantity, updateCalculatedReturnAmount);
+watch(returnLocationId, () => {
+  if (returnModalOpen.value) void loadEffectiveReturnPrice();
+});
 
 async function submitReturn(): Promise<void> {
   if (returnSubmitting.value || !targetBalance.value) return;
@@ -142,7 +179,7 @@ async function submitReturn(): Promise<void> {
     returnError.value = `No puedes devolver más de lo llenado (${targetBalance.value.fullToReturn})`;
     return;
   }
-  if (!targetBalance.value.unitPrice) {
+  if (!effectiveUnitPrice.value) {
     returnError.value = "Falta el precio de maquila de este cliente";
     return;
   }
@@ -456,11 +493,11 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               Precio unitario de maquila:
               <span
                 class="font-medium"
-                :class="targetBalance.unitPrice ? 'text-highlighted' : 'text-error'"
+                :class="effectiveUnitPrice ? 'text-highlighted' : 'text-error'"
               >
                 {{
-                  targetBalance.unitPrice
-                    ? formatSoles(targetBalance.unitPrice)
+                  effectiveUnitPrice
+                    ? formatSoles(effectiveUnitPrice)
                     : "Falta el precio de maquila de este cliente"
                 }}
               </span>
@@ -468,7 +505,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
           </div>
 
           <UAlert
-            v-if="targetBalance && !targetBalance.unitPrice"
+            v-if="targetBalance && !effectiveUnitPrice"
             color="error"
             variant="subtle"
             icon="i-lucide-alert-circle"
@@ -483,13 +520,13 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               :min="1"
               :max="targetBalance?.fullToReturn"
               :step="1"
-              :disabled="returnSubmitting || !targetBalance?.unitPrice"
+              :disabled="returnSubmitting || !effectiveUnitPrice"
               class="w-full"
             />
           </UFormField>
 
           <div
-            v-if="targetBalance?.unitPrice"
+            v-if="effectiveUnitPrice"
             class="flex items-center justify-between rounded border border-default p-3 text-sm"
           >
             <span class="text-muted">Total a cobrar por el servicio:</span>
@@ -566,7 +603,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               type="submit"
               label="Registrar devolución"
               :loading="returnSubmitting"
-              :disabled="!targetBalance?.unitPrice"
+              :disabled="!effectiveUnitPrice"
             />
           </div>
         </form>

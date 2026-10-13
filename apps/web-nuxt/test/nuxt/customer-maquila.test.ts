@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type {
   ContainerType,
   CustomerLocation,
+  EffectivePrice,
   MaquilaBalanceItem,
   MaquilaMovementItem,
   PaginatedMaquilaMovements,
@@ -62,6 +63,7 @@ const LOCATION: CustomerLocation = {
 function stubCustomerMaquila(
   balances: MaquilaBalanceItem[] = [BALANCE_WITH_PRICE],
   movements: MaquilaMovementItem[] = [],
+  effectivePrice = balances[0]?.unitPrice ?? null,
 ) {
   cleanups.push(
     registerEndpoint(`/api/v1/maquila/customers/${CUST_ID}/balances`, {
@@ -98,6 +100,21 @@ function stubCustomerMaquila(
     registerEndpoint(`/api/v1/customers/${CUST_ID}/locations`, {
       method: "GET",
       handler: () => [LOCATION],
+    }),
+  );
+  cleanups.push(
+    registerEndpoint(`/api/v1/customers/${CUST_ID}/effective-prices`, {
+      method: "GET",
+      handler: () =>
+        effectivePrice === null || balances[0]?.productId === null
+          ? []
+          : ([
+              {
+                product: { id: balances[0]!.productId!, name: "Servicio de maquila" },
+                price: effectivePrice,
+                source: "LOCATION",
+              },
+            ] satisfies EffectivePrice[]),
     }),
   );
 }
@@ -189,6 +206,24 @@ describe("CustomerMaquilaSection", () => {
         payment: undefined,
       },
     ]);
+  });
+
+  it("calcula exactamente el cargo con el precio efectivo de la ubicación", async () => {
+    const highBalance: MaquilaBalanceItem = {
+      ...BALANCE_WITH_PRICE,
+      fullToReturn: 9_999_999,
+      unitPrice: "4.00",
+    };
+    stubCustomerMaquila([highBalance], [], "99999999.99");
+
+    await renderSection();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Devolver llenos" }));
+    const input = await screen.findByLabelText("Cantidad que se lleva");
+    await userEvent.clear(input);
+    await userEvent.type(input, "9999999");
+
+    expect(await screen.findByText("S/ 999,999,899,900,000.01")).toBeTruthy();
   });
 
   it("muestra aviso y bloquea devolución cuando falta el precio de maquila", async () => {

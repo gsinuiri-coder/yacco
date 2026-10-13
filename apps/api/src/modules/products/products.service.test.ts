@@ -23,6 +23,7 @@ function buildPrismaMock() {
   return {
     product: {
       findMany: jest.fn<() => Promise<unknown>>(),
+      findFirst: jest.fn<() => Promise<unknown>>(),
       findUniqueOrThrow: jest.fn<() => Promise<unknown>>(),
       update: jest.fn<() => Promise<unknown>>(),
       create: jest.fn<() => Promise<unknown>>(),
@@ -44,6 +45,7 @@ describe("ProductsService", () => {
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
+    prisma.product.findFirst.mockResolvedValue(null);
     prisma.$transaction.mockImplementation(async (callback) =>
       (callback as (transaction: typeof prisma) => Promise<unknown>)(prisma),
     );
@@ -135,6 +137,22 @@ describe("ProductsService", () => {
   });
 
   describe("create", () => {
+    it("refuses a second active maquila service for the same container type", async () => {
+      prisma.containerType.findUnique.mockResolvedValue({ id: CONTAINER_TYPE_ID });
+      prisma.product.findFirst.mockResolvedValue({ id: "existing-maquila" });
+
+      await expect(
+        service.create({
+          name: "Otra maquila con caño",
+          type: ProductType.MAQUILA_SERVICE,
+          listPrice: "4.00",
+          containerTypeId: CONTAINER_TYPE_ID,
+        }),
+      ).rejects.toThrow("Ya existe un servicio de maquila activo para este tipo de envase");
+
+      expect(prisma.product.create).not.toHaveBeenCalled();
+    });
+
     it("refuses price <= 0 or empty name", async () => {
       await expect(
         service.create({ name: "Disp", type: ProductType.ACCESSORY, listPrice: "0.00" }),

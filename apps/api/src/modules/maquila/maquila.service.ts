@@ -243,9 +243,23 @@ export class MaquilaService {
 
     // Ubicación del cliente
     let locationId = dto.locationId;
-    if (!locationId) {
+    if (locationId) {
+      const location = await this.prisma.customerLocation.findUnique({
+        where: { id: locationId },
+        select: { id: true, customerId: true, active: true },
+      });
+      if (!location) {
+        throw new BadRequestException(`La ubicación "${locationId}" no existe`);
+      }
+      if (location.customerId !== dto.customerId) {
+        throw new BadRequestException(`La ubicación "${locationId}" no pertenece a este cliente`);
+      }
+      if (!location.active) {
+        throw new BadRequestException(`La ubicación "${locationId}" no está activa`);
+      }
+    } else {
       const primaryLoc = await this.prisma.customerLocation.findFirst({
-        where: { customerId: dto.customerId, isPrimary: true },
+        where: { customerId: dto.customerId, isPrimary: true, active: true },
         select: { id: true },
       });
       if (!primaryLoc) {

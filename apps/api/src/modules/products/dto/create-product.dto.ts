@@ -15,7 +15,7 @@ export class CreateProductDto {
 
   @ApiPropertyOptional({
     format: "uuid",
-    description: "Tipo de envase (solo para recarga o venta de bidón)",
+    description: "Tipo de envase (recarga, venta de bidón o servicio de maquila)",
   })
   @IsOptional()
   @IsUUID("4", { message: "El tipo de envase debe ser un UUID válido" })

@@ -72,6 +72,22 @@ export class ProductsService {
       if (containerType === null) {
         throw new BadRequestException(`El tipo de envase "${dto.containerTypeId}" no existe`);
       }
+
+      if (dto.type === ProductType.MAQUILA_SERVICE) {
+        const existingService = await this.prisma.product.findFirst({
+          where: {
+            type: ProductType.MAQUILA_SERVICE,
+            containerTypeId: dto.containerTypeId,
+            active: true,
+          },
+          select: { id: true },
+        });
+        if (existingService !== null) {
+          throw new BadRequestException(
+            "Ya existe un servicio de maquila activo para este tipo de envase",
+          );
+        }
+      }
     }
 
     const product = await this.prisma.$transaction(async (tx) => {

@@ -30,6 +30,7 @@ function buildPrismaMock() {
     },
     customerLocation: {
       findFirst: jest.fn<() => Promise<unknown>>(),
+      findUnique: jest.fn<() => Promise<unknown>>(),
     },
     customerPrice: {
       findMany: jest.fn<() => Promise<unknown>>(),
@@ -237,6 +238,33 @@ describe("MaquilaService Unit Tests", () => {
   });
 
   describe("return", () => {
+    it("debe rechazar una ubicación que pertenece a otro cliente", async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: CUSTOMER_ID, active: true });
+      prisma.containerType.findUnique.mockResolvedValue({ id: CONTAINER_TYPE_ID, active: true });
+      prisma.maquilaBalance.findUnique.mockResolvedValue({ fullToReturn: 4 });
+      prisma.product.findFirst.mockResolvedValue({ id: PRODUCT_ID });
+      prisma.customerLocation.findUnique.mockResolvedValue({
+        id: LOCATION_ID,
+        customerId: "99999999-9999-4999-8999-999999999999",
+        active: true,
+      });
+
+      await expect(
+        service.return(
+          {
+            customerId: CUSTOMER_ID,
+            containerTypeId: CONTAINER_TYPE_ID,
+            quantity: 4,
+            locationId: LOCATION_ID,
+          },
+          USER_ID,
+        ),
+      ).rejects.toThrow(`La ubicación "${LOCATION_ID}" no pertenece a este cliente`);
+
+      expect(sales.registerServiceSaleWithinTransaction).not.toHaveBeenCalled();
+      expect(prisma.maquilaBalance.update).not.toHaveBeenCalled();
+    });
+
     it("debe rechazar si falta el precio de maquila", async () => {
       prisma.customer.findUnique.mockResolvedValue({
         id: CUSTOMER_ID,
