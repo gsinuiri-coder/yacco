@@ -145,6 +145,11 @@ async function onStatementChanged(): Promise<void> {
             :customer-id="customer.id"
             @statement-changed="onStatementChanged"
           />
+          <CustomerMaquilaSection
+            v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+            :customer-id="customer.id"
+            @statement-changed="onStatementChanged"
+          />
         </div>
 
         <CustomerAccountStatementSection

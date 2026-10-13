@@ -154,6 +154,15 @@ function stubCustomerPage(setup: Setup = {}) {
   for (const loc of locations) {
     endpoint(`/api/v1/customer-locations/${loc.id}/accessories`, () => []);
   }
+  endpoint(`/api/v1/maquila/customers/${ID}/balances`, () => []);
+  endpoint("/api/v1/maquila/movements", () => ({
+    data: [],
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 1,
+  }));
+  endpoint("/api/v1/container-types", () => []);
 }
 
 async function renderCustomerPage() {

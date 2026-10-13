@@ -253,4 +253,55 @@ describe("Productos", () => {
     await user.click(screen.getByRole("button", { name: "Guardar accesorio" }));
     expect(await screen.findByText("El precio de lista debe ser mayor que 0")).toBeTruthy();
   });
+
+  it("el administrador puede crear un servicio de maquila con su tipo de envase", async () => {
+    cleanups.push(
+      registerEndpoint("/api/v1/container-types", {
+        method: "GET",
+        handler: () => [{ id: "ct-1", name: "Con caño" }],
+      }),
+    );
+    const MAQUILA_SERVICE: Product = {
+      id: "maq-1",
+      name: "Maquila con caño",
+      type: "MAQUILA_SERVICE",
+      containerType: { id: "ct-1", name: "Con caño" },
+      listPrice: "3.50",
+      active: true,
+    };
+    let currentList = [REFILL];
+    cleanups.push(
+      registerEndpoint("/api/v1/products", {
+        method: "GET",
+        handler: () => currentList,
+      }),
+    );
+    const postBodies = stubWrite(cleanups, "/api/v1/products", "POST", (_body) => {
+      currentList = [REFILL, MAQUILA_SERVICE];
+      return MAQUILA_SERVICE;
+    });
+    const user = userEvent.setup();
+
+    await renderPage(["ADMIN"]);
+
+    await user.click(screen.getByRole("button", { name: "Nuevo servicio de maquila" }));
+    const nameInput = screen.getByLabelText(/Nombre del servicio/);
+    await user.type(nameInput, "Maquila con caño");
+    const priceInput = screen.getByLabelText(/Precio de lista/);
+    await user.type(priceInput, "3.50");
+    await user.click(screen.getByRole("button", { name: "Guardar servicio" }));
+
+    expect(postBodies).toEqual([
+      {
+        name: "Maquila con caño",
+        type: "MAQUILA_SERVICE",
+        containerTypeId: "ct-1",
+        listPrice: "3.50",
+      },
+    ]);
+    const row = await rowOf("Maquila con caño");
+    expect(within(row).getByText("Servicio de maquila")).toBeTruthy();
+    expect(within(row).getByText("Con caño")).toBeTruthy();
+    expect(within(row).getByText("S/ 3.50")).toBeTruthy();
+  });
 });

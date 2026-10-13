@@ -66,6 +66,29 @@ export interface RegisterStopDeliveryParams {
   allowStockShortfall?: boolean;
 }
 
+export interface RegisterServiceSaleParams {
+  locationId: string;
+  productId: string;
+  quantity: number;
+  payment?: StopDeliveryPaymentInput;
+  recordedById: string;
+  occurredAt: Date;
+}
+
+interface RegisterSaleWithinTransactionParams {
+  routeId?: string;
+  stopId?: string;
+  locationId: string;
+  items: StopDeliveryItemInput[];
+  containersReturned: StopDeliveryContainerReturnInput[];
+  payment?: StopDeliveryPaymentInput;
+  priceOverrideAuthorizedById?: string;
+  recordedById: string;
+  occurredAt: Date;
+  allowStockShortfall?: boolean;
+  expectedProductType?: ProductType;
+}
+
 export interface StopDeliverySaleResult {
   id: string;
   total: string;
@@ -112,8 +135,19 @@ export interface RegisterStopDeliveryResult {
   accessoryShortfall?: StopDeliveryAccessoryShortfallResult[];
 }
 
+export interface RegisterServiceSaleResult {
+  sale: StopDeliverySaleResult;
+  payment: StopDeliveryPaymentResult | null;
+}
+
 export interface VoidStopDeliveryParams {
   stopId: string;
+  voidedById: string;
+  voidReason: string;
+}
+
+export interface VoidSaleParams {
+  saleId: string;
   voidedById: string;
   voidReason: string;
 }
@@ -140,6 +174,12 @@ export interface VoidStopDeliveryResult {
    * baja la deuda, que es el caso normal. `"0.00"` en el no-op. */
   debtDelta: string;
   voidMovements: VoidStopDeliveryMovementResult[];
+}
+
+export interface VoidSaleResult {
+  sale: { id: string; total: string; soldAt: Date } | null;
+  payments: VoidStopDeliveryPaymentResult[];
+  debtDelta: string;
 }
 
 /**
@@ -485,6 +525,29 @@ export class SalesService {
     tx: Prisma.TransactionClient,
     params: RegisterStopDeliveryParams,
   ): Promise<RegisterStopDeliveryResult> {
+    return this.registerSaleWithinTransaction(tx, params);
+  }
+
+  async registerServiceSaleWithinTransaction(
+    tx: Prisma.TransactionClient,
+    params: RegisterServiceSaleParams,
+  ): Promise<RegisterServiceSaleResult> {
+    const result = await this.registerSaleWithinTransaction(tx, {
+      locationId: params.locationId,
+      items: [{ productId: params.productId, quantity: params.quantity }],
+      containersReturned: [],
+      ...(params.payment === undefined ? {} : { payment: params.payment }),
+      recordedById: params.recordedById,
+      occurredAt: params.occurredAt,
+      expectedProductType: ProductType.MAQUILA_SERVICE,
+    });
+    return { sale: result.sale, payment: result.payment };
+  }
+
+  private async registerSaleWithinTransaction(
+    tx: Prisma.TransactionClient,
+    params: RegisterSaleWithinTransactionParams,
+  ): Promise<RegisterStopDeliveryResult> {
     const location = await tx.customerLocation.findUnique({
       where: { id: params.locationId },
       select: {
@@ -519,6 +582,12 @@ export class SalesService {
     if (inactive.length > 0) {
       const names = inactive.map((product) => `"${product.name}"`).join(", ");
       throw new BadRequestException(`Ya no están a la venta los productos: ${names}`);
+    }
+    if (
+      params.expectedProductType !== undefined &&
+      products.some((product) => product.type !== params.expectedProductType)
+    ) {
+      throw new BadRequestException("El producto no corresponde al servicio que se está cobrando");
     }
     const productById = new Map(products.map((product) => [product.id, product] as const));
     function requireProduct(productId: string): (typeof products)[number] {
@@ -592,6 +661,9 @@ export class SalesService {
     const deliveredAccessories = new Map<string, number>();
     for (const item of params.items) {
       const product = requireProduct(item.productId);
+      if (product.type === ProductType.MAQUILA_SERVICE) {
+        continue;
+      }
       if (product.containerTypeId !== null) {
         deliveredByContainerType.set(
           product.containerTypeId,
@@ -604,11 +676,14 @@ export class SalesService {
         );
       }
     }
+    if (deliveredByContainerType.size > 0 && params.routeId === undefined) {
+      throw new BadRequestException("La venta de envases de la planta requiere una ruta");
+    }
     const stockShortfall: StopDeliveryStockShortfallResult[] = [];
     for (const [containerTypeId, requested] of deliveredByContainerType) {
       const available = await this.containerMovementsService.getRouteFullStock(
         tx,
-        params.routeId,
+        params.routeId!,
         containerTypeId,
       );
       if (available >= requested) continue;
@@ -711,7 +786,7 @@ export class SalesService {
     const sale = await tx.sale.create({
       data: {
         locationId: params.locationId,
-        stopId: params.stopId,
+        ...(params.stopId === undefined ? {} : { stopId: params.stopId }),
         soldAt: occurredAt,
         total,
         creditLimitExceeded,
@@ -729,7 +804,7 @@ export class SalesService {
           customerId: customer.id,
           locationId: params.locationId,
           saleId: sale.id,
-          stopId: params.stopId,
+          ...(params.stopId === undefined ? {} : { stopId: params.stopId }),
           paymentMethodId: resolvedPayment.paymentMethodId,
           paidAt: occurredAt,
           amount: resolvedPayment.amount,
@@ -752,7 +827,8 @@ export class SalesService {
     const deliveryGroups = new Map<string, Map<ContainerMovementType, number>>();
     for (const item of params.items) {
       const product = requireProduct(item.productId);
-      if (product.containerTypeId === null) continue;
+      if (product.containerTypeId === null || product.type === ProductType.MAQUILA_SERVICE)
+        continue;
       const movementType =
         product.type === ProductType.REFILL
           ? ContainerMovementType.LOAN_DELIVERY
@@ -783,7 +859,11 @@ export class SalesService {
               : {}),
           },
           params.recordedById,
-          { routeId: params.routeId, stopId: params.stopId, occurredAt },
+          {
+            ...(params.routeId === undefined ? {} : { routeId: params.routeId }),
+            ...(params.stopId === undefined ? {} : { stopId: params.stopId }),
+            occurredAt,
+          },
         );
       }
     }
@@ -824,7 +904,11 @@ export class SalesService {
           locationId: params.locationId,
         },
         params.recordedById,
-        { routeId: params.routeId, stopId: params.stopId, occurredAt },
+        {
+          ...(params.routeId === undefined ? {} : { routeId: params.routeId }),
+          ...(params.stopId === undefined ? {} : { stopId: params.stopId }),
+          occurredAt,
+        },
       );
       balanceTouchedContainerTypeIds.add(item.containerTypeId);
     }
@@ -893,8 +977,61 @@ export class SalesService {
     tx: Prisma.TransactionClient,
     params: VoidStopDeliveryParams,
   ): Promise<VoidStopDeliveryResult> {
+    const voided = await this.voidSaleRecordsWithinTransaction(
+      tx,
+      { stopId: params.stopId },
+      params,
+    );
+    if (voided.sale === null) {
+      return { ...voided, voidMovements: [] };
+    }
+
+    const voidMovements = await this.emitStopVoidMovements(tx, params, voided.sale.soldAt);
+
+    const unreversedAccessorySales = await tx.accessoryMovement.findMany({
+      where: {
+        saleId: voided.sale.id,
+        type: AccessoryMovementType.SALE,
+        reversedBy: null,
+      },
+    });
+    for (const m of unreversedAccessorySales) {
+      await tx.accessoryStock.upsert({
+        where: { productId: m.productId },
+        update: { quantity: { increment: m.quantity } },
+        create: { productId: m.productId, quantity: m.quantity },
+      });
+      await tx.accessoryMovement.create({
+        data: {
+          productId: m.productId,
+          type: AccessoryMovementType.SALE_VOID,
+          quantity: m.quantity,
+          locationId: m.locationId,
+          saleId: voided.sale.id,
+          reversesMovementId: m.id,
+          recordedById: params.voidedById,
+          occurredAt: voided.sale.soldAt,
+        },
+      });
+    }
+
+    return { ...voided, voidMovements };
+  }
+
+  async voidSaleWithinTransaction(
+    tx: Prisma.TransactionClient,
+    params: VoidSaleParams,
+  ): Promise<VoidSaleResult> {
+    return this.voidSaleRecordsWithinTransaction(tx, { id: params.saleId }, params);
+  }
+
+  private async voidSaleRecordsWithinTransaction(
+    tx: Prisma.TransactionClient,
+    saleWhere: Prisma.SaleWhereInput,
+    params: Pick<VoidSaleParams, "voidedById" | "voidReason">,
+  ): Promise<VoidSaleResult> {
     const sale = await tx.sale.findFirst({
-      where: { stopId: params.stopId, voidedAt: null },
+      where: { ...saleWhere, voidedAt: null },
       select: {
         id: true,
         total: true,
@@ -908,7 +1045,7 @@ export class SalesService {
       },
     });
     if (sale === null) {
-      return { sale: null, payments: [], debtDelta: "0.00", voidMovements: [] };
+      return { sale: null, payments: [], debtDelta: "0.00" };
     }
 
     // Las tres columnas van juntas o ninguna — hay un CHECK en la base que lo
@@ -934,7 +1071,7 @@ export class SalesService {
       data: voidColumns,
     });
     if (count === 0) {
-      return { sale: null, payments: [], debtDelta: "0.00", voidMovements: [] };
+      return { sale: null, payments: [], debtDelta: "0.00" };
     }
 
     if (sale.payments.length > 0) {
@@ -955,35 +1092,6 @@ export class SalesService {
       data: { debtBalance: { increment: debtDelta } },
     });
 
-    const voidMovements = await this.emitStopVoidMovements(tx, params, sale.soldAt);
-
-    const unreversedAccessorySales = await tx.accessoryMovement.findMany({
-      where: {
-        saleId: sale.id,
-        type: AccessoryMovementType.SALE,
-        reversedBy: null,
-      },
-    });
-    for (const m of unreversedAccessorySales) {
-      await tx.accessoryStock.upsert({
-        where: { productId: m.productId },
-        update: { quantity: { increment: m.quantity } },
-        create: { productId: m.productId, quantity: m.quantity },
-      });
-      await tx.accessoryMovement.create({
-        data: {
-          productId: m.productId,
-          type: AccessoryMovementType.SALE_VOID,
-          quantity: m.quantity,
-          locationId: m.locationId,
-          saleId: sale.id,
-          reversesMovementId: m.id,
-          recordedById: params.voidedById,
-          occurredAt: sale.soldAt,
-        },
-      });
-    }
-
     return {
       // `soldAt` viaja de vuelta porque es de donde el camino de corrección
       // saca el instante con el que vuelve a registrar la parada: la entrega
@@ -995,7 +1103,6 @@ export class SalesService {
         status: payment.status,
       })),
       debtDelta: debtDelta.toFixed(2),
-      voidMovements,
     };
   }
 

@@ -37,6 +37,7 @@ export const NAVIGATION: NavigationSection[] = [
     label: "Envases y producción",
     links: [
       { label: "Producción", icon: "i-lucide-factory", to: "/production" },
+      { label: "Maquila", icon: "i-lucide-boxes", to: "/maquila" },
       { label: "Tipos de envase", icon: "i-lucide-package", to: "/container-types" },
       { label: "Inventario de envases", icon: "i-lucide-package-open", to: "/inventory" },
       {

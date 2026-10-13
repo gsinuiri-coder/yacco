@@ -221,12 +221,13 @@ cuándo, y tres líneas:
 - **Construido encima:** enum `UserRole` (`PLANT_SUPERVISOR`, `PLANT_OPERATOR`), control de acceso `@Roles` en controllers de API (`production-batches`, `container-movements`, `container-counts`, `container-types`), filtro de operador en `ProductionBatchesService`, menú lateral en `apps/web-nuxt` y redirección en el middleware de autenticación.
 - **Si resulta que no:** medio. Los permisos y filtros de visibilidad se ajustan en la API y el menú sin tocar el libro de envases ni las tablas operacionales.
 
-### Fase 2: la maquila es un libro aparte, que nunca toca los envases propios
+### Fase 3: maquila en bidones del cliente con libro inmutable, saldos separados y cobro al devolver
 
-- **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 7 de «Fase 2 en local».
-- **Asumimos:** que la planta llena envases de otra marca que trae el cliente, cobra por unidad llenada a un precio pactado por cliente, y cobra al devolverlos llenos. Esos envases no son de la planta: no entran a `container_movements` ni a la deuda de envases. La deuda en S/ del cliente es la de siempre.
-- **Construido encima:** nada todavía. Se construye el libro `maquila_container_movements` (recibido, llenado, devuelto, y sus anulaciones) con saldos «en la planta sin llenar» y «llenos por devolver», el precio por cliente con historial, el cargo al devolver y la pantalla «Maquila».
-- **Si resulta que no:** caro. Si el cobro nace en otro momento (al recibir, o al llenar) cambia de dónde sale la venta; si los envases sí deben contarse como propios, el diseño entero cambia. Conviene preguntárselo antes del UAT.
+- **Decidido por Giancarlo (2026-10-12),** en conversación con Claude; fila 7 de «Fase 3 en local». Reemplaza la decisión de Fase 2.
+- **Asumimos:** que en producción se hace maquila con bidones del cliente (persona o empresa) identificados por su tipo de envase de catálogo; sus bidones nunca entran a `container_movements`, ni a la deuda de envases de la flota, ni al stock de planta, ni a los lotes, ni al FIFO de carga; se registran en el libro inmutable `maquila_container_movements` (recibido, llenado, devuelto y sus respectivas anulaciones, solo INSERT); mantiene saldos materializados `maquila_balances` en la misma transacción («vacíos en la planta» y «llenos por devolver», ambos con CHECK `>= 0` para rechazar sobrellenado o sobredevolución); oficina registra recibido y devuelto; supervisor y operador registran llenados desde Producción (el operador ve solo sus propios registros); el cargo nace al devolver como venta con producto `MAQUILA_SERVICE` al precio pactado o de lista (rechaza si falta precio) y se paga o se fía como cualquier venta; anular un devuelto anula también su venta y cobro.
+- **Construido encima:** tipo `MAQUILA_SERVICE` en `product_type`, enum `maquila_movement_type`, tablas `maquila_container_movements` y `maquila_balances`, endpoints `/maquila/*`, pantalla «Maquila», sección en «Producción» y en la ficha del cliente.
+- **Índice autorizado (Giancarlo, 13/10/2026 08:12):** se conserva `maquila_container_movements_customer_id_occurred_at_idx` para las lecturas del libro por cliente y fecha; es la única ampliación al esquema enumerado para esta fila.
+- **Si resulta que no:** caro. Si el cobro debiera nacer en otro momento (al recibir o al llenar) cambia la venta asociada; si los envases del cliente se mezclaran con la flota propia, se rompería la auditoría de activos y el inventario FIFO.
 
 ### En Windows, codex corre en el relevo sin sandbox
 

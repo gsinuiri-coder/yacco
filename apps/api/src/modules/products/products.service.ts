@@ -75,6 +75,23 @@ export class ProductsService {
     }
 
     const product = await this.prisma.$transaction(async (tx) => {
+      if (dto.type === ProductType.MAQUILA_SERVICE && dto.containerTypeId) {
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`maquila-service:${dto.containerTypeId}`}))`;
+        const existingService = await tx.product.findFirst({
+          where: {
+            type: ProductType.MAQUILA_SERVICE,
+            containerTypeId: dto.containerTypeId,
+            active: true,
+          },
+          select: { id: true },
+        });
+        if (existingService !== null) {
+          throw new BadRequestException(
+            "Ya existe un servicio de maquila activo para este tipo de envase",
+          );
+        }
+      }
+
       const created = await tx.product.create({
         data: {
           name: trimmedName,

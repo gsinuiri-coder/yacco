@@ -79,6 +79,14 @@ function stubPage(
         return pageOf(batches);
       },
     }),
+    registerEndpoint("/api/v1/maquila/customers", () => []),
+    registerEndpoint("/api/v1/maquila/movements", () => ({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    })),
   );
   return { queries, proposalDates };
 }

@@ -328,6 +328,8 @@ function fillingAudit(item: ProductionBatch["items"][number]): string | null {
         </div>
       </SectionCard>
 
+      <ProductionMaquilaSection />
+
       <UCard :ui="{ body: 'p-0 sm:p-0' }">
         <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
           <UFormField label="Desde">
