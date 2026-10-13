@@ -3,6 +3,7 @@ import { Test } from "@nestjs/testing";
 import { MaquilaMovementType, PaymentStatus, Prisma, UserRole } from "@prisma/client";
 import { jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { SalesService } from "../sales/sales.service.js";
 import { MaquilaService } from "./maquila.service.js";
 
 const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
@@ -65,16 +66,29 @@ function buildPrismaMock() {
   };
 }
 
+function buildSalesMock() {
+  return {
+    registerServiceSaleWithinTransaction: jest.fn<() => Promise<unknown>>(),
+    voidSaleWithinTransaction: jest.fn<() => Promise<unknown>>(),
+  };
+}
+
 let prisma: ReturnType<typeof buildPrismaMock>;
+let sales: ReturnType<typeof buildSalesMock>;
 
 describe("MaquilaService Unit Tests", () => {
   let service: MaquilaService;
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
+    sales = buildSalesMock();
 
     const moduleRef = await Test.createTestingModule({
-      providers: [MaquilaService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        MaquilaService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SalesService, useValue: sales },
+      ],
     }).compile();
 
     service = moduleRef.get(MaquilaService);
@@ -290,6 +304,10 @@ describe("MaquilaService Unit Tests", () => {
       prisma.payment.create.mockResolvedValue({ id: "pay-1" });
       prisma.maquilaBalance.update.mockResolvedValue({});
       prisma.customer.update.mockResolvedValue({});
+      sales.registerServiceSaleWithinTransaction.mockResolvedValue({
+        sale: { id: SALE_ID, total: "10.00", creditLimitExceeded: false },
+        payment: { id: "pay-1", amount: "10.00", status: PaymentStatus.CONFIRMED },
+      });
 
       const mockMovement = {
         id: MOVEMENT_ID,
@@ -323,19 +341,19 @@ describe("MaquilaService Unit Tests", () => {
       expect(result.quantity).toBe(4);
       expect(result.type).toBe(MaquilaMovementType.RETURNED);
       expect(result.saleTotal).toBe("10.00");
-      expect(prisma.sale.create).toHaveBeenCalledWith(
+      expect(sales.registerServiceSaleWithinTransaction).toHaveBeenCalledWith(
+        prisma,
         expect.objectContaining({
-          data: expect.objectContaining({
-            total: new Prisma.Decimal("10.00"),
-          }),
+          locationId: LOCATION_ID,
+          productId: PRODUCT_ID,
+          quantity: 4,
+          payment: { paymentMethodId: PAYMENT_METHOD_ID, amount: "10.00" },
+          recordedById: USER_ID,
         }),
       );
-      // Pago confirmado cubre los 10.00, debtDelta = 0
-      expect(prisma.customer.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: { debtBalance: { increment: new Prisma.Decimal("0.00") } },
-        }),
-      );
+      expect(prisma.sale.create).not.toHaveBeenCalled();
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+      expect(prisma.customer.update).not.toHaveBeenCalled();
     });
   });
 
@@ -370,6 +388,11 @@ describe("MaquilaService Unit Tests", () => {
       prisma.sale.update.mockResolvedValue({});
       prisma.payment.updateMany.mockResolvedValue({});
       prisma.customer.update.mockResolvedValue({});
+      sales.voidSaleWithinTransaction.mockResolvedValue({
+        sale: { id: SALE_ID, total: "10.00", soldAt: new Date() },
+        payments: [{ id: "pay-1", amount: "10.00", status: PaymentStatus.CONFIRMED }],
+        debtDelta: "0.00",
+      });
 
       const mockVoidMovement = {
         id: "void-mov-1",
@@ -402,14 +425,17 @@ describe("MaquilaService Unit Tests", () => {
           data: { fullToReturn: { increment: 4 } },
         }),
       );
-      expect(prisma.sale.update).toHaveBeenCalled();
-      expect(prisma.payment.updateMany).toHaveBeenCalled();
-      // Restauración de deuda: debtDelta = -10.00 + 10.00 = 0.00
-      expect(prisma.customer.update).toHaveBeenCalledWith(
+      expect(sales.voidSaleWithinTransaction).toHaveBeenCalledWith(
+        prisma,
         expect.objectContaining({
-          data: { debtBalance: { increment: new Prisma.Decimal("0.00") } },
+          saleId: SALE_ID,
+          voidedById: USER_ID,
+          voidReason: "Devolución cancelada",
         }),
       );
+      expect(prisma.sale.update).not.toHaveBeenCalled();
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      expect(prisma.customer.update).not.toHaveBeenCalled();
     });
 
     it("no permite anular devuelto a un no administrador", async () => {
