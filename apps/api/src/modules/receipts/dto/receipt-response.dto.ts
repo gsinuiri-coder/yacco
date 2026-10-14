@@ -30,3 +30,8 @@ export class VoidReceiptResultDto {
   @ApiProperty({ format: "uuid" }) id!: string;
   @ApiProperty() releasedSales!: number;
 }
+
+export class ReleaseExemptionResultDto {
+  @ApiProperty({ format: "uuid" }) id!: string;
+  @ApiProperty({ format: "uuid" }) saleId!: string;
+}

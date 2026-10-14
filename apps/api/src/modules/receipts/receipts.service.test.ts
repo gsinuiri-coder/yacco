@@ -195,6 +195,7 @@ describe("ReceiptsService transactional writes", () => {
       saleReceiptExemption: {
         updateMany: jest.fn<() => Promise<unknown>>().mockResolvedValue({ count: 1 }),
         createMany: jest.fn<() => Promise<unknown>>().mockResolvedValue({ count: 2 }),
+        findUnique: jest.fn<() => Promise<unknown>>(),
       },
       receipt: {
         create: jest.fn<() => Promise<unknown>>().mockResolvedValue({
@@ -308,6 +309,72 @@ describe("ReceiptsService transactional writes", () => {
         voidedAt: expect.any(Date),
         voidedById: USER_ID,
         voidReason: "Se cargó una serie equivocada",
+      }),
+    });
+    expect(tx.receiptSale.updateMany).toHaveBeenCalledWith({
+      where: { receiptId: "receipt-1", releasedAt: null },
+      data: expect.objectContaining({ releasedAt: expect.any(Date), releasedById: USER_ID }),
+    });
+  });
+
+  test("manually releasing an exemption records all three release fields", async () => {
+    const tx = buildTransactionMock();
+    tx.saleReceiptExemption.findUnique.mockResolvedValue({
+      id: "exemption-1",
+      saleId: SALE_IDS[0],
+      releasedAt: null,
+    });
+    const service = new ReceiptsService(buildTransactionalPrisma(tx) as never);
+
+    await service.releaseExemption(
+      "exemption-1",
+      { reason: "El cliente pidió boleta después" },
+      USER_ID,
+    );
+
+    expect(tx.saleReceiptExemption.updateMany).toHaveBeenCalledWith({
+      where: { id: "exemption-1", releasedAt: null },
+      data: {
+        releasedAt: expect.any(Date),
+        releasedById: USER_ID,
+        releaseReason: "El cliente pidió boleta después",
+      },
+    });
+  });
+
+  test("a credit note voids its original and releases the original sales", async () => {
+    const tx = buildTransactionMock();
+    tx.receipt.findUnique.mockResolvedValue({
+      id: "receipt-1",
+      type: ReceiptType.INVOICE,
+      customerId: CUSTOMER_ID,
+      issuerSettingsVersionId: "settings-1",
+      taxableAmount: decimal("100.00"),
+      taxAmount: decimal("18.00"),
+      total: decimal("118.00"),
+      voidedAt: null,
+      sales: SALE_IDS.map((saleId) => ({ saleId, releasedAt: null })),
+    });
+    const service = new ReceiptsService(buildTransactionalPrisma(tx) as never);
+
+    await service.createCreditNote(
+      "receipt-1",
+      {
+        medium: ReceiptMedium.EXTERNAL_ELECTRONIC,
+        series: "FC01",
+        number: "000123",
+        issuedOn: "2026-10-14",
+        reason: "Operación anulada",
+      },
+      USER_ID,
+    );
+
+    expect(tx.receipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: ReceiptType.CREDIT_NOTE,
+        affectedReceiptId: "receipt-1",
+        reason: "Operación anulada",
+        total: decimal("118.00"),
       }),
     });
     expect(tx.receiptSale.updateMany).toHaveBeenCalledWith({

@@ -25,8 +25,13 @@ import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { CreateReceiptDto } from "./dto/create-receipt.dto.js";
 import { PreviewReceiptDto, ReceiptPreviewResponseDto } from "./dto/preview-receipt.dto.js";
-import { MarkReceiptExemptionsDto, ReceiptReasonDto } from "./dto/receipt-action.dto.js";
 import {
+  CreateCreditNoteDto,
+  MarkReceiptExemptionsDto,
+  ReceiptReasonDto,
+} from "./dto/receipt-action.dto.js";
+import {
+  ReleaseExemptionResultDto,
   ReceiptExemptionResultDto,
   ReceiptResponseDto,
   VoidReceiptResultDto,
@@ -84,5 +89,28 @@ export class ReceiptsController {
     @Req() request: AuthenticatedRequest,
   ): Promise<VoidReceiptResultDto> {
     return this.receiptsService.void(id, dto, request.user.sub);
+  }
+
+  @ApiOperation({ summary: "Libera manualmente una marca No lleva comprobante (solo ADMIN)" })
+  @ApiResponse({ status: 200, type: ReleaseExemptionResultDto })
+  @Roles(UserRole.ADMIN)
+  @Patch("exemptions/:id/release")
+  releaseExemption(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: ReceiptReasonDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ReleaseExemptionResultDto> {
+    return this.receiptsService.releaseExemption(id, dto, request.user.sub);
+  }
+
+  @ApiOperation({ summary: "Registra una nota de crédito y libera las ventas del original" })
+  @ApiResponse({ status: 201, type: ReceiptResponseDto })
+  @Post(":id/credit-notes")
+  createCreditNote(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: CreateCreditNoteDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ReceiptResponseDto> {
+    return this.receiptsService.createCreditNote(id, dto, request.user.sub);
   }
 }

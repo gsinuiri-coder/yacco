@@ -9,8 +9,13 @@ import { PrismaService } from "../../prisma/prisma.service.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { CreateReceiptDto } from "./dto/create-receipt.dto.js";
 import type { PreviewReceiptDto, ReceiptPreviewResponseDto } from "./dto/preview-receipt.dto.js";
-import type { MarkReceiptExemptionsDto, ReceiptReasonDto } from "./dto/receipt-action.dto.js";
 import type {
+  CreateCreditNoteDto,
+  MarkReceiptExemptionsDto,
+  ReceiptReasonDto,
+} from "./dto/receipt-action.dto.js";
+import type {
+  ReleaseExemptionResultDto,
   ReceiptExemptionResultDto,
   ReceiptResponseDto,
   VoidReceiptResultDto,
@@ -205,6 +210,104 @@ export class ReceiptsService {
       });
       return { id, releasedSales: released.count };
     });
+  }
+
+  async releaseExemption(
+    id: string,
+    dto: ReceiptReasonDto,
+    releasedById: string,
+  ): Promise<ReleaseExemptionResultDto> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT id FROM sale_receipt_exemptions WHERE id = ${id}::uuid FOR UPDATE`,
+      );
+      const exemption = await tx.saleReceiptExemption.findUnique({
+        where: { id },
+        select: { id: true, saleId: true, releasedAt: true },
+      });
+      if (exemption === null) throw new NotFoundException("La marca no existe");
+      if (exemption.releasedAt !== null) throw new ConflictException("La marca ya fue liberada");
+      const { count } = await tx.saleReceiptExemption.updateMany({
+        where: { id, releasedAt: null },
+        data: { releasedAt: new Date(), releasedById, releaseReason: dto.reason.trim() },
+      });
+      if (count !== 1) throw new ConflictException("La marca ya fue liberada");
+      return { id, saleId: exemption.saleId };
+    });
+  }
+
+  async createCreditNote(
+    affectedReceiptId: string,
+    dto: CreateCreditNoteDto,
+    createdById: string,
+  ): Promise<ReceiptResponseDto> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM receipts WHERE id = ${affectedReceiptId}::uuid FOR UPDATE`,
+        );
+        const original = await tx.receipt.findUnique({
+          where: { id: affectedReceiptId },
+          select: {
+            id: true,
+            type: true,
+            customerId: true,
+            issuerSettingsVersionId: true,
+            taxableAmount: true,
+            taxAmount: true,
+            total: true,
+            voidedAt: true,
+            sales: { where: { releasedAt: null }, select: { saleId: true, releasedAt: true } },
+          },
+        });
+        if (original === null) throw new NotFoundException("El comprobante no existe");
+        if (original.type === ReceiptType.CREDIT_NOTE) {
+          throw new BadRequestException(
+            "Una nota de crédito no puede afectar a otra nota de crédito",
+          );
+        }
+        if (original.voidedAt !== null) {
+          throw new ConflictException("El comprobante original ya fue anulado");
+        }
+        const releasedAt = new Date();
+        const { count } = await tx.receipt.updateMany({
+          where: { id: affectedReceiptId, voidedAt: null },
+          data: {
+            voidedAt: releasedAt,
+            voidedById: createdById,
+            voidReason: dto.reason.trim(),
+          },
+        });
+        if (count !== 1) throw new ConflictException("El comprobante original ya fue anulado");
+        await tx.receiptSale.updateMany({
+          where: { receiptId: affectedReceiptId, releasedAt: null },
+          data: { releasedAt, releasedById: createdById },
+        });
+        const creditNote = await tx.receipt.create({
+          data: {
+            type: ReceiptType.CREDIT_NOTE,
+            medium: dto.medium,
+            series: dto.series.trim(),
+            number: dto.number.trim(),
+            issuedOn: parseBusinessDate(dto.issuedOn, "La fecha de emisión"),
+            customerId: original.customerId,
+            issuerSettingsVersionId: original.issuerSettingsVersionId,
+            taxableAmount: original.taxableAmount,
+            taxAmount: original.taxAmount,
+            total: original.total,
+            affectedReceiptId,
+            reason: dto.reason.trim(),
+            createdById,
+          },
+        });
+        return toReceiptResponse(creditNote);
+      });
+    } catch (error) {
+      if (isPrismaKnownError(error, "P2002")) {
+        throw new ConflictException("Ya existe una nota de crédito con esa serie y número");
+      }
+      throw error;
+    }
   }
 
   private async findSettings(client: ReceiptClient): Promise<ReceiptSettings> {
