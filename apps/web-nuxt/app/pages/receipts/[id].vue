@@ -1,11 +1,27 @@
 <script setup lang="ts">
 import { formatCalendarDay, formatInstantInLima, formatSoles } from "@yacco/shared";
-import type { ReceiptDetail } from "@yacco/shared";
+import type { ReceiptDetail, ReceiptMedium, ReceiptRow } from "@yacco/shared";
 
 const route = useRoute();
 const receiptId = String(route.params.id);
+const api = useApi();
+const session = useSession();
 const resource = useApiResource<ReceiptDetail>(`/receipts/${receiptId}`);
 const receipt = resource.data;
+const action = ref<"void" | "credit-note" | null>(null);
+const actionError = ref<string | null>(null);
+const saving = ref(false);
+const voidReason = ref("");
+const creditNoteMedium = ref<ReceiptMedium>("MANUAL");
+const creditNoteSeries = ref("");
+const creditNoteNumber = ref("");
+const creditNoteIssuedOn = ref("");
+const creditNoteReason = ref("");
+
+const mediumOptions = [
+  { label: "Manual", value: "MANUAL" },
+  { label: "Electrónico", value: "ELECTRONIC" },
+];
 
 const title = computed(() => {
   if (receipt.value === null) return "Comprobante";
@@ -13,18 +29,99 @@ const title = computed(() => {
 });
 
 useHead(() => ({ title: `${title.value} · Yacco` }));
+
+function startAction(nextAction: "void" | "credit-note"): void {
+  actionError.value = null;
+  action.value = nextAction;
+}
+
+function cancelAction(): void {
+  action.value = null;
+  actionError.value = null;
+}
+
+async function voidReceipt(): Promise<void> {
+  if (saving.value) return;
+  const reason = voidReason.value.trim();
+  if (reason === "") {
+    actionError.value = "Escribe el motivo de la anulación.";
+    return;
+  }
+  saving.value = true;
+  actionError.value = null;
+  try {
+    await api.request(`/receipts/${receiptId}/void`, {
+      method: "PATCH",
+      body: { reason },
+    });
+    action.value = null;
+    await resource.reload();
+  } catch (error) {
+    actionError.value = describeApiFailure(error);
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function createCreditNote(): Promise<void> {
+  if (saving.value) return;
+  const series = creditNoteSeries.value.trim();
+  const number = creditNoteNumber.value.trim();
+  const reason = creditNoteReason.value.trim();
+  if (series === "" || number === "" || creditNoteIssuedOn.value === "" || reason === "") {
+    actionError.value = "Completa los datos de la nota de crédito.";
+    return;
+  }
+  saving.value = true;
+  actionError.value = null;
+  try {
+    const created = await api.request<ReceiptRow>(`/receipts/${receiptId}/credit-notes`, {
+      method: "POST",
+      body: {
+        medium: creditNoteMedium.value,
+        series,
+        number,
+        issuedOn: creditNoteIssuedOn.value,
+        reason,
+      },
+    });
+    await navigateTo(`/receipts/${created.id}`);
+  } catch (error) {
+    actionError.value = describeApiFailure(error);
+  } finally {
+    saving.value = false;
+  }
+}
 </script>
 
 <template>
   <AppPage :title="title" :description="receipt ? receipt.customer.name : 'Cargando…'">
     <template #actions>
-      <UButton
-        to="/receipts"
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-arrow-left"
-        label="Volver a comprobantes"
-      />
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <UButton
+          v-if="receipt?.status === 'ACTIVE' && receipt.type !== 'CREDIT_NOTE'"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-file-minus"
+          label="Registrar nota de crédito"
+          @click="startAction('credit-note')"
+        />
+        <UButton
+          v-if="receipt?.status === 'ACTIVE' && session.hasRole('ADMIN')"
+          color="error"
+          variant="outline"
+          icon="i-lucide-ban"
+          label="Anular comprobante"
+          @click="startAction('void')"
+        />
+        <UButton
+          to="/receipts"
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-arrow-left"
+          label="Volver a comprobantes"
+        />
+      </div>
     </template>
 
     <ResourceState
@@ -47,6 +144,98 @@ useHead(() => ({ title: `${title.value} · Yacco` }));
           title="Anulado"
           :description="receipt.voidReason ?? undefined"
         />
+
+        <UCard v-if="action === 'void'" class="max-w-2xl">
+          <template #header>
+            <div>
+              <h2 class="text-lg font-semibold text-highlighted">Anular comprobante</h2>
+              <p class="text-sm text-muted">
+                El registro seguirá visible y sus ventas volverán a quedar disponibles.
+              </p>
+            </div>
+          </template>
+          <form class="space-y-4" @submit.prevent="voidReceipt">
+            <UFormField label="Motivo de anulación" required>
+              <UTextarea v-model="voidReason" :disabled="saving" class="w-full" />
+            </UFormField>
+            <UAlert
+              v-if="actionError"
+              role="alert"
+              color="error"
+              variant="subtle"
+              :title="actionError"
+            />
+            <div class="flex flex-wrap justify-end gap-2">
+              <UButton
+                type="button"
+                color="neutral"
+                variant="ghost"
+                label="Cancelar"
+                :disabled="saving"
+                @click="cancelAction"
+              />
+              <UButton type="submit" color="error" label="Confirmar anulación" :loading="saving" />
+            </div>
+          </form>
+        </UCard>
+
+        <UCard v-if="action === 'credit-note'" class="max-w-3xl">
+          <template #header>
+            <div>
+              <h2 class="text-lg font-semibold text-highlighted">Registrar nota de crédito</h2>
+              <p class="text-sm text-muted">
+                La nota conserva los montos del comprobante y libera sus ventas.
+              </p>
+            </div>
+          </template>
+          <form class="space-y-4" @submit.prevent="createCreditNote">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Medio de la nota" required>
+                <USelect
+                  v-model="creditNoteMedium"
+                  :items="mediumOptions"
+                  :disabled="saving"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Fecha de emisión" required>
+                <UInput
+                  v-model="creditNoteIssuedOn"
+                  type="date"
+                  :disabled="saving"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Serie de la nota" required>
+                <UInput v-model="creditNoteSeries" :disabled="saving" class="w-full" />
+              </UFormField>
+              <UFormField label="Número de la nota" required>
+                <UInput v-model="creditNoteNumber" :disabled="saving" class="w-full" />
+              </UFormField>
+            </div>
+            <UFormField label="Motivo de la nota" required>
+              <UTextarea v-model="creditNoteReason" :disabled="saving" class="w-full" />
+            </UFormField>
+            <UAlert
+              v-if="actionError"
+              role="alert"
+              color="error"
+              variant="subtle"
+              :title="actionError"
+            />
+            <div class="flex flex-wrap justify-end gap-2">
+              <UButton
+                type="button"
+                color="neutral"
+                variant="ghost"
+                label="Cancelar"
+                :disabled="saving"
+                @click="cancelAction"
+              />
+              <UButton type="submit" label="Guardar nota de crédito" :loading="saving" />
+            </div>
+          </form>
+        </UCard>
 
         <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
           <div class="space-y-6">

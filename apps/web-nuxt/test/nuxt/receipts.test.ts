@@ -1,7 +1,7 @@
 import { registerEndpoint, renderSuspended } from "@nuxt/test-utils/runtime";
 import { fireEvent, screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
-import { getQuery } from "h3";
+import { getQuery, readBody } from "h3";
 import type { H3Event } from "h3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
@@ -10,6 +10,7 @@ import { resetSession, signIn } from "../support/session";
 
 const cleanups: Array<() => void> = [];
 const RECEIPT_ID = "22222222-2222-4222-8222-222222222222";
+const CREDIT_NOTE_ID = "99999999-9999-4999-8999-999999999999";
 type Query = Record<string, string>;
 
 const activeReceipt = {
@@ -49,6 +50,32 @@ const voidedReceipt = {
   voidedById: "11111111-1111-4111-8111-111111111111",
   voidReason: "Se registró la serie equivocada",
 };
+
+function receiptDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    ...activeReceipt,
+    issuerSettingsVersion: {
+      id: "44444444-4444-4444-8444-444444444444",
+      taxId: "20123456789",
+      legalName: "Agua Clara S.A.C.",
+      fiscalAddress: "Av. Los Manantiales 145, Lima",
+      taxRate: "18.00",
+      receiptDocumentThreshold: "700.00",
+    },
+    sales: [
+      {
+        id: "77777777-7777-4777-8777-777777777777",
+        soldAt: "2026-10-13T16:00:00.000Z",
+        total: "118.00",
+        location: { id: "loc-1", name: "Local Centro" },
+        releasedAt: null,
+      },
+    ],
+    files: [],
+    voidedBy: null,
+    ...overrides,
+  };
+}
 
 function stubReceipts(rows = [activeReceipt, voidedReceipt]): Query[] {
   const seen: Query[] = [];
@@ -206,5 +233,120 @@ describe("Comprobantes", () => {
     expect(screen.getByText("Agua Clara S.A.C.")).toBeTruthy();
     expect(screen.getByText(/Registrado por vendedor1 el 14\/10\/2026 10:30/)).toBeTruthy();
     expect(screen.getByText(/Anulado por Giancarlo el 15\/10\/2026 08:00/)).toBeTruthy();
+  });
+
+  it("ADMIN anula con motivo, libera las ventas y conserva el comprobante visible", async () => {
+    cleanups.push(signIn(["ADMIN"]));
+    let detail = receiptDetail();
+    let submitted: unknown;
+    cleanups.push(
+      registerEndpoint(`/api/v1/receipts/${RECEIPT_ID}`, {
+        method: "GET",
+        handler: () => detail,
+      }),
+      registerEndpoint(`/api/v1/receipts/${RECEIPT_ID}/void`, {
+        method: "PATCH",
+        handler: async (event: H3Event) => {
+          submitted = await readBody(event);
+          detail = receiptDetail({
+            status: "VOIDED",
+            voidedAt: "2026-10-14T17:00:00.000Z",
+            voidedById: "11111111-1111-4111-8111-111111111111",
+            voidReason: "El número no correspondía al talonario",
+            voidedBy: {
+              id: "11111111-1111-4111-8111-111111111111",
+              username: "administrador",
+            },
+          });
+          return { id: RECEIPT_ID, releasedSales: 1 };
+        },
+      }),
+    );
+
+    await renderSuspended(App, { route: `/receipts/${RECEIPT_ID}` });
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Anular comprobante" }));
+    await fireEvent.update(
+      screen.getByLabelText("Motivo de anulación"),
+      "El número no correspondía al talonario",
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Confirmar anulación" }));
+
+    await waitFor(() =>
+      expect(submitted).toEqual({ reason: "El número no correspondía al talonario" }),
+    );
+    expect(await screen.findByText("Anulado")).toBeTruthy();
+    expect(screen.getByText("El número no correspondía al talonario")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Boleta B001-000123" })).toBeTruthy();
+  });
+
+  it("SELLER registra una nota de crédito y no puede anular directamente", async () => {
+    cleanups.push(signIn(["SELLER"]));
+    let submitted: unknown;
+    cleanups.push(
+      registerEndpoint(`/api/v1/receipts/${RECEIPT_ID}`, {
+        method: "GET",
+        handler: () => receiptDetail(),
+      }),
+      registerEndpoint(`/api/v1/receipts/${RECEIPT_ID}/credit-notes`, {
+        method: "POST",
+        handler: async (event: H3Event) => {
+          submitted = await readBody(event);
+          return {
+            ...activeReceipt,
+            id: CREDIT_NOTE_ID,
+            type: "CREDIT_NOTE",
+            medium: "ELECTRONIC",
+            series: "BC01",
+            number: "000007",
+            affectedReceiptId: RECEIPT_ID,
+            reason: "Devolución total del pedido",
+          };
+        },
+      }),
+      registerEndpoint(`/api/v1/receipts/${CREDIT_NOTE_ID}`, {
+        method: "GET",
+        handler: () =>
+          receiptDetail({
+            id: CREDIT_NOTE_ID,
+            type: "CREDIT_NOTE",
+            medium: "ELECTRONIC",
+            series: "BC01",
+            number: "000007",
+            affectedReceiptId: RECEIPT_ID,
+            reason: "Devolución total del pedido",
+          }),
+      }),
+    );
+
+    await renderSuspended(App, { route: `/receipts/${RECEIPT_ID}` });
+    expect(await screen.findByRole("heading", { name: "Boleta B001-000123" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Anular comprobante" })).toBeNull();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Registrar nota de crédito" }));
+    await choose("Medio de la nota", "Electrónico");
+    await fireEvent.update(screen.getByLabelText("Serie de la nota"), "BC01");
+    await fireEvent.update(screen.getByLabelText("Número de la nota"), "000007");
+    await fireEvent.update(screen.getByLabelText("Fecha de emisión"), "2026-10-14");
+    await fireEvent.update(
+      screen.getByLabelText("Motivo de la nota"),
+      "Devolución total del pedido",
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Guardar nota de crédito" }));
+
+    await waitFor(() =>
+      expect(submitted).toEqual({
+        medium: "ELECTRONIC",
+        series: "BC01",
+        number: "000007",
+        issuedOn: "2026-10-14",
+        reason: "Devolución total del pedido",
+      }),
+    );
+    await waitFor(() =>
+      expect(useRouter().currentRoute.value.path).toBe(`/receipts/${CREDIT_NOTE_ID}`),
+    );
   });
 });
