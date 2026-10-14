@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
-import { Prisma, ReceiptType } from "@prisma/client";
+import { Prisma, ReceiptMedium, ReceiptType } from "@prisma/client";
 import { ReceiptsService } from "./receipts.service.js";
 
 const CUSTOMER_ID = "11111111-1111-4111-8111-111111111111";
@@ -171,5 +171,148 @@ describe("ReceiptsService.preview", () => {
     await expect(service.preview(previewDto())).rejects.toThrow(
       "Configurá primero los datos de facturación",
     );
+  });
+});
+
+describe("ReceiptsService transactional writes", () => {
+  const USER_ID = "33333333-3333-4333-8333-333333333333";
+
+  function buildTransactionMock() {
+    return {
+      $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
+      issuerSettingsVersion: {
+        findFirst: jest.fn<() => Promise<unknown>>().mockResolvedValue(settingsRow()),
+      },
+      sale: {
+        findMany: jest.fn<() => Promise<unknown>>().mockResolvedValue([
+          saleRow(SALE_IDS[0]!, "1.00", {
+            receiptExemptions: [{ id: "exemption-1" }],
+          }),
+          saleRow(SALE_IDS[1]!, "1.01"),
+          saleRow(SALE_IDS[2]!, "1.04"),
+        ]),
+      },
+      saleReceiptExemption: {
+        updateMany: jest.fn<() => Promise<unknown>>().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn<() => Promise<unknown>>().mockResolvedValue({ count: 2 }),
+      },
+      receipt: {
+        create: jest.fn<() => Promise<unknown>>().mockResolvedValue({
+          id: "receipt-1",
+          type: ReceiptType.SALES_RECEIPT,
+          medium: ReceiptMedium.MANUAL,
+          series: "B001",
+          number: "000001",
+          issuedOn: new Date("2026-10-14T00:00:00.000Z"),
+          customerId: CUSTOMER_ID,
+          issuerSettingsVersionId: "settings-1",
+          taxableAmount: decimal("2.59"),
+          taxAmount: decimal("0.46"),
+          total: decimal("3.05"),
+          affectedReceiptId: null,
+          reason: null,
+          createdById: USER_ID,
+          createdAt: new Date("2026-10-14T08:00:00.000Z"),
+          voidedAt: null,
+          voidedById: null,
+          voidReason: null,
+        }),
+        findUnique: jest.fn<() => Promise<unknown>>(),
+        updateMany: jest.fn<() => Promise<unknown>>().mockResolvedValue({ count: 1 }),
+      },
+      receiptSale: {
+        updateMany: jest.fn<() => Promise<unknown>>().mockResolvedValue({ count: 3 }),
+      },
+    };
+  }
+
+  function buildTransactionalPrisma(tx: ReturnType<typeof buildTransactionMock>) {
+    return {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+      ),
+    };
+  }
+
+  test("creating a receipt releases selected exemptions and stores server-derived amounts", async () => {
+    const tx = buildTransactionMock();
+    const service = new ReceiptsService(buildTransactionalPrisma(tx) as never);
+
+    const result = await service.create(
+      {
+        type: ReceiptType.SALES_RECEIPT,
+        medium: ReceiptMedium.MANUAL,
+        series: " B001 ",
+        number: " 000001 ",
+        issuedOn: "2026-10-14",
+        customerId: CUSTOMER_ID,
+        saleIds: SALE_IDS,
+      },
+      USER_ID,
+    );
+
+    expect(tx.saleReceiptExemption.updateMany).toHaveBeenCalledWith({
+      where: { saleId: { in: SALE_IDS }, releasedAt: null },
+      data: expect.objectContaining({
+        releasedAt: expect.any(Date),
+        releasedById: USER_ID,
+        releaseReason: "Se registró el comprobante B001-000001",
+      }),
+    });
+    expect(tx.receipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        taxableAmount: decimal("2.59"),
+        taxAmount: decimal("0.46"),
+        total: decimal("3.05"),
+        sales: { create: SALE_IDS.map((saleId) => ({ saleId })) },
+      }),
+    });
+    expect(result.total).toBe("3.05");
+  });
+
+  test("marking sales exempt rejects an active receipt", async () => {
+    const tx = buildTransactionMock();
+    tx.sale.findMany.mockResolvedValue([
+      saleRow(SALE_IDS[0]!, "1.00", { receiptSales: [{ receiptId: "receipt-1" }] }),
+      saleRow(SALE_IDS[1]!, "1.01"),
+    ]);
+    const service = new ReceiptsService(buildTransactionalPrisma(tx) as never);
+
+    await expect(
+      service.markExemptions(
+        {
+          customerId: CUSTOMER_ID,
+          saleIds: SALE_IDS.slice(0, 2),
+          reason: "El cliente no solicita comprobante",
+        },
+        USER_ID,
+      ),
+    ).rejects.toThrow(ConflictException);
+    expect(tx.saleReceiptExemption.createMany).not.toHaveBeenCalled();
+  });
+
+  test("voiding a receipt stamps it and releases every active sale once", async () => {
+    const tx = buildTransactionMock();
+    tx.receipt.findUnique.mockResolvedValue({
+      id: "receipt-1",
+      voidedAt: null,
+      sales: SALE_IDS.map((saleId) => ({ saleId, releasedAt: null })),
+    });
+    const service = new ReceiptsService(buildTransactionalPrisma(tx) as never);
+
+    await service.void("receipt-1", { reason: "Se cargó una serie equivocada" }, USER_ID);
+
+    expect(tx.receipt.updateMany).toHaveBeenCalledWith({
+      where: { id: "receipt-1", voidedAt: null },
+      data: expect.objectContaining({
+        voidedAt: expect.any(Date),
+        voidedById: USER_ID,
+        voidReason: "Se cargó una serie equivocada",
+      }),
+    });
+    expect(tx.receiptSale.updateMany).toHaveBeenCalledWith({
+      where: { receiptId: "receipt-1", releasedAt: null },
+      data: expect.objectContaining({ releasedAt: expect.any(Date), releasedById: USER_ID }),
+    });
   });
 });
