@@ -1,38 +1,16 @@
-import { createRequire } from "node:module";
 import request from "supertest";
 import { PrismaService } from "../../src/prisma/prisma.service.js";
 import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
-
-interface GenericContainerType {
-  withCommand(cmd: string[]): this;
-  withEnvironment(env: Record<string, string>): this;
-  withExposedPorts(...ports: number[]): this;
-  start(): Promise<StartedTestContainerType>;
-}
-
-interface StartedTestContainerType {
-  getHost(): string;
-  getMappedPort(port: number): number;
-  stop(): Promise<void>;
-}
-
-const require = createRequire(import.meta.url);
-const testcontainersPath = require.resolve("testcontainers", {
-  paths: [require.resolve("@testcontainers/postgresql")],
-});
-const { GenericContainer } = (await import(
-  `file:///${testcontainersPath.replace(/\\/g, "/")}`
-)) as {
-  GenericContainer: new (image: string) => GenericContainerType;
-};
+import { startTestStorage } from "./support/test-storage.js";
+import type { StartedTestStorage } from "./support/test-storage.js";
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
 
 let ctx: TestAppContext;
 let prisma: PrismaService;
-let minioContainer: StartedTestContainerType;
+let minioContainer: StartedTestStorage;
 let adminToken: string;
 let sellerToken: string;
 let driverToken: string;
@@ -69,25 +47,7 @@ async function createUserAndLogin(
 }
 
 beforeAll(async () => {
-  const minioImage = process.env.TESTCONTAINERS_MINIO_IMAGE ?? "cgr.dev/chainguard/minio:latest";
-  minioContainer = await new GenericContainer(minioImage)
-    .withCommand(["server", "/data"])
-    .withEnvironment({
-      MINIO_ROOT_USER: "miniotest",
-      MINIO_ROOT_PASSWORD: "miniopassword123",
-    })
-    .withExposedPorts(9000)
-    .start();
-
-  const minioHost = minioContainer.getHost();
-  const minioPort = minioContainer.getMappedPort(9000);
-
-  process.env.S3_ENDPOINT = `http://${minioHost}:${minioPort}`;
-  process.env.S3_BUCKET = "test-photos";
-  process.env.S3_REGION = "us-east-1";
-  process.env.S3_ACCESS_KEY_ID = "miniotest";
-  process.env.S3_SECRET_ACCESS_KEY = "miniopassword123";
-  process.env.S3_FORCE_PATH_STYLE = "true";
+  minioContainer = await startTestStorage("test-photos");
 
   ctx = await startTestApp();
   prisma = ctx.app.get(PrismaService);
