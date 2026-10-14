@@ -5,7 +5,6 @@ CREATE TABLE "issuer_settings_versions" (
     "legal_name" TEXT NOT NULL,
     "fiscal_address" TEXT NOT NULL,
     "tax_rate" DECIMAL(5,2) NOT NULL,
-    "prices_include_tax" BOOLEAN NOT NULL,
     "receipt_document_threshold" DECIMAL(10,2) NOT NULL,
     "created_by" UUID NOT NULL,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -48,6 +47,20 @@ CREATE TABLE "receipt_sales" (
 );
 
 -- CreateTable
+CREATE TABLE "sale_receipt_exemptions" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "sale_id" UUID NOT NULL,
+    "reason" TEXT NOT NULL,
+    "created_by" UUID NOT NULL,
+    "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "released_at" TIMESTAMPTZ(6),
+    "released_by" UUID,
+    "release_reason" TEXT,
+
+    CONSTRAINT "sale_receipt_exemptions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "receipt_files" (
     "receipt_id" UUID NOT NULL,
     "object_key" TEXT NOT NULL,
@@ -62,6 +75,8 @@ CREATE UNIQUE INDEX "receipts_type_series_number_key" ON "receipts"("type", "ser
 -- A sale can belong to only one receipt that has not released it. PostgreSQL
 -- partials over the authorized release marker keep this invariant atomic.
 CREATE UNIQUE INDEX "receipt_sales_active_sale_key" ON "receipt_sales"("sale_id") WHERE "released_at" IS NULL;
+
+CREATE UNIQUE INDEX "sale_receipt_exemptions_active_sale_key" ON "sale_receipt_exemptions"("sale_id") WHERE "released_at" IS NULL;
 
 -- AddForeignKey
 ALTER TABLE "issuer_settings_versions" ADD CONSTRAINT "issuer_settings_versions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -82,6 +97,12 @@ ALTER TABLE "receipt_sales" ADD CONSTRAINT "receipt_sales_sale_id_fkey" FOREIGN 
 
 ALTER TABLE "receipt_sales" ADD CONSTRAINT "receipt_sales_released_by_fkey" FOREIGN KEY ("released_by") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
+ALTER TABLE "sale_receipt_exemptions" ADD CONSTRAINT "sale_receipt_exemptions_sale_id_fkey" FOREIGN KEY ("sale_id") REFERENCES "sales"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "sale_receipt_exemptions" ADD CONSTRAINT "sale_receipt_exemptions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "sale_receipt_exemptions" ADD CONSTRAINT "sale_receipt_exemptions_released_by_fkey" FOREIGN KEY ("released_by") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
 ALTER TABLE "receipt_files" ADD CONSTRAINT "receipt_files_receipt_id_fkey" FOREIGN KEY ("receipt_id") REFERENCES "receipts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- Hand-written CHECK constraints: Prisma cannot express all-or-none groups.
@@ -90,3 +111,6 @@ ALTER TABLE "receipts" ADD CONSTRAINT "receipts_void_check"
 
 ALTER TABLE "receipt_sales" ADD CONSTRAINT "receipt_sales_release_check"
     CHECK (("released_at" IS NULL AND "released_by" IS NULL) OR ("released_at" IS NOT NULL AND "released_by" IS NOT NULL));
+
+ALTER TABLE "sale_receipt_exemptions" ADD CONSTRAINT "sale_receipt_exemptions_release_check"
+    CHECK (("released_at" IS NULL AND "released_by" IS NULL AND "release_reason" IS NULL) OR ("released_at" IS NOT NULL AND "released_by" IS NOT NULL AND "release_reason" IS NOT NULL));

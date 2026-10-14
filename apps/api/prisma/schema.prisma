@@ -236,49 +236,51 @@ model User {
   licenseCategory  String?   @map("license_category") @db.VarChar(20)
   licenseExpiresOn DateTime? @map("license_expires_on") @db.Date
 
-  roles                         UserRoleAssignment[]
-  productionBatches             ProductionBatch[]
-  batchItemsRecorded            BatchItem[]              @relation("BatchItemRecordedBy")
-  containerMovements            ContainerMovement[]
-  containerCounts               ContainerCount[]
-  orders                        Order[]
-  orderGroups                   OrderGroup[]
-  routesAsDriver                Route[]                  @relation("RouteDriver")
-  routesCreated                 Route[]                  @relation("RouteCreatedBy")
-  routeStopsAdded               RouteStop[]              @relation("RouteStopAddedBy")
-  routeStopsCorrected           RouteStop[]              @relation("RouteStopCorrectedBy")
-  salesRecorded                 Sale[]                   @relation("SaleRecordedBy")
-  salesPriceOverridesAuthorized Sale[]                   @relation("SalePriceOverrideAuthorizedBy")
-  salesVoided                   Sale[]                   @relation("SaleVoidedBy")
-  paymentsRecorded              Payment[]                @relation("PaymentRecordedBy")
-  paymentsConfirmed             Payment[]                @relation("PaymentConfirmedBy")
-  paymentsRejected              Payment[]                @relation("PaymentRejectedBy")
-  paymentsVoided                Payment[]                @relation("PaymentVoidedBy")
-  routeSettlements              RouteSettlement[]
-  pitStopsRecorded              RoutePitStop[]           @relation("RoutePitStopRecordedBy")
-  pitStopsVoided                RoutePitStop[]           @relation("RoutePitStopVoidedBy")
-  vehiclesCreated               Vehicle[]                @relation("VehicleCreatedBy")
-  vehiclesUpdated               Vehicle[]                @relation("VehicleUpdatedBy")
-  vehicleReviewTypesCreated     VehicleReviewType[]      @relation("VehicleReviewTypeCreatedBy")
-  vehicleReviewsRecorded        VehicleReview[]          @relation("VehicleReviewRecordedBy")
-  vehicleReviewsVoided          VehicleReview[]          @relation("VehicleReviewVoidedBy")
-  routeVehicleAssignments       RouteVehicleAssignment[] @relation("RouteVehicleAssignedBy")
-  syncOperations                SyncOperation[]
-  productPriceChanges           ProductPriceChange[]
-  customerContactsCreated             CustomerContact[]                  @relation("CustomerContactCreatedBy")
-  customerContactsRemoved             CustomerContact[]                  @relation("CustomerContactRemovedBy")
-  customerLocationPhotosUploaded      CustomerLocationPhoto[]            @relation("CustomerLocationPhotoUploadedBy")
-  customerLocationPhotosReviewed      CustomerLocationPhoto[]            @relation("CustomerLocationPhotoReviewedBy")
-  customerLocationPhotosHidden        CustomerLocationPhoto[]            @relation("CustomerLocationPhotoHiddenBy")
+  roles                                UserRoleAssignment[]
+  productionBatches                    ProductionBatch[]
+  batchItemsRecorded                   BatchItem[]                         @relation("BatchItemRecordedBy")
+  containerMovements                   ContainerMovement[]
+  containerCounts                      ContainerCount[]
+  orders                               Order[]
+  orderGroups                          OrderGroup[]
+  routesAsDriver                       Route[]                             @relation("RouteDriver")
+  routesCreated                        Route[]                             @relation("RouteCreatedBy")
+  routeStopsAdded                      RouteStop[]                         @relation("RouteStopAddedBy")
+  routeStopsCorrected                  RouteStop[]                         @relation("RouteStopCorrectedBy")
+  salesRecorded                        Sale[]                              @relation("SaleRecordedBy")
+  salesPriceOverridesAuthorized        Sale[]                              @relation("SalePriceOverrideAuthorizedBy")
+  salesVoided                          Sale[]                              @relation("SaleVoidedBy")
+  paymentsRecorded                     Payment[]                           @relation("PaymentRecordedBy")
+  paymentsConfirmed                    Payment[]                           @relation("PaymentConfirmedBy")
+  paymentsRejected                     Payment[]                           @relation("PaymentRejectedBy")
+  paymentsVoided                       Payment[]                           @relation("PaymentVoidedBy")
+  routeSettlements                     RouteSettlement[]
+  pitStopsRecorded                     RoutePitStop[]                      @relation("RoutePitStopRecordedBy")
+  pitStopsVoided                       RoutePitStop[]                      @relation("RoutePitStopVoidedBy")
+  vehiclesCreated                      Vehicle[]                           @relation("VehicleCreatedBy")
+  vehiclesUpdated                      Vehicle[]                           @relation("VehicleUpdatedBy")
+  vehicleReviewTypesCreated            VehicleReviewType[]                 @relation("VehicleReviewTypeCreatedBy")
+  vehicleReviewsRecorded               VehicleReview[]                     @relation("VehicleReviewRecordedBy")
+  vehicleReviewsVoided                 VehicleReview[]                     @relation("VehicleReviewVoidedBy")
+  routeVehicleAssignments              RouteVehicleAssignment[]            @relation("RouteVehicleAssignedBy")
+  syncOperations                       SyncOperation[]
+  productPriceChanges                  ProductPriceChange[]
+  customerContactsCreated              CustomerContact[]                   @relation("CustomerContactCreatedBy")
+  customerContactsRemoved              CustomerContact[]                   @relation("CustomerContactRemovedBy")
+  customerLocationPhotosUploaded       CustomerLocationPhoto[]             @relation("CustomerLocationPhotoUploadedBy")
+  customerLocationPhotosReviewed       CustomerLocationPhoto[]             @relation("CustomerLocationPhotoReviewedBy")
+  customerLocationPhotosHidden         CustomerLocationPhoto[]             @relation("CustomerLocationPhotoHiddenBy")
   customerLocationCoordinatesRequested CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateRequestedBy")
-  customerLocationCoordinatesReviewed CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateReviewedBy")
-  accessoryMovementsRecorded          AccessoryMovement[]                 @relation("AccessoryMovementRecordedBy")
-  accessoryCountsRecorded             AccessoryCount[]                    @relation("AccessoryCountRecordedBy")
-  maquilaMovementsRecorded            MaquilaContainerMovement[]          @relation("MaquilaMovementRecordedBy")
-  issuerSettingsVersionsCreated       IssuerSettingsVersion[]             @relation("IssuerSettingsVersionCreatedBy")
-  receiptsCreated                     Receipt[]                           @relation("ReceiptCreatedBy")
-  receiptsVoided                      Receipt[]                           @relation("ReceiptVoidedBy")
-  receiptSalesReleased                ReceiptSale[]                       @relation("ReceiptSaleReleasedBy")
+  customerLocationCoordinatesReviewed  CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateReviewedBy")
+  accessoryMovementsRecorded           AccessoryMovement[]                 @relation("AccessoryMovementRecordedBy")
+  accessoryCountsRecorded              AccessoryCount[]                    @relation("AccessoryCountRecordedBy")
+  maquilaMovementsRecorded             MaquilaContainerMovement[]          @relation("MaquilaMovementRecordedBy")
+  issuerSettingsVersionsCreated        IssuerSettingsVersion[]             @relation("IssuerSettingsVersionCreatedBy")
+  receiptsCreated                      Receipt[]                           @relation("ReceiptCreatedBy")
+  receiptsVoided                       Receipt[]                           @relation("ReceiptVoidedBy")
+  receiptSalesReleased                 ReceiptSale[]                       @relation("ReceiptSaleReleasedBy")
+  saleReceiptExemptionsCreated         SaleReceiptExemption[]              @relation("SaleReceiptExemptionCreatedBy")
+  saleReceiptExemptionsReleased        SaleReceiptExemption[]              @relation("SaleReceiptExemptionReleasedBy")
 
   @@map("users")
 }
@@ -832,6 +834,7 @@ model Sale {
   accessoryMovements        AccessoryMovement[]
   maquilaMovements          MaquilaContainerMovement[]
   receiptSales              ReceiptSale[]
+  receiptExemptions         SaleReceiptExemption[]
 
   // A customer's account statement walks their sales by location, oldest
   // first (CustomersService.getAccountStatement). Expand-only, no column.
@@ -931,7 +934,6 @@ model IssuerSettingsVersion {
   legalName                String   @map("legal_name")
   fiscalAddress            String   @map("fiscal_address")
   taxRate                  Decimal  @map("tax_rate") @db.Decimal(5, 2)
-  pricesIncludeTax         Boolean  @map("prices_include_tax")
   receiptDocumentThreshold Decimal  @map("receipt_document_threshold") @db.Decimal(10, 2)
   createdById              String   @map("created_by") @db.Uuid
   createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -987,6 +989,23 @@ model ReceiptSale {
 
   @@id([receiptId, saleId])
   @@map("receipt_sales")
+}
+
+model SaleReceiptExemption {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  saleId        String    @map("sale_id") @db.Uuid
+  reason        String
+  createdById   String    @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  releasedAt    DateTime? @map("released_at") @db.Timestamptz(6)
+  releasedById  String?   @map("released_by") @db.Uuid
+  releaseReason String?   @map("release_reason")
+
+  sale       Sale  @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  createdBy  User  @relation("SaleReceiptExemptionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  releasedBy User? @relation("SaleReceiptExemptionReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
+
+  @@map("sale_receipt_exemptions")
 }
 
 model ReceiptFile {
