@@ -516,7 +516,7 @@ describe("ReceiptsService reads", () => {
             location: { id: "location-1", name: "Local principal" },
           }),
         ],
-        files: [{ objectKey: "receipts/receipt-1/document.pdf", contentType: "application/pdf" }],
+        files: [{ fileName: "document.pdf", contentType: "application/pdf" }],
         createdBy: { id: "user-1", username: "vendedor" },
         voidedBy: null,
       }),

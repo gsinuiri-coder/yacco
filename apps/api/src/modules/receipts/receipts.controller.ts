@@ -1,4 +1,6 @@
+import type { Response } from "express";
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -9,12 +11,18 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
   ApiConflictResponse,
+  ApiConsumes,
   ApiForbiddenResponse,
   ApiOperation,
   ApiResponse,
@@ -39,9 +47,12 @@ import {
   ReleaseExemptionResultDto,
   ReceiptDetailDto,
   ReceiptExemptionResultDto,
+  ReceiptFileDto,
   ReceiptResponseDto,
   VoidReceiptResultDto,
 } from "./dto/receipt-response.dto.js";
+import { MAX_RECEIPT_FILE_BYTES } from "./receipt-file.validator.js";
+import { type ReceiptUploadedFile, ReceiptFilesService } from "./receipt-files.service.js";
 import { ReceiptsService } from "./receipts.service.js";
 
 @ApiTags("receipts")
@@ -51,7 +62,10 @@ import { ReceiptsService } from "./receipts.service.js";
 @Roles(UserRole.ADMIN, UserRole.SELLER)
 @Controller("receipts")
 export class ReceiptsController {
-  constructor(private readonly receiptsService: ReceiptsService) {}
+  constructor(
+    private readonly receiptsService: ReceiptsService,
+    private readonly receiptFilesService: ReceiptFilesService,
+  ) {}
 
   @ApiOperation({ summary: "Lista comprobantes con filtros de oficina" })
   @ApiResponse({ status: 200, type: PaginatedReceiptsDto })
@@ -72,6 +86,46 @@ export class ReceiptsController {
   @Get(":id")
   findOne(@Param("id", ParseUUIDPipe) id: string): Promise<ReceiptDetailDto> {
     return this.receiptsService.findOne(id);
+  }
+
+  @ApiOperation({ summary: "Adjunta un archivo privado a un comprobante" })
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: { file: { type: "string", format: "binary" } },
+      required: ["file"],
+    },
+  })
+  @ApiResponse({ status: 201, type: ReceiptFileDto })
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_RECEIPT_FILE_BYTES } }))
+  @Post(":id/files")
+  uploadFile(
+    @Param("id", ParseUUIDPipe) id: string,
+    @UploadedFile() file: ReceiptUploadedFile | undefined,
+  ): Promise<ReceiptFileDto> {
+    if (file === undefined) throw new BadRequestException("El archivo es obligatorio");
+    return this.receiptFilesService.upload(id, file);
+  }
+
+  @ApiOperation({ summary: "Sirve un archivo de comprobante solo con sesión" })
+  @ApiResponse({
+    status: 200,
+    content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } },
+  })
+  @Get(":id/files/:fileName/raw")
+  async getRawFile(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("fileName") fileName: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const raw = await this.receiptFilesService.get(id, fileName);
+    response.setHeader("Content-Type", raw.contentType);
+    if (raw.contentLength !== undefined) {
+      response.setHeader("Content-Length", raw.contentLength);
+    }
+    response.setHeader("Cache-Control", "private, no-cache");
+    raw.stream.pipe(response);
   }
 
   @ApiOperation({

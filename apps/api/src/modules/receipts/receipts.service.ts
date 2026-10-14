@@ -29,6 +29,7 @@ import type {
   ReceiptResponseDto,
   VoidReceiptResultDto,
 } from "./dto/receipt-response.dto.js";
+import { receiptFileName } from "./receipt-file.validator.js";
 
 const RECEIPT_SALE_SELECT = {
   id: true,
@@ -206,7 +207,10 @@ export class ReceiptsService {
         location: sale.location,
         releasedAt,
       })),
-      files,
+      files: files.map((file) => ({
+        fileName: receiptFileName(file.objectKey),
+        contentType: file.contentType,
+      })),
     };
   }
 

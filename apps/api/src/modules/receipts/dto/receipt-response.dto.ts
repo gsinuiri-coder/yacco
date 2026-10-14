@@ -84,7 +84,7 @@ export class ReceiptSaleDetailDto {
 }
 
 export class ReceiptFileDto {
-  @ApiProperty() objectKey!: string;
+  @ApiProperty() fileName!: string;
   @ApiProperty() contentType!: string;
 }
 
