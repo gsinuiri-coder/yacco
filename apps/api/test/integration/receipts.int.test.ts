@@ -7,6 +7,7 @@ import { startTestApp, stopTestApp } from "./support/test-app.js";
 import type { TestAppContext } from "./support/test-app.js";
 import { startTestStorage } from "./support/test-storage.js";
 import type { StartedTestStorage } from "./support/test-storage.js";
+import { holdSaleLock, startAndCheckBlocked } from "./support/hold-lock.js";
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
@@ -320,4 +321,32 @@ test("ADMIN versiona los datos de facturación y la oficina ejecuta el flujo aud
   expect(available.body.data.map(({ id }: { id: string }) => id)).toEqual(
     expect.arrayContaining([receiptedSaleId, exemptSaleId, creditNoteSaleId]),
   );
+});
+
+test("el alta de un comprobante gana el lock y evita que una anulación concurrente deje ambos vigentes", async () => {
+  const saleId = await createSale("35.00", "2026-10-14T17:00:00.000Z");
+  const held = await holdSaleLock(prisma, saleId);
+  const creating = await startAndCheckBlocked(() =>
+    request(server())
+      .post("/api/v1/receipts")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send(receiptBody(saleId)),
+  );
+  expect(creating.finishedWhileLocked).toBe(false);
+
+  const voiding = await startAndCheckBlocked(() =>
+    prisma.$transaction((tx) =>
+      salesService.voidSaleWithinTransaction(tx, {
+        saleId,
+        voidedById: adminId,
+        voidReason: "Venta equivocada",
+      }),
+    ),
+  );
+  expect(voiding.finishedWhileLocked).toBe(false);
+
+  await held.release();
+  expect((await creating.result).status).toBe(201);
+  await expect(voiding.result).rejects.toThrow("Anulá primero el comprobante vigente de la venta");
+  expect((await prisma.sale.findUniqueOrThrow({ where: { id: saleId } })).voidedAt).toBeNull();
 });

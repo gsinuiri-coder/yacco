@@ -1030,7 +1030,7 @@ export class SalesService {
     saleWhere: Prisma.SaleWhereInput,
     params: Pick<VoidSaleParams, "voidedById" | "voidReason">,
   ): Promise<VoidSaleResult> {
-    const sale = await tx.sale.findFirst({
+    const saleQuery = {
       where: { ...saleWhere, voidedAt: null },
       select: {
         id: true,
@@ -1047,7 +1047,15 @@ export class SalesService {
           select: { receiptId: true },
         },
       },
-    });
+    } satisfies Prisma.SaleFindFirstArgs;
+    const candidate = await tx.sale.findFirst(saleQuery);
+    if (candidate === null) {
+      return { sale: null, payments: [], debtDelta: "0.00" };
+    }
+    await tx.$queryRaw(
+      Prisma.sql`SELECT id FROM sales WHERE id = ${candidate.id}::uuid FOR UPDATE`,
+    );
+    const sale = await tx.sale.findFirst(saleQuery);
     if (sale === null) {
       return { sale: null, payments: [], debtDelta: "0.00" };
     }

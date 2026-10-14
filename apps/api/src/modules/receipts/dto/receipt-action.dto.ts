@@ -28,6 +28,7 @@ export class MarkReceiptExemptionsDto {
   @IsString()
   @MinLength(1)
   @MaxLength(500)
+  @Matches(/\S/, { message: "El motivo no puede quedar vacío" })
   reason!: string;
 }
 
@@ -36,6 +37,7 @@ export class ReceiptReasonDto {
   @IsString()
   @MinLength(1)
   @MaxLength(500)
+  @Matches(/\S/, { message: "El motivo no puede quedar vacío" })
   reason!: string;
 }
 
@@ -48,12 +50,14 @@ export class CreateCreditNoteDto extends ReceiptReasonDto {
   @IsString()
   @MinLength(1)
   @MaxLength(20)
+  @Matches(/\S/, { message: "La serie no puede quedar vacía" })
   series!: string;
 
   @ApiProperty({ example: "000001" })
   @IsString()
   @MinLength(1)
   @MaxLength(30)
+  @Matches(/\S/, { message: "El número no puede quedar vacío" })
   number!: string;
 
   @ApiProperty({ example: "2026-10-14" })

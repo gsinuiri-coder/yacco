@@ -1,7 +1,7 @@
 import { registerEndpoint, renderSuspended } from "@nuxt/test-utils/runtime";
 import { screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
-import { getQuery, readBody } from "h3";
+import { createError, getQuery, readBody, readMultipartFormData } from "h3";
 import type { H3Event } from "h3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
@@ -205,6 +205,10 @@ describe("Registrar comprobante", () => {
     await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
 
     expect(await screen.findByText(/La serie no tiene el formato habitual/)).toBeTruthy();
+    await user.clear(screen.getByLabelText("Serie"));
+    await user.type(screen.getByLabelText("Serie"), "OTRA-SERIE");
+    expect(screen.getByRole("button", { name: "Registrar comprobante" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
     await user.click(screen.getByRole("button", { name: "Registrar de todas formas" }));
     await waitFor(() =>
       expect(useRouter().currentRoute.value.path).toBe(`/receipts/${RECEIPT_ID}`),
@@ -213,7 +217,7 @@ describe("Registrar comprobante", () => {
       {
         type: "SALES_RECEIPT",
         medium: "EXTERNAL_ELECTRONIC",
-        series: "SERIE-LARGA",
+        series: "OTRA-SERIE",
         number: "000009",
         issuedOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         customerId: CUSTOMER_ID,
@@ -231,5 +235,60 @@ describe("Registrar comprobante", () => {
     await choose("Medio", "Electrónico");
     expect(screen.getByText("Puedes adjuntar un PDF y un XML.")).toBeTruthy();
     expect(screen.getByLabelText("Archivos del comprobante")).toBeTruthy();
+  });
+
+  it("al reintentar adjuntos continúa desde el archivo que falló sin duplicar el ya guardado", async () => {
+    stubPrerequisites();
+    cleanups.push(
+      registerEndpoint("/api/v1/receipts/preview", {
+        method: "POST",
+        handler: () => ({
+          customerId: CUSTOMER_ID,
+          saleIds: [SALE_ONE, SALE_TWO],
+          issuerSettingsVersionId: "44444444-4444-4444-8444-444444444444",
+          taxRate: "18.00",
+          taxableAmount: "100.00",
+          taxAmount: "18.00",
+          total: "118.00",
+        }),
+      }),
+    );
+    stubWrite(cleanups, "/api/v1/receipts", "POST", () => ({ id: RECEIPT_ID }));
+    const uploads: string[] = [];
+    cleanups.push(
+      registerEndpoint(`/api/v1/receipts/${RECEIPT_ID}/files`, {
+        method: "POST",
+        handler: async (event: H3Event) => {
+          const [part] = (await readMultipartFormData(event)) ?? [];
+          const fileName = part?.filename ?? "";
+          uploads.push(fileName);
+          if (uploads.length === 2) {
+            throw createError({ statusCode: 503, statusMessage: "Almacenamiento no disponible" });
+          }
+          return { fileName, contentType: part?.type ?? "application/octet-stream" };
+        },
+      }),
+    );
+
+    await renderPage();
+    const user = userEvent.setup();
+    await selectSales();
+    await user.click(screen.getByRole("button", { name: "Calcular montos" }));
+    await screen.findByRole("region", { name: "Vista previa de montos" });
+    await choose("Medio", "Electrónico");
+    await user.type(screen.getByLabelText("Serie"), "B001");
+    await user.type(screen.getByLabelText("Número"), "000010");
+    await user.upload(screen.getByLabelText("Archivos del comprobante"), [
+      new File(["%PDF-1.7"], "comprobante.pdf", { type: "application/pdf" }),
+      new File(['<?xml version="1.0"?>'], "comprobante.xml", { type: "application/xml" }),
+    ]);
+    await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
+    await screen.findByRole("button", { name: "Reintentar adjuntos" });
+    await user.click(screen.getByRole("button", { name: "Reintentar adjuntos" }));
+
+    await waitFor(() =>
+      expect(useRouter().currentRoute.value.path).toBe(`/receipts/${RECEIPT_ID}`),
+    );
+    expect(uploads).toHaveLength(3);
   });
 });

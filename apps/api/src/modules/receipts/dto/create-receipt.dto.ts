@@ -25,12 +25,14 @@ export class CreateReceiptDto {
   @IsString()
   @MinLength(1)
   @MaxLength(20)
+  @Matches(/\S/, { message: "La serie no puede quedar vacía" })
   series!: string;
 
   @ApiProperty({ example: "000001" })
   @IsString()
   @MinLength(1)
   @MaxLength(30)
+  @Matches(/\S/, { message: "El número no puede quedar vacío" })
   number!: string;
 
   @ApiProperty({ example: "2026-10-14" })

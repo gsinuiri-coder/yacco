@@ -110,6 +110,10 @@ watch([type, selectedSaleIds], () => {
   confirmUnusualSeries.value = false;
 });
 
+watch(series, () => {
+  confirmUnusualSeries.value = false;
+});
+
 onMounted(async () => {
   const customerId = typeof route.query.customerId === "string" ? route.query.customerId : "";
   if (customerId === "") return;
@@ -179,10 +183,12 @@ function validateFiles(): string | null {
 }
 
 async function uploadFiles(receiptId: string): Promise<void> {
-  for (const file of files.value) {
+  while (files.value.length > 0) {
+    const file = files.value[0]!;
     const body = new FormData();
     body.append("file", file);
     await api.request<ReceiptFile>(`/receipts/${receiptId}/files`, { method: "POST", body });
+    files.value = files.value.slice(1);
   }
 }
 
@@ -395,7 +401,7 @@ async function retryFiles(): Promise<void> {
                 type="file"
                 multiple
                 :accept="fileAccept"
-                :disabled="saving || createdReceiptId !== null"
+                :disabled="saving"
                 class="w-full"
                 @change="chooseFiles"
               />

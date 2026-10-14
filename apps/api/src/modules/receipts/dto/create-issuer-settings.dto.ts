@@ -11,12 +11,14 @@ export class CreateIssuerSettingsDto {
   @IsString()
   @MinLength(1)
   @MaxLength(200)
+  @Matches(/\S/, { message: "La razón social no puede quedar vacía" })
   legalName!: string;
 
   @ApiProperty({ example: "Av. Planta 123, Lima" })
   @IsString()
   @MinLength(1)
   @MaxLength(500)
+  @Matches(/\S/, { message: "La dirección fiscal no puede quedar vacía" })
   fiscalAddress!: string;
 
   @ApiProperty({ example: "18.00", description: "Porcentaje con dos decimales" })

@@ -656,6 +656,7 @@ describe("SalesService.voidStopDeliveryWithinTransaction", () => {
 
   function buildVoidTxMock() {
     return {
+      $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
       sale: {
         findFirst: jest.fn<() => Promise<unknown>>(),
         updateMany: jest.fn<() => Promise<{ count: number }>>(),
@@ -757,6 +758,8 @@ describe("SalesService.voidStopDeliveryWithinTransaction", () => {
         receiptSales: { where: { releasedAt: null }, select: { receiptId: true } },
       }),
     );
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.sale.findFirst).toHaveBeenCalledTimes(2);
   });
 
   it("rechaza anular una venta con comprobante vigente antes de tocar los libros", async () => {
