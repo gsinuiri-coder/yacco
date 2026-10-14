@@ -8,6 +8,12 @@ import { Prisma, ReceiptType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { CreateReceiptDto } from "./dto/create-receipt.dto.js";
+import {
+  type ListReceiptSalesQueryDto,
+  type ListReceiptsQueryDto,
+  ReceiptStatus,
+  SaleReceiptStatus,
+} from "./dto/list-receipts-query.dto.js";
 import type { PreviewReceiptDto, ReceiptPreviewResponseDto } from "./dto/preview-receipt.dto.js";
 import type {
   CreateCreditNoteDto,
@@ -15,7 +21,10 @@ import type {
   ReceiptReasonDto,
 } from "./dto/receipt-action.dto.js";
 import type {
+  PaginatedReceiptSalesDto,
+  PaginatedReceiptsDto,
   ReleaseExemptionResultDto,
+  ReceiptDetailDto,
   ReceiptExemptionResultDto,
   ReceiptResponseDto,
   VoidReceiptResultDto,
@@ -53,6 +62,58 @@ interface ReceiptSettings {
 
 type ReceiptClient = Prisma.TransactionClient | PrismaService;
 
+const RECEIPT_LIST_INCLUDE = {
+  customer: { select: { id: true, name: true } },
+  createdBy: { select: { id: true, username: true } },
+} satisfies Prisma.ReceiptInclude;
+
+const RECEIPT_DETAIL_INCLUDE = {
+  ...RECEIPT_LIST_INCLUDE,
+  issuerSettingsVersion: {
+    select: {
+      id: true,
+      taxId: true,
+      legalName: true,
+      fiscalAddress: true,
+      taxRate: true,
+      receiptDocumentThreshold: true,
+    },
+  },
+  voidedBy: { select: { id: true, username: true } },
+  sales: {
+    select: {
+      saleId: true,
+      releasedAt: true,
+      sale: {
+        select: {
+          soldAt: true,
+          total: true,
+          location: { select: { id: true, name: true } },
+        },
+      },
+    },
+    orderBy: { sale: { soldAt: "asc" } },
+  },
+  files: { select: { objectKey: true, contentType: true } },
+} satisfies Prisma.ReceiptInclude;
+
+const RECEIPT_STATUS_SALE_SELECT = {
+  id: true,
+  soldAt: true,
+  total: true,
+  location: { select: { id: true, name: true } },
+  receiptSales: {
+    where: { releasedAt: null },
+    select: {
+      receipt: { select: { id: true, type: true, series: true, number: true } },
+    },
+  },
+  receiptExemptions: {
+    where: { releasedAt: null },
+    select: { id: true, reason: true },
+  },
+} satisfies Prisma.SaleSelect;
+
 function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
@@ -89,6 +150,106 @@ function toReceiptResponse(receipt: {
 @Injectable()
 export class ReceiptsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async findAll(query: ListReceiptsQueryDto): Promise<PaginatedReceiptsDto> {
+    const { page, limit } = query;
+    const where = this.buildReceiptFilter(query);
+    const [total, receipts] = await this.prisma.$transaction([
+      this.prisma.receipt.count({ where }),
+      this.prisma.receipt.findMany({
+        where,
+        include: RECEIPT_LIST_INCLUDE,
+        orderBy: [{ issuedOn: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      data: receipts.map(({ customer, createdBy, ...receipt }) => ({
+        ...toReceiptResponse(receipt),
+        status: receipt.voidedAt === null ? ReceiptStatus.ACTIVE : ReceiptStatus.VOIDED,
+        customer,
+        createdBy,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async findOne(id: string): Promise<ReceiptDetailDto> {
+    const receipt = await this.prisma.receipt.findUnique({
+      where: { id },
+      include: RECEIPT_DETAIL_INCLUDE,
+    });
+    if (receipt === null) throw new NotFoundException("El comprobante no existe");
+
+    const { customer, createdBy, issuerSettingsVersion, voidedBy, sales, files, ...receiptFields } =
+      receipt;
+    return {
+      ...toReceiptResponse(receiptFields),
+      status: receipt.voidedAt === null ? ReceiptStatus.ACTIVE : ReceiptStatus.VOIDED,
+      customer,
+      createdBy,
+      voidedBy,
+      issuerSettingsVersion: {
+        ...issuerSettingsVersion,
+        taxRate: issuerSettingsVersion.taxRate.toFixed(2),
+        receiptDocumentThreshold: issuerSettingsVersion.receiptDocumentThreshold.toFixed(2),
+      },
+      sales: sales.map(({ saleId, releasedAt, sale }) => ({
+        id: saleId,
+        soldAt: sale.soldAt,
+        total: sale.total.toFixed(2),
+        location: sale.location,
+        releasedAt,
+      })),
+      files,
+    };
+  }
+
+  async listSales(query: ListReceiptSalesQueryDto): Promise<PaginatedReceiptSalesDto> {
+    const { page, limit } = query;
+    const where = this.buildSaleFilter(query);
+    const [total, sales] = await this.prisma.$transaction([
+      this.prisma.sale.count({ where }),
+      this.prisma.sale.findMany({
+        where,
+        select: RECEIPT_STATUS_SALE_SELECT,
+        orderBy: [{ soldAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      data: sales.map((sale) => {
+        const receipt = sale.receiptSales[0]?.receipt ?? null;
+        const exemption = sale.receiptExemptions[0] ?? null;
+        const status =
+          receipt !== null
+            ? SaleReceiptStatus.RECEIPTED
+            : exemption !== null
+              ? SaleReceiptStatus.EXEMPT
+              : SaleReceiptStatus.AVAILABLE;
+        return {
+          id: sale.id,
+          soldAt: sale.soldAt,
+          total: sale.total.toFixed(2),
+          location: sale.location,
+          status,
+          receipt,
+          exemption,
+        };
+      }),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
 
   async preview(dto: PreviewReceiptDto): Promise<ReceiptPreviewResponseDto> {
     if (dto.type === ReceiptType.CREDIT_NOTE) {
@@ -308,6 +469,52 @@ export class ReceiptsService {
       }
       throw error;
     }
+  }
+
+  private buildReceiptFilter(query: ListReceiptsQueryDto): Prisma.ReceiptWhereInput {
+    const where: Prisma.ReceiptWhereInput = {};
+    if (query.type !== undefined) where.type = query.type;
+    if (query.medium !== undefined) where.medium = query.medium;
+    if (query.status === ReceiptStatus.ACTIVE) where.voidedAt = null;
+    if (query.status === ReceiptStatus.VOIDED) where.voidedAt = { not: null };
+
+    const issuedFrom =
+      query.issuedFrom === undefined
+        ? undefined
+        : parseBusinessDate(query.issuedFrom, "La fecha desde");
+    const issuedTo =
+      query.issuedTo === undefined
+        ? undefined
+        : parseBusinessDate(query.issuedTo, "La fecha hasta");
+    if (issuedFrom !== undefined && issuedTo !== undefined && issuedFrom > issuedTo) {
+      throw new BadRequestException("La fecha desde no puede ser posterior a la fecha hasta");
+    }
+    if (issuedFrom !== undefined || issuedTo !== undefined) {
+      const issuedOn: Prisma.DateTimeFilter<"Receipt"> = {};
+      if (issuedFrom !== undefined) issuedOn.gte = issuedFrom;
+      if (issuedTo !== undefined) issuedOn.lte = issuedTo;
+      where.issuedOn = issuedOn;
+    }
+    return where;
+  }
+
+  private buildSaleFilter(query: ListReceiptSalesQueryDto): Prisma.SaleWhereInput {
+    const where: Prisma.SaleWhereInput = {
+      location: { customerId: query.customerId },
+      voidedAt: null,
+      isOpeningBalance: false,
+    };
+    if (query.status === SaleReceiptStatus.RECEIPTED) {
+      where.receiptSales = { some: { releasedAt: null } };
+    } else if (query.status === SaleReceiptStatus.EXEMPT) {
+      where.receiptExemptions = { some: { releasedAt: null } };
+    } else if (query.status === SaleReceiptStatus.AVAILABLE) {
+      where.AND = [
+        { receiptSales: { none: { releasedAt: null } } },
+        { receiptExemptions: { none: { releasedAt: null } } },
+      ];
+    }
+    return where;
   }
 
   private async findSettings(client: ReceiptClient): Promise<ReceiptSettings> {

@@ -383,3 +383,201 @@ describe("ReceiptsService transactional writes", () => {
     });
   });
 });
+
+describe("ReceiptsService reads", () => {
+  const issuedOn = new Date("2026-10-13T00:00:00.000Z");
+  const createdAt = new Date("2026-10-13T15:30:00.000Z");
+
+  function receiptRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "receipt-1",
+      type: ReceiptType.SALES_RECEIPT,
+      medium: ReceiptMedium.MANUAL,
+      series: "B001",
+      number: "000001",
+      issuedOn,
+      customerId: CUSTOMER_ID,
+      issuerSettingsVersionId: "settings-1",
+      taxableAmount: decimal("100.00"),
+      taxAmount: decimal("18.00"),
+      total: decimal("118.00"),
+      affectedReceiptId: null,
+      reason: null,
+      createdById: "user-1",
+      createdAt,
+      voidedAt: null,
+      voidedById: null,
+      voidReason: null,
+      customer: { id: CUSTOMER_ID, name: "Bodega Azul" },
+      createdBy: { id: "user-1", username: "vendedor" },
+      ...overrides,
+    };
+  }
+
+  test("lists receipts with type, medium, status, and business-date filters", async () => {
+    const prisma = {
+      receipt: {
+        count: jest.fn<() => Promise<number>>().mockResolvedValue(1),
+        findMany: jest.fn<() => Promise<unknown>>().mockResolvedValue([receiptRow()]),
+      },
+      $transaction: jest.fn(async (queries: Promise<unknown>[]) => Promise.all(queries)),
+    };
+    const service = new ReceiptsService(prisma as never);
+
+    const result = await service.findAll({
+      page: 1,
+      limit: 20,
+      type: ReceiptType.SALES_RECEIPT,
+      medium: ReceiptMedium.MANUAL,
+      status: "ACTIVE",
+      issuedFrom: "2026-10-01",
+      issuedTo: "2026-10-14",
+    } as never);
+
+    const where = {
+      type: ReceiptType.SALES_RECEIPT,
+      medium: ReceiptMedium.MANUAL,
+      voidedAt: null,
+      issuedOn: {
+        gte: new Date("2026-10-01T00:00:00.000Z"),
+        lte: new Date("2026-10-14T00:00:00.000Z"),
+      },
+    };
+    expect(prisma.receipt.count).toHaveBeenCalledWith({ where });
+    expect(prisma.receipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where, skip: 0, take: 20 }),
+    );
+    expect(result).toEqual({
+      data: [
+        expect.objectContaining({
+          id: "receipt-1",
+          issuedOn: "2026-10-13",
+          total: "118.00",
+          status: "ACTIVE",
+          customer: { id: CUSTOMER_ID, name: "Bodega Azul" },
+        }),
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+  });
+
+  test("returns receipt detail with its sales, files, and audit users", async () => {
+    const prisma = {
+      receipt: {
+        findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue(
+          receiptRow({
+            issuerSettingsVersion: {
+              id: "settings-1",
+              taxId: "20123456789",
+              legalName: "Agua Clara SAC",
+              fiscalAddress: "Av. Lima 123",
+              taxRate: decimal("18.00"),
+              receiptDocumentThreshold: decimal("700.00"),
+            },
+            voidedBy: null,
+            sales: [
+              {
+                saleId: SALE_IDS[0],
+                releasedAt: null,
+                sale: {
+                  soldAt: new Date("2026-10-12T16:00:00.000Z"),
+                  total: decimal("118.00"),
+                  location: { id: "location-1", name: "Local principal" },
+                },
+              },
+            ],
+            files: [
+              { objectKey: "receipts/receipt-1/document.pdf", contentType: "application/pdf" },
+            ],
+          }),
+        ),
+      },
+    };
+    const service = new ReceiptsService(prisma as never);
+
+    const result = await service.findOne("receipt-1");
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: "receipt-1",
+        total: "118.00",
+        status: "ACTIVE",
+        issuerSettingsVersion: expect.objectContaining({
+          taxRate: "18.00",
+          receiptDocumentThreshold: "700.00",
+        }),
+        sales: [
+          expect.objectContaining({
+            id: SALE_IDS[0],
+            total: "118.00",
+            location: { id: "location-1", name: "Local principal" },
+          }),
+        ],
+        files: [{ objectKey: "receipts/receipt-1/document.pdf", contentType: "application/pdf" }],
+        createdBy: { id: "user-1", username: "vendedor" },
+        voidedBy: null,
+      }),
+    );
+  });
+
+  test("classifies live sales as receipted, exempt, or available without hiding any class", async () => {
+    const sales = [
+      saleRow(SALE_IDS[0]!, "10.00", {
+        soldAt: new Date("2026-10-11T15:00:00.000Z"),
+        location: { id: "location-1", name: "Principal", customer: { id: CUSTOMER_ID } },
+        receiptSales: [
+          {
+            receipt: {
+              id: "receipt-1",
+              type: ReceiptType.SALES_RECEIPT,
+              series: "B001",
+              number: "000001",
+            },
+          },
+        ],
+      }),
+      saleRow(SALE_IDS[1]!, "20.00", {
+        soldAt: new Date("2026-10-12T15:00:00.000Z"),
+        location: { id: "location-1", name: "Principal", customer: { id: CUSTOMER_ID } },
+        receiptExemptions: [{ id: "exemption-1", reason: "No solicita" }],
+      }),
+      saleRow(SALE_IDS[2]!, "30.00", {
+        soldAt: new Date("2026-10-13T15:00:00.000Z"),
+        location: { id: "location-1", name: "Principal", customer: { id: CUSTOMER_ID } },
+      }),
+    ];
+    const prisma = {
+      sale: {
+        count: jest.fn<() => Promise<number>>().mockResolvedValue(3),
+        findMany: jest.fn<() => Promise<unknown>>().mockResolvedValue(sales),
+      },
+      $transaction: jest.fn(async (queries: Promise<unknown>[]) => Promise.all(queries)),
+    };
+    const service = new ReceiptsService(prisma as never);
+
+    const result = await service.listSales({
+      customerId: CUSTOMER_ID,
+      page: 1,
+      limit: 20,
+    } as never);
+
+    expect(prisma.sale.count).toHaveBeenCalledWith({
+      where: {
+        location: { customerId: CUSTOMER_ID },
+        voidedAt: null,
+        isOpeningBalance: false,
+      },
+    });
+    expect(result.data.map((sale) => sale.status)).toEqual(["RECEIPTED", "EXEMPT", "AVAILABLE"]);
+    expect(result.data[0]?.receipt).toEqual(
+      expect.objectContaining({ id: "receipt-1", series: "B001" }),
+    );
+    expect(result.data[1]?.exemption).toEqual({ id: "exemption-1", reason: "No solicita" });
+    expect(result.data[2]).toEqual(
+      expect.objectContaining({ total: "30.00", receipt: null, exemption: null }),
+    );
+  });
+});

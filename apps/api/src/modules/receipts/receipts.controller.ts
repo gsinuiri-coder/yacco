@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -24,6 +26,7 @@ import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
 import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { CreateReceiptDto } from "./dto/create-receipt.dto.js";
+import { ListReceiptSalesQueryDto, ListReceiptsQueryDto } from "./dto/list-receipts-query.dto.js";
 import { PreviewReceiptDto, ReceiptPreviewResponseDto } from "./dto/preview-receipt.dto.js";
 import {
   CreateCreditNoteDto,
@@ -31,7 +34,10 @@ import {
   ReceiptReasonDto,
 } from "./dto/receipt-action.dto.js";
 import {
+  PaginatedReceiptSalesDto,
+  PaginatedReceiptsDto,
   ReleaseExemptionResultDto,
+  ReceiptDetailDto,
   ReceiptExemptionResultDto,
   ReceiptResponseDto,
   VoidReceiptResultDto,
@@ -46,6 +52,27 @@ import { ReceiptsService } from "./receipts.service.js";
 @Controller("receipts")
 export class ReceiptsController {
   constructor(private readonly receiptsService: ReceiptsService) {}
+
+  @ApiOperation({ summary: "Lista comprobantes con filtros de oficina" })
+  @ApiResponse({ status: 200, type: PaginatedReceiptsDto })
+  @Get()
+  findAll(@Query() query: ListReceiptsQueryDto): Promise<PaginatedReceiptsDto> {
+    return this.receiptsService.findAll(query);
+  }
+
+  @ApiOperation({ summary: "Lista ventas del cliente según su estado de comprobante" })
+  @ApiResponse({ status: 200, type: PaginatedReceiptSalesDto })
+  @Get("sales")
+  listSales(@Query() query: ListReceiptSalesQueryDto): Promise<PaginatedReceiptSalesDto> {
+    return this.receiptsService.listSales(query);
+  }
+
+  @ApiOperation({ summary: "Muestra un comprobante con ventas, archivos y auditoría" })
+  @ApiResponse({ status: 200, type: ReceiptDetailDto })
+  @Get(":id")
+  findOne(@Param("id", ParseUUIDPipe) id: string): Promise<ReceiptDetailDto> {
+    return this.receiptsService.findOne(id);
+  }
 
   @ApiOperation({
     summary: "Calcula base, IGV y total desde las ventas antes de registrar el comprobante",
