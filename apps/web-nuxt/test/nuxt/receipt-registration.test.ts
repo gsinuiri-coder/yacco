@@ -75,9 +75,10 @@ function stubPrerequisites(): Array<Record<string, string>> {
   return queries;
 }
 
-async function renderPage(): Promise<void> {
+async function renderPage(saleId?: string): Promise<void> {
   cleanups.push(signIn(["SELLER"]));
-  await renderSuspended(App, { route: `/receipts/new?customerId=${CUSTOMER_ID}` });
+  const saleQuery = saleId === undefined ? "" : `&saleId=${saleId}`;
+  await renderSuspended(App, { route: `/receipts/new?customerId=${CUSTOMER_ID}${saleQuery}` });
   await screen.findByRole("heading", { name: "Registrar comprobante", level: 1 });
 }
 
@@ -119,6 +120,23 @@ describe("Registrar comprobante", () => {
       page: "1",
       limit: "100",
     });
+  });
+
+  it("parte con la venta indicada ya elegida", async () => {
+    stubPrerequisites();
+
+    await renderPage(SALE_ONE);
+
+    expect(
+      (await screen.findByRole("checkbox", { name: /13\/10\/2026.*Local Centro/ })).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("checkbox", { name: /14\/10\/2026.*Sucursal Norte/ })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
   });
 
   it("pide a la API la vista previa y muestra base, IGV y total antes de guardar", async () => {

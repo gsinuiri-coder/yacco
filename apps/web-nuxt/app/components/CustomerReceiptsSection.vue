@@ -174,6 +174,9 @@ async function releaseExemption(exemptionId: string): Promise<void> {
                 <th scope="col" class="px-3 py-2 font-medium">Venta</th>
                 <th scope="col" class="px-3 py-2 font-medium">Local</th>
                 <th scope="col" class="px-3 py-2 text-right font-medium">Total</th>
+                <th v-if="status === 'AVAILABLE'" scope="col" class="px-3 py-2">
+                  <span class="sr-only">Acciones</span>
+                </th>
                 <th v-if="status !== 'AVAILABLE'" scope="col" class="px-3 py-2 font-medium">
                   {{ status === "EXEMPT" ? "Motivo" : "Comprobante" }}
                 </th>
@@ -198,6 +201,15 @@ async function releaseExemption(exemptionId: string): Promise<void> {
                 <td class="px-3 py-3 font-medium text-highlighted">{{ row.location.name }}</td>
                 <td class="px-3 py-3 text-right font-medium text-highlighted tabular-nums">
                   {{ formatSoles(row.total) }}
+                </td>
+                <td v-if="status === 'AVAILABLE'" class="px-3 py-3 text-right">
+                  <UButton
+                    :to="`/receipts/new?customerId=${customerId}&saleId=${row.id}`"
+                    size="sm"
+                    color="neutral"
+                    variant="ghost"
+                    label="Registrar comprobante"
+                  />
                 </td>
                 <td v-if="status === 'EXEMPT'" class="px-3 py-3 text-muted">
                   {{ row.exemption?.reason }}

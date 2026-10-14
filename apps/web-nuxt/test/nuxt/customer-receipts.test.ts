@@ -87,10 +87,16 @@ describe("Comprobantes en la ficha del cliente", () => {
     const table = await screen.findByRole("table", { name: "Ventas sin comprobante" });
     expect(within(table).getByText("Local Centro")).toBeTruthy();
     expect(within(table).getByText("S/ 70.00")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Registrar comprobante" })).toHaveProperty(
+    const firstSale = within(table).getByText("Local Centro").closest("tr") as HTMLElement;
+    expect(within(firstSale).getByRole("link", { name: "Registrar comprobante" })).toHaveProperty(
       "href",
-      expect.stringContaining(`/receipts/new?customerId=${CUSTOMER_ID}`),
+      expect.stringContaining(`customerId=${CUSTOMER_ID}&saleId=${SALE_ONE}`),
     );
+    expect(
+      screen
+        .getAllByRole("link", { name: "Registrar comprobante" })
+        .some((link) => link.getAttribute("href") === `/receipts/new?customerId=${CUSTOMER_ID}`),
+    ).toBe(true);
     expect(seen[0]).toEqual({
       customerId: CUSTOMER_ID,
       status: "AVAILABLE",

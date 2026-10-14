@@ -86,6 +86,10 @@ async function loadSales(): Promise<void> {
       },
     });
     sales.value = result.data;
+    const requestedSaleId = typeof route.query.saleId === "string" ? route.query.saleId : "";
+    if (requestedSaleId !== "" && result.data.some((sale) => sale.id === requestedSaleId)) {
+      selectedSaleIds.value = [requestedSaleId];
+    }
   } catch (error) {
     salesError.value = describeApiFailure(error);
   } finally {
