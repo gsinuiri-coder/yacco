@@ -1,5 +1,5 @@
 export type ReceiptType = "SALES_RECEIPT" | "INVOICE" | "CREDIT_NOTE";
-export type ReceiptMedium = "MANUAL" | "ELECTRONIC";
+export type ReceiptMedium = "MANUAL" | "EXTERNAL_ELECTRONIC";
 export type ReceiptStatus = "ACTIVE" | "VOIDED";
 export type SaleReceiptStatus = "AVAILABLE" | "RECEIPTED" | "EXEMPT";
 

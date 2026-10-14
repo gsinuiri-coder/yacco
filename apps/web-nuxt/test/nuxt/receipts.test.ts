@@ -41,7 +41,7 @@ const voidedReceipt = {
   ...activeReceipt,
   id: "55555555-5555-4555-8555-555555555555",
   type: "INVOICE",
-  medium: "ELECTRONIC",
+  medium: "EXTERNAL_ELECTRONIC",
   series: "F001",
   number: "000045",
   total: "236.00",
@@ -148,7 +148,7 @@ describe("Comprobantes", () => {
     await waitFor(() =>
       expect(seen.at(-1)).toEqual({
         type: "INVOICE",
-        medium: "ELECTRONIC",
+        medium: "EXTERNAL_ELECTRONIC",
         status: "VOIDED",
         issuedFrom: "2026-10-01",
         issuedTo: "2026-10-31",
@@ -297,7 +297,7 @@ describe("Comprobantes", () => {
             ...activeReceipt,
             id: CREDIT_NOTE_ID,
             type: "CREDIT_NOTE",
-            medium: "ELECTRONIC",
+            medium: "EXTERNAL_ELECTRONIC",
             series: "BC01",
             number: "000007",
             affectedReceiptId: RECEIPT_ID,
@@ -311,7 +311,7 @@ describe("Comprobantes", () => {
           receiptDetail({
             id: CREDIT_NOTE_ID,
             type: "CREDIT_NOTE",
-            medium: "ELECTRONIC",
+            medium: "EXTERNAL_ELECTRONIC",
             series: "BC01",
             number: "000007",
             affectedReceiptId: RECEIPT_ID,
@@ -338,7 +338,7 @@ describe("Comprobantes", () => {
 
     await waitFor(() =>
       expect(submitted).toEqual({
-        medium: "ELECTRONIC",
+        medium: "EXTERNAL_ELECTRONIC",
         series: "BC01",
         number: "000007",
         issuedOn: "2026-10-14",

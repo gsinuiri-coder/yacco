@@ -43,7 +43,7 @@ const typeItems = [
 ];
 const mediumItems = [
   { label: "Manual", value: "MANUAL" },
-  { label: "Electrónico", value: "ELECTRONIC" },
+  { label: "Electrónico", value: "EXTERNAL_ELECTRONIC" },
 ];
 
 const unusualSeries = computed(() => {

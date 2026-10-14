@@ -10,7 +10,7 @@ export const RECEIPT_TYPE: Record<ReceiptType, { label: string; color: BadgeColo
 
 export const RECEIPT_MEDIUM: Record<ReceiptMedium, { label: string }> = {
   MANUAL: { label: "Manual" },
-  ELECTRONIC: { label: "Electrónico" },
+  EXTERNAL_ELECTRONIC: { label: "Electrónico" },
 };
 
 export const RECEIPT_STATUS: Record<ReceiptStatus, { label: string; color: BadgeColor }> = {

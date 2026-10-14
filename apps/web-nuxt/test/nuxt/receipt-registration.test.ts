@@ -212,7 +212,7 @@ describe("Registrar comprobante", () => {
     expect(bodies).toEqual([
       {
         type: "SALES_RECEIPT",
-        medium: "ELECTRONIC",
+        medium: "EXTERNAL_ELECTRONIC",
         series: "SERIE-LARGA",
         number: "000009",
         issuedOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
