@@ -104,6 +104,8 @@ async function createCreditNote(): Promise<void> {
           variant="outline"
           icon="i-lucide-file-minus"
           label="Registrar nota de crédito"
+          aria-label="Registrar nota de crédito"
+          :ui="{ label: 'hidden sm:inline' }"
           @click="startAction('credit-note')"
         />
         <UButton
@@ -112,6 +114,8 @@ async function createCreditNote(): Promise<void> {
           variant="outline"
           icon="i-lucide-ban"
           label="Anular comprobante"
+          aria-label="Anular comprobante"
+          :ui="{ label: 'hidden sm:inline' }"
           @click="startAction('void')"
         />
         <UButton
@@ -120,6 +124,8 @@ async function createCreditNote(): Promise<void> {
           variant="ghost"
           icon="i-lucide-arrow-left"
           label="Volver a comprobantes"
+          aria-label="Volver a comprobantes"
+          :ui="{ label: 'hidden sm:inline' }"
         />
       </div>
     </template>

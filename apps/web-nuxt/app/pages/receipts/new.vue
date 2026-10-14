@@ -261,6 +261,8 @@ async function retryFiles(): Promise<void> {
         variant="ghost"
         icon="i-lucide-arrow-left"
         label="Volver a comprobantes"
+        aria-label="Volver a comprobantes"
+        :ui="{ label: 'hidden sm:inline' }"
       />
     </template>
 
