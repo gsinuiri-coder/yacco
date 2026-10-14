@@ -278,6 +278,7 @@ model User {
   issuerSettingsVersionsCreated        IssuerSettingsVersion[]             @relation("IssuerSettingsVersionCreatedBy")
   receiptsCreated                      Receipt[]                           @relation("ReceiptCreatedBy")
   receiptsVoided                       Receipt[]                           @relation("ReceiptVoidedBy")
+  receiptFilesCreated                  ReceiptFile[]                       @relation("ReceiptFileCreatedBy")
   receiptSalesReleased                 ReceiptSale[]                       @relation("ReceiptSaleReleasedBy")
   saleReceiptExemptionsCreated         SaleReceiptExemption[]              @relation("SaleReceiptExemptionCreatedBy")
   saleReceiptExemptionsReleased        SaleReceiptExemption[]              @relation("SaleReceiptExemptionReleasedBy")
@@ -1009,11 +1010,14 @@ model SaleReceiptExemption {
 }
 
 model ReceiptFile {
-  receiptId   String @map("receipt_id") @db.Uuid
-  objectKey   String @map("object_key")
-  contentType String @map("content_type") @db.VarChar(100)
+  receiptId   String    @map("receipt_id") @db.Uuid
+  objectKey   String    @map("object_key")
+  contentType String    @map("content_type") @db.VarChar(100)
+  createdAt   DateTime? @map("created_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by") @db.Uuid
 
-  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  createdBy User?   @relation("ReceiptFileCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@id([receiptId, objectKey])
   @@map("receipt_files")

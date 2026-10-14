@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import { ReceiptFilesService } from "./receipt-files.service.js";
 
 const RECEIPT_ID = "11111111-1111-4111-8111-111111111111";
+const USER_ID = "33333333-3333-4333-8333-333333333333";
 
 function buildTransactionMock() {
   return {
@@ -44,7 +45,7 @@ describe("ReceiptFilesService", () => {
     });
     tx.receiptFile.create.mockImplementation(async (args) => (args as { data: unknown }).data);
 
-    const result = await service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") });
+    const result = await service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") }, USER_ID);
 
     expect(storage.upload).toHaveBeenCalledWith(
       expect.stringMatching(new RegExp(`^receipts/${RECEIPT_ID}/[0-9a-f-]+\\.pdf$`)),
@@ -54,6 +55,12 @@ describe("ReceiptFilesService", () => {
     expect(result).toEqual({
       fileName: expect.stringMatching(/^[0-9a-f-]+\.pdf$/),
       contentType: "application/pdf",
+    });
+    expect(tx.receiptFile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        createdAt: expect.any(Date),
+        createdById: USER_ID,
+      }),
     });
   });
 
@@ -67,9 +74,13 @@ describe("ReceiptFilesService", () => {
     tx.receiptFile.create.mockImplementation(async (args) => (args as { data: unknown }).data);
 
     await expect(
-      service.upload(RECEIPT_ID, {
-        buffer: Buffer.from('<?xml version="1.0"?><Invoice></Invoice>'),
-      }),
+      service.upload(
+        RECEIPT_ID,
+        {
+          buffer: Buffer.from('<?xml version="1.0"?><Invoice></Invoice>'),
+        },
+        USER_ID,
+      ),
     ).resolves.toEqual(expect.objectContaining({ contentType: "application/xml" }));
   });
 
@@ -81,7 +92,7 @@ describe("ReceiptFilesService", () => {
       files: [{ objectKey: "existing.jpg", contentType: "image/jpeg" }],
     });
     await expect(
-      manual.service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") }),
+      manual.service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") }, USER_ID),
     ).rejects.toThrow(ConflictException);
 
     const electronic = buildService();
@@ -91,7 +102,7 @@ describe("ReceiptFilesService", () => {
       files: [{ objectKey: "existing.pdf", contentType: "application/pdf" }],
     });
     await expect(
-      electronic.service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") }),
+      electronic.service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") }, USER_ID),
     ).rejects.toThrow(ConflictException);
   });
 
@@ -99,9 +110,9 @@ describe("ReceiptFilesService", () => {
     const { tx, storage, service } = buildService();
     tx.receipt.findUnique.mockResolvedValue(null);
 
-    await expect(service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") })).rejects.toThrow(
-      NotFoundException,
-    );
+    await expect(
+      service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") }, USER_ID),
+    ).rejects.toThrow(NotFoundException);
     expect(storage.upload).not.toHaveBeenCalled();
   });
 

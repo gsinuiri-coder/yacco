@@ -18,6 +18,7 @@ let salesService: SalesService;
 let adminToken: string;
 let adminId: string;
 let sellerToken: string;
+let sellerId: string;
 let driverToken: string;
 let customerId: string;
 let locationId: string;
@@ -72,6 +73,8 @@ beforeAll(async () => {
   adminToken = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
   adminId = (await prisma.user.findUniqueOrThrow({ where: { username: ADMIN_USERNAME } })).id;
   sellerToken = await createUser("vendedor-comprobantes", UserRole.SELLER);
+  sellerId = (await prisma.user.findUniqueOrThrow({ where: { username: "vendedor-comprobantes" } }))
+    .id;
   driverToken = await createUser("chofer-comprobantes", UserRole.DRIVER);
 
   const customer = await prisma.customer.create({
@@ -192,7 +195,7 @@ test("ADMIN versiona los datos de facturación y la oficina ejecuta el flujo aud
 
   const created = await request(server())
     .post("/api/v1/receipts")
-    .set("Authorization", `Bearer ${sellerToken}`)
+    .set("Authorization", `Bearer ${adminToken}`)
     .send(receiptBody(receiptedSaleId))
     .expect(201);
   const receiptId = created.body.id as string;
@@ -241,6 +244,20 @@ test("ADMIN versiona los datos de facturación y la oficina ejecuta el flujo aud
     .attach("file", pdf, "comprobante.pdf")
     .expect(201);
   const uploadedFileName = uploaded.body.fileName as string;
+  const [storedFile] = await prisma.$queryRaw<{ created_at: Date; created_by: string }[]>`
+    SELECT "created_at", "created_by"
+    FROM "receipt_files"
+    WHERE "receipt_id" = ${receiptId}::uuid
+  `;
+  expect(storedFile).toEqual(
+    expect.objectContaining({
+      created_at: expect.any(Date),
+      created_by: sellerId,
+    }),
+  );
+  expect(storedFile!.created_at.getTime()).toBeGreaterThan(
+    new Date(created.body.createdAt).getTime(),
+  );
   const raw = await request(server())
     .get(`/api/v1/receipts/${receiptId}/files/${uploadedFileName}/raw`)
     .set("Authorization", `Bearer ${sellerToken}`)

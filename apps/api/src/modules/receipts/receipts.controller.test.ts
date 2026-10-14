@@ -2,11 +2,14 @@ import { jest } from "@jest/globals";
 import { BadRequestException } from "@nestjs/common";
 import type { Response } from "express";
 import { Readable } from "node:stream";
+import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import type { ReceiptFilesService } from "./receipt-files.service.js";
 import { ReceiptsController } from "./receipts.controller.js";
 import type { ReceiptsService } from "./receipts.service.js";
 
 type MockAsync = jest.Mock<(...args: unknown[]) => Promise<unknown>>;
+const USER_ID = "33333333-3333-4333-8333-333333333333";
+const authenticatedRequest = { user: { sub: USER_ID } } as AuthenticatedRequest;
 
 describe("ReceiptsController files", () => {
   let files: { upload: MockAsync; get: MockAsync };
@@ -24,16 +27,18 @@ describe("ReceiptsController files", () => {
   });
 
   it("rejects an upload without a file", () => {
-    expect(() => controller.uploadFile("receipt-1", undefined)).toThrow(BadRequestException);
+    expect(() => controller.uploadFile("receipt-1", undefined, authenticatedRequest)).toThrow(
+      BadRequestException,
+    );
   });
 
   it("delegates an authenticated upload", async () => {
     const file = { buffer: Buffer.from("%PDF-1.7") };
     files.upload.mockResolvedValue({ fileName: "document.pdf", contentType: "application/pdf" });
 
-    await controller.uploadFile("receipt-1", file);
+    await controller.uploadFile("receipt-1", file, authenticatedRequest);
 
-    expect(files.upload).toHaveBeenCalledWith("receipt-1", file);
+    expect(files.upload).toHaveBeenCalledWith("receipt-1", file, USER_ID);
   });
 
   it("streams a private file with its stored content metadata", async () => {

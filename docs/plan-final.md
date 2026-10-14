@@ -179,7 +179,11 @@ la decide Giancarlo con Claude y llega al relevo como un goal en
 `docs/yacco-documentacion.md` en su mismo PR, solo en los pasajes que esa
 fila contradice (autorización de Giancarlo, 2026-10-11); cualquier otro
 conflicto entre código y spec sigue bloqueando. El esquema autorizado es el
-que nombra el goal de cada fila, y nada más.
+que nombra el goal de cada fila, y nada más. Como excepción fija, las columnas
+de auditoría de una fila (`created_at`, `created_by`, `recorded_by` y sus
+equivalentes de quién y cuándo) siempre se pueden agregar mediante una
+migración nueva y aditiva; el servicio debe llenarlas y el PR debe anotarlas
+(autorización de Giancarlo, 2026-10-14).
 
 | #   | Fila                                    | Resumen de la decisión                                                                                                                                                                                                                                                    | Estado       |
 | --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |

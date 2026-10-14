@@ -40,7 +40,11 @@ export class ReceiptFilesService {
     private readonly storageService: StorageService,
   ) {}
 
-  async upload(receiptId: string, file: ReceiptUploadedFile): Promise<ReceiptFileReference> {
+  async upload(
+    receiptId: string,
+    file: ReceiptUploadedFile,
+    createdById: string,
+  ): Promise<ReceiptFileReference> {
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw(
         Prisma.sql`SELECT id FROM receipts WHERE id = ${receiptId}::uuid FOR UPDATE`,
@@ -61,7 +65,13 @@ export class ReceiptFilesService {
       const fileName = `${randomUUID()}.${validated.extension}`;
       const objectKey = `receipts/${receiptId}/${fileName}`;
       await tx.receiptFile.create({
-        data: { receiptId, objectKey, contentType: validated.contentType },
+        data: {
+          receiptId,
+          objectKey,
+          contentType: validated.contentType,
+          createdAt: new Date(),
+          createdById,
+        },
       });
       await this.storageService.upload(objectKey, file.buffer, validated.contentType);
       return { fileName, contentType: validated.contentType };

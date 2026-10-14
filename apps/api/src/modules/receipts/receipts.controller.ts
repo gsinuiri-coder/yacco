@@ -103,9 +103,10 @@ export class ReceiptsController {
   uploadFile(
     @Param("id", ParseUUIDPipe) id: string,
     @UploadedFile() file: ReceiptUploadedFile | undefined,
+    @Req() request: AuthenticatedRequest,
   ): Promise<ReceiptFileDto> {
     if (file === undefined) throw new BadRequestException("El archivo es obligatorio");
-    return this.receiptFilesService.upload(id, file);
+    return this.receiptFilesService.upload(id, file, request.user.sub);
   }
 
   @ApiOperation({ summary: "Sirve un archivo de comprobante solo con sesión" })
