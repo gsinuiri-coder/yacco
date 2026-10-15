@@ -144,6 +144,30 @@ vitest run test/nuxt/receipts.test.ts test/nuxt/receipt-registration.test.ts tes
       Tests  23 passed (23)
 ```
 
+### Anular un cobro de accesorio respeta el comprobante vigente (B.8)
+
+`AccessoriesService.voidCharge` anulaba la venta con un `sale.update` directo,
+sin lock ni mirar `receipt_sales`. Ahora pasa por
+`SalesService.voidSaleWithinTransaction`: lock, rechazo con comprobante
+vigente, anulación de sus cobros y devolución de deuda por el efecto real
+(antes restaba el total aunque el cobro estuviera pagado).
+
+Rojo:
+
+```text
+pnpm test:integration -- accessories.int.test.ts
+  ● Accessories Module Integration Tests › Charging borrowed accessories and voiding charge › un cobro cuya venta tiene comprobante vigente no se anula hasta anular el comprobante
+    expected 409 "Conflict", got 201 "Created"
+Tests:       1 failed, 17 passed, 18 total
+```
+
+Verde:
+
+```text
+pnpm test:integration -- accessories.int.test.ts
+Tests:       18 passed, 18 total
+```
+
 ### Textos compuestos sólo por espacios
 
 Rojo: los siete casos de razón social, dirección, serie, número y motivos no

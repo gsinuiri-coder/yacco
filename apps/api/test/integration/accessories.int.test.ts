@@ -416,6 +416,72 @@ describe("Accessories Module Integration Tests", () => {
         .send({ reason: "Intento de segunda anulación" })
         .expect(400);
     });
+
+    test("un cobro cuya venta tiene comprobante vigente no se anula hasta anular el comprobante", async () => {
+      const prisma = ctx.app.get(PrismaService);
+      const chargeRes = await request(server())
+        .post(`/api/v1/customer-locations/${loc1Id}/accessories/charges`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ productId: accessoryId, quantity: 1, reason: "Cliente rompió el surtidor" })
+        .expect(201);
+      await request(server())
+        .post("/api/v1/issuer-settings")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          taxId: "20123456789",
+          legalName: "Yacco S.A.C.",
+          fiscalAddress: "Av. Planta 456",
+          taxRate: "18.00",
+          receiptDocumentThreshold: "700.00",
+        })
+        .expect(201);
+      const receipt = await request(server())
+        .post("/api/v1/receipts")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          type: "SALES_RECEIPT",
+          medium: "MANUAL",
+          series: "B001",
+          number: "000501",
+          issuedOn: "2026-10-14",
+          customerId,
+          saleIds: [chargeRes.body.saleId],
+        })
+        .expect(201);
+      const debtBefore = (await prisma.customer.findUniqueOrThrow({ where: { id: customerId } }))
+        .debtBalance;
+
+      const rejected = await request(server())
+        .post(`/api/v1/accessories/movements/${chargeRes.body.id}/void`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ reason: "Se cobró por error" })
+        .expect(409);
+      expect(rejected.body.message).toBe("Anulá primero el comprobante vigente de la venta");
+      const sale = await prisma.sale.findUniqueOrThrow({ where: { id: chargeRes.body.saleId } });
+      expect(sale.voidedAt).toBeNull();
+      expect(
+        await prisma.accessoryMovement.count({ where: { reversesMovementId: chargeRes.body.id } }),
+      ).toBe(0);
+      expect(
+        (await prisma.customer.findUniqueOrThrow({ where: { id: customerId } })).debtBalance,
+      ).toEqual(debtBefore);
+
+      await request(server())
+        .patch(`/api/v1/receipts/${receipt.body.id}/void`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ reason: "El cobro fue un error" })
+        .expect(200);
+      await request(server())
+        .post(`/api/v1/accessories/movements/${chargeRes.body.id}/void`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ reason: "Se cobró por error" })
+        .expect(201);
+      expect(
+        (
+          await prisma.customer.findUniqueOrThrow({ where: { id: customerId } })
+        ).debtBalance.toFixed(2),
+      ).toBe(debtBefore.minus(35).toFixed(2));
+    });
   });
 
   describe("Reconciliation & Reporting", () => {
