@@ -52,6 +52,15 @@ su propia fila.
 - Fuera del dominio: `test/integration/support/test-storage.ts` se
   reorganizó para que los tests de comprobantes levanten su propio bucket.
 
+## Gates
+
+`pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm prisma:validate` verdes.
+`pnpm test`: API 1436, web 637, shared 44, firestore-export 54.
+`pnpm test:integration` entero: `Test Suites: 44 passed, 44 total` /
+`Tests: 780 passed, 780 total` (antes de los dos últimos arreglos de textos de
+la web, que no tocan la API). Revisión visual con Playwright: no se hizo en
+esta corrida desatendida.
+
 ## Evidencia TDD acumulada
 
 ### Auditoría de adjuntos posteriores
