@@ -619,6 +619,15 @@ export class ReceiptsService {
   }
 
   private async assertNoLiveCreditNote(client: ReceiptClient, paper: Paper): Promise<void> {
+    // A credit note locks the receipt it cancels. Locking every load of the
+    // paper first makes this check wait for one in flight and then read it,
+    // instead of reading the paper as still live.
+    await client.$queryRaw(
+      Prisma.sql`SELECT id FROM receipts
+        WHERE type = ${paper.type}::receipt_type AND series = ${paper.series}
+          AND number = ${paper.number}
+        ORDER BY id FOR UPDATE`,
+    );
     if ((await this.findCancelledPaper(client, paper)) !== null) {
       throw new ConflictException(
         "Ese comprobante tiene una nota de crédito vigente: no se puede volver a registrar",

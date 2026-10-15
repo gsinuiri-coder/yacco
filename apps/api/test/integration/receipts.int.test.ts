@@ -712,6 +712,30 @@ test("los adjuntos solo se vuelven a asociar desde el mismo papel anulado", asyn
   expect(
     await prisma.receipt.count({ where: { series: "B017", number: "000002", voidedAt: null } }),
   ).toBe(0);
+
+  // El mismo papel, pero cargado para otro cliente: tampoco se lleva la foto.
+  const stranger = await createCustomer("Otro cliente de los adjuntos", {
+    documentType: "DNI",
+    documentNumber: "40000008",
+  });
+  const strangerSaleId = await createSaleAt(
+    stranger.locationId,
+    "1.18",
+    "2026-10-14T20:50:00.000Z",
+  );
+  const otherCustomer = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(
+      receiptBody(strangerSaleId, {
+        series: "B017",
+        number: "000001",
+        customerId: stranger.id,
+        filesFromReceiptId: photographed.body.id,
+      }),
+    )
+    .expect(400);
+  expect(otherCustomer.body.message).toBe(rejected.body.message);
 });
 
 async function createCustomer(
@@ -1085,4 +1109,84 @@ test("el alta de un comprobante gana el lock y evita que una anulación concurre
   expect((await creating.result).status).toBe(201);
   await expect(voiding.result).rejects.toThrow("Anulá primero el comprobante vigente de la venta");
   expect((await prisma.sale.findUniqueOrThrow({ where: { id: saleId } })).voidedAt).toBeNull();
+});
+
+test("un alta del mismo papel con otras ventas espera a la nota de crédito en curso y se rechaza", async () => {
+  await configureIssuerSettings();
+  const originalSaleId = await createSale("9.44", "2026-10-14T17:10:00.000Z");
+  const otherSaleId = await createSale("2.36", "2026-10-14T17:20:00.000Z");
+  const paper = { series: "B018", number: "000303" };
+  const original = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(originalSaleId, paper))
+    .expect(201);
+
+  // La nota de crédito a mitad de camino: anuló el original y escribió la
+  // nota, pero todavía no confirmó.
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markWritten!: () => void;
+  const written = new Promise<void>((resolve) => {
+    markWritten = resolve;
+  });
+  const creditNote = prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT id FROM receipts WHERE id = ${original.body.id}::uuid FOR UPDATE`;
+      const voidedAt = new Date();
+      await tx.receipt.update({
+        where: { id: original.body.id },
+        data: { voidedAt, voidedById: adminId, voidReason: "El cliente devolvió el pedido" },
+      });
+      await tx.receiptSale.updateMany({
+        where: { receiptId: original.body.id },
+        data: { releasedAt: voidedAt, releasedById: adminId },
+      });
+      const source = await tx.receipt.findUniqueOrThrow({ where: { id: original.body.id } });
+      await tx.receipt.create({
+        data: {
+          type: ReceiptType.CREDIT_NOTE,
+          medium: ReceiptMedium.MANUAL,
+          series: "BC01",
+          number: "000018",
+          issuedOn: source.issuedOn,
+          customerId,
+          issuerSettingsVersionId: source.issuerSettingsVersionId,
+          taxableAmount: source.taxableAmount,
+          taxAmount: source.taxAmount,
+          total: source.total,
+          affectedReceiptId: original.body.id,
+          reason: "El cliente devolvió el pedido",
+          createdById: adminId,
+        },
+      });
+      markWritten();
+      await released;
+    },
+    { timeout: 30_000 },
+  );
+  await written;
+
+  const creating = await startAndCheckBlocked(() =>
+    request(server())
+      .post("/api/v1/receipts")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send(receiptBody(otherSaleId, paper)),
+  );
+  expect(creating.finishedWhileLocked).toBe(false);
+  release();
+  await creditNote;
+
+  const response = await creating.result;
+  expect(response.status).toBe(409);
+  expect(response.body.message).toBe(
+    "Ese comprobante tiene una nota de crédito vigente: no se puede volver a registrar",
+  );
+  expect(
+    await prisma.receipt.count({
+      where: { ...paper, type: ReceiptType.SALES_RECEIPT, voidedAt: null },
+    }),
+  ).toBe(0);
 });
