@@ -54,72 +54,83 @@ async function onStatementChanged(): Promise<void> {
       back-label="Volver a clientes"
       @retry="resource.reload"
     >
-      <UPageList v-if="customer">
-        <UCard as="section" aria-label="Datos del cliente">
-          <UPageGrid>
-            <UPageCard
-              title="Deuda actual"
-              :description="formatDebtBalance(customer.debtBalance)"
-              icon="i-lucide-wallet-cards"
-              :highlight="isAboveZero(customer.debtBalance)"
-              :highlight-color="isAboveZero(customer.debtBalance) ? 'error' : 'primary'"
-              variant="soft"
-            >
-              <template #footer>
-                <UFieldGroup>
-                  <UBadge
-                    :color="customer.active ? 'success' : 'neutral'"
-                    variant="subtle"
-                    :label="customer.active ? 'Activo' : 'Desactivado'"
-                  />
-                  <UBadge
-                    color="neutral"
-                    variant="soft"
-                    :label="`Límite de crédito: ${
-                      customer.creditLimit === null
-                        ? 'Sin límite'
-                        : formatSoles(customer.creditLimit)
-                    }`"
-                  />
-                </UFieldGroup>
-              </template>
-            </UPageCard>
+      <UPageBody v-if="customer">
+        <UPageSection as="div" orientation="horizontal">
+          <template #body>
+            <UCard as="section" aria-label="Datos del cliente">
+              <UPageGrid>
+                <UPageCard
+                  title="Deuda actual"
+                  :description="formatDebtBalance(customer.debtBalance)"
+                  icon="i-lucide-wallet-cards"
+                  :highlight="isAboveZero(customer.debtBalance)"
+                  :highlight-color="isAboveZero(customer.debtBalance) ? 'error' : 'primary'"
+                  variant="soft"
+                >
+                  <template #footer>
+                    <UFieldGroup>
+                      <UBadge
+                        :color="customer.active ? 'success' : 'neutral'"
+                        variant="subtle"
+                        :label="customer.active ? 'Activo' : 'Desactivado'"
+                      />
+                      <UBadge
+                        color="neutral"
+                        variant="soft"
+                        :label="`Límite de crédito: ${
+                          customer.creditLimit === null
+                            ? 'Sin límite'
+                            : formatSoles(customer.creditLimit)
+                        }`"
+                      />
+                    </UFieldGroup>
+                  </template>
+                </UPageCard>
 
-            <UPageCard title="Teléfono" :description="customer.phone" variant="soft" />
-            <UPageCard
-              title="Zona"
-              :description="customer.zone?.name ?? 'Sin zona'"
-              variant="soft"
-            />
-            <UPageCard title="Dirección" variant="soft">
-              <LinkedText :text="customer.address" />
-              <template #footer>
-                <LinkedText :text="customer.addressReference" />
-              </template>
-            </UPageCard>
-            <UPageCard
-              v-if="customer.documentType && customer.documentNumber"
-              :title="`Documento (${customer.documentType})`"
-              :description="customer.documentNumber"
-              variant="soft"
-            >
-              <UPageGrid v-if="customer.legalName || customer.fiscalAddress">
+                <UPageCard title="Teléfono" :description="customer.phone" variant="soft" />
                 <UPageCard
-                  v-if="customer.legalName"
-                  title="Razón social"
-                  :description="customer.legalName"
-                  variant="subtle"
+                  title="Zona"
+                  :description="customer.zone?.name ?? 'Sin zona'"
+                  variant="soft"
                 />
+                <UPageCard title="Dirección" variant="soft">
+                  <template #description>
+                    <LinkedText :text="customer.address" />
+                  </template>
+                  <template #footer>
+                    <LinkedText :text="customer.addressReference" />
+                  </template>
+                </UPageCard>
                 <UPageCard
-                  v-if="customer.fiscalAddress"
-                  title="Dirección fiscal"
-                  :description="customer.fiscalAddress"
-                  variant="subtle"
-                />
+                  v-if="customer.documentType && customer.documentNumber"
+                  :title="`Documento (${customer.documentType})`"
+                  :description="customer.documentNumber"
+                  variant="soft"
+                >
+                  <UPageGrid v-if="customer.legalName || customer.fiscalAddress">
+                    <UPageCard
+                      v-if="customer.legalName"
+                      title="Razón social"
+                      :description="customer.legalName"
+                      variant="subtle"
+                    />
+                    <UPageCard
+                      v-if="customer.fiscalAddress"
+                      title="Dirección fiscal"
+                      :description="customer.fiscalAddress"
+                      variant="subtle"
+                    />
+                  </UPageGrid>
+                </UPageCard>
               </UPageGrid>
-            </UPageCard>
-          </UPageGrid>
-        </UCard>
+            </UCard>
+          </template>
+
+          <CustomerAccountStatementSection
+            :customer-id="customer.id"
+            :refresh-signal="statementRefresh"
+          />
+        </UPageSection>
 
         <CustomerContactsSection
           :customer-id="customer.id"
@@ -149,12 +160,7 @@ async function onStatementChanged(): Promise<void> {
           :customer-id="customer.id"
           @statement-changed="onStatementChanged"
         />
-
-        <CustomerAccountStatementSection
-          :customer-id="customer.id"
-          :refresh-signal="statementRefresh"
-        />
-      </UPageList>
+      </UPageBody>
     </ResourceState>
   </AppPage>
 </template>

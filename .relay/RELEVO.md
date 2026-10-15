@@ -3,6 +3,6 @@
 status: in-progress
 item: Fase 3 — 9. Panel por rol y solo Nuxt UI (goal en .relay/goals/fase3-9-nuxt-ui-y-panel.md)
 branch: refactor/nuxt-ui-customers
-last-step: Migración base de Clientes validada: overflow móvil en cuatro rutas, menú por rol 6/6, web 63 archivos y 676 tests con cobertura sobre 80%, y lint, typecheck y build verdes.
-next-step: Pedir revisión a reviewer; resolver hallazgos y, con aprobación explícita, abrir el PR.
-updated: 2026-10-15T14:04:15-05:00 por Codex (relevo)
+last-step: Hallazgos del reviewer resueltos con TDD (42/42): estado de cuenta nuevamente junto a la ficha, dirección antes de referencia, estructura ARIA válida y capturas móviles de detalle y edición sin overflow.
+next-step: Repetir validaciones completas y pedir al reviewer que verifique las correcciones; con aprobación explícita, abrir el PR.
+updated: 2026-10-15T14:16:18-05:00 por Codex (relevo)

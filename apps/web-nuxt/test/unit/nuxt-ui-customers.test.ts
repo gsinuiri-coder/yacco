@@ -45,4 +45,26 @@ describe("clientes con Nuxt UI nativo", () => {
     expect(form).toContain("<UPageCard");
     expect(form).toContain("<UFieldGroup");
   });
+
+  it("mantiene el estado de cuenta junto a la ficha sin inventar una lista ARIA", () => {
+    const detail = templateOf("../../app/pages/customers/[id]/index.vue");
+
+    expect(detail).toContain('<UPageBody v-if="customer">');
+    expect(detail).toContain('<UPageSection as="div" orientation="horizontal">');
+    expect(detail).not.toContain('<UPageList v-if="customer">');
+    expect(detail.indexOf("<CustomerAccountStatementSection")).toBeLessThan(
+      detail.indexOf("<CustomerContactsSection"),
+    );
+  });
+
+  it("muestra la dirección antes de su referencia", () => {
+    const detail = templateOf("../../app/pages/customers/[id]/index.vue");
+    const addressCard = detail.slice(detail.indexOf('<UPageCard title="Dirección"'));
+
+    expect(addressCard.indexOf("<template #description>")).toBeLessThan(
+      addressCard.indexOf("<template #footer>"),
+    );
+    expect(addressCard).toContain('<LinkedText :text="customer.address" />');
+    expect(addressCard).toContain('<LinkedText :text="customer.addressReference" />');
+  });
 });
