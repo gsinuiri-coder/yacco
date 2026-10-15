@@ -26,6 +26,16 @@ su propia fila.
   restaura con «Volver a registrar el original» (mismo número, mismas ventas,
   y opcionalmente los mismos adjuntos sin volver a subirlos). Una nota
   electrónica no se anula.
+- **Decisiones de las 21:25**: volver a registrar el original libera una
+  marca «No lleva comprobante» de sus ventas, como cualquier alta (la web
+  ahora ofrece esas ventas); la API rechaza volver a registrar un papel cuya
+  nota de crédito sigue vigente; los adjuntos solo se reasocian desde un
+  anulado del mismo cliente con el mismo tipo, serie y número (el medio puede
+  cambiar); anular el cobro de un accesorio pasa por `SalesService` y anula
+  también sus pagos.
+- El detalle trae `canRegisterAgain` y `registeredAgainId`: la web deja de
+  ofrecer «Volver a registrar el original» cuando el papel ya está vigente
+  otra vez (y enlaza al vigente) o sigue anulado por una nota vigente.
 - **Tipo, serie y número únicos solo entre los vigentes** (decisión 1).
 - **«No lleva comprobante»**: marca inmutable con motivo; se libera a mano
   (ADMIN) o al registrar un comprobante.
@@ -50,16 +60,131 @@ su propia fila.
 - `schema.prisma` sin reformateo: contra `main` son 120 líneas agregadas y
   ninguna cambiada.
 - Fuera del dominio: `test/integration/support/test-storage.ts` se
-  reorganizó para que los tests de comprobantes levanten su propio bucket.
+  reorganizó para que los tests de comprobantes levanten su propio bucket, y
+  `customer-contacts-photos.int.test.ts` pasó a usarlo. Se queda en este PR:
+  sacarlo dejaría dos copias del mismo arranque de MinIO.
+- Sin esquema nuevo para las decisiones de las 21:25.
 
 ## Gates
 
 `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm prisma:validate` verdes.
-`pnpm test`: API 1436, web 637, shared 44, firestore-export 54.
-`pnpm test:integration` entero: `Test Suites: 44 passed, 44 total` /
-`Tests: 780 passed, 780 total` (antes de los dos últimos arreglos de textos de
-la web, que no tocan la API). Revisión visual con Playwright: no se hizo en
-esta corrida desatendida.
+`pnpm test`: API 1444, web 640, shared 44, firestore-export 54.
+`pnpm test:integration` entero: INTEGRATION_RESULT. Revisión visual con
+Playwright: no se hizo en esta corrida desatendida.
+
+## Evidencia TDD de las decisiones de las 21:25
+
+Rojo de la API, unit de `receipts.service.test.ts`, antes de cambiar
+`receipts.service.ts`:
+
+```text
+pnpm test -- src/modules/receipts/receipts.service.test.ts
+  ● … registering again with the original's files › rejects another customer's original before writing anything
+  ● … › rejects an original of another type before writing anything
+  ● … › rejects a credit note before writing anything
+  ● … › rejects an original of another series before writing anything
+  ● … › rejects an original of another number before writing anything
+  ● … › the same paper loaded under another medium still takes its files
+  ● … › an original whose credit note is still live cannot be registered again
+    Received promise resolved instead of rejected
+Tests:       8 failed, 18 passed, 26 total
+```
+
+(El octavo, «copies each file row…», falló porque el original del test ya no
+trae `medium` y el código viejo lo exigía.) Verde: 49/49.
+
+Rojo de integración, con producción revertida a mano (sin el chequeo de nota
+vigente, sin el chequeo de papel en los adjuntos y sin liberar marcas al
+registrar):
+
+```text
+pnpm test:integration -- test/integration/receipts.int.test.ts
+  ● volver a registrar el original libera la marca «No lleva comprobante» de una de sus ventas
+    expect(received).toMatchObject(expected)
+  ● volver a registrar un original con su nota de crédito vigente se rechaza en la API
+    expected 409 "Conflict", got 201 "Created"
+  ● los adjuntos solo se vuelven a asociar desde el mismo papel anulado
+    expected 400 "Bad Request", got 201 "Created"
+  ● HU-26 E4: marcar dos ventas y comprobar una libera solo su marca; la lista coincide con las uniones vivas
+Tests:       4 failed, 12 passed, 16 total
+```
+
+Anular el cobro de un accesorio con un pago confirmado (S/ 20.00 de S/ 35.00),
+con `voidCharge` devuelto al `sale.update` + `debtBalance decrement total` de
+antes:
+
+```text
+pnpm test:integration -- test/integration/accessories.int.test.ts
+  ● … › un cobro cuya venta tiene comprobante vigente no se anula hasta anular el comprobante
+  ● … › anular un cobro con un pago confirmado anula el pago y devuelve solo lo que quedaba debiendo
+    Expected: "0.00"
+    Received: "-20.00"
+  ● … › stop delivery sells accessory: … (arrastra la deuda mal devuelta)
+    Expected: "35.00"
+    Received: "15.00"
+Test Suites: 2 failed, 2 total
+Tests:       7 failed, 28 passed, 35 total
+```
+
+Verde con producción restaurada: `Test Suites: 2 passed, 2 total` /
+`Tests: 35 passed, 35 total`.
+
+Detalle (`canRegisterAgain`, `registeredAgainId`), unit antes de implementar:
+
+```text
+pnpm test -- src/modules/receipts/receipts.service.test.ts
+  ● ReceiptsService reads › returns receipt detail with its sales, files, and audit users
+  ● … › a voided receipt already loaded again points to the live one
+  ● … › a voided receipt whose paper has a live credit note cannot be loaded again
+  ● … › a voided credit note asks about the paper it affected
+Tests:       4 failed, 25 passed, 29 total
+```
+
+Verde 52/52; integración de comprobantes 16/16 con las mismas aserciones por
+API.
+
+Web, con los cambios de `receipts/[id].vue` y `receipts/new.vue` apartados:
+
+```text
+vitest run test/nuxt/receipts.test.ts test/nuxt/receipt-registration.test.ts
+     × la nota anulada cuyo original ya se volvió a registrar enlaza al vigente en vez de ofrecerlo otra vez
+       × avisa y no deja calcular si una venta del original ya tiene otro comprobante
+       × incluye la venta del original marcada «No lleva comprobante», que se libera al registrar
+       × vuelve a asociar los adjuntos solo mientras sea el mismo papel, aunque cambie el medio
+      Tests  4 failed | 19 passed (23)
+```
+
+Verde: 23/23.
+
+Carrera encontrada por `reviewer`: un alta del mismo papel con otras ventas,
+mientras una nota de crédito contra el original está en curso, leía el
+original como vigente y quedaban vigentes la nota y el papel que anuló. El
+test sostiene abierta una transacción que ya anuló el original y escribió la
+nota. Rojo, sin el lock:
+
+```text
+pnpm test:integration -- test/integration/receipts.int.test.ts
+  ● un alta del mismo papel con otras ventas espera a la nota de crédito en curso y se rechaza
+    Expected: 409
+    Received: 201
+```
+
+Verde, con `SELECT … FROM receipts WHERE type, series, number … FOR UPDATE`
+antes del chequeo: integración de comprobantes 19/19 (incluye además el caso
+«otro cliente» de los adjuntos contra Postgres).
+
+El pago confirmado del test de accesorios se escribe directo en la base (con
+su baja de deuda en la misma transacción): `POST /payments` no liga un cobro a
+una venta (`saleId` queda en null), así que no hay otra vía para armar un
+cobro de accesorio pagado. El cambio de producción de la decisión 4 es de
+`c0cae53`; el rojo de arriba se obtuvo devolviendo a mano `voidCharge` al
+código de antes de ese commit.
+
+Tests nuevos sin cambio de producción (sin rojo posible, cubren lo que ya
+existía): HU-26 E1 con una factura exitosa a un cliente con RUC, y HU-26 E3
+por la vía de la nota de crédito (`released_by` = el vendedor que la
+registró, `released_at`, y el original visible como anulado en el detalle y en
+el filtro «Anulados»). Integración de comprobantes 18/18.
 
 ## Evidencia TDD acumulada
 
@@ -339,3 +464,5 @@ sólo el archivo pendiente (`PDF`, `XML`, `XML`).
 Rojo del aviso: después de confirmar una serie inusual y cambiarla, el botón
 seguía diciendo «Registrar de todas formas». Verde: cambiar la serie exige una
 confirmación nueva. El archivo enfocado quedó 6/6 y el typecheck de Nuxt pasó.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
