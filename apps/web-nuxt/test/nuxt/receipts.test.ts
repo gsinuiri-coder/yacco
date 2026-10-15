@@ -72,10 +72,43 @@ function receiptDetail(overrides: Record<string, unknown> = {}) {
       },
     ],
     files: [],
+    creditNotes: [],
     voidedBy: null,
     ...overrides,
   };
 }
+
+function creditNoteDetail(overrides: Record<string, unknown> = {}) {
+  return receiptDetail({
+    id: CREDIT_NOTE_ID,
+    type: "CREDIT_NOTE",
+    series: "BC01",
+    number: "000007",
+    affectedReceiptId: RECEIPT_ID,
+    reason: "Devolución total del pedido",
+    sales: [],
+    ...overrides,
+  });
+}
+
+const voidedFields = {
+  status: "VOIDED",
+  voidedAt: "2026-10-15T13:00:00.000Z",
+  voidedById: "11111111-1111-4111-8111-111111111111",
+  voidReason: "La nota no se llegó a entregar",
+  voidedBy: { id: "11111111-1111-4111-8111-111111111111", username: "administrador" },
+};
+
+async function renderDetail(id: string, detail: unknown): Promise<void> {
+  cleanups.push(
+    signIn(["ADMIN"]),
+    registerEndpoint(`/api/v1/receipts/${id}`, { method: "GET", handler: () => detail }),
+  );
+  await renderSuspended(App, { route: `/receipts/${id}` });
+  await screen.findByRole("heading", { level: 1, name: /B001-000123|BC01-000007/ });
+}
+
+const RESTORE_LINK = "Volver a registrar el original";
 
 function stubReceipts(rows = [activeReceipt, voidedReceipt]): Query[] {
   const seen: Query[] = [];
@@ -210,6 +243,7 @@ describe("Comprobantes", () => {
             { fileName: "boleta.pdf", contentType: "application/pdf" },
             { fileName: "boleta.jpg", contentType: "image/jpeg" },
           ],
+          creditNotes: [],
           voidedBy: { id: "66666666-6666-4666-8666-666666666666", username: "Giancarlo" },
         }),
       }),
@@ -348,5 +382,67 @@ describe("Comprobantes", () => {
     await waitFor(() =>
       expect(useRouter().currentRoute.value.path).toBe(`/receipts/${CREDIT_NOTE_ID}`),
     );
+  });
+
+  it("una nota de crédito manual vigente ofrece anular al ADMIN", async () => {
+    await renderDetail(CREDIT_NOTE_ID, creditNoteDetail());
+    expect(screen.getByRole("button", { name: "Anular comprobante" })).toBeTruthy();
+  });
+
+  it("una nota de crédito electrónica vigente no ofrece anular", async () => {
+    await renderDetail(CREDIT_NOTE_ID, creditNoteDetail({ medium: "EXTERNAL_ELECTRONIC" }));
+    expect(screen.queryByRole("button", { name: "Anular comprobante" })).toBeNull();
+  });
+
+  it("la nota de crédito anulada ofrece volver a registrar el original y enlaza a él", async () => {
+    await renderDetail(CREDIT_NOTE_ID, creditNoteDetail(voidedFields));
+
+    expect(screen.getByRole("link", { name: RESTORE_LINK }).getAttribute("href")).toBe(
+      `/receipts/new?from=${RECEIPT_ID}`,
+    );
+    expect(screen.queryByRole("button", { name: "Anular comprobante" })).toBeNull();
+  });
+
+  it("el original anulado lista sus notas y solo ofrece volver a registrarlo sin nota vigente", async () => {
+    const creditNote = {
+      id: CREDIT_NOTE_ID,
+      series: "BC01",
+      number: "000007",
+      medium: "MANUAL",
+      status: "VOIDED",
+    };
+    await renderDetail(RECEIPT_ID, receiptDetail({ ...voidedFields, creditNotes: [creditNote] }));
+
+    expect(screen.getByRole("link", { name: RESTORE_LINK }).getAttribute("href")).toBe(
+      `/receipts/new?from=${RECEIPT_ID}`,
+    );
+    expect(
+      screen
+        .getByRole("link", { name: "Nota de crédito BC01-000007 (anulada)" })
+        .getAttribute("href"),
+    ).toBe(`/receipts/${CREDIT_NOTE_ID}`);
+  });
+
+  it("el original anulado por una nota de crédito vigente no ofrece volver a registrarlo", async () => {
+    await renderDetail(
+      RECEIPT_ID,
+      receiptDetail({
+        ...voidedFields,
+        creditNotes: [
+          {
+            id: CREDIT_NOTE_ID,
+            series: "BC01",
+            number: "000007",
+            medium: "EXTERNAL_ELECTRONIC",
+            status: "ACTIVE",
+          },
+        ],
+      }),
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Nota de crédito BC01-000007 (vigente)" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("link", { name: RESTORE_LINK })).toBeNull();
   });
 });

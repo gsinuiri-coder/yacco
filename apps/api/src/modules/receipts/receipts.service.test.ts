@@ -609,6 +609,15 @@ describe("ReceiptsService reads", () => {
             files: [
               { objectKey: "receipts/receipt-1/document.pdf", contentType: "application/pdf" },
             ],
+            creditNotes: [
+              {
+                id: "credit-note-1",
+                series: "BC01",
+                number: "000001",
+                medium: ReceiptMedium.MANUAL,
+                voidedAt: new Date("2026-10-14T10:00:00.000Z"),
+              },
+            ],
           }),
         ),
       },
@@ -634,6 +643,15 @@ describe("ReceiptsService reads", () => {
           }),
         ],
         files: [{ fileName: "document.pdf", contentType: "application/pdf" }],
+        creditNotes: [
+          {
+            id: "credit-note-1",
+            series: "BC01",
+            number: "000001",
+            medium: ReceiptMedium.MANUAL,
+            status: "VOIDED",
+          },
+        ],
         createdBy: { id: "user-1", username: "vendedor" },
         voidedBy: null,
       }),

@@ -30,6 +30,22 @@ const title = computed(() => {
 
 useHead(() => ({ title: `${title.value} · Yacco` }));
 
+// An electronic credit note is never voided; a manual one only gets marked.
+const canVoid = computed(
+  () =>
+    receipt.value?.status === "ACTIVE" &&
+    session.hasRole("ADMIN") &&
+    (receipt.value.type !== "CREDIT_NOTE" || receipt.value.medium === "MANUAL"),
+);
+
+// Nothing comes back to life: the original is restored by registering it again.
+const restoreSourceId = computed(() => {
+  const current = receipt.value;
+  if (current === null || current.status !== "VOIDED") return null;
+  if (current.type === "CREDIT_NOTE") return current.affectedReceiptId;
+  return current.creditNotes.some((note) => note.status === "ACTIVE") ? null : current.id;
+});
+
 function startAction(nextAction: "void" | "credit-note"): void {
   actionError.value = null;
   action.value = nextAction;
@@ -109,7 +125,17 @@ async function createCreditNote(): Promise<void> {
           @click="startAction('credit-note')"
         />
         <UButton
-          v-if="receipt?.status === 'ACTIVE' && session.hasRole('ADMIN')"
+          v-if="restoreSourceId"
+          :to="`/receipts/new?from=${restoreSourceId}`"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-rotate-ccw"
+          label="Volver a registrar el original"
+          aria-label="Volver a registrar el original"
+          :ui="{ label: 'hidden sm:inline' }"
+        />
+        <UButton
+          v-if="canVoid"
           color="error"
           variant="outline"
           icon="i-lucide-ban"
@@ -404,6 +430,24 @@ async function createCreditNote(): Promise<void> {
                 <p v-if="receipt.voidedAt && receipt.voidedBy">
                   Anulado por {{ receipt.voidedBy.username }} el
                   {{ formatInstantInLima(receipt.voidedAt) }}.
+                </p>
+                <p v-if="receipt.type === 'CREDIT_NOTE' && receipt.affectedReceiptId">
+                  <ULink
+                    :to="`/receipts/${receipt.affectedReceiptId}`"
+                    class="font-medium text-primary hover:underline"
+                  >
+                    Ver el comprobante original
+                  </ULink>
+                </p>
+                <p v-for="note in receipt.creditNotes" :key="note.id">
+                  <ULink
+                    :to="`/receipts/${note.id}`"
+                    class="font-medium text-primary hover:underline"
+                  >
+                    Nota de crédito {{ receiptNumber(note.series, note.number) }} ({{
+                      note.status === "ACTIVE" ? "vigente" : "anulada"
+                    }})
+                  </ULink>
                 </p>
               </div>
             </UCard>

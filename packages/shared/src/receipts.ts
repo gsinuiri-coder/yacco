@@ -59,10 +59,19 @@ export interface ReceiptFile {
   contentType: string;
 }
 
+export interface ReceiptCreditNote {
+  id: string;
+  series: string;
+  number: string;
+  medium: ReceiptMedium;
+  status: ReceiptStatus;
+}
+
 export interface ReceiptDetail extends ReceiptRow {
   issuerSettingsVersion: ReceiptIssuerSettings;
   sales: ReceiptSaleDetail[];
   files: ReceiptFile[];
+  creditNotes: ReceiptCreditNote[];
   voidedBy: ReceiptUser | null;
 }
 

@@ -5,6 +5,7 @@ import type {
   Page,
   ReceiptFile,
   ReceiptMedium,
+  ReceiptDetail,
   ReceiptPreview,
   ReceiptRow,
   ReceiptSaleStatusRow,
@@ -36,6 +37,27 @@ const saving = ref(false);
 const saveError = ref<string | null>(null);
 const confirmUnusualSeries = ref(false);
 const createdReceiptId = ref<string | null>(null);
+
+// «Volver a registrar el original»: a voided receipt prefills the form and
+// its attachments can be linked again without uploading them.
+const restoreSource = ref<ReceiptDetail | null>(null);
+const reuseFiles = ref(true);
+const restoreSalesTaken = ref(false);
+let pendingSaleIds: string[] = [];
+
+const reusableFiles = computed(() => {
+  const source = restoreSource.value;
+  if (source === null) return [];
+  if (customer.value?.id !== source.customer.id || medium.value !== source.medium) return [];
+  return source.files;
+});
+const filesToReuse = computed(() => (reuseFiles.value ? reusableFiles.value : []));
+const reuseLabel = computed(
+  () =>
+    `Volver a asociar los adjuntos del original (${reusableFiles.value
+      .map((file) => file.fileName)
+      .join(", ")})`,
+);
 
 const typeItems = [
   { label: "Boleta", value: "SALES_RECEIPT" },
@@ -69,6 +91,27 @@ function resetSelection(): void {
   selectedSaleIds.value = [];
   preview.value = null;
   previewError.value = null;
+  restoreSalesTaken.value = false;
+}
+
+function requestedSaleIds(): string[] {
+  if (pendingSaleIds.length > 0) return pendingSaleIds;
+  return typeof route.query.saleId === "string" && route.query.saleId !== ""
+    ? [route.query.saleId]
+    : [];
+}
+
+function preselectSales(available: ReceiptSaleStatusRow[]): void {
+  const requested = requestedSaleIds();
+  const availableIds = new Set(available.map((sale) => sale.id));
+  if (pendingSaleIds.length > 0) {
+    // Registering the original again takes all of its sales or none.
+    restoreSalesTaken.value = requested.some((id) => !availableIds.has(id));
+    selectedSaleIds.value = restoreSalesTaken.value ? [] : requested;
+    pendingSaleIds = [];
+    return;
+  }
+  selectedSaleIds.value = requested.filter((id) => availableIds.has(id));
 }
 
 async function loadSales(): Promise<void> {
@@ -86,10 +129,7 @@ async function loadSales(): Promise<void> {
       },
     });
     sales.value = result.data;
-    const requestedSaleId = typeof route.query.saleId === "string" ? route.query.saleId : "";
-    if (requestedSaleId !== "" && result.data.some((sale) => sale.id === requestedSaleId)) {
-      selectedSaleIds.value = [requestedSaleId];
-    }
+    preselectSales(result.data);
   } catch (error) {
     salesError.value = describeApiFailure(error);
   } finally {
@@ -114,11 +154,25 @@ watch(series, () => {
   confirmUnusualSeries.value = false;
 });
 
+async function loadRestoreSource(sourceId: string): Promise<string> {
+  const source = await api.request<ReceiptDetail>(`/receipts/${sourceId}`);
+  restoreSource.value = source;
+  if (source.type !== "CREDIT_NOTE") type.value = source.type;
+  medium.value = source.medium;
+  series.value = source.series;
+  number.value = source.number;
+  issuedOn.value = source.issuedOn;
+  pendingSaleIds = source.sales.map((sale) => sale.id);
+  return source.customer.id;
+}
+
 onMounted(async () => {
-  const customerId = typeof route.query.customerId === "string" ? route.query.customerId : "";
-  if (customerId === "") return;
+  const sourceId = typeof route.query.from === "string" ? route.query.from : "";
+  const queryCustomerId = typeof route.query.customerId === "string" ? route.query.customerId : "";
+  if (sourceId === "" && queryCustomerId === "") return;
   customerLoading.value = true;
   try {
+    const customerId = sourceId === "" ? queryCustomerId : await loadRestoreSource(sourceId);
     customer.value = await api.request<Customer>(`/customers/${customerId}`);
   } catch (error) {
     salesError.value = describeApiFailure(error);
@@ -163,20 +217,19 @@ function validateFiles(): string | null {
   if (files.value.some((file) => file.size > 10 * 1024 * 1024)) {
     return "Cada archivo debe pesar 10 MB o menos.";
   }
+  const types = [
+    ...files.value.map((file) => file.type),
+    ...filesToReuse.value.map((file) => file.contentType),
+  ];
   if (medium.value === "MANUAL") {
-    if (files.value.length > 1) return "Un comprobante manual admite una foto o un PDF.";
+    if (types.length > 1) return "Un comprobante manual admite una foto o un PDF.";
     return null;
   }
-  const pdfCount = files.value.filter((file) => file.type === "application/pdf").length;
-  const xmlCount = files.value.filter((file) =>
-    ["application/xml", "text/xml"].includes(file.type),
+  const pdfCount = types.filter((fileType) => fileType === "application/pdf").length;
+  const xmlCount = types.filter((fileType) =>
+    ["application/xml", "text/xml"].includes(fileType),
   ).length;
-  if (
-    files.value.length > 2 ||
-    pdfCount > 1 ||
-    xmlCount > 1 ||
-    pdfCount + xmlCount !== files.value.length
-  ) {
+  if (types.length > 2 || pdfCount > 1 || xmlCount > 1 || pdfCount + xmlCount !== types.length) {
     return "Un comprobante electrónico admite un PDF y un XML.";
   }
   return null;
@@ -224,6 +277,9 @@ async function submit(): Promise<void> {
         issuedOn: issuedOn.value,
         customerId: customer.value.id,
         saleIds: selectedSaleIds.value,
+        ...(filesToReuse.value.length > 0 && restoreSource.value !== null
+          ? { filesFromReceiptId: restoreSource.value.id }
+          : {}),
       },
     });
     createdReceiptId.value = created.id;
@@ -283,6 +339,22 @@ async function retryFiles(): Promise<void> {
           </template>
 
           <div class="space-y-4">
+            <UAlert
+              v-if="restoreSource"
+              color="info"
+              variant="subtle"
+              icon="i-lucide-rotate-ccw"
+              :title="`Volver a registrar ${RECEIPT_TYPE[restoreSource.type].label} ${receiptNumber(restoreSource.series, restoreSource.number)}`"
+              description="Se registra como un comprobante nuevo; el anulado sigue a la vista."
+            />
+            <UAlert
+              v-if="restoreSalesTaken"
+              role="alert"
+              color="error"
+              variant="subtle"
+              title="Una o más ventas del original ya tienen otro comprobante o están marcadas «No lleva comprobante»."
+              description="Anula ese comprobante o libera la marca antes de volver a registrar el original."
+            />
             <CustomerPicker
               v-model="customer"
               label="Cliente"
@@ -410,6 +482,13 @@ async function retryFiles(): Promise<void> {
           <ul v-if="files.length > 0" class="mt-2 space-y-1 text-sm text-highlighted">
             <li v-for="file in files" :key="`${file.name}-${file.size}`">{{ file.name }}</li>
           </ul>
+          <UCheckbox
+            v-if="reusableFiles.length > 0"
+            v-model="reuseFiles"
+            class="mt-4"
+            :label="reuseLabel"
+            :disabled="saving || createdReceiptId !== null"
+          />
           <UAlert
             v-if="unusualSeries"
             class="mt-4"
@@ -447,7 +526,9 @@ async function retryFiles(): Promise<void> {
             icon="i-lucide-calculator"
             label="Calcular montos"
             :loading="previewing"
-            :disabled="customer === null || selectedSaleIds.length === 0 || previewing"
+            :disabled="
+              customer === null || selectedSaleIds.length === 0 || previewing || restoreSalesTaken
+            "
             @click="calculatePreview"
           />
 

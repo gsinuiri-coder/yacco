@@ -488,6 +488,22 @@ test("volver a registrar el original crea uno nuevo con el mismo número, las mi
     .set("Authorization", `Bearer ${adminToken}`)
     .send({ reason: "La nota no se llegó a entregar" })
     .expect(200);
+  const originalDetail = await request(server())
+    .get(`/api/v1/receipts/${original.body.id}`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .expect(200);
+  expect(originalDetail.body).toMatchObject({
+    status: "VOIDED",
+    creditNotes: [
+      {
+        id: creditNote.body.id,
+        series: "BC01",
+        number: "000012",
+        medium: ReceiptMedium.MANUAL,
+        status: "VOIDED",
+      },
+    ],
+  });
 
   const restored = await request(server())
     .post("/api/v1/receipts")

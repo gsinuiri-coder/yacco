@@ -96,7 +96,15 @@ const RECEIPT_DETAIL_INCLUDE = {
     orderBy: { sale: { soldAt: "asc" } },
   },
   files: { select: { objectKey: true, contentType: true } },
+  creditNotes: {
+    select: { id: true, series: true, number: true, medium: true, voidedAt: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  },
 } satisfies Prisma.ReceiptInclude;
+
+function receiptStatus(voidedAt: Date | null): ReceiptStatus {
+  return voidedAt === null ? ReceiptStatus.ACTIVE : ReceiptStatus.VOIDED;
+}
 
 const RECEIPT_STATUS_SALE_SELECT = {
   id: true,
@@ -169,7 +177,7 @@ export class ReceiptsService {
     return {
       data: receipts.map(({ customer, createdBy, ...receipt }) => ({
         ...toReceiptResponse(receipt),
-        status: receipt.voidedAt === null ? ReceiptStatus.ACTIVE : ReceiptStatus.VOIDED,
+        status: receiptStatus(receipt.voidedAt),
         customer,
         createdBy,
       })),
@@ -187,11 +195,19 @@ export class ReceiptsService {
     });
     if (receipt === null) throw new NotFoundException("El comprobante no existe");
 
-    const { customer, createdBy, issuerSettingsVersion, voidedBy, sales, files, ...receiptFields } =
-      receipt;
+    const {
+      customer,
+      createdBy,
+      issuerSettingsVersion,
+      voidedBy,
+      sales,
+      files,
+      creditNotes,
+      ...receiptFields
+    } = receipt;
     return {
       ...toReceiptResponse(receiptFields),
-      status: receipt.voidedAt === null ? ReceiptStatus.ACTIVE : ReceiptStatus.VOIDED,
+      status: receiptStatus(receipt.voidedAt),
       customer,
       createdBy,
       voidedBy,
@@ -210,6 +226,10 @@ export class ReceiptsService {
       files: files.map((file) => ({
         fileName: receiptFileName(file.objectKey),
         contentType: file.contentType,
+      })),
+      creditNotes: creditNotes.map(({ voidedAt, ...creditNote }) => ({
+        ...creditNote,
+        status: receiptStatus(voidedAt),
       })),
     };
   }

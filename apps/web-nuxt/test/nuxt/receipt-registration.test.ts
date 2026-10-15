@@ -291,4 +291,115 @@ describe("Registrar comprobante", () => {
     );
     expect(uploads).toHaveLength(3);
   });
+
+  describe("Volver a registrar el original", () => {
+    const ORIGINAL_ID = "55555555-5555-4555-8555-555555555555";
+    const SALE_THREE = "99999999-9999-4999-8999-999999999999";
+
+    function original(saleIds: string[]) {
+      return {
+        id: ORIGINAL_ID,
+        type: "INVOICE",
+        medium: "MANUAL",
+        series: "F001",
+        number: "000045",
+        issuedOn: "2026-10-13",
+        status: "VOIDED",
+        customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa" },
+        sales: saleIds.map((id) => ({ id })),
+        files: [{ fileName: "talonario.jpg", contentType: "image/jpeg" }],
+        creditNotes: [],
+      };
+    }
+
+    async function renderRestore(saleIds: string[]): Promise<void> {
+      stubPrerequisites();
+      cleanups.push(
+        signIn(["SELLER"]),
+        registerEndpoint(`/api/v1/receipts/${ORIGINAL_ID}`, {
+          method: "GET",
+          handler: () => original(saleIds),
+        }),
+      );
+      await renderSuspended(App, { route: `/receipts/new?from=${ORIGINAL_ID}` });
+      await screen.findByRole("heading", { name: "Registrar comprobante", level: 1 });
+    }
+
+    it("precarga los datos y las ventas del original y vuelve a asociar sus adjuntos", async () => {
+      cleanups.push(
+        registerEndpoint("/api/v1/receipts/preview", {
+          method: "POST",
+          handler: () => ({
+            customerId: CUSTOMER_ID,
+            saleIds: [SALE_ONE, SALE_TWO],
+            issuerSettingsVersionId: "44444444-4444-4444-8444-444444444444",
+            taxRate: "18.00",
+            taxableAmount: "100.00",
+            taxAmount: "18.00",
+            total: "118.00",
+          }),
+        }),
+      );
+      const bodies = stubWrite(cleanups, "/api/v1/receipts", "POST", () => ({ id: RECEIPT_ID }));
+
+      await renderRestore([SALE_ONE, SALE_TWO]);
+
+      expect(await screen.findByText("Volver a registrar Factura F001-000045")).toBeTruthy();
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("checkbox", { name: /13\/10\/2026.*Local Centro/ })
+            .getAttribute("aria-checked"),
+        ).toBe("true"),
+      );
+      expect(
+        screen
+          .getByRole("checkbox", { name: /14\/10\/2026.*Sucursal Norte/ })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+      expect((screen.getByLabelText("Serie") as HTMLInputElement).value).toBe("F001");
+      expect((screen.getByLabelText("Número") as HTMLInputElement).value).toBe("000045");
+      expect((screen.getByLabelText("Fecha de emisión") as HTMLInputElement).value).toBe(
+        "2026-10-13",
+      );
+      const reuse = screen.getByRole("checkbox", {
+        name: "Volver a asociar los adjuntos del original (talonario.jpg)",
+      });
+      expect(reuse.getAttribute("aria-checked")).toBe("true");
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Calcular montos" }));
+      await screen.findByRole("region", { name: "Vista previa de montos" });
+      await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
+
+      await waitFor(() =>
+        expect(useRouter().currentRoute.value.path).toBe(`/receipts/${RECEIPT_ID}`),
+      );
+      expect(bodies).toEqual([
+        {
+          type: "INVOICE",
+          medium: "MANUAL",
+          series: "F001",
+          number: "000045",
+          issuedOn: "2026-10-13",
+          customerId: CUSTOMER_ID,
+          saleIds: [SALE_ONE, SALE_TWO],
+          filesFromReceiptId: ORIGINAL_ID,
+        },
+      ]);
+    });
+
+    it("avisa y no deja calcular si una venta del original ya no está libre", async () => {
+      await renderRestore([SALE_ONE, SALE_THREE]);
+
+      expect(
+        await screen.findByText(
+          "Una o más ventas del original ya tienen otro comprobante o están marcadas «No lleva comprobante».",
+        ),
+      ).toBeTruthy();
+      expect(
+        (screen.getByRole("button", { name: "Calcular montos" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+    });
+  });
 });

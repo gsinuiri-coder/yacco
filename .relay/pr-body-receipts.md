@@ -106,6 +106,44 @@ nueva en `receipt_files` con quién y cuándo; la lectura del archivo busca por
 nombre dentro del comprobante porque la clave lleva el id del original. Sin
 esquema nuevo.
 
+### El original lista sus notas de crédito (para ofrecer «Volver a registrar»)
+
+Rojo, con el detalle sin `creditNotes`:
+
+```text
+pnpm test:integration -- receipts.int.test.ts -t "volver a registrar el original crea"
+  ● volver a registrar el original crea uno nuevo con el mismo número, las mismas ventas y sus adjuntos
+    - Expected  - 9
+    + Received  + 0
+    -   "creditNotes": Array [
+```
+
+Verde: `receipts.int.test.ts` 8/8; unit de receipts 43/43.
+
+### Web: «Volver a registrar el original» y «Anular» solo en notas manuales
+
+Rojo, antes de tocar `receipts/[id].vue` y `receipts/new.vue`:
+
+```text
+vitest run test/nuxt/receipts.test.ts test/nuxt/receipt-registration.test.ts
+     × una nota de crédito electrónica vigente no ofrece anular
+     × la nota de crédito anulada ofrece volver a registrar el original y enlaza a él
+     × el original anulado lista sus notas y solo ofrece volver a registrarlo sin nota vigente
+     × el original anulado por una nota de crédito vigente no ofrece volver a registrarlo
+       × precarga los datos y las ventas del original y vuelve a asociar sus adjuntos
+       × avisa y no deja calcular si una venta del original ya no está libre
+ Test Files  2 failed (2)
+      Tests  6 failed | 13 passed (19)
+```
+
+Verde:
+
+```text
+vitest run test/nuxt/receipts.test.ts test/nuxt/receipt-registration.test.ts test/nuxt/customer-receipts.test.ts
+ Test Files  3 passed (3)
+      Tests  23 passed (23)
+```
+
 ### Textos compuestos sólo por espacios
 
 Rojo: los siete casos de razón social, dirección, serie, número y motivos no

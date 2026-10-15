@@ -88,12 +88,22 @@ export class ReceiptFileDto {
   @ApiProperty() contentType!: string;
 }
 
+export class ReceiptCreditNoteDto {
+  @ApiProperty({ format: "uuid" }) id!: string;
+  @ApiProperty() series!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: ReceiptMedium }) medium!: ReceiptMedium;
+  @ApiProperty({ enum: ReceiptStatus }) status!: ReceiptStatus;
+}
+
 export class ReceiptDetailDto extends ReceiptRowDto {
   @ApiProperty({ type: ReceiptIssuerSettingsDto })
   issuerSettingsVersion!: ReceiptIssuerSettingsDto;
 
   @ApiProperty({ type: ReceiptSaleDetailDto, isArray: true }) sales!: ReceiptSaleDetailDto[];
   @ApiProperty({ type: ReceiptFileDto, isArray: true }) files!: ReceiptFileDto[];
+  @ApiProperty({ type: ReceiptCreditNoteDto, isArray: true })
+  creditNotes!: ReceiptCreditNoteDto[];
   @ApiPropertyOptional({ type: ReceiptUserDto, nullable: true })
   voidedBy!: ReceiptUserDto | null;
 }
