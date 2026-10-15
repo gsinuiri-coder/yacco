@@ -64,14 +64,14 @@ export class RoleDashboardService {
 
   /** Ventas y cobros del día, y la deuda total: lo que ve el administrador. */
   private async fillAdmin(dashboard: RoleDashboardDto, today: string): Promise<void> {
-    const soldAt = {
+    const withinToday = {
       gte: limaDayStartUtc(today),
       lt: new Date(limaDayStartUtc(today).getTime() + DAY_MS),
     };
     const [sales, payments, debt] = await Promise.all([
       // El saldo inicial del padrón no es una venta del día (schema.prisma).
       this.prisma.sale.aggregate({
-        where: { voidedAt: null, isOpeningBalance: false, soldAt },
+        where: { voidedAt: null, isOpeningBalance: false, soldAt: withinToday },
         _sum: { total: true },
       }),
       // Un cobro pendiente o rechazado todavía no es plata en la mano.
@@ -80,7 +80,7 @@ export class RoleDashboardService {
           voidedAt: null,
           isOpeningBalance: false,
           status: PaymentStatus.CONFIRMED,
-          paidAt: soldAt,
+          paidAt: withinToday,
         },
         _sum: { amount: true },
       }),
