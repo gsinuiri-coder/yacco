@@ -1,7 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { ContainerState, OrderStatus, PaymentStatus, RouteStatus, UserRole } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import { limaDayStartUtc } from "../container-movements/container-movements.service.js";
+import {
+  ContainerMovementsService,
+  limaDayStartUtc,
+} from "../container-movements/container-movements.service.js";
 import { parseBusinessDate } from "../orders/orders.service.js";
 import type { ContainerTypeQuantityDto } from "./dto/report-response.dto.js";
 import type { PlantStockRowDto, RoleDashboardDto } from "./dto/role-dashboard.dto.js";
@@ -35,7 +38,10 @@ function toQuantities(byType: Map<string, ContainerTypeQuantityDto>): ContainerT
  */
 @Injectable()
 export class RoleDashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly containerMovements: ContainerMovementsService,
+  ) {}
 
   async dashboard(viewer: DashboardViewer, now: Date = new Date()): Promise<RoleDashboardDto> {
     const today = LIMA_DAY.format(now);
@@ -182,45 +188,28 @@ export class RoleDashboardService {
   }
 
   /**
-   * Vacíos y llenos en planta por tipo, leídos del libro como el inventario:
-   * lo que entró a cada estado menos lo que salió. Un tipo retirado aparece
-   * solo si todavía tiene algo en planta.
+   * Vacíos y llenos en planta por tipo: las dos celdas de planta del mismo
+   * inventario que muestra «Inventario de envases», sin recalcularlo. Un tipo
+   * sin nada en planta no tiene fila.
    */
   private async plantStock(): Promise<PlantStockRowDto[]> {
-    const states = [ContainerState.EMPTY_AT_PLANT, ContainerState.FULL_AT_PLANT];
-    const [containerTypes, into, outOf] = await Promise.all([
-      this.prisma.containerType.findMany({
-        select: { id: true, name: true, active: true },
-        orderBy: { name: "asc" },
-      }),
-      this.prisma.containerMovement.groupBy({
-        by: ["containerTypeId", "toState"],
-        where: { toState: { in: states } },
-        _sum: { quantity: true },
-      }),
-      this.prisma.containerMovement.groupBy({
-        by: ["containerTypeId", "fromState"],
-        where: { fromState: { in: states } },
-        _sum: { quantity: true },
-      }),
-    ]);
-    const net = new Map<string, number>();
-    for (const row of into) {
-      const key = `${row.containerTypeId}:${row.toState}`;
-      net.set(key, (net.get(key) ?? 0) + (row._sum.quantity ?? 0));
+    const byType = new Map<string, PlantStockRowDto>();
+    for (const cell of await this.containerMovements.inventory()) {
+      const pick =
+        cell.state === ContainerState.EMPTY_AT_PLANT
+          ? "empty"
+          : cell.state === ContainerState.FULL_AT_PLANT
+            ? "full"
+            : null;
+      if (pick === null) continue;
+      const row = byType.get(cell.containerTypeId) ?? {
+        containerType: cell.containerType,
+        empty: 0,
+        full: 0,
+      };
+      row[pick] = cell.quantity;
+      byType.set(cell.containerTypeId, row);
     }
-    for (const row of outOf) {
-      const key = `${row.containerTypeId}:${row.fromState}`;
-      net.set(key, (net.get(key) ?? 0) - (row._sum.quantity ?? 0));
-    }
-    return containerTypes
-      .map((containerType) => ({
-        containerType: { id: containerType.id, name: containerType.name },
-        active: containerType.active,
-        empty: net.get(`${containerType.id}:${ContainerState.EMPTY_AT_PLANT}`) ?? 0,
-        full: net.get(`${containerType.id}:${ContainerState.FULL_AT_PLANT}`) ?? 0,
-      }))
-      .filter((row) => row.active || row.empty !== 0 || row.full !== 0)
-      .map(({ containerType, empty, full }) => ({ containerType, empty, full }));
+    return [...byType.values()].filter((row) => row.empty !== 0 || row.full !== 0);
   }
 }

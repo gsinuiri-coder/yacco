@@ -29,7 +29,9 @@ import { RoleDashboardService } from "./role-dashboard.service.js";
  */
 @ApiTags("reports")
 @ApiBearerAuth()
-@ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
+@ApiForbiddenResponse({
+  description: "Authenticated but missing the ADMIN role (or, for the dashboard, any web role)",
+})
 @UseGuards(JwtAccessGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
 @Controller("reports")

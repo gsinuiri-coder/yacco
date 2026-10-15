@@ -258,8 +258,8 @@ describe("Panel — Puesta en marcha", () => {
 });
 
 describe("Panel por rol", () => {
-  const CON_CANO = { id: "ct-1", name: "Con caño" };
-  const SIN_CANO = { id: "ct-2", name: "Sin caño" };
+  const WITH_SPIGOT = { id: "ct-1", name: "Con caño" };
+  const WITHOUT_SPIGOT = { id: "ct-2", name: "Sin caño" };
 
   function stubDashboard(dashboard: RoleDashboard) {
     let calls = 0;
@@ -340,12 +340,12 @@ describe("Panel por rol", () => {
     stubDashboard({
       today: "2026-10-14",
       producedToday: [
-        { containerType: CON_CANO, quantity: 40 },
-        { containerType: SIN_CANO, quantity: 3 },
+        { containerType: WITH_SPIGOT, quantity: 40 },
+        { containerType: WITHOUT_SPIGOT, quantity: 3 },
       ],
       plantStock: [
-        { containerType: CON_CANO, empty: 55, full: 45 },
-        { containerType: SIN_CANO, empty: 0, full: 3 },
+        { containerType: WITH_SPIGOT, empty: 55, full: 45 },
+        { containerType: WITHOUT_SPIGOT, empty: 0, full: 3 },
       ],
       maquilaPending: { emptyToFill: 4, fullToReturn: 1 },
     });
@@ -372,8 +372,8 @@ describe("Panel por rol", () => {
     cleanups.push(signIn(["PLANT_OPERATOR"]));
     stubDashboard({
       today: "2026-10-14",
-      myFillingsToday: [{ containerType: CON_CANO, quantity: 12 }],
-      emptyToFill: [{ containerType: CON_CANO, quantity: 55 }],
+      myFillingsToday: [{ containerType: WITH_SPIGOT, quantity: 12 }],
+      emptyToFill: [{ containerType: WITH_SPIGOT, quantity: 55 }],
     });
 
     await renderSuspended(App, { route: "/" });

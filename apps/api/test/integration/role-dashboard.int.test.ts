@@ -170,11 +170,54 @@ beforeAll(async () => {
     payment: { paymentMethodId: cash.id, amount: "2.50" },
   });
 
-  // Ayer: una venta y un cobro que no son del día. Hoy: un saldo inicial del
-  // padrón y una venta anulada, que no son ventas del día. La deuda materializada
-  // sigue a su libro, como lo haría el servicio.
+  // Lo que la API no deja registrar con otra fecha, o ya anulado de entrada, se
+  // inserta acá; la deuda materializada sigue a su libro como lo haría el
+  // servicio. Ayer: una venta y un cobro que no son del día. Hoy: un saldo
+  // inicial y una venta anulada, que no son ventas del día; un abono de
+  // apertura y un cobro anulado, que no son cobros del día; y un Yape
+  // pendiente pero anulado, que no está por confirmar.
   const location = await prisma.customerLocation.findFirstOrThrow({ where: { customerId } });
+  const voided = {
+    voidedAt: limaNoon(TODAY),
+    voidedById: adminId,
+    voidReason: "Mal anotado",
+  };
   await prisma.$transaction([
+    prisma.payment.create({
+      data: {
+        customerId,
+        paymentMethodId: cash.id,
+        paidAt: limaNoon(TODAY),
+        confirmedAt: limaNoon(TODAY),
+        amount: "9.00",
+        status: PaymentStatus.CONFIRMED,
+        isOpeningBalance: true,
+        recordedById: adminId,
+      },
+    }),
+    prisma.payment.create({
+      data: {
+        customerId,
+        paymentMethodId: cash.id,
+        paidAt: limaNoon(TODAY),
+        confirmedAt: limaNoon(TODAY),
+        amount: "7.00",
+        status: PaymentStatus.CONFIRMED,
+        recordedById: adminId,
+        ...voided,
+      },
+    }),
+    prisma.payment.create({
+      data: {
+        customerId,
+        paymentMethodId: yape.id,
+        paidAt: limaNoon(TODAY),
+        amount: "4.00",
+        status: PaymentStatus.PENDING,
+        recordedById: adminId,
+        ...voided,
+      },
+    }),
     prisma.sale.create({
       data: {
         locationId: location.id,
@@ -209,14 +252,42 @@ beforeAll(async () => {
         soldAt: limaNoon(TODAY),
         total: "50.00",
         recordedById: adminId,
-        voidedAt: limaNoon(TODAY),
-        voidedById: adminId,
-        voidReason: "Mal anotada",
+        ...voided,
+      },
+    }),
+    // +100 −40 +30 −9: lo que mueven las filas vivas de arriba.
+    prisma.customer.update({
+      where: { id: customerId },
+      data: { debtBalance: { increment: "81.00" } },
+    }),
+  ]);
+
+  // Otro cliente con saldo a favor: no descuenta la deuda de nadie.
+  const inCredit = await request(server())
+    .post("/api/v1/customers")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      name: "Bodega A Favor",
+      phone: "911000222",
+      address: "Av. Panel 2",
+      addressReference: "Esquina",
+    })
+    .expect(201);
+  await prisma.$transaction([
+    prisma.payment.create({
+      data: {
+        customerId: inCredit.body.id,
+        paymentMethodId: cash.id,
+        paidAt: limaNoon(YESTERDAY),
+        confirmedAt: limaNoon(YESTERDAY),
+        amount: "25.00",
+        status: PaymentStatus.CONFIRMED,
+        recordedById: adminId,
       },
     }),
     prisma.customer.update({
-      where: { id: customerId },
-      data: { debtBalance: { increment: "90.00" } },
+      where: { id: inCredit.body.id },
+      data: { debtBalance: { decrement: "25.00" } },
     }),
   ]);
 

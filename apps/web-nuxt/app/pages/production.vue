@@ -124,7 +124,7 @@ async function register(): Promise<void> {
   }
 }
 
-// --- Lotes (ADMIN y SELLER) ---
+// --- Lotes (el operador de planta recibe solo sus llenadas) ---
 // El período puede llegar en la URL (los enlaces del Panel).
 const query = useRoute().query;
 const dateFrom = ref(queryText(query.dateFrom));
