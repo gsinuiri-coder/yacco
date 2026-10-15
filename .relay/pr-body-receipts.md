@@ -69,7 +69,8 @@ su propia fila.
 
 `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm prisma:validate` verdes.
 `pnpm test`: API 1444, web 640, shared 44, firestore-export 54.
-`pnpm test:integration` entero: INTEGRATION_RESULT. Revisión visual con
+`pnpm test:integration` entero, después del último cambio de producción:
+`Test Suites: 44 passed, 44 total` / `Tests: 787 passed, 787 total`. Revisión visual con
 Playwright: no se hizo en esta corrida desatendida.
 
 ## Evidencia TDD de las decisiones de las 21:25
