@@ -31,6 +31,7 @@ import { ZonesModule } from "./modules/zones/zones.module.js";
 import { SettingsModule } from "./modules/settings/settings.module.js";
 import { VehiclesModule } from "./modules/vehicles/vehicles.module.js";
 import { StorageModule } from "./modules/storage/storage.module.js";
+import { ReceiptsModule } from "./modules/receipts/receipts.module.js";
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { StorageModule } from "./modules/storage/storage.module.js";
     ZonesModule,
     SettingsModule,
     VehiclesModule,
+    ReceiptsModule,
   ],
 })
 export class AppModule {}

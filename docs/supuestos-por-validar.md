@@ -62,13 +62,47 @@ que dijo que sí.
 
 ## Pendientes
 
-Ninguno. Los veinte supuestos que estaban acá (decididos por delegación entre
-el 2026-09-24 y el 2026-09-25) se le llevaron al dueño el 2026-09-25 con su
-recomendación y los aprobó: bajaron a **Validados**, numerados igual que
-antes para que los enlaces de `guion-piloto.md` sigan valiendo.
+Los veinte supuestos anteriores se le llevaron al dueño el 2026-09-25 y están
+en **Validados**. Los siguientes pertenecen al registro de comprobantes de la
+Fase 3 y requieren validación con el contador de la planta.
 
-Un supuesto nuevo se escribe acá con las cuatro líneas de «Cómo se usa», más
-una primera línea que dice quién lo decidió y cuándo.
+### Los precios son finales y la tasa predeterminada de IGV es 18 %
+
+- **Decidido por Giancarlo (2026-10-14), pendiente de validar con el contador.**
+- **Asumimos:** que todos los precios y totales de venta que maneja Yacco ya incluyen IGV; que la
+  tasa inicial es 18 % y se puede cambiar creando una versión nueva de los datos de facturación;
+  base e IGV se redondean por venta y la diferencia queda en el IGV para que el total cuadre.
+- **Construido encima:** `issuer_settings_versions.tax_rate`, el cálculo de
+  `ReceiptsService.preview` y los montos congelados en `receipts`.
+- **Preguntar:** ¿Los precios que usan hoy ya incluyen IGV, la tasa que corresponde es 18 %, y el
+  contador acepta que base e IGV se calculen por cada venta haciendo cuadrar el total?
+- **Si dice que no:** medio. Cambiar la tasa es configuración; distinguir precios con y sin IGV o
+  otra regla de redondeo exige una versión fiscal adicional y cambiar cálculo, API, pantalla y tests,
+  sin editar comprobantes ya registrados.
+
+### Una boleta desde S/ 700 exige documento del cliente
+
+- **Decidido por Giancarlo (2026-10-14), pendiente de validar con el contador.**
+- **Asumimos:** que una boleta cuyo total sea igual o mayor a S/ 700 exige documento del cliente;
+  el monto es configurable mediante una nueva versión de los datos de facturación.
+- **Construido encima:** `issuer_settings_versions.receipt_document_threshold` y la validación de
+  `ReceiptsService.preview` antes de registrar una boleta.
+- **Preguntar:** ¿Desde qué monto una boleta necesita DNI u otro documento del cliente?
+- **Si dice que no:** bajo si solo cambia el monto: se registra una versión nueva. Si la regla depende
+  de algo más que el total, cambia la validación y su pantalla, pero no los comprobantes anteriores.
+
+### La forma de la serie avisa, pero no bloquea
+
+- **Decidido por Giancarlo (2026-10-13), pendiente de validar con el contador.**
+- **Asumimos:** que la pantalla debe avisar cuando una serie no tiene la forma esperada para el tipo
+  y medio elegidos, pero permitir guardarla porque Yacco registra un documento ya emitido y no debe
+  impedir copiar exactamente lo que figura en él.
+- **Construido encima:** la API valida longitud y unicidad de tipo/serie/número, pero deliberadamente
+  no impone una expresión de formato; la pantalla de comprobantes mostrará el aviso no bloqueante.
+- **Preguntar:** ¿Qué forma espera para las series de boleta, factura y nota de crédito, y una serie
+  distinta debe impedir el registro o solo mostrar un aviso?
+- **Si dice que no:** bajo. Se cambia la regla de aviso; si debe bloquear, se agrega la misma
+  validación a DTO, pantalla y tests, sin alterar comprobantes ya guardados.
 
 ## Decididos sin el dueño
 

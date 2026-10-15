@@ -135,6 +135,11 @@ async function onStatementChanged(): Promise<void> {
           <CustomerLocationSection :customer-id="customer.id" />
 
           <CustomerPaymentSection :customer-id="customer.id" @registered="paymentRegistered" />
+          <CustomerReceiptsSection
+            v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+            :customer-id="customer.id"
+            :is-admin="session.hasRole('ADMIN')"
+          />
           <CustomerPricesSection :customer-id="customer.id" :is-admin="session.hasRole('ADMIN')" />
           <CustomerContainersSection
             v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"

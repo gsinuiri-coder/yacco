@@ -1,0 +1,506 @@
+import { registerEndpoint, renderSuspended } from "@nuxt/test-utils/runtime";
+import { screen, waitFor, within } from "@testing-library/vue";
+import userEvent from "@testing-library/user-event";
+import { createError, getQuery, readBody, readMultipartFormData } from "h3";
+import type { H3Event } from "h3";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import App from "~/app.vue";
+import { pageOf } from "../support/fixtures";
+import { stubWrite } from "../support/route-detail";
+import { resetSession, signIn } from "../support/session";
+
+const cleanups: Array<() => void> = [];
+const CUSTOMER_ID = "33333333-3333-4333-8333-333333333333";
+const SALE_ONE = "77777777-7777-4777-8777-777777777777";
+const SALE_TWO = "88888888-8888-4888-8888-888888888888";
+const RECEIPT_ID = "22222222-2222-4222-8222-222222222222";
+
+const customer = {
+  id: CUSTOMER_ID,
+  name: "Bodega Santa Rosa",
+  phone: "999111222",
+  address: "Av. Grau 120",
+  addressReference: "",
+  contactName: null,
+  latitude: null,
+  longitude: null,
+  zoneId: null,
+  zone: null,
+  creditLimit: null,
+  debtBalance: "118.00",
+  active: true,
+  createdAt: "2026-10-01T13:00:00.000Z",
+  documentType: "DNI",
+  documentNumber: "12345678",
+  legalName: null,
+  fiscalAddress: null,
+};
+
+const sales = [
+  {
+    id: SALE_ONE,
+    soldAt: "2026-10-13T16:00:00.000Z",
+    total: "70.00",
+    location: { id: "loc-1", name: "Local Centro" },
+    status: "AVAILABLE",
+    receipt: null,
+    exemption: null,
+  },
+  {
+    id: SALE_TWO,
+    soldAt: "2026-10-14T16:00:00.000Z",
+    total: "48.00",
+    location: { id: "loc-2", name: "Sucursal Norte" },
+    status: "AVAILABLE",
+    receipt: null,
+    exemption: null,
+  },
+];
+
+function stubPrerequisites(exemptSales: unknown[] = []): Array<Record<string, string>> {
+  const queries: Array<Record<string, string>> = [];
+  cleanups.push(
+    registerEndpoint(`/api/v1/customers/${CUSTOMER_ID}`, {
+      method: "GET",
+      handler: () => customer,
+    }),
+    registerEndpoint("/api/v1/receipts/sales", {
+      method: "GET",
+      handler: (event: H3Event) => {
+        const query = getQuery(event) as Record<string, string>;
+        queries.push(query);
+        return pageOf(query.status === "EXEMPT" ? exemptSales : sales);
+      },
+    }),
+  );
+  return queries;
+}
+
+async function renderPage(saleId?: string): Promise<void> {
+  cleanups.push(signIn(["SELLER"]));
+  const saleQuery = saleId === undefined ? "" : `&saleId=${saleId}`;
+  await renderSuspended(App, { route: `/receipts/new?customerId=${CUSTOMER_ID}${saleQuery}` });
+  await screen.findByRole("heading", { name: "Registrar comprobante", level: 1 });
+}
+
+async function choose(label: string, option: string): Promise<void> {
+  const user = userEvent.setup();
+  await user.click(screen.getByLabelText(label));
+  await user.click(await screen.findByRole("option", { name: option }));
+}
+
+async function selectSales(): Promise<void> {
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: /13\/10\/2026.*Local Centro/ }));
+  await user.click(screen.getByRole("checkbox", { name: /14\/10\/2026.*Sucursal Norte/ }));
+}
+
+describe("Registrar comprobante", () => {
+  beforeEach(async () => {
+    resetSession();
+    await navigateTo("/login");
+  });
+
+  afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+
+  it("parte del cliente indicado y ofrece solo sus ventas disponibles", async () => {
+    const queries = stubPrerequisites();
+
+    await renderPage();
+
+    expect(await screen.findByText("Bodega Santa Rosa")).toBeTruthy();
+    const table = await screen.findByRole("table", { name: "Ventas sin comprobante" });
+    expect(within(table).getByText("Local Centro")).toBeTruthy();
+    expect(within(table).getByText("Sucursal Norte")).toBeTruthy();
+    expect(within(table).getByText("S/ 70.00")).toBeTruthy();
+    expect(queries[0]).toEqual({
+      customerId: CUSTOMER_ID,
+      status: "AVAILABLE",
+      page: "1",
+      limit: "100",
+    });
+  });
+
+  it("trae todas las páginas de ventas sin comprobante, no solo las primeras cien", async () => {
+    const queries: Array<Record<string, string>> = [];
+    cleanups.push(
+      registerEndpoint(`/api/v1/customers/${CUSTOMER_ID}`, {
+        method: "GET",
+        handler: () => customer,
+      }),
+      registerEndpoint("/api/v1/receipts/sales", {
+        method: "GET",
+        handler: (event: H3Event) => {
+          const query = getQuery(event) as Record<string, string>;
+          queries.push(query);
+          const page = Number(query.page);
+          return pageOf([sales[page - 1]!], { page, limit: 100, total: 101, totalPages: 2 });
+        },
+      }),
+    );
+
+    await renderPage();
+
+    const table = await screen.findByRole("table", { name: "Ventas sin comprobante" });
+    await waitFor(() => expect(within(table).getByText("Sucursal Norte")).toBeTruthy());
+    expect(within(table).getByText("Local Centro")).toBeTruthy();
+    expect(queries.map((query) => query.page)).toEqual(["1", "2"]);
+  });
+
+  it("parte con la venta indicada ya elegida", async () => {
+    stubPrerequisites();
+
+    await renderPage(SALE_ONE);
+
+    expect(
+      (await screen.findByRole("checkbox", { name: /13\/10\/2026.*Local Centro/ })).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("checkbox", { name: /14\/10\/2026.*Sucursal Norte/ })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+  });
+
+  it("pide a la API la vista previa y muestra base, IGV y total antes de guardar", async () => {
+    stubPrerequisites();
+    const previewBodies: unknown[] = [];
+    cleanups.push(
+      registerEndpoint("/api/v1/receipts/preview", {
+        method: "POST",
+        handler: async (event: H3Event) => {
+          previewBodies.push(await readBody(event));
+          return {
+            customerId: CUSTOMER_ID,
+            saleIds: [SALE_ONE, SALE_TWO],
+            issuerSettingsVersionId: "44444444-4444-4444-8444-444444444444",
+            taxRate: "18.00",
+            taxableAmount: "100.00",
+            taxAmount: "18.00",
+            total: "118.00",
+          };
+        },
+      }),
+    );
+
+    await renderPage();
+    await selectSales();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Calcular montos" }));
+
+    expect(previewBodies).toEqual([
+      { type: "SALES_RECEIPT", customerId: CUSTOMER_ID, saleIds: [SALE_ONE, SALE_TWO] },
+    ]);
+    const preview = await screen.findByRole("region", { name: "Vista previa de montos" });
+    expect(within(preview).getByText("S/ 100.00")).toBeTruthy();
+    expect(within(preview).getByText("S/ 18.00")).toBeTruthy();
+    expect(within(preview).getByText("S/ 118.00")).toBeTruthy();
+    expect(within(preview).getByText("IGV 18.00 %")).toBeTruthy();
+  });
+
+  it("avisa una serie inusual pero permite registrar con los textos exactos", async () => {
+    stubPrerequisites();
+    cleanups.push(
+      registerEndpoint("/api/v1/receipts/preview", {
+        method: "POST",
+        handler: () => ({
+          customerId: CUSTOMER_ID,
+          saleIds: [SALE_ONE, SALE_TWO],
+          issuerSettingsVersionId: "44444444-4444-4444-8444-444444444444",
+          taxRate: "18.00",
+          taxableAmount: "100.00",
+          taxAmount: "18.00",
+          total: "118.00",
+        }),
+      }),
+    );
+    const bodies = stubWrite(cleanups, "/api/v1/receipts", "POST", () => ({
+      id: RECEIPT_ID,
+    }));
+
+    await renderPage();
+    const user = userEvent.setup();
+    await selectSales();
+    await user.click(screen.getByRole("button", { name: "Calcular montos" }));
+    await screen.findByRole("region", { name: "Vista previa de montos" });
+    await choose("Medio", "Electrónico");
+    await user.type(screen.getByLabelText("Serie"), "SERIE-LARGA");
+    await user.type(screen.getByLabelText("Número"), "000009");
+    await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
+
+    expect(await screen.findByText(/La serie no tiene el formato habitual/)).toBeTruthy();
+    await user.clear(screen.getByLabelText("Serie"));
+    await user.type(screen.getByLabelText("Serie"), "OTRA-SERIE");
+    expect(screen.getByRole("button", { name: "Registrar comprobante" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
+    await user.click(screen.getByRole("button", { name: "Registrar de todas formas" }));
+    await waitFor(() =>
+      expect(useRouter().currentRoute.value.path).toBe(`/receipts/${RECEIPT_ID}`),
+    );
+    expect(bodies).toEqual([
+      {
+        type: "SALES_RECEIPT",
+        medium: "EXTERNAL_ELECTRONIC",
+        series: "OTRA-SERIE",
+        number: "000009",
+        issuedOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        customerId: CUSTOMER_ID,
+        saleIds: [SALE_ONE, SALE_TWO],
+      },
+    ]);
+  });
+
+  it("explica los adjuntos permitidos según el medio", async () => {
+    stubPrerequisites();
+
+    await renderPage();
+
+    expect(screen.getByText("Puedes adjuntar una foto o un PDF.")).toBeTruthy();
+    await choose("Medio", "Electrónico");
+    expect(screen.getByText("Puedes adjuntar un PDF y un XML.")).toBeTruthy();
+    expect(screen.getByLabelText("Archivos del comprobante")).toBeTruthy();
+  });
+
+  it("al reintentar adjuntos continúa desde el archivo que falló sin duplicar el ya guardado", async () => {
+    stubPrerequisites();
+    cleanups.push(
+      registerEndpoint("/api/v1/receipts/preview", {
+        method: "POST",
+        handler: () => ({
+          customerId: CUSTOMER_ID,
+          saleIds: [SALE_ONE, SALE_TWO],
+          issuerSettingsVersionId: "44444444-4444-4444-8444-444444444444",
+          taxRate: "18.00",
+          taxableAmount: "100.00",
+          taxAmount: "18.00",
+          total: "118.00",
+        }),
+      }),
+    );
+    stubWrite(cleanups, "/api/v1/receipts", "POST", () => ({ id: RECEIPT_ID }));
+    const uploads: string[] = [];
+    cleanups.push(
+      registerEndpoint(`/api/v1/receipts/${RECEIPT_ID}/files`, {
+        method: "POST",
+        handler: async (event: H3Event) => {
+          const [part] = (await readMultipartFormData(event)) ?? [];
+          const fileName = part?.filename ?? "";
+          uploads.push(fileName);
+          if (uploads.length === 2) {
+            throw createError({ statusCode: 503, statusMessage: "Almacenamiento no disponible" });
+          }
+          return { fileName, contentType: part?.type ?? "application/octet-stream" };
+        },
+      }),
+    );
+
+    await renderPage();
+    const user = userEvent.setup();
+    await selectSales();
+    await user.click(screen.getByRole("button", { name: "Calcular montos" }));
+    await screen.findByRole("region", { name: "Vista previa de montos" });
+    await choose("Medio", "Electrónico");
+    await user.type(screen.getByLabelText("Serie"), "B001");
+    await user.type(screen.getByLabelText("Número"), "000010");
+    await user.upload(screen.getByLabelText("Archivos del comprobante"), [
+      new File(["%PDF-1.7"], "comprobante.pdf", { type: "application/pdf" }),
+      new File(['<?xml version="1.0"?>'], "comprobante.xml", { type: "application/xml" }),
+    ]);
+    await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
+    await screen.findByRole("button", { name: "Reintentar adjuntos" });
+    await user.click(screen.getByRole("button", { name: "Reintentar adjuntos" }));
+
+    await waitFor(() =>
+      expect(useRouter().currentRoute.value.path).toBe(`/receipts/${RECEIPT_ID}`),
+    );
+    expect(uploads).toHaveLength(3);
+  });
+
+  describe("Volver a registrar el original", () => {
+    const ORIGINAL_ID = "55555555-5555-4555-8555-555555555555";
+    const SALE_THREE = "99999999-9999-4999-8999-999999999999";
+
+    function original(saleIds: string[]) {
+      return {
+        id: ORIGINAL_ID,
+        type: "INVOICE",
+        medium: "MANUAL",
+        series: "F001",
+        number: "000045",
+        issuedOn: "2026-10-13",
+        status: "VOIDED",
+        customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa" },
+        sales: saleIds.map((id) => ({ id })),
+        files: [{ fileName: "talonario.jpg", contentType: "image/jpeg" }],
+        creditNotes: [],
+      };
+    }
+
+    const exemptSale = {
+      id: SALE_THREE,
+      soldAt: "2026-10-12T16:00:00.000Z",
+      total: "30.00",
+      location: { id: "loc-1", name: "Local Centro" },
+      status: "EXEMPT",
+      receipt: null,
+      exemption: { id: "exemption-1", reason: "Consumo interno" },
+    };
+    const otherExemptSale = { ...exemptSale, id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
+
+    function previewOf(saleIds: string[]) {
+      return registerEndpoint("/api/v1/receipts/preview", {
+        method: "POST",
+        handler: () => ({
+          customerId: CUSTOMER_ID,
+          saleIds,
+          issuerSettingsVersionId: "44444444-4444-4444-8444-444444444444",
+          taxRate: "18.00",
+          taxableAmount: "100.00",
+          taxAmount: "18.00",
+          total: "118.00",
+        }),
+      });
+    }
+
+    async function renderRestore(saleIds: string[], exemptSales: unknown[] = []): Promise<void> {
+      stubPrerequisites(exemptSales);
+      cleanups.push(
+        signIn(["SELLER"]),
+        registerEndpoint(`/api/v1/receipts/${ORIGINAL_ID}`, {
+          method: "GET",
+          handler: () => original(saleIds),
+        }),
+      );
+      await renderSuspended(App, { route: `/receipts/new?from=${ORIGINAL_ID}` });
+      await screen.findByRole("heading", { name: "Registrar comprobante", level: 1 });
+    }
+
+    it("precarga los datos y las ventas del original y vuelve a asociar sus adjuntos", async () => {
+      cleanups.push(
+        registerEndpoint("/api/v1/receipts/preview", {
+          method: "POST",
+          handler: () => ({
+            customerId: CUSTOMER_ID,
+            saleIds: [SALE_ONE, SALE_TWO],
+            issuerSettingsVersionId: "44444444-4444-4444-8444-444444444444",
+            taxRate: "18.00",
+            taxableAmount: "100.00",
+            taxAmount: "18.00",
+            total: "118.00",
+          }),
+        }),
+      );
+      const bodies = stubWrite(cleanups, "/api/v1/receipts", "POST", () => ({ id: RECEIPT_ID }));
+
+      await renderRestore([SALE_ONE, SALE_TWO]);
+
+      expect(await screen.findByText("Volver a registrar Factura F001-000045")).toBeTruthy();
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("checkbox", { name: /13\/10\/2026.*Local Centro/ })
+            .getAttribute("aria-checked"),
+        ).toBe("true"),
+      );
+      expect(
+        screen
+          .getByRole("checkbox", { name: /14\/10\/2026.*Sucursal Norte/ })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+      expect((screen.getByLabelText("Serie") as HTMLInputElement).value).toBe("F001");
+      expect((screen.getByLabelText("Número") as HTMLInputElement).value).toBe("000045");
+      expect((screen.getByLabelText("Fecha de emisión") as HTMLInputElement).value).toBe(
+        "2026-10-13",
+      );
+      const reuse = screen.getByRole("checkbox", {
+        name: "Volver a asociar los adjuntos del original (foto)",
+      });
+      expect(reuse.getAttribute("aria-checked")).toBe("true");
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Calcular montos" }));
+      await screen.findByRole("region", { name: "Vista previa de montos" });
+      await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
+
+      await waitFor(() =>
+        expect(useRouter().currentRoute.value.path).toBe(`/receipts/${RECEIPT_ID}`),
+      );
+      expect(bodies).toEqual([
+        {
+          type: "INVOICE",
+          medium: "MANUAL",
+          series: "F001",
+          number: "000045",
+          issuedOn: "2026-10-13",
+          customerId: CUSTOMER_ID,
+          saleIds: [SALE_ONE, SALE_TWO],
+          filesFromReceiptId: ORIGINAL_ID,
+        },
+      ]);
+    });
+
+    it("avisa y no deja calcular si una venta del original ya tiene otro comprobante", async () => {
+      await renderRestore([SALE_ONE, SALE_THREE]);
+
+      expect(
+        await screen.findByText("Una o más ventas del original ya tienen otro comprobante."),
+      ).toBeTruthy();
+      expect(
+        (screen.getByRole("button", { name: "Calcular montos" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+    });
+
+    it("incluye la venta del original marcada «No lleva comprobante», que se libera al registrar", async () => {
+      cleanups.push(previewOf([SALE_ONE, SALE_THREE]));
+      const bodies = stubWrite(cleanups, "/api/v1/receipts", "POST", () => ({ id: RECEIPT_ID }));
+
+      // Otra venta marcada del mismo cliente, que no es del original, no se ofrece.
+      await renderRestore([SALE_ONE, SALE_THREE], [exemptSale, otherExemptSale]);
+
+      const table = await screen.findByRole("table", { name: "Ventas sin comprobante" });
+      await waitFor(() =>
+        expect(
+          within(table)
+            .getByRole("checkbox", { name: /12\/10\/2026.*Local Centro/ })
+            .getAttribute("aria-checked"),
+        ).toBe("true"),
+      );
+      expect(
+        within(table).getAllByText("Marcada «No lleva comprobante»: se libera al registrar"),
+      ).toHaveLength(1);
+      expect(screen.queryByText("Una o más ventas del original ya tienen otro comprobante.")).toBe(
+        null,
+      );
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Calcular montos" }));
+      await screen.findByRole("region", { name: "Vista previa de montos" });
+      await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({ saleIds: [SALE_ONE, SALE_THREE] });
+    });
+
+    it("vuelve a asociar los adjuntos solo mientras sea el mismo papel, aunque cambie el medio", async () => {
+      await renderRestore([SALE_ONE, SALE_TWO]);
+      const reuseName = "Volver a asociar los adjuntos del original (foto)";
+      expect(await screen.findByRole("checkbox", { name: reuseName })).toBeTruthy();
+
+      await choose("Medio", "Electrónico");
+      expect(screen.getByRole("checkbox", { name: reuseName })).toBeTruthy();
+
+      const user = userEvent.setup();
+      await user.clear(screen.getByLabelText("Número"));
+      await user.type(screen.getByLabelText("Número"), "000046");
+      expect(screen.queryByRole("checkbox", { name: reuseName })).toBe(null);
+
+      await user.clear(screen.getByLabelText("Número"));
+      await user.type(screen.getByLabelText("Número"), "000045");
+      await user.clear(screen.getByLabelText("Serie"));
+      await user.type(screen.getByLabelText("Serie"), "f001");
+      expect(screen.getByRole("checkbox", { name: reuseName })).toBeTruthy();
+    });
+  });
+});

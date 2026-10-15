@@ -1,8 +1,9 @@
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AccessoryMovementType, Prisma, ProductType } from "@prisma/client";
 import { jest } from "@jest/globals";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { SalesService } from "../sales/sales.service.js";
 import { AccessoriesService } from "./accessories.service.js";
 
 const ACCESSORY_ID = "11111111-1111-4111-8111-111111111111";
@@ -58,9 +59,11 @@ function buildPrismaMock() {
 describe("AccessoriesService Unit Tests", () => {
   let service: AccessoriesService;
   let prisma: ReturnType<typeof buildPrismaMock>;
+  let salesService: { voidSaleWithinTransaction: jest.Mock<() => Promise<unknown>> };
 
   beforeEach(async () => {
     prisma = buildPrismaMock();
+    salesService = { voidSaleWithinTransaction: jest.fn<() => Promise<unknown>>() };
     prisma.$transaction.mockImplementation(async (callback) => {
       if (Array.isArray(callback)) {
         return Promise.all(callback);
@@ -69,7 +72,11 @@ describe("AccessoriesService Unit Tests", () => {
     });
 
     const moduleRef = await Test.createTestingModule({
-      providers: [AccessoriesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AccessoriesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SalesService, useValue: salesService },
+      ],
     }).compile();
 
     service = moduleRef.get(AccessoriesService);
@@ -475,23 +482,27 @@ describe("AccessoriesService Unit Tests", () => {
       expect(result.type).toBe(AccessoryMovementType.LOAN_CHARGE);
     });
 
-    it("voidCharge marks sale voided, restores customer balance, decreases debt, emits LOAN_CHARGE_VOID", async () => {
-      const now = new Date();
-      prisma.accessoryMovement.findUnique.mockResolvedValue({
+    function loanChargeMovement(occurredAt: Date) {
+      return {
         id: MOVEMENT_ID,
         productId: ACCESSORY_ID,
         type: AccessoryMovementType.LOAN_CHARGE,
         quantity: 1,
         locationId: LOCATION_ID,
         saleId: SALE_ID,
-        occurredAt: now,
-        sale: {
-          id: SALE_ID,
-          total: new Prisma.Decimal("35.00"),
-          voidedAt: null,
-          location: { customerId: CUSTOMER_ID },
-        },
+        occurredAt,
+        sale: { id: SALE_ID, voidedAt: null },
         reversedBy: null,
+      };
+    }
+
+    it("voidCharge voids the sale through SalesService, restores the balance, emits LOAN_CHARGE_VOID", async () => {
+      const now = new Date();
+      prisma.accessoryMovement.findUnique.mockResolvedValue(loanChargeMovement(now));
+      salesService.voidSaleWithinTransaction.mockResolvedValue({
+        sale: { id: SALE_ID, total: "35.00", soldAt: now },
+        payments: [],
+        debtDelta: "-35.00",
       });
 
       prisma.accessoryMovement.create.mockResolvedValue({
@@ -513,16 +524,13 @@ describe("AccessoriesService Unit Tests", () => {
 
       const result = await service.voidCharge(MOVEMENT_ID, { reason: "Corrección" }, USER_ID);
 
-      expect(prisma.sale.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: SALE_ID },
-          data: expect.objectContaining({ voidReason: "Corrección" }),
-        }),
-      );
-      expect(prisma.customer.update).toHaveBeenCalledWith({
-        where: { id: CUSTOMER_ID },
-        data: { debtBalance: { decrement: new Prisma.Decimal("35.00") } },
+      expect(salesService.voidSaleWithinTransaction).toHaveBeenCalledWith(prisma, {
+        saleId: SALE_ID,
+        voidedById: USER_ID,
+        voidReason: "Corrección",
       });
+      expect(prisma.sale.update).not.toHaveBeenCalled();
+      expect(prisma.customer.update).not.toHaveBeenCalled();
       expect(prisma.customerAccessoryBalance.upsert).toHaveBeenCalledWith({
         where: {
           locationId_productId: { locationId: LOCATION_ID, productId: ACCESSORY_ID },
@@ -531,6 +539,27 @@ describe("AccessoriesService Unit Tests", () => {
         create: { locationId: LOCATION_ID, productId: ACCESSORY_ID, quantity: 1 },
       });
       expect(result.type).toBe(AccessoryMovementType.LOAN_CHARGE_VOID);
+    });
+
+    it("voidCharge leaves the balance alone when SalesService refuses or the sale is already void", async () => {
+      prisma.accessoryMovement.findUnique.mockResolvedValue(loanChargeMovement(new Date()));
+      salesService.voidSaleWithinTransaction.mockRejectedValue(
+        new ConflictException("Anulá primero el comprobante vigente de la venta"),
+      );
+      await expect(
+        service.voidCharge(MOVEMENT_ID, { reason: "Corrección" }, USER_ID),
+      ).rejects.toThrow("Anulá primero el comprobante vigente de la venta");
+
+      salesService.voidSaleWithinTransaction.mockResolvedValue({
+        sale: null,
+        payments: [],
+        debtDelta: "0.00",
+      });
+      await expect(
+        service.voidCharge(MOVEMENT_ID, { reason: "Corrección" }, USER_ID),
+      ).rejects.toThrow("La venta asociada ya está anulada");
+      expect(prisma.customerAccessoryBalance.upsert).not.toHaveBeenCalled();
+      expect(prisma.accessoryMovement.create).not.toHaveBeenCalled();
     });
   });
 

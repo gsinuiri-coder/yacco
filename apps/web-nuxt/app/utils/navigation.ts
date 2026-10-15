@@ -31,6 +31,7 @@ export const NAVIGATION: NavigationSection[] = [
       { label: "Pedidos", icon: "i-lucide-clipboard-list", to: "/orders" },
       { label: "Rutas", icon: "i-lucide-truck", to: "/routes" },
       { label: "Pagos", icon: "i-lucide-wallet", to: "/payments" },
+      { label: "Comprobantes", icon: "i-lucide-receipt-text", to: "/receipts" },
     ],
   },
   {
@@ -111,6 +112,12 @@ export const NAVIGATION: NavigationSection[] = [
       { label: "Vehículos", icon: "i-lucide-truck", to: "/vehicles" },
       { label: "Productos", icon: "i-lucide-droplets", to: "/products" },
       { label: "Zonas", icon: "i-lucide-map-pin", to: "/zones" },
+      {
+        label: "Datos de facturación",
+        icon: "i-lucide-building-2",
+        to: "/issuer-settings",
+        onlyFor: "ADMIN",
+      },
       { label: "Usuarios", icon: "i-lucide-user-cog", to: "/users" },
     ],
   },

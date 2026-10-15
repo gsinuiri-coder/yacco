@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import {
   ContainerMovementType,
   ContainerState,
@@ -656,6 +656,7 @@ describe("SalesService.voidStopDeliveryWithinTransaction", () => {
 
   function buildVoidTxMock() {
     return {
+      $queryRaw: jest.fn<() => Promise<unknown>>().mockResolvedValue([]),
       sale: {
         findFirst: jest.fn<() => Promise<unknown>>(),
         updateMany: jest.fn<() => Promise<{ count: number }>>(),
@@ -687,6 +688,7 @@ describe("SalesService.voidStopDeliveryWithinTransaction", () => {
       soldAt: SOLD_AT,
       location: { customerId: CUSTOMER_ID },
       payments: [],
+      receiptSales: [],
       ...overrides,
     };
   }
@@ -751,6 +753,25 @@ describe("SalesService.voidStopDeliveryWithinTransaction", () => {
     // El sub-filtro es la segunda línea de defensa contra devolver dos veces
     // el mismo cobro: sin él, un pago ya anulado volvería a sumar a la deuda.
     expect(args.select.payments.where).toEqual({ voidedAt: null });
+    expect(args.select).toEqual(
+      expect.objectContaining({
+        receiptSales: { where: { releasedAt: null }, select: { receiptId: true } },
+      }),
+    );
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.sale.findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("rechaza anular una venta con comprobante vigente antes de tocar los libros", async () => {
+    tx.sale.findFirst.mockResolvedValue(saleRow({ receiptSales: [{ receiptId: "receipt-1" }] }));
+
+    await expect(
+      service.voidStopDeliveryWithinTransaction(tx as never, voidParams()),
+    ).rejects.toThrow(ConflictException);
+
+    expect(tx.sale.updateMany).not.toHaveBeenCalled();
+    expect(tx.payment.updateMany).not.toHaveBeenCalled();
+    expect(tx.customer.update).not.toHaveBeenCalled();
   });
 
   it("la escritura repite la guarda: si otra transacción anuló primero, no escribe nada", async () => {

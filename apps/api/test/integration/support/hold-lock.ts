@@ -71,6 +71,36 @@ export async function holdBatchItemLock(
   };
 }
 
+/** Sostiene una venta para ordenar de forma determinista altas y anulaciones concurrentes. */
+export async function holdSaleLock(
+  prisma: PrismaService,
+  saleId: string,
+): Promise<{ release: () => Promise<void> }> {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markLocked!: () => void;
+  const locked = new Promise<void>((resolve) => {
+    markLocked = resolve;
+  });
+  const transaction = prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT id FROM sales WHERE id = ${saleId}::uuid FOR UPDATE`;
+      markLocked();
+      await released;
+    },
+    { timeout: 30_000 },
+  );
+  await locked;
+  return {
+    release: async () => {
+      release();
+      await transaction;
+    },
+  };
+}
+
 /**
  * Arranca `work` y dice si terminó dentro de `BLOCKED_FOR_MS`. Lo usa cada
  * test para afirmar que una escritura espera al bloqueo en vez de leer el

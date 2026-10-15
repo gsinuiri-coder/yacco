@@ -171,6 +171,21 @@ enum PaymentStatus {
   @@map("payment_status")
 }
 
+enum ReceiptType {
+  SALES_RECEIPT
+  INVOICE
+  CREDIT_NOTE
+
+  @@map("receipt_type")
+}
+
+enum ReceiptMedium {
+  MANUAL
+  EXTERNAL_ELECTRONIC
+
+  @@map("receipt_medium")
+}
+
 enum Weekday {
   MONDAY
   TUESDAY
@@ -260,6 +275,13 @@ model User {
   accessoryMovementsRecorded          AccessoryMovement[]                 @relation("AccessoryMovementRecordedBy")
   accessoryCountsRecorded             AccessoryCount[]                    @relation("AccessoryCountRecordedBy")
   maquilaMovementsRecorded            MaquilaContainerMovement[]          @relation("MaquilaMovementRecordedBy")
+  issuerSettingsVersionsCreated       IssuerSettingsVersion[]             @relation("IssuerSettingsVersionCreatedBy")
+  receiptsCreated                     Receipt[]                           @relation("ReceiptCreatedBy")
+  receiptsVoided                      Receipt[]                           @relation("ReceiptVoidedBy")
+  receiptFilesCreated                 ReceiptFile[]                       @relation("ReceiptFileCreatedBy")
+  receiptSalesReleased                ReceiptSale[]                       @relation("ReceiptSaleReleasedBy")
+  saleReceiptExemptionsCreated        SaleReceiptExemption[]              @relation("SaleReceiptExemptionCreatedBy")
+  saleReceiptExemptionsReleased       SaleReceiptExemption[]              @relation("SaleReceiptExemptionReleasedBy")
 
   @@map("users")
 }
@@ -366,6 +388,7 @@ model Customer {
   orderGroups OrderGroup[]
   maquilaBalances  MaquilaBalance[]
   maquilaMovements MaquilaContainerMovement[]
+  receipts         Receipt[]
 
   @@map("customers")
 }
@@ -811,6 +834,8 @@ model Sale {
   payments                  Payment[]
   accessoryMovements        AccessoryMovement[]
   maquilaMovements          MaquilaContainerMovement[]
+  receiptSales              ReceiptSale[]
+  receiptExemptions         SaleReceiptExemption[]
 
   // A customer's account statement walks their sales by location, oldest
   // first (CustomersService.getAccountStatement). Expand-only, no column.
@@ -902,6 +927,101 @@ model Payment {
   // customerId scans the whole table.
   @@index([customerId, paidAt(sort: Desc)])
   @@map("payments")
+}
+
+model IssuerSettingsVersion {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  taxId                    String   @map("tax_id") @db.VarChar(11)
+  legalName                String   @map("legal_name")
+  fiscalAddress            String   @map("fiscal_address")
+  taxRate                  Decimal  @map("tax_rate") @db.Decimal(5, 2)
+  receiptDocumentThreshold Decimal  @map("receipt_document_threshold") @db.Decimal(10, 2)
+  createdById              String   @map("created_by") @db.Uuid
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  createdBy User      @relation("IssuerSettingsVersionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  receipts  Receipt[]
+
+  @@map("issuer_settings_versions")
+}
+
+model Receipt {
+  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type                    ReceiptType
+  medium                  ReceiptMedium
+  series                  String
+  number                  String
+  issuedOn                DateTime      @map("issued_on") @db.Date
+  customerId              String        @map("customer_id") @db.Uuid
+  issuerSettingsVersionId String        @map("issuer_settings_version_id") @db.Uuid
+  taxableAmount           Decimal       @map("taxable_amount") @db.Decimal(10, 2)
+  taxAmount               Decimal       @map("tax_amount") @db.Decimal(10, 2)
+  total                   Decimal       @db.Decimal(10, 2)
+  affectedReceiptId       String?       @map("affected_receipt_id") @db.Uuid
+  reason                  String?
+  createdById             String        @map("created_by") @db.Uuid
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  voidedAt                DateTime?     @map("voided_at") @db.Timestamptz(6)
+  voidedById              String?       @map("voided_by") @db.Uuid
+  voidReason              String?       @map("void_reason")
+
+  customer              Customer              @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  issuerSettingsVersion IssuerSettingsVersion @relation(fields: [issuerSettingsVersionId], references: [id], onDelete: Restrict)
+  affectedReceipt       Receipt?              @relation("ReceiptCreditNotes", fields: [affectedReceiptId], references: [id], onDelete: Restrict)
+  creditNotes           Receipt[]             @relation("ReceiptCreditNotes")
+  createdBy             User                  @relation("ReceiptCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  voidedBy              User?                 @relation("ReceiptVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  sales                 ReceiptSale[]
+  files                 ReceiptFile[]
+
+  // Type, series and number are unique among active receipts only: a partial
+  // index written by hand in migration 20261014200000 (Prisma cannot express it).
+  @@map("receipts")
+}
+
+model ReceiptSale {
+  receiptId    String    @map("receipt_id") @db.Uuid
+  saleId       String    @map("sale_id") @db.Uuid
+  releasedAt   DateTime? @map("released_at") @db.Timestamptz(6)
+  releasedById String?   @map("released_by") @db.Uuid
+
+  receipt    Receipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  releasedBy User?   @relation("ReceiptSaleReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
+
+  @@id([receiptId, saleId])
+  @@map("receipt_sales")
+}
+
+model SaleReceiptExemption {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  saleId        String    @map("sale_id") @db.Uuid
+  reason        String
+  createdById   String    @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  releasedAt    DateTime? @map("released_at") @db.Timestamptz(6)
+  releasedById  String?   @map("released_by") @db.Uuid
+  releaseReason String?   @map("release_reason")
+
+  sale       Sale  @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  createdBy  User  @relation("SaleReceiptExemptionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  releasedBy User? @relation("SaleReceiptExemptionReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
+
+  @@map("sale_receipt_exemptions")
+}
+
+model ReceiptFile {
+  receiptId   String    @map("receipt_id") @db.Uuid
+  objectKey   String    @map("object_key")
+  contentType String    @map("content_type") @db.VarChar(100)
+  createdAt   DateTime? @map("created_at") @db.Timestamptz(6)
+  createdById String?   @map("created_by") @db.Uuid
+
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  createdBy User?   @relation("ReceiptFileCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@id([receiptId, objectKey])
+  @@map("receipt_files")
 }
 
 // A settlement with a mismatch still closes: the difference and its reason

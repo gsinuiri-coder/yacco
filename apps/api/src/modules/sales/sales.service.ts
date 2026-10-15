@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import {
   AccessoryMovementType,
   ContainerMovementType,
@@ -1030,7 +1030,7 @@ export class SalesService {
     saleWhere: Prisma.SaleWhereInput,
     params: Pick<VoidSaleParams, "voidedById" | "voidReason">,
   ): Promise<VoidSaleResult> {
-    const sale = await tx.sale.findFirst({
+    const saleQuery = {
       where: { ...saleWhere, voidedAt: null },
       select: {
         id: true,
@@ -1042,10 +1042,25 @@ export class SalesService {
           select: { id: true, amount: true, status: true },
           orderBy: { paidAt: "asc" },
         },
+        receiptSales: {
+          where: { releasedAt: null },
+          select: { receiptId: true },
+        },
       },
-    });
+    } satisfies Prisma.SaleFindFirstArgs;
+    const candidate = await tx.sale.findFirst(saleQuery);
+    if (candidate === null) {
+      return { sale: null, payments: [], debtDelta: "0.00" };
+    }
+    await tx.$queryRaw(
+      Prisma.sql`SELECT id FROM sales WHERE id = ${candidate.id}::uuid FOR UPDATE`,
+    );
+    const sale = await tx.sale.findFirst(saleQuery);
     if (sale === null) {
       return { sale: null, payments: [], debtDelta: "0.00" };
+    }
+    if (sale.receiptSales.length > 0) {
+      throw new ConflictException("Anulá primero el comprobante vigente de la venta");
     }
 
     // Las tres columnas van juntas o ninguna — hay un CHECK en la base que lo

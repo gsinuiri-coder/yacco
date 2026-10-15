@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { AccessoryMovementType, Prisma, ProductType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { MONEY_MESSAGE, MONEY_PATTERN } from "../customers/dto/create-customer.dto.js";
+import { SalesService } from "../sales/sales.service.js";
 import type {
   AccessoryCountResponseDto,
   AccessoryMovementResponseDto,
@@ -45,7 +46,10 @@ type MovementWithRelations = Prisma.AccessoryMovementGetPayload<{
 
 @Injectable()
 export class AccessoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly salesService: SalesService,
+  ) {}
 
   async findAll(includeInactive = false): Promise<AccessorySummaryResponseDto[]> {
     const products = await this.prisma.product.findMany({
@@ -598,14 +602,7 @@ export class AccessoriesService {
     const movement = await this.prisma.accessoryMovement.findUnique({
       where: { id: movementId },
       include: {
-        sale: {
-          select: {
-            id: true,
-            total: true,
-            voidedAt: true,
-            location: { select: { customerId: true } },
-          },
-        },
+        sale: { select: { id: true, voidedAt: true } },
         reversedBy: { select: { id: true } },
       },
     });
@@ -631,21 +628,16 @@ export class AccessoriesService {
 
     const occurredAt = movement.occurredAt;
     const voidedMovement = await this.prisma.$transaction(async (tx) => {
-      // 1. Mark Sale as voided
-      await tx.sale.update({
-        where: { id: movement.sale!.id },
-        data: {
-          voidedAt: new Date(),
-          voidedById,
-          voidReason: reason,
-        },
+      // 1-2. Void the sale through SalesService: it locks the sale, rejects
+      // one with an active receipt, voids its payments and returns the debt.
+      const voided = await this.salesService.voidSaleWithinTransaction(tx, {
+        saleId: movement.sale!.id,
+        voidedById,
+        voidReason: reason,
       });
-
-      // 2. Decrement customer debt balance
-      await tx.customer.update({
-        where: { id: movement.sale!.location.customerId },
-        data: { debtBalance: { decrement: movement.sale!.total } },
-      });
+      if (voided.sale === null) {
+        throw new BadRequestException("La venta asociada ya está anulada");
+      }
 
       // 3. Restore location borrowed balance
       await tx.customerAccessoryBalance.upsert({
