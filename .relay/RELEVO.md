@@ -1,13 +1,9 @@
 # Relevo
 
-status: blocked
+status: in-progress
 item: Fase 3 — 8. Comprobantes registrados (goal en .relay/goals/fase3-8-comprobantes-y-guias.md)
 branch: feat/receipts
 last-step: Corrección 20:00 hecha con TDD, API y web. Anular una nota de crédito solo se permite si es manual (las electrónicas dan 409) y solo marca la nota. `POST /receipts` acepta `filesFromReceiptId`, que vuelve a asociar los adjuntos de un comprobante anulado del mismo cliente y medio. El detalle muestra `creditNotes`. «Volver a registrar el original» abre `receipts/new?from=<id>` con todo precargado. También: bug de accesorios (B.8) corregido; tests HU-26 E1–E5 con su rojo; menores de la revisión anterior; tablas pasadas a `UTable`; `schema.prisma` sin reformateo; spec actualizada; cuerpo del PR completo salvo el resultado de la integración entera. Gates verdes: lint, typecheck, build, `pnpm test` (API 1436, web 637, shared 44, firestore-export 54). `pnpm test:integration` entero: 44 suites, 780 tests, todo verde. La revisión con `reviewer` encontró los puntos de abajo; ya están corregidos dos textos de la web (anular una nota; casilla de adjuntos con nombres internos). El PR todavía no está abierto.
-next-step: Que Giancarlo responda las preguntas de blocked-reason. Después: implementarlas con TDD, corregir los menores técnicos que quedan de la revisión (abajo), repetir los gates y abrir el PR. Esos menores son: la nota anulada ofrece «Volver a registrar el original» aunque el original ya se haya vuelto a registrar; E1 sin factura exitosa en integración; E3 por la vía de la nota de crédito (`released_by`/`released_at` y «visible como anulado»); sacar `support/test-storage.ts` y `customer-contacts-photos.int.test.ts` del diff si se puede.
-blocked-reason: La revisión encontró dudas de dominio que no me toca resolver.
-  (1) Hay dos decisiones que chocan. El punto 4 de las 20:00 dice que volver a registrar el original «se rechaza como cualquier otro» si una de sus ventas tiene una marca «No lleva comprobante» vigente. Pero la autorización de las 02:22 (punto 2) dice que registrar un comprobante LIBERA esa marca en la misma transacción. Hoy la API libera la marca. Solo la web impide el caso, porque solo ofrece las ventas libres. ¿Al volver a registrar el original se rechaza, o se libera la marca como en cualquier alta? Según la respuesta, se ajusta la spec (`docs/yacco-documentacion.md`, §Comprobantes) o la API.
-  (2) Si el original tiene una nota de crédito VIGENTE, la API deja volver a registrarlo. Solo la web esconde el botón. Quedaría vigente la nota y también el papel que la nota anuló. ¿Se rechaza?
-  (3) ¿Los adjuntos solo se pueden reasociar desde un comprobante con el mismo tipo, serie y número? Hoy alcanza con que sea anulado, del mismo cliente y del mismo medio. Así se podría pegar la foto de otro papel o la de una nota de crédito.
-  (4) Ahora, anular el cobro de un accesorio pasa por `SalesService`. Eso también anula los cobros de esa venta y devuelve la deuda según el efecto real. Antes restaba el total aunque el cobro estuviera pagado. ¿Es lo que se quiere? Si sí, falta pegar un rojo con un cobro confirmado.
-updated: 2026-10-14T21:55:00-05:00 por Claude (relevo)
+next-step: Giancarlo decidió las cuatro dudas (2026-10-14 21:25). Leé la última sección de .relay/goals/fase3-8-comprobantes-y-guias.md, implementalas con TDD, después los menores técnicos que anotaste, gates con integración en primer plano, y el PR.
+blocked-reason:
+updated: 2026-10-14T21:26:00-05:00 por Claude (conversación con Giancarlo)
