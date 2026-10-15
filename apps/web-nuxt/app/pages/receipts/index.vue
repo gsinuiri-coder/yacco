@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatCalendarDay, formatSoles } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import type { ReceiptMedium, ReceiptRow, ReceiptStatus, ReceiptType } from "@yacco/shared";
 
 useHead({ title: "Comprobantes · Yacco" });
@@ -52,6 +53,19 @@ function clearFilters(): void {
   issuedFrom.value = "";
   issuedTo.value = "";
 }
+
+const columns: TableColumn<ReceiptRow>[] = [
+  { accessorKey: "number", header: "Comprobante" },
+  { accessorKey: "customer", header: "Cliente" },
+  { accessorKey: "medium", header: "Medio" },
+  { accessorKey: "issuedOn", header: "Emisión" },
+  {
+    accessorKey: "total",
+    header: "Total",
+    meta: { class: { th: "text-right", td: "text-right" } },
+  },
+  { accessorKey: "status", header: "Estado" },
+];
 
 const summary = computed(() => {
   if (list.firstLoad.value) return "Cargando…";
@@ -131,53 +145,49 @@ const summary = computed(() => {
 
       <template v-else>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              Comprobantes registrados
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-4 py-2 font-medium">Comprobante</th>
-                <th scope="col" class="px-4 py-2 font-medium">Cliente</th>
-                <th scope="col" class="px-4 py-2 font-medium">Medio</th>
-                <th scope="col" class="px-4 py-2 font-medium">Emisión</th>
-                <th scope="col" class="px-4 py-2 text-right font-medium">Total</th>
-                <th scope="col" class="px-4 py-2 font-medium">Estado</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="receipt in list.items.value" :key="receipt.id">
-                <td class="px-4 py-3">
-                  <ULink
-                    :to="`/receipts/${receipt.id}`"
-                    class="font-medium text-primary hover:underline"
-                  >
-                    {{ receiptNumber(receipt.series, receipt.number) }}
-                  </ULink>
-                  <p class="mt-1">
-                    <UBadge
-                      :color="RECEIPT_TYPE[receipt.type].color"
-                      variant="subtle"
-                      :label="RECEIPT_TYPE[receipt.type].label"
-                    />
-                  </p>
-                </td>
-                <td class="px-4 py-3 font-medium text-highlighted">{{ receipt.customer.name }}</td>
-                <td class="px-4 py-3">{{ RECEIPT_MEDIUM[receipt.medium].label }}</td>
-                <td class="px-4 py-3 tabular-nums">{{ formatCalendarDay(receipt.issuedOn) }}</td>
-                <td class="px-4 py-3 text-right font-medium text-highlighted tabular-nums">
-                  {{ formatSoles(receipt.total) }}
-                </td>
-                <td class="px-4 py-3">
-                  <UBadge
-                    :color="RECEIPT_STATUS[receipt.status].color"
-                    variant="subtle"
-                    :label="RECEIPT_STATUS[receipt.status].label"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <UTable
+            :data="list.items.value"
+            :columns="columns"
+            caption="Comprobantes registrados"
+            :ui="{ caption: 'sr-only' }"
+          >
+            <template #number-cell="{ row }">
+              <ULink
+                :to="`/receipts/${row.original.id}`"
+                class="font-medium text-primary hover:underline"
+              >
+                {{ receiptNumber(row.original.series, row.original.number) }}
+              </ULink>
+              <p class="mt-1">
+                <UBadge
+                  :color="RECEIPT_TYPE[row.original.type].color"
+                  variant="subtle"
+                  :label="RECEIPT_TYPE[row.original.type].label"
+                />
+              </p>
+            </template>
+            <template #customer-cell="{ row }">
+              <span class="font-medium text-highlighted">{{ row.original.customer.name }}</span>
+            </template>
+            <template #medium-cell="{ row }">
+              {{ RECEIPT_MEDIUM[row.original.medium].label }}
+            </template>
+            <template #issuedOn-cell="{ row }">
+              <span class="tabular-nums">{{ formatCalendarDay(row.original.issuedOn) }}</span>
+            </template>
+            <template #total-cell="{ row }">
+              <span class="font-medium text-highlighted tabular-nums">
+                {{ formatSoles(row.original.total) }}
+              </span>
+            </template>
+            <template #status-cell="{ row }">
+              <UBadge
+                :color="RECEIPT_STATUS[row.original.status].color"
+                variant="subtle"
+                :label="RECEIPT_STATUS[row.original.status].label"
+              />
+            </template>
+          </UTable>
         </div>
 
         <ListPagination

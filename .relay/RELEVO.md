@@ -8,6 +8,7 @@ last-step: Corrección 20:00, parte API con TDD: `void` rechaza la nota de créd
   Bug de `accessories.service.ts:635` corregido con TDD: `voidCharge` anula la venta por `SalesService.voidSaleWithinTransaction` (409 con comprobante vigente); accessories.int 18/18.
   Tests faltantes de la revisión agregados (HU-26 E1–E5, umbrales, liberación única con quién/cuándo, marcas, reconstrucción SQL de «sin comprobante»); rojo con siete reglas revertidas en producción y verde 13/13, todo en `.relay/pr-body-receipts.md`. Spec §Comprobantes y tabla de endpoints actualizadas con las decisiones 1–3.
   Menores hechos con TDD: serie en mayúsculas en la API, sin adjuntos en anulados, `findSettings` y anulación+liberación deduplicados, todas las páginas de ventas libres en «Registrar comprobante».
-next-step: Lo que queda de .relay/review-receipts.md: tablas hechas a mano en `new.vue`, `CustomerReceiptsSection.vue` y `receipts/index.vue` (y `[id].vue`) a `UTable` de Nuxt UI, con los tests por rol/texto; los menores, sacar el reformateo de `schema.prisma` del diff, completar el cuerpo del PR; después `pnpm test:integration` completo en primer plano, gates, reviewer y PR.
+  Tablas de comprobantes (`index.vue`, `[id].vue`, `new.vue`, `CustomerReceiptsSection.vue`) pasadas a `UTable`; los 24 tests de web de comprobantes siguen verdes sin tocarlos y el typecheck de Nuxt pasa.
+next-step: Lo que queda de .relay/review-receipts.md: los menores, sacar el reformateo de `schema.prisma` del diff, completar el cuerpo del PR; después `pnpm test:integration` completo en primer plano, gates, reviewer y PR.
 blocked-reason:
 updated: 2026-10-14T21:05:00-05:00 por Claude (relevo)

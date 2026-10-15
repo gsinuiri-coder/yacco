@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TableColumn } from "@nuxt/ui";
 import { formatInstantInLima, formatSoles } from "@yacco/shared";
 import type { Page, ReceiptSaleStatusRow, SaleReceiptStatus } from "@yacco/shared";
 
@@ -29,6 +30,29 @@ const caption = computed(() => {
   if (status.value === "EXEMPT") return "Ventas que no llevan comprobante";
   if (status.value === "RECEIPTED") return "Ventas con comprobante";
   return "Ventas sin comprobante";
+});
+
+const RIGHT = { class: { th: "text-right", td: "text-right" } };
+
+const columns = computed<TableColumn<ReceiptSaleStatusRow>[]>(() => {
+  const sale: TableColumn<ReceiptSaleStatusRow>[] = [
+    { accessorKey: "soldAt", header: "Venta" },
+    { accessorKey: "location", header: "Local" },
+    { accessorKey: "total", header: "Total", meta: RIGHT },
+  ];
+  if (status.value === "AVAILABLE") {
+    return [
+      { id: "select", meta: { class: { td: "w-0" } } },
+      ...sale,
+      { id: "register", meta: RIGHT },
+    ];
+  }
+  if (status.value === "RECEIPTED") return [...sale, { id: "receipt", header: "Comprobante" }];
+  return [
+    ...sale,
+    { id: "exemption", header: "Motivo" },
+    ...(props.isAdmin ? [{ id: "release", meta: RIGHT }] : []),
+  ];
 });
 
 const emptyTitle = computed(() => {
@@ -159,85 +183,71 @@ async function releaseExemption(exemptionId: string): Promise<void> {
       <UAlert v-else-if="rows.length === 0" color="neutral" variant="soft" :title="emptyTitle" />
 
       <template v-else>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              {{
-                caption
-              }}
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th v-if="status === 'AVAILABLE'" scope="col" class="px-3 py-2">
-                  <span class="sr-only">Elegir</span>
-                </th>
-                <th scope="col" class="px-3 py-2 font-medium">Venta</th>
-                <th scope="col" class="px-3 py-2 font-medium">Local</th>
-                <th scope="col" class="px-3 py-2 text-right font-medium">Total</th>
-                <th v-if="status === 'AVAILABLE'" scope="col" class="px-3 py-2">
-                  <span class="sr-only">Acciones</span>
-                </th>
-                <th v-if="status !== 'AVAILABLE'" scope="col" class="px-3 py-2 font-medium">
-                  {{ status === "EXEMPT" ? "Motivo" : "Comprobante" }}
-                </th>
-                <th v-if="status === 'EXEMPT' && isAdmin" scope="col" class="px-3 py-2">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="row in rows" :key="row.id" class="align-top">
-                <td v-if="status === 'AVAILABLE'" class="px-3 py-3">
-                  <UCheckbox
-                    :model-value="selectedSaleIds.includes(row.id)"
-                    :aria-label="`${formatInstantInLima(row.soldAt)} · ${row.location.name} · ${formatSoles(row.total)}`"
-                    :disabled="saving"
-                    @update:model-value="
-                      (checked: boolean | 'indeterminate') => toggleSale(row.id, checked === true)
-                    "
-                  />
-                </td>
-                <td class="px-3 py-3 tabular-nums">{{ formatInstantInLima(row.soldAt) }}</td>
-                <td class="px-3 py-3 font-medium text-highlighted">{{ row.location.name }}</td>
-                <td class="px-3 py-3 text-right font-medium text-highlighted tabular-nums">
-                  {{ formatSoles(row.total) }}
-                </td>
-                <td v-if="status === 'AVAILABLE'" class="px-3 py-3 text-right">
-                  <UButton
-                    :to="`/receipts/new?customerId=${customerId}&saleId=${row.id}`"
-                    size="sm"
-                    color="neutral"
-                    variant="ghost"
-                    label="Registrar comprobante"
-                  />
-                </td>
-                <td v-if="status === 'EXEMPT'" class="px-3 py-3 text-muted">
-                  {{ row.exemption?.reason }}
-                </td>
-                <td v-else-if="status === 'RECEIPTED'" class="px-3 py-3">
-                  <ULink
-                    v-if="row.receipt"
-                    :to="`/receipts/${row.receipt.id}`"
-                    class="font-medium text-primary hover:underline"
-                  >
-                    {{ RECEIPT_TYPE[row.receipt.type].label }}
-                    {{ receiptNumber(row.receipt.series, row.receipt.number) }}
-                  </ULink>
-                </td>
-                <td v-if="status === 'EXEMPT' && isAdmin" class="px-3 py-3 text-right">
-                  <UButton
-                    v-if="row.exemption && releasingId !== row.exemption.id"
-                    size="sm"
-                    color="neutral"
-                    variant="ghost"
-                    label="Liberar marca"
-                    @click="startRelease(row.exemption.id)"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <UTable :data="rows" :columns="columns" :caption="caption" :ui="{ caption: 'sr-only' }">
+          <template #select-header>
+            <span class="sr-only">Elegir</span>
+          </template>
+          <template #select-cell="{ row }">
+            <UCheckbox
+              :model-value="selectedSaleIds.includes(row.original.id)"
+              :aria-label="`${formatInstantInLima(row.original.soldAt)} · ${row.original.location.name} · ${formatSoles(row.original.total)}`"
+              :disabled="saving"
+              @update:model-value="
+                (checked: boolean | 'indeterminate') =>
+                  toggleSale(row.original.id, checked === true)
+              "
+            />
+          </template>
+          <template #soldAt-cell="{ row }">
+            <span class="tabular-nums">{{ formatInstantInLima(row.original.soldAt) }}</span>
+          </template>
+          <template #location-cell="{ row }">
+            <span class="font-medium text-highlighted">{{ row.original.location.name }}</span>
+          </template>
+          <template #total-cell="{ row }">
+            <span class="font-medium text-highlighted tabular-nums">
+              {{ formatSoles(row.original.total) }}
+            </span>
+          </template>
+          <template #register-header>
+            <span class="sr-only">Acciones</span>
+          </template>
+          <template #register-cell="{ row }">
+            <UButton
+              :to="`/receipts/new?customerId=${customerId}&saleId=${row.original.id}`"
+              size="sm"
+              color="neutral"
+              variant="ghost"
+              label="Registrar comprobante"
+            />
+          </template>
+          <template #exemption-cell="{ row }">
+            <span class="text-muted">{{ row.original.exemption?.reason }}</span>
+          </template>
+          <template #receipt-cell="{ row }">
+            <ULink
+              v-if="row.original.receipt"
+              :to="`/receipts/${row.original.receipt.id}`"
+              class="font-medium text-primary hover:underline"
+            >
+              {{ RECEIPT_TYPE[row.original.receipt.type].label }}
+              {{ receiptNumber(row.original.receipt.series, row.original.receipt.number) }}
+            </ULink>
+          </template>
+          <template #release-header>
+            <span class="sr-only">Acciones</span>
+          </template>
+          <template #release-cell="{ row }">
+            <UButton
+              v-if="row.original.exemption && releasingId !== row.original.exemption.id"
+              size="sm"
+              color="neutral"
+              variant="ghost"
+              label="Liberar marca"
+              @click="startRelease(row.original.exemption.id)"
+            />
+          </template>
+        </UTable>
 
         <div v-if="status === 'AVAILABLE'" class="border-t border-default pt-4">
           <div v-if="marking" class="space-y-3">

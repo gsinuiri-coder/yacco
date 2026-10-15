@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TableColumn } from "@nuxt/ui";
 import { formatInstantInLima, formatSoles, limaToday } from "@yacco/shared";
 import type {
   Customer,
@@ -58,6 +59,17 @@ const reuseLabel = computed(
       .map((file) => file.fileName)
       .join(", ")})`,
 );
+
+const saleColumns: TableColumn<ReceiptSaleStatusRow>[] = [
+  { id: "select", meta: { class: { td: "w-0" } } },
+  { accessorKey: "soldAt", header: "Venta" },
+  { accessorKey: "location", header: "Local" },
+  {
+    accessorKey: "total",
+    header: "Total",
+    meta: { class: { th: "text-right", td: "text-right" } },
+  },
+];
 
 const typeItems = [
   { label: "Boleta", value: "SALES_RECEIPT" },
@@ -388,41 +400,39 @@ async function retryFiles(): Promise<void> {
               variant="soft"
               title="Este cliente no tiene ventas sin comprobante"
             />
-            <div v-else-if="sales.length > 0" class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <caption class="sr-only">
-                  Ventas sin comprobante
-                </caption>
-                <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                  <tr>
-                    <th scope="col" class="px-4 py-2"><span class="sr-only">Elegir</span></th>
-                    <th scope="col" class="px-4 py-2 font-medium">Venta</th>
-                    <th scope="col" class="px-4 py-2 font-medium">Local</th>
-                    <th scope="col" class="px-4 py-2 text-right font-medium">Total</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <tr v-for="sale in sales" :key="sale.id">
-                    <td class="px-4 py-3">
-                      <UCheckbox
-                        :model-value="selectedSaleIds.includes(sale.id)"
-                        :aria-label="`${formatInstantInLima(sale.soldAt)} · ${sale.location.name} · ${formatSoles(sale.total)}`"
-                        :disabled="saving || createdReceiptId !== null"
-                        @update:model-value="
-                          (checked: boolean | 'indeterminate') =>
-                            toggleSale(sale.id, checked === true)
-                        "
-                      />
-                    </td>
-                    <td class="px-4 py-3 tabular-nums">{{ formatInstantInLima(sale.soldAt) }}</td>
-                    <td class="px-4 py-3 font-medium text-highlighted">{{ sale.location.name }}</td>
-                    <td class="px-4 py-3 text-right font-medium text-highlighted tabular-nums">
-                      {{ formatSoles(sale.total) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <UTable
+              v-else-if="sales.length > 0"
+              :data="sales"
+              :columns="saleColumns"
+              caption="Ventas sin comprobante"
+              :ui="{ caption: 'sr-only' }"
+            >
+              <template #select-header>
+                <span class="sr-only">Elegir</span>
+              </template>
+              <template #select-cell="{ row }">
+                <UCheckbox
+                  :model-value="selectedSaleIds.includes(row.original.id)"
+                  :aria-label="`${formatInstantInLima(row.original.soldAt)} · ${row.original.location.name} · ${formatSoles(row.original.total)}`"
+                  :disabled="saving || createdReceiptId !== null"
+                  @update:model-value="
+                    (checked: boolean | 'indeterminate') =>
+                      toggleSale(row.original.id, checked === true)
+                  "
+                />
+              </template>
+              <template #soldAt-cell="{ row }">
+                <span class="tabular-nums">{{ formatInstantInLima(row.original.soldAt) }}</span>
+              </template>
+              <template #location-cell="{ row }">
+                <span class="font-medium text-highlighted">{{ row.original.location.name }}</span>
+              </template>
+              <template #total-cell="{ row }">
+                <span class="font-medium text-highlighted tabular-nums">
+                  {{ formatSoles(row.original.total) }}
+                </span>
+              </template>
+            </UTable>
           </div>
         </UCard>
 

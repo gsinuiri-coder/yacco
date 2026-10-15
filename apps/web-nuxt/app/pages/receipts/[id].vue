@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatCalendarDay, formatInstantInLima, formatSoles } from "@yacco/shared";
-import type { ReceiptDetail, ReceiptMedium, ReceiptRow } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
+import type { ReceiptDetail, ReceiptMedium, ReceiptRow, ReceiptSaleDetail } from "@yacco/shared";
 
 const route = useRoute();
 const receiptId = String(route.params.id);
@@ -21,6 +22,16 @@ const creditNoteReason = ref("");
 const mediumOptions = [
   { label: "Manual", value: "MANUAL" },
   { label: "Electrónico", value: "EXTERNAL_ELECTRONIC" },
+];
+
+const saleColumns: TableColumn<ReceiptSaleDetail>[] = [
+  { accessorKey: "soldAt", header: "Venta" },
+  { accessorKey: "location", header: "Local" },
+  {
+    accessorKey: "total",
+    header: "Total",
+    meta: { class: { th: "text-right", td: "text-right" } },
+  },
 ];
 
 const title = computed(() => {
@@ -312,33 +323,24 @@ async function createCreditNote(): Promise<void> {
                   <p class="text-sm text-muted">Ventas completas cubiertas por este comprobante.</p>
                 </div>
               </template>
-              <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                  <caption class="sr-only">
-                    Ventas del comprobante
-                  </caption>
-                  <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                    <tr>
-                      <th scope="col" class="px-4 py-2 font-medium">Venta</th>
-                      <th scope="col" class="px-4 py-2 font-medium">Local</th>
-                      <th scope="col" class="px-4 py-2 text-right font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-default">
-                    <tr v-for="sale in receipt.sales" :key="sale.id">
-                      <td class="px-4 py-3 tabular-nums">
-                        {{ formatInstantInLima(sale.soldAt) }}
-                      </td>
-                      <td class="px-4 py-3 font-medium text-highlighted">
-                        {{ sale.location.name }}
-                      </td>
-                      <td class="px-4 py-3 text-right font-medium text-highlighted tabular-nums">
-                        {{ formatSoles(sale.total) }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <UTable
+                :data="receipt.sales"
+                :columns="saleColumns"
+                caption="Ventas del comprobante"
+                :ui="{ caption: 'sr-only' }"
+              >
+                <template #soldAt-cell="{ row }">
+                  <span class="tabular-nums">{{ formatInstantInLima(row.original.soldAt) }}</span>
+                </template>
+                <template #location-cell="{ row }">
+                  <span class="font-medium text-highlighted">{{ row.original.location.name }}</span>
+                </template>
+                <template #total-cell="{ row }">
+                  <span class="font-medium text-highlighted tabular-nums">
+                    {{ formatSoles(row.original.total) }}
+                  </span>
+                </template>
+              </UTable>
             </UCard>
 
             <UCard>
