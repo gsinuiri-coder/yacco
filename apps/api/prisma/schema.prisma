@@ -974,7 +974,8 @@ model Receipt {
   sales                 ReceiptSale[]
   files                 ReceiptFile[]
 
-  @@unique([type, series, number])
+  // Type, series and number are unique among active receipts only: a partial
+  // index written by hand in migration 20261014200000 (Prisma cannot express it).
   @@map("receipts")
 }
 

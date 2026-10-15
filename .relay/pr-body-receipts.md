@@ -46,6 +46,32 @@ PASS test/integration/receipts.int.test.ts
 Tests: 3 passed, 3 total
 ```
 
+### Serie y número únicos solo entre los vigentes (decisión 19:43)
+
+Rojo, con el índice único `receipts_type_series_number_key` sobre todas las
+filas:
+
+```text
+jest --config jest.integration.config.js receipts.int.test.ts -t "únicos solo entre los vigentes"
+FAIL test/integration/receipts.int.test.ts
+  ● tipo, serie y número son únicos solo entre los vigentes: anular y volver a registrar el mismo papel pasa
+    expected 201 "Created", got 409 "Conflict"
+    > 364 |     .expect(201);
+Tests: 1 failed, 3 skipped, 4 total
+```
+
+Verde, con `20261014200000_receipts_active_series_number` (índice parcial
+`WHERE voided_at IS NULL`):
+
+```text
+jest --config jest.integration.config.js receipts.int.test.ts receipts-schema.int.test.ts
+Test Suites: 2 passed, 2 total
+Tests: 8 passed, 8 total
+```
+
+El mismo caso comprueba que dos vigentes con el mismo tipo, serie y número se
+rechazan con 409 aunque uno sea manual y el otro electrónico.
+
 ### Textos compuestos sólo por espacios
 
 Rojo: los siete casos de razón social, dirección, serie, número y motivos no

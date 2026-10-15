@@ -53,6 +53,20 @@ async function createSale(total: string, soldAt: string): Promise<string> {
   return sale.id;
 }
 
+async function configureIssuerSettings(): Promise<void> {
+  await request(server())
+    .post("/api/v1/issuer-settings")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({
+      taxId: "20123456789",
+      legalName: "Yacco S.A.C.",
+      fiscalAddress: "Av. Planta 456",
+      taxRate: "18.00",
+      receiptDocumentThreshold: "700.00",
+    })
+    .expect(201);
+}
+
 function receiptBody(saleId: string, overrides: Record<string, unknown> = {}) {
   return {
     type: ReceiptType.SALES_RECEIPT,
@@ -163,17 +177,7 @@ test("cada endpoint de comprobantes rechaza chofer y los datos fiscales son solo
 });
 
 test("ADMIN versiona los datos de facturación y la oficina ejecuta el flujo auditable", async () => {
-  await request(server())
-    .post("/api/v1/issuer-settings")
-    .set("Authorization", `Bearer ${adminToken}`)
-    .send({
-      taxId: "20123456789",
-      legalName: "Yacco S.A.C.",
-      fiscalAddress: "Av. Planta 456",
-      taxRate: "18.00",
-      receiptDocumentThreshold: "700.00",
-    })
-    .expect(201);
+  await configureIssuerSettings();
 
   const receiptedSaleId = await createSale("118.00", "2026-10-14T14:00:00.000Z");
   const exemptSaleId = await createSale("25.00", "2026-10-14T15:00:00.000Z");
@@ -321,6 +325,50 @@ test("ADMIN versiona los datos de facturación y la oficina ejecuta el flujo aud
   expect(available.body.data.map(({ id }: { id: string }) => id)).toEqual(
     expect.arrayContaining([receiptedSaleId, exemptSaleId, creditNoteSaleId]),
   );
+});
+
+test("tipo, serie y número son únicos solo entre los vigentes: anular y volver a registrar el mismo papel pasa", async () => {
+  const firstSaleId = await createSale("47.20", "2026-10-14T18:00:00.000Z");
+  const secondSaleId = await createSale("12.40", "2026-10-14T18:30:00.000Z");
+  const paper = { series: "B009", number: "000777" };
+  await configureIssuerSettings();
+
+  const wrong = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(firstSaleId, { ...paper, saleIds: [firstSaleId, secondSaleId] }))
+    .expect(201);
+
+  await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(
+      receiptBody(firstSaleId, {
+        ...paper,
+        medium: ReceiptMedium.EXTERNAL_ELECTRONIC,
+        saleIds: [await createSale("5.00", "2026-10-14T18:45:00.000Z")],
+      }),
+    )
+    .expect(409);
+
+  await request(server())
+    .patch(`/api/v1/receipts/${wrong.body.id}/void`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "Se cargó con una venta de más" })
+    .expect(200);
+
+  const corrected = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(firstSaleId, paper))
+    .expect(201);
+  expect(corrected.body).toMatchObject({ ...paper, total: "47.20", voidedAt: null });
+
+  const voided = await request(server())
+    .get(`/api/v1/receipts/${wrong.body.id}`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .expect(200);
+  expect(voided.body).toMatchObject({ ...paper, status: "VOIDED" });
 });
 
 test("el alta de un comprobante gana el lock y evita que una anulación concurrente deje ambos vigentes", async () => {
