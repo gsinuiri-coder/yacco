@@ -19,7 +19,7 @@ import type {
 export const TEST_DATA_PREFIX = "PRUEBA";
 
 /** El día calendario de Lima de un instante: "en-CA" imprime AAAA-MM-DD. */
-const LIMA_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" });
+export const LIMA_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" });
 
 /** Un cargo (+) o un cobro (−) del libro de dinero de un cliente. */
 interface DebtEvent {

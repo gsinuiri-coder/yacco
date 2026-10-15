@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -11,6 +11,7 @@ import { UserRole } from "@prisma/client";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { JwtAccessGuard } from "../auth/guards/jwt-access.guard.js";
+import type { AuthenticatedRequest } from "../auth/types/authenticated-request.js";
 import { ProductionReportQueryDto } from "./dto/production-report-query.dto.js";
 import {
   CustomerDebtsReportDto,
@@ -18,9 +19,14 @@ import {
   ProductionReportDto,
   SetupChecklistDto,
 } from "./dto/report-response.dto.js";
+import { RoleDashboardDto } from "./dto/role-dashboard.dto.js";
 import { ReportsService } from "./reports.service.js";
+import { RoleDashboardService } from "./role-dashboard.service.js";
 
-/** Reportes post-MVP (HU-19, HU-20, HU-21): la spec los pide para el administrador. */
+/**
+ * Reportes post-MVP (HU-19, HU-20, HU-21): la spec los pide para el
+ * administrador. El Panel por rol es la excepción: lo pide cada rol de la web.
+ */
 @ApiTags("reports")
 @ApiBearerAuth()
 @ApiForbiddenResponse({ description: "Authenticated but missing the ADMIN role" })
@@ -28,7 +34,10 @@ import { ReportsService } from "./reports.service.js";
 @Roles(UserRole.ADMIN)
 @Controller("reports")
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly roleDashboardService: RoleDashboardService,
+  ) {}
 
   @ApiOperation({
     summary: "Deuda por cliente, con el total y la fecha del cargo más antiguo (HU-19)",
@@ -52,6 +61,17 @@ export class ReportsController {
   @Get("production")
   production(@Query() query: ProductionReportQueryDto): Promise<ProductionReportDto> {
     return this.reportsService.production(query);
+  }
+
+  @ApiOperation({
+    summary:
+      "El Panel de quien pide, según sus roles: nunca devuelve lo que ninguno de sus roles ve",
+  })
+  @ApiResponse({ status: 200, type: RoleDashboardDto })
+  @Roles(UserRole.ADMIN, UserRole.SELLER, UserRole.PLANT_SUPERVISOR, UserRole.PLANT_OPERATOR)
+  @Get("dashboard")
+  dashboard(@Req() request: AuthenticatedRequest): Promise<RoleDashboardDto> {
+    return this.roleDashboardService.dashboard(request.user);
   }
 
   @ApiOperation({

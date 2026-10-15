@@ -48,7 +48,7 @@ function toMovementResponse(movement: MovementWithRelations): ContainerMovementR
  * (AGENTS.md), so both ends are converted to their UTC instant boundary here
  * rather than compared as naive dates.
  */
-function limaDayStartUtc(date: string): Date {
+export function limaDayStartUtc(date: string): Date {
   const [year, month, day] = date.split("-").map(Number) as [number, number, number];
   return new Date(Date.UTC(year, month - 1, day, 5, 0, 0));
 }
