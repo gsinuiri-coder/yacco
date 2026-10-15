@@ -389,7 +389,7 @@ describe("Registrar comprobante", () => {
         "2026-10-13",
       );
       const reuse = screen.getByRole("checkbox", {
-        name: "Volver a asociar los adjuntos del original (talonario.jpg)",
+        name: "Volver a asociar los adjuntos del original (foto)",
       });
       expect(reuse.getAttribute("aria-checked")).toBe("true");
 

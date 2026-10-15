@@ -384,9 +384,16 @@ describe("Comprobantes", () => {
     );
   });
 
-  it("una nota de crédito manual vigente ofrece anular al ADMIN", async () => {
+  it("una nota de crédito manual vigente ofrece anular al ADMIN sin prometer liberar ventas", async () => {
     await renderDetail(CREDIT_NOTE_ID, creditNoteDetail());
-    expect(screen.getByRole("button", { name: "Anular comprobante" })).toBeTruthy();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Anular comprobante" }));
+
+    expect(
+      screen.getByText(
+        "La nota seguirá visible como anulada. El comprobante original sigue anulado: para restaurarlo, vuelve a registrarlo.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/sus ventas volverán a quedar disponibles/)).toBeNull();
   });
 
   it("una nota de crédito electrónica vigente no ofrece anular", async () => {

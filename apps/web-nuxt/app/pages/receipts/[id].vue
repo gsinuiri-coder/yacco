@@ -193,7 +193,11 @@ async function createCreditNote(): Promise<void> {
             <div>
               <h2 class="text-lg font-semibold text-highlighted">Anular comprobante</h2>
               <p class="text-sm text-muted">
-                El registro seguirá visible y sus ventas volverán a quedar disponibles.
+                {{
+                  receipt.type === "CREDIT_NOTE"
+                    ? "La nota seguirá visible como anulada. El comprobante original sigue anulado: para restaurarlo, vuelve a registrarlo."
+                    : "El registro seguirá visible y sus ventas volverán a quedar disponibles."
+                }}
               </p>
             </div>
           </template>

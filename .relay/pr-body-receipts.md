@@ -1,5 +1,57 @@
 # Comprobantes registrados
 
+Fila 8 de la Fase 3: registrar boletas, facturas y notas de crédito ya
+emitidas (talonario o electrónico fuera de Yacco), con sus ventas, adjuntos
+privados y auditoría. No emite nada a SUNAT; la emisión y las guías quedan en
+su propia fila.
+
+## Resumen
+
+- **Datos de facturación** versionados (solo ADMIN): RUC, razón social,
+  dirección fiscal, tasa de IGV y monto desde el cual la boleta exige
+  documento. Cada comprobante guarda la versión con que se registró.
+- **Registrar comprobante** (ADMIN y SELLER) sobre una o varias ventas
+  enteras del mismo cliente; total = suma de las ventas, base por renglón e
+  IGV que cuadra el total, todo `NUMERIC(10,2)` y montos como texto. Vista
+  previa antes de guardar. Factura exige RUC; boleta exige documento desde el
+  umbral. Aviso (no bloqueo) por forma de serie.
+- **Una venta, a lo sumo un comprobante vigente** (índice único parcial en
+  `receipt_sales` sobre `released_at IS NULL`); anular una venta comprobada
+  se rechaza, también desde el cobro de un accesorio.
+- **Anular** (solo ADMIN, con motivo) y **nota de crédito** (ADMIN y
+  SELLER): el original queda a la vista como anulado y sus ventas se liberan
+  una sola vez, con quién y cuándo.
+- **Corrección de las 20:00**: una nota de crédito solo se anula si es
+  manual, y la anulación la marca solo a ella; el original sigue anulado y se
+  restaura con «Volver a registrar el original» (mismo número, mismas ventas,
+  y opcionalmente los mismos adjuntos sin volver a subirlos). Una nota
+  electrónica no se anula.
+- **Tipo, serie y número únicos solo entre los vigentes** (decisión 1).
+- **«No lleva comprobante»**: marca inmutable con motivo; se libera a mano
+  (ADMIN) o al registrar un comprobante.
+- **Adjuntos** privados en almacenamiento de objetos, servidos solo con
+  sesión.
+- Web: «Datos de facturación», «Comprobantes» con filtros, detalle con
+  ventas, archivos, notas de crédito y auditoría, «Registrar comprobante» y
+  la sección de comprobantes en la ficha del cliente, con `UTable` de Nuxt UI.
+
+## Esquema y migraciones
+
+- `20261014020000_receipt_enums`, `20261014020100_receipts` y
+  `20261014082300_receipt_file_audit` son aditivas.
+- `receipt_files.created_at` y `created_by` (nullable, llenadas siempre por
+  el servicio) se agregaron con la **autorización fija de columnas de
+  auditoría** de Giancarlo (2026-10-14 08:21), en una migración nueva sin
+  editar la ya aplicada.
+- `20261014200000_receipts_active_series_number` reemplaza el índice único
+  `receipts_type_series_number_key` por uno parcial `WHERE voided_at IS NULL`:
+  es la única excepción a «nada de DROP» autorizada para esta fila (decisión 1
+  de las 19:43). Afloja una restricción; no toca columnas ni tablas.
+- `schema.prisma` sin reformateo: contra `main` son 120 líneas agregadas y
+  ninguna cambiada.
+- Fuera del dominio: `test/integration/support/test-storage.ts` se
+  reorganizó para que los tests de comprobantes levanten su propio bucket.
+
 ## Evidencia TDD acumulada
 
 ### Auditoría de adjuntos posteriores
@@ -255,6 +307,13 @@ La evidencia de anular y de la nota de crédito es la de arriba, por API.
 - «Registrar comprobante» trae todas las páginas de ventas libres. Rojo:
   «trae todas las páginas de ventas sin comprobante, no solo las primeras
   cien» (1 failed, 8 passed); verde 9/9.
+
+### Textos de la oficina en la anulación de notas y en los adjuntos reusados
+
+Rojo: «una nota de crédito manual vigente ofrece anular al ADMIN sin prometer
+liberar ventas» y «precarga los datos … y vuelve a asociar sus adjuntos» (la
+casilla mostraba el nombre interno del archivo) — 2 failed, 18 passed. Verde:
+24/24 en los tres archivos de comprobantes.
 
 ### Textos compuestos sólo por espacios
 

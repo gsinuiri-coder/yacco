@@ -56,9 +56,16 @@ const filesToReuse = computed(() => (reuseFiles.value ? reusableFiles.value : []
 const reuseLabel = computed(
   () =>
     `Volver a asociar los adjuntos del original (${reusableFiles.value
-      .map((file) => file.fileName)
-      .join(", ")})`,
+      .map((file) => fileKind(file.contentType))
+      .join(" y ")})`,
 );
+
+// The stored file name is an internal id; the office knows a file by what it is.
+function fileKind(contentType: string): string {
+  if (contentType === "application/pdf") return "PDF";
+  if (contentType === "application/xml") return "XML";
+  return "foto";
+}
 
 const saleColumns: TableColumn<ReceiptSaleStatusRow>[] = [
   { id: "select", meta: { class: { td: "w-0" } } },
