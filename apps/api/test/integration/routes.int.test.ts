@@ -3116,7 +3116,7 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId/correction", () => {
   // Anular un cobro no lo esconde de la bandeja: aparece con su monto original
   // y su `voidedAt`, para que la oficina lo vea tachado en vez de buscarlo sin
   // encontrarlo y registrarlo otra vez.
-  test("el cobro anulado por una corrección sigue apareciendo en la bandeja de cobros", async () => {
+  test("el cobro anulado por una corrección sigue apareciendo, pero queda fuera de los totales", async () => {
     const { customerId: custId, locationId: locId } = await createFreshLocation();
     const { routeId, stopId } = await routeInProgressWithStock(10, locId);
     await deliverStop(adminToken, routeId, stopId, {
@@ -3138,6 +3138,6 @@ describe("PATCH /api/v1/routes/:id/stops/:stopId/correction", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.amount).toBe("37.50");
     expect(rows[0]?.voidedAt).not.toBeNull();
-    expect(tray.body.totals).toMatchObject({ count: 1, amount: "37.50" });
+    expect(tray.body.totals).toMatchObject({ count: 0, amount: "0.00" });
   });
 });
