@@ -53,46 +53,41 @@ async function save(values: CustomerFormValues): Promise<void> {
       />
     </template>
 
-    <div class="max-w-3xl">
-      <ResourceState
-        :loading="resource.loading.value"
-        :slow="resource.slow.value"
-        :not-found="resource.notFound.value"
-        :error-message="resource.errorMessage.value"
-        noun="cliente"
-        article="el"
-        back-to="/customers"
-        back-label="Volver a clientes"
-        @retry="resource.reload"
+    <ResourceState
+      :loading="resource.loading.value"
+      :slow="resource.slow.value"
+      :not-found="resource.notFound.value"
+      :error-message="resource.errorMessage.value"
+      noun="cliente"
+      article="el"
+      back-to="/customers"
+      back-label="Volver a clientes"
+      @retry="resource.reload"
+    >
+      <CustomerForm
+        v-if="customer"
+        :initial-values="formFromCustomer(customer)"
+        submit-label="Guardar cambios"
+        :submitting="submitting"
+        :submit-error="submitError"
+        :zones="zonesIncludingAssigned(zones, customer)"
+        show-active-toggle
+        @submit="save"
+        @cancel="navigateTo('/customers')"
       >
-        <CustomerForm
-          v-if="customer"
-          :initial-values="formFromCustomer(customer)"
-          submit-label="Guardar cambios"
-          :submitting="submitting"
-          :submit-error="submitError"
-          :zones="zonesIncludingAssigned(zones, customer)"
-          show-active-toggle
-          @submit="save"
-          @cancel="navigateTo('/customers')"
-        >
-          <template #summary>
-            <div class="rounded-md bg-elevated p-4">
-              <p class="text-xs font-medium tracking-wide text-muted uppercase">Deuda actual</p>
-              <p class="mt-1 text-2xl font-semibold text-highlighted tabular-nums">
-                {{ formatDebtBalance(customer.debtBalance) }}
-              </p>
-              <p class="mt-1 text-sm text-muted">
-                Sólo lectura: se mueve con las ventas y los pagos, no desde esta pantalla. Límite de
-                crédito vigente:
-                {{
-                  customer.creditLimit === null ? "Sin límite" : formatSoles(customer.creditLimit)
-                }}.
-              </p>
-            </div>
-          </template>
-        </CustomerForm>
-      </ResourceState>
-    </div>
+        <template #summary>
+          <UPageCard
+            title="Deuda actual"
+            :description="formatDebtBalance(customer.debtBalance)"
+            icon="i-lucide-wallet-cards"
+            variant="soft"
+          >
+            Sólo lectura: se mueve con las ventas y los pagos, no desde esta pantalla. Límite de
+            crédito vigente:
+            {{ customer.creditLimit === null ? "Sin límite" : formatSoles(customer.creditLimit) }}.
+          </UPageCard>
+        </template>
+      </CustomerForm>
+    </ResourceState>
   </AppPage>
 </template>

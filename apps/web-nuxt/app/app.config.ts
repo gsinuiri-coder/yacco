@@ -22,6 +22,9 @@ export default defineAppConfig({
     form: {
       base: "space-y-6",
     },
+    pageList: {
+      base: "gap-6",
+    },
     user: {
       slots: {
         root: "min-w-0 flex-1",
