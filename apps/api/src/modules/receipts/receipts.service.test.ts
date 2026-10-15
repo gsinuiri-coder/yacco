@@ -363,7 +363,7 @@ describe("ReceiptsService transactional writes", () => {
     const OTHER_PAPER =
       "Los adjuntos solo se vuelven a asociar desde un comprobante anulado del mismo cliente, con el mismo tipo, serie y número";
 
-    function createDto() {
+    function paperDto() {
       return {
         type: ReceiptType.SALES_RECEIPT,
         medium: ReceiptMedium.MANUAL,
@@ -372,8 +372,11 @@ describe("ReceiptsService transactional writes", () => {
         issuedOn: "2026-10-14",
         customerId: CUSTOMER_ID,
         saleIds: SALE_IDS,
-        filesFromReceiptId: ORIGINAL_ID,
       };
+    }
+
+    function createDto() {
+      return { ...paperDto(), filesFromReceiptId: ORIGINAL_ID };
     }
 
     function originalRow(overrides: Record<string, unknown> = {}) {
@@ -451,12 +454,8 @@ describe("ReceiptsService transactional writes", () => {
       tx.receipt.findFirst.mockResolvedValue({ id: ORIGINAL_ID });
       const service = new ReceiptsService(buildTransactionalPrisma(tx as never) as never);
 
-      await expect(
-        service.create(
-          { ...createDto(), series: " b001 ", filesFromReceiptId: undefined },
-          USER_ID,
-        ),
-      ).rejects.toThrow(
+      // Typed by hand, without the original's files: the check is about the paper.
+      await expect(service.create({ ...paperDto(), series: " b001 " }, USER_ID)).rejects.toThrow(
         "Ese comprobante tiene una nota de crédito vigente: no se puede volver a registrar",
       );
       expect(tx.receipt.findFirst).toHaveBeenCalledWith({
