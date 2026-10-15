@@ -91,6 +91,17 @@ describe("Detalle de pedido", () => {
     expect(table.textContent).not.toContain("S/ 71.50");
   });
 
+  it("el enlace a la ficha identifica al cliente por su nombre", async () => {
+    stubGet(buildOrder());
+
+    await renderDetail();
+
+    const link = await screen.findByRole("link", {
+      name: "Ver cliente Bodega Santa Rosa",
+    });
+    expect(link.getAttribute("href")).toBe("/customers/11111111-1111-4111-8111-111111111111");
+  });
+
   it("la entrega es el día exacto y la toma, un instante en hora de Lima", async () => {
     stubGet(buildOrder({ deliveryDate: "2026-08-25", createdAt: "2026-08-21T15:00:00.000Z" }));
 

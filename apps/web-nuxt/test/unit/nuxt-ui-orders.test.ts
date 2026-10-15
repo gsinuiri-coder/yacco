@@ -29,9 +29,30 @@ describe("pedidos con Nuxt UI nativo", () => {
   );
 
   it("usa los componentes nativos para formulario, grillas y tablas", () => {
-    expect(templateOf("../../app/pages/orders/new.vue")).toContain("<UForm");
-    expect(templateOf("../../app/pages/orders/index.vue")).toContain("<UPageGrid");
-    expect(templateOf("../../app/pages/orders/[id].vue")).toContain("<UTable");
-    expect(templateOf("../../app/components/OrderLinesEditor.vue")).toContain("<UTable");
+    const list = templateOf("../../app/pages/orders/index.vue");
+    expect(list).toContain("<UPageGrid");
+    expect(list).toContain("<UFieldGroup");
+    expect(list).toContain("<UUser");
+    expect(list).toContain("<UTable");
+
+    const create = templateOf("../../app/pages/orders/new.vue");
+    expect(create).toContain("<UForm");
+    expect(create).toContain("<UPageGrid");
+    expect(create).toContain("<UFieldGroup");
+
+    const detail = templateOf("../../app/pages/orders/[id].vue");
+    expect(detail).toContain("<UPageCard");
+    expect(detail).toContain("<UFieldGroup");
+    expect(detail).toContain("<UTable");
+
+    const undelivered = templateOf("../../app/pages/orders/undelivered.vue");
+    expect(undelivered).toContain("<UPageGrid");
+    expect(undelivered).toContain("<UFieldGroup");
+    expect(undelivered).toContain("<UUser");
+    expect(undelivered).toContain("<UTable");
+
+    const editor = templateOf("../../app/components/OrderLinesEditor.vue");
+    expect(editor).toContain("<UFieldGroup");
+    expect(editor).toContain("<UTable");
   });
 });

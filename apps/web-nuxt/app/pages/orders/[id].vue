@@ -215,6 +215,7 @@ async function cancel(): Promise<void> {
               title="Cliente"
               :description="`${order.customer.name} · ${order.customer.phone}`"
               :to="`/customers/${order.customer.id}`"
+              :aria-label="`Ver cliente ${order.customer.name}`"
               variant="soft"
             />
             <UPageCard

@@ -183,13 +183,13 @@ const productPlaceholder = computed(() => {
         variant="subtle"
         :title="SLOW_REQUEST_MESSAGE"
       />
-      <template v-for="(error, index) in errors" :key="lines[index]?.key ?? index">
+      <template v-for="(line, index) in lines" :key="line.key">
         <UAlert
-          v-if="error !== undefined"
+          v-if="errors[index] !== undefined"
           role="alert"
           color="error"
           variant="subtle"
-          :title="`Producto ${index + 1}: ${error}`"
+          :title="`Producto ${index + 1}: ${errors[index]}`"
         />
       </template>
     </UPageGrid>
