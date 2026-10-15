@@ -19,7 +19,9 @@ defineProps<{
     </template>
 
     <template #body>
-      <p v-if="description" class="-mt-2 text-muted">{{ description }}</p>
+      <UDashboardToolbar v-if="description">
+        {{ description }}
+      </UDashboardToolbar>
       <slot />
     </template>
   </UDashboardPanel>
