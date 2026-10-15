@@ -189,8 +189,8 @@ async function submit(): Promise<void> {
       />
     </template>
 
-    <UCard class="max-w-5xl">
-      <form class="space-y-6" novalidate @submit.prevent="submit">
+    <UForm :state="{}" :validate-on="[]" :loading-auto="false" novalidate @submit="submit">
+      <UCard>
         <UAlert
           v-if="submitError"
           role="alert"
@@ -206,7 +206,7 @@ async function submit(): Promise<void> {
           :title="locationsError"
         />
 
-        <div class="grid gap-5 sm:grid-cols-[minmax(0,1fr)_14rem]">
+        <UPageGrid>
           <CustomerPicker
             v-model="customer"
             label="Cliente"
@@ -214,63 +214,63 @@ async function submit(): Promise<void> {
             :disabled="submitting"
           />
           <UFormField label="Fecha de entrega" name="deliveryDate">
-            <UInput v-model="deliveryDate" type="date" :disabled="submitting" class="w-full" />
+            <UInput v-model="deliveryDate" type="date" :disabled="submitting" />
           </UFormField>
-        </div>
+        </UPageGrid>
+      </UCard>
 
-        <!-- Con un solo local o sin cliente seleccionado: como hoy -->
-        <OrderLinesEditor
-          v-if="!isMultiLocation"
-          v-model="lines"
-          :customer-id="customer?.id ?? null"
-          :errors="lineErrors"
-          :disabled="submitting || loadingLocations"
-          @edited="lineEdited"
-        />
+      <!-- Con un solo local o sin cliente seleccionado: como hoy -->
+      <OrderLinesEditor
+        v-if="!isMultiLocation"
+        v-model="lines"
+        :customer-id="customer?.id ?? null"
+        :errors="lineErrors"
+        :disabled="submitting || loadingLocations"
+        @edited="lineEdited"
+      />
 
-        <!-- Con varios locales activos: editor por cada local -->
-        <div v-else class="space-y-6">
-          <SectionCard
-            v-for="loc in locations"
-            :key="loc.id"
-            :title="loc.name"
-            :description="loc.address || undefined"
-          >
-            <OrderLinesEditor
-              v-model="linesByLocation[loc.id]"
-              :customer-id="customer?.id ?? null"
-              :location-id="loc.id"
-              :label-prefix="loc.name"
-              :errors="errorsByLocation[loc.id] || []"
-              :disabled="submitting"
-              @edited="(index) => locationLineEdited(loc.id, index)"
-            />
-          </SectionCard>
-        </div>
+      <!-- Con varios locales activos: editor por cada local -->
+      <UPageGrid v-else>
+        <SectionCard
+          v-for="loc in locations"
+          :key="loc.id"
+          :title="loc.name"
+          :description="loc.address || undefined"
+        >
+          <OrderLinesEditor
+            v-model="linesByLocation[loc.id]"
+            :customer-id="customer?.id ?? null"
+            :location-id="loc.id"
+            :label-prefix="loc.name"
+            :errors="errorsByLocation[loc.id] || []"
+            :disabled="submitting"
+            @edited="(index) => locationLineEdited(loc.id, index)"
+          />
+        </SectionCard>
+      </UPageGrid>
 
-        <UAlert
-          v-if="slow && submitting"
-          role="status"
+      <UAlert
+        v-if="slow && submitting"
+        role="status"
+        color="neutral"
+        variant="subtle"
+        :title="SLOW_REQUEST_MESSAGE"
+      />
+
+      <UFieldGroup>
+        <UButton
           color="neutral"
-          variant="subtle"
-          :title="SLOW_REQUEST_MESSAGE"
+          variant="outline"
+          label="Cancelar"
+          :disabled="submitting"
+          @click="navigateTo('/orders')"
         />
-
-        <div class="flex justify-end gap-3 border-t border-default pt-5">
-          <UButton
-            color="neutral"
-            variant="outline"
-            label="Cancelar"
-            :disabled="submitting"
-            @click="navigateTo('/orders')"
-          />
-          <UButton
-            type="submit"
-            :disabled="submitting"
-            :label="submitting ? 'Guardando…' : 'Registrar pedido'"
-          />
-        </div>
-      </form>
-    </UCard>
+        <UButton
+          type="submit"
+          :disabled="submitting"
+          :label="submitting ? 'Guardando…' : 'Registrar pedido'"
+        />
+      </UFieldGroup>
+    </UForm>
   </AppPage>
 </template>
