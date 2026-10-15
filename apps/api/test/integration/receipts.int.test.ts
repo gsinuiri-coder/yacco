@@ -176,7 +176,7 @@ test("cada endpoint de comprobantes rechaza chofer y los datos fiscales son solo
     .expect(403);
 });
 
-test("ADMIN versiona los datos de facturación y la oficina ejecuta el flujo auditable", async () => {
+test("ADMIN versiona los datos de facturación y la oficina ejecuta el flujo auditable (HU-26 E5: adjunto con y sin sesión)", async () => {
   await configureIssuerSettings();
 
   const receiptedSaleId = await createSale("118.00", "2026-10-14T14:00:00.000Z");
@@ -581,6 +581,269 @@ test("volver a registrar el original se rechaza si una de sus ventas ya está en
     .send(receiptBody(reusedSaleId, { ...paper, filesFromReceiptId: original.body.id }))
     .expect(409);
   expect(rejected.body.message).toBe("Una o más ventas ya tienen un comprobante vigente");
+});
+
+async function createCustomer(
+  name: string,
+  document: { documentType: "DNI" | "RUC"; documentNumber: string } | null,
+): Promise<{ id: string; locationId: string }> {
+  const customer = await prisma.customer.create({
+    data: {
+      name,
+      ...(document ?? {}),
+      locations: {
+        create: {
+          name: "Principal",
+          address: "Av. Prueba 456",
+          addressReference: "Portón verde",
+          phone: "900000002",
+          isPrimary: true,
+        },
+      },
+    },
+    include: { locations: true },
+  });
+  return { id: customer.id, locationId: customer.locations[0]!.id };
+}
+
+async function createSaleAt(saleLocationId: string, total: string, soldAt: string) {
+  const sale = await prisma.sale.create({
+    data: { locationId: saleLocationId, total, soldAt: new Date(soldAt), recordedById: adminId },
+  });
+  return sale.id;
+}
+
+async function salesByStatus(ownerId: string, status: string): Promise<string[]> {
+  const response = await request(server())
+    .get(`/api/v1/receipts/sales?customerId=${ownerId}&status=${status}`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .expect(200);
+  return response.body.data.map(({ id }: { id: string }) => id).sort();
+}
+
+test("HU-26 E1: tres ventas de montos distintos cuadran total, base e IGV y quedan comprobadas", async () => {
+  await configureIssuerSettings();
+  const owner = await createCustomer("Cliente E1", {
+    documentType: "DNI",
+    documentNumber: "40000001",
+  });
+  const saleIds = [
+    await createSaleAt(owner.locationId, "1.00", "2026-10-14T13:00:00.000Z"),
+    await createSaleAt(owner.locationId, "1.01", "2026-10-14T13:10:00.000Z"),
+    await createSaleAt(owner.locationId, "1.04", "2026-10-14T13:20:00.000Z"),
+  ];
+
+  const created = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(saleIds[0]!, { customerId: owner.id, saleIds, number: "000901" }))
+    .expect(201);
+
+  // Base por renglón: 0.85 + 0.86 + 0.88 = 2.59; el IGV cuadra el total.
+  expect(created.body).toMatchObject({
+    total: "3.05",
+    taxableAmount: "2.59",
+    taxAmount: "0.46",
+  });
+  expect(await salesByStatus(owner.id, "RECEIPTED")).toEqual([...saleIds].sort());
+  expect(await salesByStatus(owner.id, "AVAILABLE")).toEqual([]);
+});
+
+test("HU-26 E2: una venta comprobada no entra en otro comprobante; ventas de dos clientes se rechazan", async () => {
+  await configureIssuerSettings();
+  const owner = await createCustomer("Cliente E2", {
+    documentType: "DNI",
+    documentNumber: "40000002",
+  });
+  const other = await createCustomer("Otro cliente E2", {
+    documentType: "DNI",
+    documentNumber: "40000003",
+  });
+  const saleId = await createSaleAt(owner.locationId, "20.00", "2026-10-14T13:30:00.000Z");
+  const otherSaleId = await createSaleAt(other.locationId, "15.00", "2026-10-14T13:40:00.000Z");
+  await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(saleId, { customerId: owner.id, number: "000902" }))
+    .expect(201);
+
+  const again = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(saleId, { customerId: owner.id, number: "000903" }))
+    .expect(409);
+  expect(again.body.message).toBe("Una o más ventas ya tienen un comprobante vigente");
+
+  const mixed = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(
+      receiptBody(otherSaleId, {
+        customerId: other.id,
+        number: "000904",
+        saleIds: [
+          otherSaleId,
+          await createSaleAt(owner.locationId, "3.00", "2026-10-14T13:50:00.000Z"),
+        ],
+      }),
+    )
+    .expect(400);
+  expect(mixed.body.message).toBe("Todas las ventas deben ser del mismo cliente");
+});
+
+test("la factura exige RUC y la boleta exige documento desde el monto configurado", async () => {
+  await configureIssuerSettings();
+  const anonymous = await createCustomer("Cliente sin documento", null);
+  const below = await createSaleAt(anonymous.locationId, "699.99", "2026-10-14T14:00:00.000Z");
+  const atThreshold = await createSaleAt(
+    anonymous.locationId,
+    "700.00",
+    "2026-10-14T14:10:00.000Z",
+  );
+  const dniOwner = await createCustomer("Cliente con DNI", {
+    documentType: "DNI",
+    documentNumber: "40000004",
+  });
+  const dniSale = await createSaleAt(dniOwner.locationId, "10.00", "2026-10-14T14:20:00.000Z");
+
+  await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(below, { customerId: anonymous.id, number: "000905" }))
+    .expect(201);
+  const overThreshold = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(atThreshold, { customerId: anonymous.id, number: "000906" }))
+    .expect(400);
+  expect(overThreshold.body.message).toBe(
+    "La boleta por este monto requiere documento del cliente",
+  );
+  const invoice = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(
+      receiptBody(dniSale, {
+        type: ReceiptType.INVOICE,
+        series: "F001",
+        customerId: dniOwner.id,
+        number: "000907",
+      }),
+    )
+    .expect(400);
+  expect(invoice.body.message).toBe("La factura requiere que el cliente tenga RUC");
+});
+
+test("HU-26 E3: anular libera todas las ventas una sola vez, con quién y cuándo", async () => {
+  await configureIssuerSettings();
+  const owner = await createCustomer("Cliente E3", {
+    documentType: "DNI",
+    documentNumber: "40000005",
+  });
+  const saleIds = [
+    await createSaleAt(owner.locationId, "9.00", "2026-10-14T14:30:00.000Z"),
+    await createSaleAt(owner.locationId, "6.00", "2026-10-14T14:40:00.000Z"),
+  ];
+  const created = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(saleIds[0]!, { customerId: owner.id, saleIds, number: "000908" }))
+    .expect(201);
+
+  await request(server())
+    .patch(`/api/v1/receipts/${created.body.id}/void`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "Se cargó con la fecha equivocada" })
+    .expect(200);
+  const released = await prisma.receiptSale.findMany({ where: { receiptId: created.body.id } });
+  expect(released).toHaveLength(2);
+  for (const row of released) {
+    expect(row.releasedById).toBe(adminId);
+    expect(row.releasedAt).toEqual(expect.any(Date));
+  }
+
+  const twice = await request(server())
+    .patch(`/api/v1/receipts/${created.body.id}/void`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "Otra vez" })
+    .expect(409);
+  expect(twice.body.message).toBe("El comprobante ya fue anulado");
+  await request(server())
+    .post(`/api/v1/receipts/${created.body.id}/credit-notes`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(creditNoteBody(ReceiptMedium.MANUAL, "000908"))
+    .expect(409);
+  expect(await prisma.receiptSale.findMany({ where: { receiptId: created.body.id } })).toEqual(
+    released,
+  );
+  expect(await salesByStatus(owner.id, "AVAILABLE")).toEqual([...saleIds].sort());
+});
+
+test("HU-26 E4: marcar dos ventas y comprobar una libera solo su marca; la lista coincide con las uniones vivas", async () => {
+  await configureIssuerSettings();
+  const owner = await createCustomer("Cliente E4", {
+    documentType: "DNI",
+    documentNumber: "40000006",
+  });
+  const receiptedSale = await createSaleAt(owner.locationId, "12.00", "2026-10-14T15:00:00.000Z");
+  const exemptSale = await createSaleAt(owner.locationId, "7.00", "2026-10-14T15:10:00.000Z");
+  const freeSale = await createSaleAt(owner.locationId, "4.00", "2026-10-14T15:20:00.000Z");
+
+  await request(server())
+    .post("/api/v1/receipts/exemptions")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send({ customerId: owner.id, saleIds: [receiptedSale, exemptSale], reason: "Consumo interno" })
+    .expect(201);
+  await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(receiptedSale, { customerId: owner.id, number: "000909" }))
+    .expect(201);
+
+  const exemptions = await prisma.saleReceiptExemption.findMany({
+    where: { saleId: { in: [receiptedSale, exemptSale] } },
+  });
+  expect(exemptions.find((row) => row.saleId === receiptedSale)).toMatchObject({
+    releasedById: sellerId,
+    releaseReason: "Se registró el comprobante B001-000909",
+  });
+  expect(exemptions.find((row) => row.saleId === exemptSale)).toMatchObject({
+    releasedAt: null,
+  });
+
+  await request(server())
+    .post("/api/v1/receipts/exemptions")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send({ customerId: owner.id, saleIds: [receiptedSale], reason: "Consumo interno" })
+    .expect(409);
+
+  expect(await salesByStatus(owner.id, "RECEIPTED")).toEqual([receiptedSale]);
+  expect(await salesByStatus(owner.id, "EXEMPT")).toEqual([exemptSale]);
+  expect(await salesByStatus(owner.id, "AVAILABLE")).toEqual([freeSale]);
+  const reconstructed = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT s."id" FROM "sales" s
+    JOIN "customer_locations" l ON l."id" = s."location_id"
+    WHERE l."customer_id" = ${owner.id}::uuid AND s."voided_at" IS NULL
+      AND NOT EXISTS (SELECT 1 FROM "receipt_sales" rs
+                      WHERE rs."sale_id" = s."id" AND rs."released_at" IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM "sale_receipt_exemptions" e
+                      WHERE e."sale_id" = s."id" AND e."released_at" IS NULL)
+  `;
+  expect(reconstructed.map(({ id }) => id)).toEqual([freeSale]);
+
+  const exemption = exemptions.find((row) => row.saleId === exemptSale)!;
+  await request(server())
+    .patch(`/api/v1/receipts/exemptions/${exemption.id}/release`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "Ahora pide boleta" })
+    .expect(200);
+  const releasedTwice = await request(server())
+    .patch(`/api/v1/receipts/exemptions/${exemption.id}/release`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "Otra vez" })
+    .expect(409);
+  expect(releasedTwice.body.message).toBe("La marca ya fue liberada");
+  expect(await salesByStatus(owner.id, "AVAILABLE")).toEqual([exemptSale, freeSale].sort());
 });
 
 test("el alta de un comprobante gana el lock y evita que una anulación concurrente deje ambos vigentes", async () => {

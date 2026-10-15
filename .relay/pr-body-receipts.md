@@ -168,6 +168,79 @@ pnpm test:integration -- accessories.int.test.ts
 Tests:       18 passed, 18 total
 ```
 
+### HU-26 E1–E5, umbrales, marcas, liberación única y permisos
+
+Tests de integración nuevos que citan los escenarios: E1 (tres ventas 1.00,
+1.01 y 1.04: base por renglón 2.59, IGV 0.46, total 3.05), E2 (venta
+comprobada y ventas de dos clientes), boleta bajo/sobre el umbral sin
+documento y factura sin RUC, E3 (anular libera con `released_by` y
+`released_at` reales, anular dos veces y nota sobre anulado se rechazan sin
+tocar las uniones), E4 (dos ventas marcadas, comprobar una libera solo su
+marca; la lista por estado y la reconstrucción SQL desde las uniones sin
+liberar coinciden con una venta de cada clase; liberar una marca dos veces se
+rechaza) y E5 (el flujo de adjuntos ya existente).
+
+Rojo: se revirtieron a la vez, en producción, siete reglas — redondeo por
+renglón, rechazo de venta ya comprobada, liberación de ventas al anular,
+liberación de marcas al registrar, umbral de documento, `@Roles(ADMIN)` de
+`void` y el filtro de marcas en «disponibles»:
+
+```text
+pnpm test:integration -- receipts.int.test.ts
+  ● cada endpoint de comprobantes rechaza chofer y los datos fiscales son solo ADMIN
+    expected 403 "Forbidden", got 404 "Not Found"
+  ● ADMIN versiona los datos de facturación y la oficina ejecuta el flujo auditable (HU-26 E5: adjunto con y sin sesión)
+    Expected: ArrayContaining [... tres ventas ...]
+    Received: [... dos ventas ...]
+  ● tipo, serie y número son únicos solo entre los vigentes: anular y volver a registrar el mismo papel pasa
+    expected 201 "Created", got 409 "Conflict"
+  ● anular una nota de crédito manual solo la marca: el original y sus ventas no se tocan
+    expected 403 "Forbidden", got 200 "OK"
+  ● volver a registrar el original se rechaza si una de sus ventas ya está en otro comprobante
+    Expected: "Una o más ventas ya tienen un comprobante vigente"
+    Received: "Ya existe un comprobante con ese tipo, serie y número"
+  ● HU-26 E1: tres ventas de montos distintos cuadran total, base e IGV y quedan comprobadas
+    -   "taxAmount": "0.46",
+    -   "taxableAmount": "2.59",
+    +   "taxAmount": "0.47",
+    +   "taxableAmount": "2.58",
+  ● HU-26 E2: una venta comprobada no entra en otro comprobante; ventas de dos clientes se rechazan
+    Expected: "Una o más ventas ya tienen un comprobante vigente"
+    Received: "Ya existe un comprobante con ese tipo, serie y número"
+  ● la factura exige RUC y la boleta exige documento desde el monto configurado
+    expected 400 "Bad Request", got 201 "Created"
+  ● HU-26 E3: anular libera todas las ventas una sola vez, con quién y cuándo
+    Expected: "<id del administrador>"
+    Received: null
+  ● HU-26 E4: marcar dos ventas y comprobar una libera solo su marca; la lista coincide con las uniones vivas
+    -   "releaseReason": "Se registró el comprobante B001-000909",
+    -   "releasedById": "<id del vendedor>",
+    +   "releaseReason": null,
+    +   "releasedById": null,
+Tests:       10 failed, 3 passed, 13 total
+```
+
+Como E4 cortaba antes de la lista, el filtro de «disponibles» se revirtió solo:
+
+```text
+pnpm test:integration -- receipts.int.test.ts -t "HU-26 E4"
+  ● HU-26 E4: marcar dos ventas y comprobar una libera solo su marca; la lista coincide con las uniones vivas
+    - Expected  - 0
+    + Received  + 1
+    +   "a4642724-d0b3-49ef-85d5-282bb317ffe9",
+```
+
+Verde, con producción restaurada desde git:
+
+```text
+pnpm test:integration -- receipts.int.test.ts
+Tests:       13 passed, 13 total
+```
+
+`receipts-schema.int.test.ts` sigue liberando con un UPDATE crudo: prueba
+las restricciones de la base (CHECK e índices parciales), no la anulación.
+La evidencia de anular y de la nota de crédito es la de arriba, por API.
+
 ### Textos compuestos sólo por espacios
 
 Rojo: los siete casos de razón social, dirección, serie, número y motivos no
