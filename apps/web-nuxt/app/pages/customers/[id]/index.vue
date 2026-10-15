@@ -58,7 +58,7 @@ async function onStatementChanged(): Promise<void> {
         <UPageSection as="div" orientation="horizontal">
           <template #body>
             <UCard as="section" aria-label="Datos del cliente">
-              <UPageGrid>
+              <UPageBody>
                 <UPageCard
                   title="Deuda actual"
                   :description="formatDebtBalance(customer.debtBalance)"
@@ -87,27 +87,29 @@ async function onStatementChanged(): Promise<void> {
                   </template>
                 </UPageCard>
 
-                <UPageCard title="Teléfono" :description="customer.phone" variant="soft" />
-                <UPageCard
-                  title="Zona"
-                  :description="customer.zone?.name ?? 'Sin zona'"
-                  variant="soft"
-                />
-                <UPageCard title="Dirección" variant="soft">
-                  <template #description>
-                    <LinkedText :text="customer.address" />
-                  </template>
-                  <template #footer>
-                    <LinkedText :text="customer.addressReference" />
-                  </template>
-                </UPageCard>
+                <UPageGrid>
+                  <UPageCard title="Teléfono" :description="customer.phone" variant="soft" />
+                  <UPageCard
+                    title="Zona"
+                    :description="customer.zone?.name ?? 'Sin zona'"
+                    variant="soft"
+                  />
+                  <UPageCard title="Dirección" variant="soft">
+                    <template #description>
+                      <LinkedText :text="customer.address" />
+                    </template>
+                    <template #footer>
+                      <LinkedText :text="customer.addressReference" />
+                    </template>
+                  </UPageCard>
+                </UPageGrid>
                 <UPageCard
                   v-if="customer.documentType && customer.documentNumber"
                   :title="`Documento (${customer.documentType})`"
                   :description="customer.documentNumber"
                   variant="soft"
                 >
-                  <UPageGrid v-if="customer.legalName || customer.fiscalAddress">
+                  <UPageBody v-if="customer.legalName || customer.fiscalAddress">
                     <UPageCard
                       v-if="customer.legalName"
                       title="Razón social"
@@ -120,9 +122,9 @@ async function onStatementChanged(): Promise<void> {
                       :description="customer.fiscalAddress"
                       variant="subtle"
                     />
-                  </UPageGrid>
+                  </UPageBody>
                 </UPageCard>
-              </UPageGrid>
+              </UPageBody>
             </UCard>
           </template>
 

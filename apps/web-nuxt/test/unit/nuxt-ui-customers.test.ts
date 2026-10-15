@@ -67,4 +67,15 @@ describe("clientes con Nuxt UI nativo", () => {
     expect(addressCard).toContain('<LinkedText :text="customer.address" />');
     expect(addressCard).toContain('<LinkedText :text="customer.addressReference" />');
   });
+
+  it("deja la deuda fuera del grid compacto de datos", () => {
+    const detail = templateOf("../../app/pages/customers/[id]/index.vue");
+    const overview = detail.slice(
+      detail.indexOf('aria-label="Datos del cliente"'),
+      detail.indexOf("<CustomerAccountStatementSection"),
+    );
+
+    expect(overview).toMatch(/<UPageBody>\s*<UPageCard\s+title="Deuda actual"/);
+    expect(overview.indexOf('title="Deuda actual"')).toBeLessThan(overview.indexOf("<UPageGrid>"));
+  });
 });
