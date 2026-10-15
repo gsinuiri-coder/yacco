@@ -114,7 +114,7 @@ describe("Pagos", () => {
     expect(seen[0]).toEqual({
       status: "CONFIRMED",
       paidFrom: "2026-10-14T00:00:00-05:00",
-      paidTo: "2026-10-14T23:59:59-05:00",
+      paidBefore: "2026-10-15T00:00:00-05:00",
       page: "1",
       limit: "20",
     });
@@ -136,7 +136,7 @@ describe("Pagos", () => {
 
     await renderPayments();
 
-    expect(await screen.findByText("37 pagos con este filtro · S/ 925.50")).toBeTruthy();
+    expect(await screen.findByText("37 pagos vigentes con este filtro · S/ 925.50")).toBeTruthy();
   });
 
   it("un cobro anulado sigue Pendiente, se marca, y NO ofrece Confirmar ni Rechazar", async () => {
@@ -214,7 +214,7 @@ describe("Pagos", () => {
     await fireEvent.update(screen.getByLabelText("Cobrado desde"), "2026-08-01");
     await waitFor(() => expect(seen.at(-1)?.paidFrom).toBe("2026-08-01T00:00:00-05:00"));
     await fireEvent.update(screen.getByLabelText("Cobrado hasta"), "2026-08-31");
-    await waitFor(() => expect(seen.at(-1)?.paidTo).toBe("2026-08-31T23:59:59-05:00"));
+    await waitFor(() => expect(seen.at(-1)?.paidBefore).toBe("2026-09-01T00:00:00-05:00"));
     await user.type(screen.getByLabelText("Cliente"), "aurora");
     await user.click(await screen.findByRole("option", { name: /Panadería Aurora/ }));
     await waitFor(() => expect(seen.at(-1)?.customerId).toBe("c-aurora"));

@@ -70,13 +70,13 @@ export interface CreateOfficePaymentResult {
   exceedsDebt: boolean;
 }
 
-/** PaymentTotalsDto: sums the FULL filtered set, never just the page on screen. */
+/** PaymentTotalsDto: sums active rows in the FULL filtered set, never just the page on screen. */
 export interface PaymentTotals {
   count: number;
   amount: string;
 }
 
-/** ListPaymentsQueryDto. `paidFrom`/`paidTo` are instants, not business days. */
+/** ListPaymentsQueryDto. Date bounds are instants, not business days. */
 export interface PaymentListQuery {
   page?: number;
   limit?: number;
@@ -85,6 +85,8 @@ export interface PaymentListQuery {
   customerId?: string;
   paidFrom?: string;
   paidTo?: string;
+  /** Exclusive upper bound; use this for a complete calendar day. */
+  paidBefore?: string;
   includeOpeningBalance?: boolean;
 }
 

@@ -12,6 +12,7 @@ const limaDay = (at: Date) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" }).format(at);
 const TODAY = limaDay(new Date());
 const YESTERDAY = limaDay(new Date(Date.now() - 24 * 60 * 60 * 1000));
+const TOMORROW = limaDay(new Date(Date.now() + 24 * 60 * 60 * 1000));
 /** Mediodía de Lima de un día: lejos de los bordes, cae en ese día y no en otro. */
 const limaNoon = (day: string) => new Date(`${day}T12:00:00-05:00`);
 const asDate = (day: string) => new Date(`${day}T00:00:00Z`);
@@ -218,6 +219,18 @@ beforeAll(async () => {
         ...voided,
       },
     }),
+    prisma.payment.create({
+      data: {
+        customerId,
+        paymentMethodId: cash.id,
+        // El último segundo fraccionario del día también es «de hoy».
+        paidAt: new Date(`${TODAY}T23:59:59.500-05:00`),
+        confirmedAt: new Date(`${TODAY}T23:59:59.500-05:00`),
+        amount: "1.25",
+        status: PaymentStatus.CONFIRMED,
+        recordedById: adminId,
+      },
+    }),
     prisma.sale.create({
       data: {
         locationId: location.id,
@@ -255,10 +268,10 @@ beforeAll(async () => {
         ...voided,
       },
     }),
-    // +100 −40 +30 −9: lo que mueven las filas vivas de arriba.
+    // +100 −40 +30 −9 −1.25: lo que mueven las filas vivas de arriba.
     prisma.customer.update({
       where: { id: customerId },
-      data: { debtBalance: { increment: "81.00" } },
+      data: { debtBalance: { increment: "79.75" } },
     }),
   ]);
 
@@ -352,8 +365,8 @@ describe("Panel por rol — GET /reports/dashboard", () => {
     expect(panel.today).toBe(TODAY);
     // 10.00 + 2.50 de maquila; ni la de ayer, ni el saldo inicial, ni la anulada.
     expect(panel.salesToday).toBe("12.50");
-    // Solo el efectivo de hoy: el Yape está pendiente y el cobro de 40 fue ayer.
-    expect(panel.paymentsToday).toBe("2.50");
+    // Los dos efectivos de hoy; el Yape está pendiente y el cobro de 40 fue ayer.
+    expect(panel.paymentsToday).toBe("3.75");
     expect(panel.totalDebt).toBe(debtReport.body.total);
     expect(panel.routesInProgress).toBe(1);
     expect(panel).not.toHaveProperty("ordersToday");
@@ -388,6 +401,38 @@ describe("Panel por rol — GET /reports/dashboard", () => {
       .get(`/api/v1/sales?soldFrom=${TODAY}&soldTo=${TODAY}`)
       .set("Authorization", `Bearer ${tokens.supervisor}`)
       .expect(403);
+  });
+
+  test("Pagos muestra las anuladas, pero sus totales vigentes coinciden con las tarjetas del Panel", async () => {
+    const adminPanel = await dashboardOf(adminToken);
+    const confirmed = await request(server())
+      .get(
+        `/api/v1/payments?status=CONFIRMED&paidFrom=${TODAY}T00:00:00-05:00&paidBefore=${TOMORROW}T00:00:00-05:00`,
+      )
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(confirmed.body.totals.amount).toBe(adminPanel.paymentsToday);
+    expect(confirmed.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ amount: "7.00", voidedAt: expect.any(String) }),
+        expect.objectContaining({ amount: "1.25", voidedAt: null }),
+      ]),
+    );
+
+    const sellerPanel = await dashboardOf(tokens.seller);
+    const pending = await request(server())
+      .get("/api/v1/payments?status=PENDING")
+      .set("Authorization", `Bearer ${tokens.seller}`)
+      .expect(200);
+
+    expect(pending.body.totals).toEqual(sellerPanel.pendingPayments);
+    expect(pending.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ amount: "4.00", voidedAt: expect.any(String) }),
+        expect.objectContaining({ amount: "10.00", voidedAt: null }),
+      ]),
+    );
   });
 
   test("Pedidos filtrado como Todos menos anulados coincide con el número del Panel", async () => {

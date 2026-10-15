@@ -4,8 +4,8 @@ import {
   formatInstantInLima,
   formatDebtBalance,
   formatSoles,
-  limaDayEnd,
   limaDayStart,
+  nextCalendarDay,
 } from "@yacco/shared";
 import type {
   Customer,
@@ -66,7 +66,7 @@ const list = usePagedList<PaymentRow>(
     customerId: customer.value?.id,
     // Filtran por INSTANTE: el día elegido se vuelve límite en Lima como texto.
     paidFrom: limaDayStart(paidFromDay.value),
-    paidTo: limaDayEnd(paidToDay.value),
+    paidBefore: limaDayStart(nextCalendarDay(paidToDay.value)),
   })),
 );
 
@@ -94,7 +94,7 @@ const totals = computed(
 const summary = computed(() => {
   if (totals.value === null) return list.firstLoad.value ? "Cargando…" : "";
   const { count, amount } = totals.value;
-  return `${count} ${count === 1 ? "pago" : "pagos"} con este filtro · ${formatSoles(amount)}`;
+  return `${count} ${count === 1 ? "pago vigente" : "pagos vigentes"} con este filtro · ${formatSoles(amount)}`;
 });
 
 const actingId = ref<string | null>(null);
