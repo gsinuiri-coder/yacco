@@ -202,9 +202,9 @@ const totalBorrowedCount = computed(() =>
 );
 const columns = [
   { accessorKey: "productName", header: "Accesorio" },
-  { accessorKey: "quantity", header: "Prestados" },
-  { accessorKey: "price", header: "Precio ref." },
-  { accessorKey: "actions", header: "Acciones" },
+  { accessorKey: "quantity", header: "Prestados", meta: RIGHT_ALIGNED },
+  { id: "price", header: "Precio ref.", meta: RIGHT_ALIGNED },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
 ];
 </script>
 
@@ -238,14 +238,15 @@ const columns = [
     />
 
     <UPageBody v-else>
-      <UPageCard
-        v-for="entry in locationsWithBalances"
-        :key="entry.location.id"
-        :title="entry.location.name"
-        variant="soft"
-      >
-        <template v-if="!entry.location.active" #header>
-          <UBadge color="warning" variant="subtle" label="Local retirado" />
+      <UPageCard v-for="entry in locationsWithBalances" :key="entry.location.id" variant="soft">
+        <template #title>
+          {{ entry.location.name }}
+          <UBadge
+            v-if="!entry.location.active"
+            color="warning"
+            variant="subtle"
+            label="Local retirado"
+          />
         </template>
 
         <UAlert
@@ -265,7 +266,7 @@ const columns = [
             {{ formatSoles(row.original.agreedPrice ?? row.original.listPrice) }}
           </template>
           <template #actions-cell="{ row }">
-            <UFieldGroup>
+            <div class="flex justify-end gap-2">
               <UButton
                 color="neutral"
                 variant="ghost"
@@ -281,7 +282,7 @@ const columns = [
                 label="Cobrar"
                 @click="startCharge(entry.location.id, row.original)"
               />
-            </UFieldGroup>
+            </div>
           </template>
         </UTable>
       </UPageCard>
@@ -305,6 +306,7 @@ const columns = [
           <UFormField label="Local del cliente" required>
             <USelect
               v-model="loanLocationId"
+              class="w-full"
               :items="
                 locationsWithBalances.map((e) => ({
                   label: e.location.name,
@@ -317,6 +319,7 @@ const columns = [
           <UFormField label="Accesorio" required>
             <USelect
               v-model="loanProductId"
+              class="w-full"
               :items="accessoriesCatalog.map((a) => ({ label: a.name, value: a.id }))"
             />
           </UFormField>
@@ -324,6 +327,7 @@ const columns = [
           <UFormField label="Cantidad a prestar" required>
             <UInput
               v-model="loanQuantity"
+              class="w-full"
               type="number"
               min="1"
               step="1"
@@ -332,7 +336,7 @@ const columns = [
             />
           </UFormField>
 
-          <UFieldGroup>
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -341,7 +345,7 @@ const columns = [
               @click="loanModalOpen = false"
             />
             <UButton type="submit" label="Registrar préstamo" :loading="loanSubmitting" />
-          </UFieldGroup>
+          </div>
         </UForm>
       </template>
     </UModal>
@@ -370,12 +374,13 @@ const columns = [
           <UAlert
             color="info"
             variant="soft"
-            :title="`Cantidad actualmente prestada: ${returnTargetItem?.quantity ?? 0}`"
+            :title="`Cantidad actualmente prestada: ${returnTargetItem?.quantity ?? ''}`"
           />
 
           <UFormField label="Cantidad a devolver a planta" required>
             <UInput
               v-model="returnQuantity"
+              class="w-full"
               type="number"
               min="1"
               step="1"
@@ -383,7 +388,7 @@ const columns = [
             />
           </UFormField>
 
-          <UFieldGroup>
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -392,7 +397,7 @@ const columns = [
               @click="returnModalOpen = false"
             />
             <UButton type="submit" label="Registrar devolución" :loading="returnSubmitting" />
-          </UFieldGroup>
+          </div>
         </UForm>
       </template>
     </UModal>
@@ -427,6 +432,7 @@ const columns = [
           <UFormField label="Cantidad a cobrar" required>
             <UInput
               v-model="chargeQuantity"
+              class="w-full"
               type="number"
               min="1"
               :max="chargeTargetItem?.quantity"
@@ -442,6 +448,7 @@ const columns = [
           >
             <UInput
               v-model="chargeReason"
+              class="w-full"
               placeholder="Motivo del cobro"
               :disabled="chargeSubmitting"
             />
@@ -450,6 +457,7 @@ const columns = [
           <UFormField label="Precio unitario" help="Precio a cobrar por cada unidad">
             <UInput
               v-model="chargeUnitPrice"
+              class="w-full"
               inputmode="decimal"
               placeholder="35.00"
               :disabled="chargeSubmitting"
@@ -458,7 +466,7 @@ const columns = [
             </UInput>
           </UFormField>
 
-          <UFieldGroup>
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -472,7 +480,7 @@ const columns = [
               label="Cobrar accesorio"
               :loading="chargeSubmitting"
             />
-          </UFieldGroup>
+          </div>
         </UForm>
       </template>
     </UModal>

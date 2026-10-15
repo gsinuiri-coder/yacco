@@ -285,10 +285,10 @@ const movementColumns = [
   { accessorKey: "occurredAt", header: "Fecha" },
   { accessorKey: "type", header: "Tipo" },
   { accessorKey: "containerTypeName", header: "Envase" },
-  { accessorKey: "quantity", header: "Cant." },
-  { accessorKey: "saleTotal", header: "Cargo S/" },
+  { accessorKey: "quantity", header: "Cant.", meta: RIGHT_ALIGNED },
+  { accessorKey: "saleTotal", header: "Cargo S/", meta: RIGHT_ALIGNED },
   { accessorKey: "recordedByName", header: "Registrado por" },
-  { accessorKey: "actions", header: "Acciones" },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
 ];
 </script>
 
@@ -320,7 +320,10 @@ const movementColumns = [
     />
 
     <UPageBody v-else>
-      <UPageCard title="Saldos actuales de maquila" variant="soft">
+      <UPageCard variant="soft">
+        <template #title>
+          <h3>Saldos actuales de maquila</h3>
+        </template>
         <UAlert
           v-if="balances.length === 0"
           color="neutral"
@@ -331,14 +334,11 @@ const movementColumns = [
           <UPageCard
             v-for="balance in balances"
             :key="balance.containerTypeId"
+            as="li"
             :title="balance.containerTypeName"
-            description="Precio de maquila"
             variant="soft"
           >
-            <span>{{
-              balance.unitPrice != null ? formatSoles(balance.unitPrice) : "Sin precio registrado"
-            }}</span>
-            <UFieldGroup>
+            <div class="flex flex-wrap items-center gap-2">
               <UBadge
                 :color="balance.emptyAtPlant > 0 ? 'info' : 'neutral'"
                 variant="subtle"
@@ -349,7 +349,13 @@ const movementColumns = [
                 variant="subtle"
                 :label="`${balance.fullToReturn} llenos por devolver`"
               />
-            </UFieldGroup>
+            </div>
+            <p>
+              Precio de maquila:
+              <span>{{
+                balance.unitPrice != null ? formatSoles(balance.unitPrice) : "Sin precio registrado"
+              }}</span>
+            </p>
             <template v-if="balance.fullToReturn > 0" #footer>
               <UButton
                 size="sm"
@@ -362,21 +368,22 @@ const movementColumns = [
         </UPageList>
       </UPageCard>
 
-      <UPageCard v-if="movements.length > 0" title="Movimientos de maquila" variant="soft">
+      <UPageCard v-if="movements.length > 0" variant="soft">
+        <template #title>
+          <h3>Movimientos de maquila</h3>
+        </template>
         <UTable :data="movements" :columns="movementColumns" caption="Movimientos de maquila">
           <template #occurredAt-cell="{ row }">
             {{ formatInstantInLima(row.original.occurredAt) }}
           </template>
           <template #type-cell="{ row }">
-            <UFieldGroup>
-              <UBadge
-                :color="TYPE_CONFIG[row.original.type].color"
-                variant="subtle"
-                size="xs"
-                :label="TYPE_CONFIG[row.original.type].label"
-              />
-              <span v-if="row.original.reason">Motivo: {{ row.original.reason }}</span>
-            </UFieldGroup>
+            <UBadge
+              :color="TYPE_CONFIG[row.original.type].color"
+              variant="subtle"
+              size="xs"
+              :label="TYPE_CONFIG[row.original.type].label"
+            />
+            <p v-if="row.original.reason">Motivo: {{ row.original.reason }}</p>
           </template>
           <template #saleTotal-cell="{ row }">
             {{ row.original.saleTotal ? formatSoles(row.original.saleTotal) : "—" }}
@@ -411,6 +418,7 @@ const movementColumns = [
           <UFormField label="Tipo de envase" required>
             <USelect
               v-model="receiveContainerTypeId"
+              class="w-full"
               :items="containerTypes.map((t) => ({ label: t.name, value: t.id }))"
               :disabled="receiveSubmitting"
             />
@@ -419,6 +427,7 @@ const movementColumns = [
           <UFormField label="Cantidad de vacíos dejados" required>
             <UInput
               v-model="receiveQuantity"
+              class="w-full"
               type="number"
               :min="1"
               :step="1"
@@ -426,7 +435,7 @@ const movementColumns = [
             />
           </UFormField>
 
-          <UFieldGroup>
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -435,7 +444,7 @@ const movementColumns = [
               @click="receiveModalOpen = false"
             />
             <UButton type="submit" label="Registrar recepción" :loading="receiveSubmitting" />
-          </UFieldGroup>
+          </div>
         </UForm>
       </template>
     </UModal>
@@ -452,24 +461,20 @@ const movementColumns = [
             :title="returnError"
           />
 
-          <UPageCard
-            v-if="targetBalance"
-            :title="targetBalance.containerTypeName"
-            :description="`${targetBalance.fullToReturn} llenos disponibles para devolver`"
-            variant="soft"
-          >
-            <UAlert
-              :color="effectiveUnitPrice ? 'info' : 'warning'"
-              variant="soft"
-              title="Precio unitario de maquila"
-              :description="
-                effectivePriceLoading
-                  ? 'Consultando precio…'
-                  : effectiveUnitPrice
-                    ? formatSoles(effectiveUnitPrice)
-                    : 'Falta el precio de maquila de este cliente'
-              "
-            />
+          <UPageCard v-if="targetBalance" variant="soft">
+            <p>
+              Envase: <span>{{ targetBalance.containerTypeName }}</span>
+            </p>
+            <p>
+              Llenos disponibles para devolver:
+              <span>{{ targetBalance.fullToReturn }}</span>
+            </p>
+            <p>
+              Precio unitario de maquila:
+              <span v-if="effectivePriceLoading">Consultando precio…</span>
+              <span v-else-if="effectiveUnitPrice">{{ formatSoles(effectiveUnitPrice) }}</span>
+              <span v-else class="text-error">Falta el precio de maquila de este cliente</span>
+            </p>
           </UPageCard>
 
           <UAlert
@@ -484,6 +489,7 @@ const movementColumns = [
           <UFormField label="Cantidad que se lleva" required>
             <UInput
               v-model="returnQuantity"
+              class="w-full"
               type="number"
               :min="1"
               :max="targetBalance?.fullToReturn"
@@ -496,13 +502,14 @@ const movementColumns = [
             v-if="effectiveUnitPrice"
             color="info"
             variant="soft"
-            title="Total a cobrar por el servicio"
+            title="Total a cobrar por el servicio:"
             :description="formatSoles(returnAmount || '0.00')"
           />
 
           <UFormField v-if="locations.length > 0" label="Local del cliente (opcional)">
             <USelect
               v-model="returnLocationId"
+              class="w-full"
               :items="locations.map((location) => ({ label: location.name, value: location.id }))"
               :disabled="returnSubmitting"
             />
@@ -531,20 +538,26 @@ const movementColumns = [
               <UFormField label="Medio de pago" required>
                 <USelect
                   v-model="returnPaymentMethodId"
+                  class="w-full"
                   :items="paymentMethods.map((m) => ({ label: m.name, value: m.id }))"
                   :disabled="returnSubmitting"
                 />
               </UFormField>
 
               <UFormField label="Monto cobrado" required>
-                <UInput v-model="returnAmount" inputmode="decimal" :disabled="returnSubmitting">
+                <UInput
+                  v-model="returnAmount"
+                  class="w-full"
+                  inputmode="decimal"
+                  :disabled="returnSubmitting"
+                >
                   <template #leading><span>S/</span></template>
                 </UInput>
               </UFormField>
             </UPageBody>
           </UPageCard>
 
-          <UFieldGroup>
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -558,7 +571,7 @@ const movementColumns = [
               :loading="returnSubmitting"
               :disabled="effectivePriceLoading || !effectiveUnitPrice"
             />
-          </UFieldGroup>
+          </div>
         </UForm>
       </template>
     </UModal>
@@ -578,12 +591,13 @@ const movementColumns = [
           <UFormField label="Motivo de la anulación" required>
             <UInput
               v-model="voidReason"
+              class="w-full"
               placeholder="Ej. Error en la cantidad anotada"
               :disabled="voidSubmitting"
             />
           </UFormField>
 
-          <UFieldGroup>
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -597,7 +611,7 @@ const movementColumns = [
               label="Anular movimiento"
               :loading="voidSubmitting"
             />
-          </UFieldGroup>
+          </div>
         </UForm>
       </template>
     </UModal>

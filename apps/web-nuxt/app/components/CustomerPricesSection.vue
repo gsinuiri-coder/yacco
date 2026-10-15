@@ -59,12 +59,12 @@ const chosenProduct = computed(() =>
 );
 const adminColumns = [
   { accessorKey: "product", header: "Producto" },
-  { accessorKey: "price", header: "Precio" },
-  { accessorKey: "actions", header: "Acciones" },
+  { accessorKey: "price", header: "Precio", meta: RIGHT_ALIGNED },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
 ];
 const effectiveColumns = [
   { accessorKey: "product", header: "Producto" },
-  { accessorKey: "price", header: "Precio" },
+  { accessorKey: "price", header: "Precio", meta: RIGHT_ALIGNED },
   { accessorKey: "source", header: "Origen" },
 ];
 
@@ -206,6 +206,7 @@ async function confirmDelete(priceId: string): Promise<void> {
           <UFormField label="Producto" name="newPriceProduct">
             <USelect
               v-model="newProductId"
+              class="w-full"
               :items="productItems"
               placeholder="Selecciona un producto"
               :disabled="creating"
@@ -220,13 +221,14 @@ async function confirmDelete(priceId: string): Promise<void> {
           >
             <UInput
               v-model="newPrice"
+              class="w-full"
               inputmode="decimal"
               placeholder="12.50"
               :disabled="creating"
             />
           </UFormField>
         </UPageGrid>
-        <UFieldGroup>
+        <div class="flex justify-end gap-2">
           <UButton
             color="neutral"
             variant="ghost"
@@ -239,7 +241,7 @@ async function confirmDelete(priceId: string): Promise<void> {
             :disabled="creating"
             :label="creating ? 'Guardando…' : 'Guardar precio'"
           />
-        </UFieldGroup>
+        </div>
       </UForm>
 
       <UAlert
@@ -257,6 +259,7 @@ async function confirmDelete(priceId: string): Promise<void> {
           <UInput
             v-if="editingId === row.original.id"
             v-model="editPrice"
+            class="w-32"
             :aria-label="`Precio de ${row.original.product.name}`"
             inputmode="decimal"
             :disabled="saving"
@@ -264,67 +267,68 @@ async function confirmDelete(priceId: string): Promise<void> {
           <template v-else>{{ formatSoles(row.original.price) }}</template>
         </template>
         <template #actions-cell="{ row }">
-          <UPageBody>
-            <UFieldGroup v-if="deletingId === row.original.id">
-              <span>¿Eliminar? Volverá a regir el precio de lista.</span>
-              <UButton
-                color="neutral"
-                variant="outline"
-                size="sm"
-                label="No"
-                :disabled="saving"
-                @click="deletingId = null"
-              />
-              <UButton
-                color="error"
-                size="sm"
-                :disabled="saving"
-                :label="saving ? 'Eliminando…' : 'Sí, eliminar'"
-                @click="confirmDelete(row.original.id)"
-              />
-            </UFieldGroup>
-            <UFieldGroup v-else-if="editingId === row.original.id">
-              <UButton
-                color="neutral"
-                variant="outline"
-                size="sm"
-                label="Cancelar"
-                :disabled="saving"
-                @click="editingId = null"
-              />
-              <UButton
-                size="sm"
-                :disabled="saving"
-                :label="saving ? 'Guardando…' : 'Guardar'"
-                @click="saveEdit(row.original.id)"
-              />
-            </UFieldGroup>
-            <UFieldGroup v-else>
-              <UButton
-                color="neutral"
-                variant="ghost"
-                size="sm"
-                label="Editar"
-                :aria-label="`Editar precio de ${row.original.product.name}`"
-                @click="startEdit(row.original)"
-              />
-              <UButton
-                color="neutral"
-                variant="ghost"
-                size="sm"
-                label="Eliminar"
-                :aria-label="`Eliminar precio de ${row.original.product.name}`"
-                @click="startDelete(row.original.id)"
-              />
-            </UFieldGroup>
-            <UAlert
-              v-if="rowError?.priceId === row.original.id"
-              role="alert"
-              color="error"
-              variant="subtle"
-              :title="rowError.message"
+          <div
+            v-if="deletingId === row.original.id"
+            class="flex flex-wrap items-center justify-end gap-2"
+          >
+            <span>¿Eliminar? Volverá a regir el precio de lista.</span>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              label="No"
+              :disabled="saving"
+              @click="deletingId = null"
             />
-          </UPageBody>
+            <UButton
+              color="error"
+              size="sm"
+              :disabled="saving"
+              :label="saving ? 'Eliminando…' : 'Sí, eliminar'"
+              @click="confirmDelete(row.original.id)"
+            />
+          </div>
+          <div v-else-if="editingId === row.original.id" class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              label="Cancelar"
+              :disabled="saving"
+              @click="editingId = null"
+            />
+            <UButton
+              size="sm"
+              :disabled="saving"
+              :label="saving ? 'Guardando…' : 'Guardar'"
+              @click="saveEdit(row.original.id)"
+            />
+          </div>
+          <div v-else class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              label="Editar"
+              :aria-label="`Editar precio de ${row.original.product.name}`"
+              @click="startEdit(row.original)"
+            />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              label="Eliminar"
+              :aria-label="`Eliminar precio de ${row.original.product.name}`"
+              @click="startDelete(row.original.id)"
+            />
+          </div>
+          <UAlert
+            v-if="rowError?.priceId === row.original.id"
+            role="alert"
+            color="error"
+            variant="subtle"
+            :title="rowError.message"
+          />
         </template>
       </UTable>
     </UPageBody>
@@ -338,11 +342,8 @@ async function confirmDelete(priceId: string): Promise<void> {
       <template #product-cell="{ row }">{{ row.original.product.name }}</template>
       <template #price-cell="{ row }">{{ formatSoles(row.original.price) }}</template>
       <template #source-cell="{ row }">
-        <UBadge
-          :color="row.original.source === 'LIST' ? 'neutral' : 'info'"
-          variant="subtle"
-          :label="row.original.source === 'LIST' ? 'Precio de lista' : 'Pactado'"
-        />
+        <template v-if="row.original.source === 'LIST'">Precio de lista</template>
+        <UBadge v-else color="info" variant="subtle" label="Pactado" />
       </template>
     </UTable>
   </SectionCard>

@@ -32,26 +32,26 @@ const caption = computed(() => {
   return "Ventas sin comprobante";
 });
 
-const RIGHT = { class: { th: "text-right", td: "text-right" } };
-
 const columns = computed<TableColumn<ReceiptSaleStatusRow>[]>(() => {
   const sale: TableColumn<ReceiptSaleStatusRow>[] = [
     { accessorKey: "soldAt", header: "Venta" },
     { accessorKey: "location", header: "Local" },
-    { accessorKey: "total", header: "Total", meta: RIGHT },
+    { accessorKey: "total", header: "Total", meta: RIGHT_ALIGNED },
   ];
   if (status.value === "AVAILABLE") {
     return [
-      { id: "select", meta: { class: { td: "w-0" } } },
+      { id: "select", header: hiddenHeader("Elegir"), meta: SHRINK_TO_CONTENT },
       ...sale,
-      { id: "register", meta: RIGHT },
+      { id: "register", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
     ];
   }
   if (status.value === "RECEIPTED") return [...sale, { id: "receipt", header: "Comprobante" }];
   return [
     ...sale,
     { id: "exemption", header: "Motivo" },
-    ...(props.isAdmin ? [{ id: "release", meta: RIGHT }] : []),
+    ...(props.isAdmin
+      ? [{ id: "release", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+      : []),
   ];
 });
 
@@ -176,14 +176,11 @@ async function releaseExemption(exemptionId: string): Promise<void> {
       <UAlert v-if="loadError" role="status" color="error" variant="subtle" :title="loadError" />
       <UAlert v-if="error" role="alert" color="error" variant="subtle" :title="error" />
 
-      <UAlert
-        v-if="loading"
-        role="status"
-        color="neutral"
-        variant="soft"
-        icon="i-lucide-loader-circle"
-        title="Cargando ventas…"
-      />
+      <UAlert v-if="loading" role="status" color="neutral" variant="soft" title="Cargando ventas…">
+        <template #leading>
+          <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
+        </template>
+      </UAlert>
       <UAlert v-else-if="rows.length === 0" color="neutral" variant="soft" :title="emptyTitle" />
 
       <template v-else>
@@ -247,9 +244,9 @@ async function releaseExemption(exemptionId: string): Promise<void> {
         <UPageCard v-if="status === 'AVAILABLE'" variant="soft">
           <UPageBody v-if="marking">
             <UFormField label="Motivo para marcar las ventas" required>
-              <UTextarea v-model="markReason" :rows="2" :disabled="saving" />
+              <UTextarea v-model="markReason" class="w-full" :rows="2" :disabled="saving" />
             </UFormField>
-            <UFieldGroup>
+            <div class="flex justify-end gap-2">
               <UButton
                 color="neutral"
                 variant="outline"
@@ -263,7 +260,7 @@ async function releaseExemption(exemptionId: string): Promise<void> {
                 :disabled="saving"
                 @click="markExempt"
               />
-            </UFieldGroup>
+            </div>
           </UPageBody>
           <UButton
             v-else
@@ -278,9 +275,9 @@ async function releaseExemption(exemptionId: string): Promise<void> {
         <UPageCard v-if="status === 'EXEMPT' && releasingId" variant="soft">
           <UPageBody>
             <UFormField label="Motivo para liberar la marca" required>
-              <UTextarea v-model="releaseReason" :rows="2" :disabled="saving" />
+              <UTextarea v-model="releaseReason" class="w-full" :rows="2" :disabled="saving" />
             </UFormField>
-            <UFieldGroup>
+            <div class="flex justify-end gap-2">
               <UButton
                 color="neutral"
                 variant="outline"
@@ -294,7 +291,7 @@ async function releaseExemption(exemptionId: string): Promise<void> {
                 :disabled="saving"
                 @click="releaseExemption(releasingId)"
               />
-            </UFieldGroup>
+            </div>
           </UPageBody>
         </UPageCard>
       </template>

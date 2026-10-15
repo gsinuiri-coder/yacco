@@ -127,17 +127,24 @@ async function submit(): Promise<void> {
         :title="`Cobro registrado. Deuda actual: ${formatDebtBalance(result.debtBalance)}.`"
       />
 
-      <UPageGrid>
+      <div class="grid gap-4 sm:grid-cols-[1fr_12rem_auto] sm:items-end">
         <UFormField label="Método de pago" name="paymentMethod">
           <USelect
             v-model="methodId"
+            class="w-full"
             :items="methodItems"
             placeholder="Selecciona un método"
             :disabled="submitting"
           />
         </UFormField>
         <UFormField label="Monto" name="paymentAmount">
-          <UInput v-model="amount" inputmode="decimal" placeholder="12.50" :disabled="submitting">
+          <UInput
+            v-model="amount"
+            class="w-full"
+            inputmode="decimal"
+            placeholder="12.50"
+            :disabled="submitting"
+          >
             <template #leading><span>S/</span></template>
           </UInput>
         </UFormField>
@@ -147,7 +154,7 @@ async function submit(): Promise<void> {
           :loading="submitting"
           :label="submitting ? 'Registrando…' : 'Registrar cobro'"
         />
-      </UPageGrid>
+      </div>
     </UForm>
   </SectionCard>
 </template>

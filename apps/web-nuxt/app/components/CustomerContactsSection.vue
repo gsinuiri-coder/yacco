@@ -131,6 +131,7 @@ async function removeContact(contactId: string): Promise<void> {
       <UPageCard
         v-for="contact in contacts"
         :key="contact.id"
+        as="li"
         :title="contact.name"
         :description="contact.phone || 'Sin teléfono'"
         variant="soft"
@@ -166,19 +167,25 @@ async function removeContact(contactId: string): Promise<void> {
             required
             :error="addError && !newName.trim() ? addError : undefined"
           >
-            <UInput v-model="newName" placeholder="Nombre de la persona" autocomplete="off" />
+            <UInput
+              v-model="newName"
+              class="w-full"
+              placeholder="Nombre de la persona"
+              autocomplete="off"
+            />
           </UFormField>
 
           <UFormField label="Teléfono (opcional)">
             <UInput
               v-model="newPhone"
+              class="w-full"
               type="tel"
               placeholder="Teléfono o celular"
               autocomplete="off"
             />
           </UFormField>
 
-          <UFieldGroup>
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -187,7 +194,7 @@ async function removeContact(contactId: string): Promise<void> {
               @click="addModalOpen = false"
             />
             <UButton type="submit" label="Guardar contacto" :loading="adding" />
-          </UFieldGroup>
+          </div>
         </UForm>
       </template>
     </UModal>

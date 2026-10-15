@@ -127,7 +127,7 @@ function mapsUrl(draft: LocationDraft): string | null {
       @retry="load"
     />
 
-    <UPageList v-else>
+    <UPageBody v-else>
       <fieldset v-for="draft in drafts" :key="draft.location.id">
         <legend>{{ draft.location.name }}</legend>
         <UPageCard variant="soft">
@@ -161,6 +161,7 @@ function mapsUrl(draft: LocationDraft): string | null {
               >
                 <UInput
                   v-model="draft.contactName"
+                  class="w-full"
                   autocomplete="name"
                   placeholder="Ej. Rosa Quispe"
                   :disabled="draft.submitting"
@@ -173,6 +174,7 @@ function mapsUrl(draft: LocationDraft): string | null {
               >
                 <UInput
                   v-model="draft.locationInput"
+                  class="w-full"
                   placeholder="-12.046374, -77.042793"
                   :disabled="draft.submitting"
                   @update:model-value="markDirty(draft)"
@@ -180,12 +182,8 @@ function mapsUrl(draft: LocationDraft): string | null {
               </UFormField>
             </UPageGrid>
 
-            <UAlert
-              color="info"
-              variant="soft"
-              description="Pega un enlace de Google Maps, incluso abreviado, o escribe latitud, longitud."
-            />
-            <UFieldGroup>
+            <p>Pega un enlace de Google Maps, incluso abreviado, o escribe latitud, longitud.</p>
+            <div class="flex flex-wrap gap-2">
               <UButton
                 type="submit"
                 icon="i-lucide-map-pin-check"
@@ -204,7 +202,7 @@ function mapsUrl(draft: LocationDraft): string | null {
                 icon="i-lucide-map"
                 label="Abrir en Maps"
               />
-            </UFieldGroup>
+            </div>
           </UForm>
 
           <CustomerLocationPhotos
@@ -215,6 +213,6 @@ function mapsUrl(draft: LocationDraft): string | null {
           />
         </UPageCard>
       </fieldset>
-    </UPageList>
+    </UPageBody>
   </SectionCard>
 </template>

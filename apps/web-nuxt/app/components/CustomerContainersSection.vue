@@ -74,44 +74,40 @@ const countLink = computed(() => `/container-counts?customerId=${props.customerI
     />
 
     <UPageList v-else>
-      <li v-for="row in rows" :key="row.location.id">
-        <UPageCard
-          :title="row.location.name"
-          :description="
-            row.containers.length > 0
-              ? describeContainers(row.containers)
-              : 'Sin envases registrados'
-          "
-          variant="soft"
-        >
-          <UFieldGroup>
-            <UBadge
-              v-if="!row.location.active"
-              color="warning"
-              variant="subtle"
-              label="Ubicación retirada"
-            />
-            <UBadge
-              v-if="row.containers.some((container) => container.quantity < 0)"
-              color="error"
-              variant="subtle"
-              label="Entrega sin registrar"
-            />
-          </UFieldGroup>
+      <UPageCard
+        v-for="row in rows"
+        :key="row.location.id"
+        as="li"
+        :description="
+          row.containers.length > 0 ? describeContainers(row.containers) : 'Sin envases registrados'
+        "
+        variant="soft"
+      >
+        <template #title>
+          {{ row.location.name }}
+          <UBadge
+            v-if="!row.location.active"
+            color="warning"
+            variant="subtle"
+            label="Ubicación retirada"
+          />
+        </template>
+        <div class="flex flex-wrap items-center gap-2">
+          <UBadge
+            v-if="row.containers.some((container) => container.quantity < 0)"
+            color="error"
+            variant="subtle"
+            label="Entrega sin registrar"
+          />
           <UBadge
             v-if="row.lastCountedAt === null"
             color="info"
             variant="subtle"
             label="Sin contar"
           />
-          <UAlert
-            v-else
-            color="neutral"
-            variant="soft"
-            :title="`Contado el ${formatInstantInLima(row.lastCountedAt)}`"
-          />
-        </UPageCard>
-      </li>
+          <p v-else>Contado el {{ formatInstantInLima(row.lastCountedAt) }}</p>
+        </div>
+      </UPageCard>
     </UPageList>
   </SectionCard>
 </template>
