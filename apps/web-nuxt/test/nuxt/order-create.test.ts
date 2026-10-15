@@ -267,6 +267,23 @@ describe("Nuevo pedido", () => {
     ).toBe(true);
   });
 
+  it("quitar una línea inválida también quita su aviso", async () => {
+    stubCatalog({ "c-aurora": [] });
+    stubCreate();
+    const user = userEvent.setup();
+
+    await renderCreate();
+    await pickCustomer(user, AURORA);
+    await pickProduct(user, 1, "Recarga 20L");
+    await user.click(screen.getByRole("button", { name: "Agregar producto" }));
+    await user.click(screen.getByRole("button", { name: "Registrar pedido" }));
+
+    expect(await screen.findByText("Producto 2: Elige un producto")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Quitar producto 2" }));
+
+    expect(screen.queryByText("Producto 2: Elige un producto")).toBeNull();
+  });
+
   it("el 400 de la API se muestra sin perder lo ya elegido", async () => {
     stubCatalog({ "c-aurora": [] });
     stubCreate((event) => {

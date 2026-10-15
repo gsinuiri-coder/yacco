@@ -7,6 +7,7 @@ import {
   timesQuantity,
 } from "@yacco/shared";
 import type { Order } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 const route = useRoute();
 const orderId = String(route.params.id);
@@ -30,6 +31,18 @@ const rescheduleDeliveryDate = ref("");
 const rescheduleError = ref<string | null>(null);
 const rescheduleNotice = ref<string | null>(null);
 const slowReschedule = useSlowRequest(rescheduling);
+
+type OrderItem = Order["items"][number];
+const itemColumns: TableColumn<OrderItem>[] = [
+  { id: "product", header: "Producto", footer: "Total" },
+  { accessorKey: "quantity", header: "Cantidad", footer: "" },
+  { accessorKey: "unitPrice", header: "Precio unitario", footer: "" },
+  {
+    id: "subtotal",
+    header: "Subtotal",
+    footer: () => (order.value ? formatSoles(order.value.total) : ""),
+  },
+];
 
 function startReschedule(): void {
   if (order.value) {
@@ -99,266 +112,240 @@ async function cancel(): Promise<void> {
       />
     </template>
 
-    <div class="max-w-4xl space-y-4">
+    <UAlert
+      v-if="cancelNotice"
+      role="status"
+      color="info"
+      variant="subtle"
+      icon="i-lucide-info"
+      :title="cancelNotice"
+    />
+    <UAlert v-if="cancelError" role="alert" color="error" variant="subtle" :title="cancelError" />
+
+    <UAlert
+      v-if="rescheduleNotice"
+      role="status"
+      color="info"
+      variant="subtle"
+      icon="i-lucide-info"
+      :title="rescheduleNotice"
+    />
+    <UAlert
+      v-if="rescheduleError"
+      role="alert"
+      color="error"
+      variant="subtle"
+      :title="rescheduleError"
+    />
+
+    <ResourceState
+      :loading="resource.loading.value"
+      :slow="resource.slow.value"
+      :not-found="resource.notFound.value"
+      :error-message="resource.errorMessage.value"
+      noun="pedido"
+      article="el"
+      back-to="/orders"
+      back-label="Volver a pedidos"
+      @retry="resource.reload"
+    >
       <UAlert
-        v-if="cancelNotice"
+        v-if="order && order.rescheduledTo"
         role="status"
         color="info"
         variant="subtle"
-        icon="i-lucide-info"
-        :title="cancelNotice"
-      />
-      <UAlert v-if="cancelError" role="alert" color="error" variant="subtle" :title="cancelError" />
-
-      <UAlert
-        v-if="rescheduleNotice"
-        role="status"
-        color="info"
-        variant="subtle"
-        icon="i-lucide-info"
-        :title="rescheduleNotice"
-      />
-      <UAlert
-        v-if="rescheduleError"
-        role="alert"
-        color="error"
-        variant="subtle"
-        :title="rescheduleError"
-      />
-
-      <ResourceState
-        :loading="resource.loading.value"
-        :slow="resource.slow.value"
-        :not-found="resource.notFound.value"
-        :error-message="resource.errorMessage.value"
-        noun="pedido"
-        article="el"
-        back-to="/orders"
-        back-label="Volver a pedidos"
-        @retry="resource.reload"
+        icon="i-lucide-calendar-arrow-up"
+        :title="`Reprogramado para ${formatCalendarDay(order.rescheduledTo.deliveryDate)}`"
       >
-        <UAlert
-          v-if="order && order.rescheduledTo"
-          role="status"
-          color="info"
-          variant="subtle"
-          icon="i-lucide-calendar-arrow-up"
-          :title="`Reprogramado para ${formatCalendarDay(order.rescheduledTo.deliveryDate)}`"
-          class="mb-4"
-        >
-          <template #description>
-            <NuxtLink
-              :to="`/orders/${order.rescheduledTo.id}`"
-              class="font-medium text-primary hover:underline"
-            >
-              Ver nuevo pedido
-            </NuxtLink>
-          </template>
-        </UAlert>
+        <template #actions>
+          <UButton
+            :to="`/orders/${order.rescheduledTo.id}`"
+            color="info"
+            variant="link"
+            label="Ver nuevo pedido"
+          />
+        </template>
+      </UAlert>
 
-        <UAlert
-          v-if="order && order.rescheduledFrom"
-          role="status"
-          color="info"
-          variant="subtle"
-          icon="i-lucide-calendar-arrow-down"
-          :title="`Reprogramación del pedido del ${formatCalendarDay(order.rescheduledFrom.deliveryDate)}`"
-          class="mb-4"
-        >
-          <template #description>
-            <NuxtLink
-              :to="`/orders/${order.rescheduledFrom.id}`"
-              class="font-medium text-primary hover:underline"
-            >
-              Ver pedido original
-            </NuxtLink>
-          </template>
-        </UAlert>
+      <UAlert
+        v-if="order && order.rescheduledFrom"
+        role="status"
+        color="info"
+        variant="subtle"
+        icon="i-lucide-calendar-arrow-down"
+        :title="`Reprogramación del pedido del ${formatCalendarDay(order.rescheduledFrom.deliveryDate)}`"
+      >
+        <template #actions>
+          <UButton
+            :to="`/orders/${order.rescheduledFrom.id}`"
+            color="info"
+            variant="link"
+            label="Ver pedido original"
+          />
+        </template>
+      </UAlert>
 
-        <UAlert
-          v-if="order && order.siblingOrders && order.siblingOrders.length > 0"
-          role="status"
-          color="info"
-          variant="subtle"
-          icon="i-lucide-store"
-          :title="`Parte de un pedido de ${order.siblingOrders.length + 1} locales`"
-          class="mb-4"
-        >
-          <template #description>
-            <div class="mt-1 flex flex-wrap items-center gap-2 text-sm">
-              <span>Otros locales:</span>
-              <NuxtLink
-                v-for="sibling in order.siblingOrders"
-                :key="sibling.id"
-                :to="`/orders/${sibling.id}`"
-                class="font-medium text-primary hover:underline"
-              >
-                {{ sibling.locationName }}
-              </NuxtLink>
-            </div>
-          </template>
-        </UAlert>
+      <UAlert
+        v-if="order && order.siblingOrders && order.siblingOrders.length > 0"
+        role="status"
+        color="info"
+        variant="subtle"
+        icon="i-lucide-store"
+        :title="`Parte de un pedido de ${order.siblingOrders.length + 1} locales`"
+        description="Otros locales:"
+      >
+        <template #actions>
+          <UFieldGroup>
+            <UButton
+              v-for="sibling in order.siblingOrders"
+              :key="sibling.id"
+              :to="`/orders/${sibling.id}`"
+              color="info"
+              variant="link"
+              :label="sibling.locationName"
+            />
+          </UFieldGroup>
+        </template>
+      </UAlert>
 
-        <UCard v-if="order" :ui="{ body: 'p-0 sm:p-0' }">
-          <dl class="grid gap-5 p-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <dt class="text-muted">Cliente</dt>
-              <dd class="font-medium text-highlighted">
-                <NuxtLink :to="`/customers/${order.customer.id}`" class="hover:text-primary">{{
-                  order.customer.name
-                }}</NuxtLink>
-              </dd>
-              <dd class="text-muted">{{ order.customer.phone }}</dd>
-            </div>
-            <div v-if="order.location">
-              <dt class="text-muted">Local</dt>
-              <dd class="font-medium text-highlighted">{{ order.location.name }}</dd>
-            </div>
-            <div>
-              <dt class="text-muted">Estado</dt>
-              <dd>
+      <UCard v-if="order">
+        <template #header>
+          <UPageGrid>
+            <UPageCard
+              title="Cliente"
+              :description="`${order.customer.name} · ${order.customer.phone}`"
+              :to="`/customers/${order.customer.id}`"
+              :aria-label="`Ver cliente ${order.customer.name}`"
+              variant="soft"
+            />
+            <UPageCard
+              v-if="order.location"
+              title="Local"
+              :description="order.location.name"
+              variant="soft"
+            />
+            <UPageCard title="Estado" variant="soft">
+              <UFieldGroup>
                 <UBadge
                   :color="ORDER_STATUS[order.status].color"
                   variant="subtle"
                   :label="ORDER_STATUS[order.status].label"
                 />
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">Fecha de entrega</dt>
-              <dd class="font-medium text-highlighted tabular-nums">
-                {{ formatCalendarDay(order.deliveryDate) }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">Tomado el</dt>
-              <dd class="text-highlighted tabular-nums">
-                {{ formatInstantInLima(order.createdAt) }}
-              </dd>
-            </div>
-            <div v-if="order.failureReason">
-              <dt class="text-muted">Motivo de no entrega</dt>
-              <dd class="font-medium text-error">{{ order.failureReason }}</dd>
-            </div>
-          </dl>
+              </UFieldGroup>
+            </UPageCard>
+            <UPageCard
+              title="Fecha de entrega"
+              :description="formatCalendarDay(order.deliveryDate)"
+              variant="soft"
+            />
+            <UPageCard
+              title="Tomado el"
+              :description="formatInstantInLima(order.createdAt)"
+              variant="soft"
+            />
+            <UPageCard
+              v-if="order.failureReason"
+              title="Motivo de no entrega"
+              :description="order.failureReason"
+              variant="soft"
+            />
+          </UPageGrid>
+        </template>
 
-          <table class="w-full border-t border-default text-sm">
-            <caption class="sr-only">
-              Productos del pedido
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-5 py-2 font-medium">Producto</th>
-                <th scope="col" class="px-5 py-2 text-right font-medium">Cantidad</th>
-                <th scope="col" class="px-5 py-2 text-right font-medium">Precio unitario</th>
-                <th scope="col" class="px-5 py-2 text-right font-medium">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="item in order.items" :key="item.id">
-                <td class="px-5 py-3 font-medium text-highlighted">{{ item.product.name }}</td>
-                <td class="px-5 py-3 text-right tabular-nums">{{ item.quantity }}</td>
-                <td class="px-5 py-3 text-right tabular-nums">{{ formatSoles(item.unitPrice) }}</td>
-                <td class="px-5 py-3 text-right tabular-nums">
-                  {{ formatSoles(timesQuantity(item.unitPrice, item.quantity)) }}
-                </td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="border-t border-default">
-                <th scope="row" colspan="3" class="px-5 py-4 text-right font-medium text-muted">
-                  Total
-                </th>
-                <td
-                  class="px-5 py-4 text-right font-display text-xl font-semibold text-highlighted tabular-nums"
-                >
-                  {{ formatSoles(order.total) }}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+        <UTable :data="order.items" :columns="itemColumns" caption="Productos del pedido">
+          <template #product-cell="{ row }">
+            {{ row.original.product.name }}
+          </template>
+          <template #unitPrice-cell="{ row }">
+            {{ formatSoles(row.original.unitPrice) }}
+          </template>
+          <template #subtotal-cell="{ row }">
+            {{ formatSoles(timesQuantity(row.original.unitPrice, row.original.quantity)) }}
+          </template>
+        </UTable>
+      </UCard>
 
-          <div v-if="order.status === 'PENDING'" class="border-t border-default p-5">
-            <div v-if="confirming" class="space-y-3">
-              <p class="text-highlighted">¿Confirmas cancelar este pedido? No se puede deshacer.</p>
-              <div class="flex gap-2">
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  label="No"
-                  :disabled="cancelling"
-                  @click="confirming = false"
-                />
-                <UButton
-                  color="error"
-                  :disabled="cancelling"
-                  :label="cancelling ? 'Cancelando…' : 'Sí, cancelar'"
-                  @click="cancel"
-                />
-              </div>
-              <UAlert
-                v-if="slowCancel && cancelling"
-                role="status"
-                color="neutral"
-                variant="subtle"
-                :title="SLOW_REQUEST_MESSAGE"
-              />
-            </div>
+      <UAlert
+        v-if="order?.status === 'PENDING' && confirming"
+        color="warning"
+        variant="subtle"
+        title="¿Confirmas cancelar este pedido? No se puede deshacer."
+      >
+        <template #actions>
+          <UFieldGroup>
             <UButton
-              v-else
               color="neutral"
               variant="outline"
-              icon="i-lucide-ban"
-              label="Cancelar pedido"
-              @click="confirming = true"
+              label="No"
+              :disabled="cancelling"
+              @click="confirming = false"
             />
-          </div>
-
-          <div
-            v-if="order.status === 'FAILED' && !order.rescheduledTo"
-            class="border-t border-default p-5"
-          >
-            <div v-if="confirmingReschedule" class="space-y-3">
-              <p class="text-highlighted">Reprogramar pedido para:</p>
-              <div class="flex flex-wrap items-center gap-3">
-                <UFormField label="Nueva fecha de entrega">
-                  <UInput v-model="rescheduleDeliveryDate" type="date" />
-                </UFormField>
-              </div>
-              <div class="flex gap-2">
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  label="Cancelar"
-                  :disabled="rescheduling"
-                  @click="confirmingReschedule = false"
-                />
-                <UButton
-                  color="primary"
-                  :disabled="rescheduling"
-                  :label="rescheduling ? 'Reprogramando…' : 'Confirmar reprogramación'"
-                  @click="rescheduleOrder"
-                />
-              </div>
-              <UAlert
-                v-if="slowReschedule && rescheduling"
-                role="status"
-                color="neutral"
-                variant="subtle"
-                :title="SLOW_REQUEST_MESSAGE"
-              />
-            </div>
             <UButton
-              v-else
-              color="primary"
-              variant="outline"
-              icon="i-lucide-calendar-clock"
-              label="Reprogramar pedido"
-              @click="startReschedule"
+              color="error"
+              :disabled="cancelling"
+              :label="cancelling ? 'Cancelando…' : 'Sí, cancelar'"
+              @click="cancel"
             />
-          </div>
-        </UCard>
-      </ResourceState>
-    </div>
+          </UFieldGroup>
+        </template>
+      </UAlert>
+      <UAlert
+        v-if="order?.status === 'PENDING' && slowCancel && cancelling"
+        role="status"
+        color="neutral"
+        variant="subtle"
+        :title="SLOW_REQUEST_MESSAGE"
+      />
+      <UButton
+        v-if="order?.status === 'PENDING' && !confirming"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-ban"
+        label="Cancelar pedido"
+        @click="confirming = true"
+      />
+
+      <UPageCard
+        v-if="order?.status === 'FAILED' && !order.rescheduledTo && confirmingReschedule"
+        title="Reprogramar pedido para:"
+        variant="soft"
+      >
+        <UFormField label="Nueva fecha de entrega">
+          <UInput v-model="rescheduleDeliveryDate" type="date" />
+        </UFormField>
+        <UAlert
+          v-if="slowReschedule && rescheduling"
+          role="status"
+          color="neutral"
+          variant="subtle"
+          :title="SLOW_REQUEST_MESSAGE"
+        />
+        <template #footer>
+          <UFieldGroup>
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancelar"
+              :disabled="rescheduling"
+              @click="confirmingReschedule = false"
+            />
+            <UButton
+              color="primary"
+              :disabled="rescheduling"
+              :label="rescheduling ? 'Reprogramando…' : 'Confirmar reprogramación'"
+              @click="rescheduleOrder"
+            />
+          </UFieldGroup>
+        </template>
+      </UPageCard>
+      <UButton
+        v-if="order?.status === 'FAILED' && !order.rescheduledTo && !confirmingReschedule"
+        color="primary"
+        variant="outline"
+        icon="i-lucide-calendar-clock"
+        label="Reprogramar pedido"
+        @click="startReschedule"
+      />
+    </ResourceState>
   </AppPage>
 </template>

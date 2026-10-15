@@ -2,7 +2,7 @@
 
 status: in-progress
 item: Fase 3 — 9. Panel por rol y solo Nuxt UI (goal en .relay/goals/fase3-9-nuxt-ui-y-panel.md)
-branch: refactor/nuxt-ui-layout-navigation
-last-step: Los cinco checks del PR #324 quedaron verdes: ci, analyze, CodeQL, gitleaks y SonarCloud.
-next-step: Esperar los checks del commit final de relevo; luego squash-merge del PR #324 sin --admin, borrar la rama y seguir con el próximo PR de 9b.
-updated: 2026-10-15T11:39:00-05:00 por Codex (relevo)
+branch: refactor/nuxt-ui-orders
+last-step: Los cinco checks de PR #325 quedaron verdes en be52560: ci, analyze, CodeQL, gitleaks y SonarCloud.
+next-step: Publicar este relevo, esperar sus checks finales y fusionar #325 con squash sin admin; borrar la rama.
+updated: 2026-10-15T13:15:55-05:00 por Codex (relevo)

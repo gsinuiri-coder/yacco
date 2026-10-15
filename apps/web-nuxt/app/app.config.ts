@@ -19,6 +19,9 @@ export default defineAppConfig({
         footer: "border-t border-default justify-between",
       },
     },
+    form: {
+      base: "space-y-6",
+    },
     user: {
       slots: {
         root: "min-w-0 flex-1",

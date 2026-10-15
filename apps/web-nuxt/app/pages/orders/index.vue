@@ -64,11 +64,7 @@ const columns: TableColumn<Order>[] = [
   { accessorKey: "deliveryDate", header: "Entrega" },
   { accessorKey: "status", header: "Estado" },
   { accessorKey: "items", header: "Productos" },
-  {
-    accessorKey: "total",
-    header: "Total",
-    meta: { class: { th: "text-right", td: "text-right" } },
-  },
+  { accessorKey: "total", header: "Total" },
 ];
 
 function openOrder(_event: Event, row: { original: Order }): void {
@@ -79,7 +75,7 @@ function openOrder(_event: Event, row: { original: Order }): void {
 <template>
   <AppPage title="Pedidos" :description="summary">
     <template #actions>
-      <div class="flex items-center gap-2">
+      <UFieldGroup>
         <UButton
           to="/orders/undelivered"
           color="neutral"
@@ -88,39 +84,38 @@ function openOrder(_event: Event, row: { original: Order }): void {
           label="No entregados"
         />
         <UButton to="/orders/new" icon="i-lucide-plus" label="Nuevo pedido" />
-      </div>
+      </UFieldGroup>
     </template>
 
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
-        <UFormField label="Estado" class="w-44">
-          <USelect v-model="status" :items="STATUS_ITEMS" class="w-full" />
-        </UFormField>
-        <UFormField label="Entrega desde">
-          <UInput v-model="deliveryDateFrom" type="date" />
-        </UFormField>
-        <UFormField label="Entrega hasta">
-          <UInput v-model="deliveryDateTo" type="date" />
-        </UFormField>
-        <div class="min-w-64 flex-1">
+    <UCard>
+      <template #header>
+        <UPageGrid>
+          <UFormField label="Estado">
+            <USelect v-model="status" :items="STATUS_ITEMS" />
+          </UFormField>
+          <UFormField label="Entrega desde">
+            <UInput v-model="deliveryDateFrom" type="date" />
+          </UFormField>
+          <UFormField label="Entrega hasta">
+            <UInput v-model="deliveryDateTo" type="date" />
+          </UFormField>
           <CustomerPicker v-model="customer" label="Cliente" />
-        </div>
-        <UButton
-          v-if="list.hasFilters.value"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-x"
-          label="Limpiar filtros"
-          @click="clearFilters"
-        />
-      </div>
+          <UButton
+            v-if="list.hasFilters.value"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-x"
+            label="Limpiar filtros"
+            @click="clearFilters"
+          />
+        </UPageGrid>
+      </template>
 
       <UAlert
         v-if="list.slow.value && list.loading.value"
         role="status"
         color="neutral"
         variant="subtle"
-        class="rounded-none"
         :title="SLOW_REQUEST_MESSAGE"
       />
 
@@ -147,20 +142,18 @@ function openOrder(_event: Event, row: { original: Order }): void {
           :data="list.items.value"
           :columns="columns"
           caption="Pedidos con cliente, fecha de entrega, estado y productos"
-          :ui="{ caption: 'sr-only', tr: 'cursor-pointer' }"
           @select="openOrder"
         >
           <template #customer-cell="{ row }">
-            <NuxtLink
+            <UUser
               :to="`/orders/${row.original.id}`"
-              class="font-medium text-highlighted hover:text-primary"
+              :name="row.original.customer.name"
+              :description="row.original.customer.phone"
               :aria-label="`Ver pedido de ${row.original.customer.name}`"
-              >{{ row.original.customer.name }}</NuxtLink
-            >
-            <p class="text-sm text-muted">{{ row.original.customer.phone }}</p>
+            />
           </template>
           <template #deliveryDate-cell="{ row }">
-            <span class="tabular-nums">{{ formatCalendarDay(row.original.deliveryDate) }}</span>
+            {{ formatCalendarDay(row.original.deliveryDate) }}
           </template>
           <template #status-cell="{ row }">
             <UBadge
@@ -170,7 +163,7 @@ function openOrder(_event: Event, row: { original: Order }): void {
             />
           </template>
           <template #items-cell="{ row }">
-            <span class="text-sm text-muted">{{ itemsSummary(row.original) }}</span>
+            {{ itemsSummary(row.original) }}
           </template>
           <template #total-cell="{ row }">
             <MoneyAmount :value="row.original.total" />

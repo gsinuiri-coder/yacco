@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MAX_ITEM_QUANTITY, formatSoles } from "@yacco/shared";
 import type { EffectivePrice, Product } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import type { OrderLineDraft } from "../utils/order-lines";
 
 /**
@@ -111,6 +112,14 @@ const productItems = computed(() =>
   products.value.map((product) => ({ label: product.name, value: product.id })),
 );
 
+const columns: TableColumn<OrderLineDraft>[] = [
+  { accessorKey: "productId", header: "Producto" },
+  { accessorKey: "quantity", header: "Cantidad" },
+  { accessorKey: "unitPrice", header: "Precio unitario" },
+  { id: "subtotal", header: "Subtotal" },
+  { id: "actions", header: "" },
+];
+
 function update(index: number, patch: Partial<OrderLineDraft>): void {
   lines.value = lines.value.map((line, i) => (i === index ? { ...line, ...patch } : line));
   emit("edited", index);
@@ -139,23 +148,27 @@ const productPlaceholder = computed(() => {
 </script>
 
 <template>
-  <div class="space-y-3">
-    <ListStatus
-      v-if="productsError"
-      :error-message="productsError"
-      :loading="false"
-      :empty="false"
-      loading-label=""
-      error-title="No se pudo cargar el catálogo de productos"
-      empty-title=""
-      empty-description=""
-      @retry="loadProducts"
-    />
+  <ListStatus
+    v-if="productsError"
+    :error-message="productsError"
+    :loading="false"
+    :empty="false"
+    loading-label=""
+    error-title="No se pudo cargar el catálogo de productos"
+    empty-title=""
+    empty-description=""
+    @retry="loadProducts"
+  />
 
-    <template v-else>
-      <p v-if="customerId === null" class="text-sm text-muted">
-        Elige un cliente para ver sus precios.
-      </p>
+  <UCard v-else variant="soft">
+    <UPageGrid>
+      <UAlert
+        v-if="customerId === null"
+        role="status"
+        color="neutral"
+        variant="subtle"
+        title="Elige un cliente para ver sus precios."
+      />
       <UAlert
         v-if="pricesError"
         role="status"
@@ -170,96 +183,81 @@ const productPlaceholder = computed(() => {
         variant="subtle"
         :title="SLOW_REQUEST_MESSAGE"
       />
+      <template v-for="(line, index) in lines" :key="line.key">
+        <UAlert
+          v-if="errors[index] !== undefined"
+          role="alert"
+          color="error"
+          variant="subtle"
+          :title="`Producto ${index + 1}: ${errors[index]}`"
+        />
+      </template>
+    </UPageGrid>
 
-      <div class="overflow-x-auto rounded-md border border-default">
-        <table class="w-full text-sm">
-          <caption class="sr-only">
-            Productos del pedido
-          </caption>
-          <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-            <tr>
-              <th scope="col" class="px-3 py-2 font-medium">Producto</th>
-              <th scope="col" class="w-28 px-3 py-2 font-medium">Cantidad</th>
-              <th scope="col" class="w-44 px-3 py-2 font-medium">Precio unitario</th>
-              <th scope="col" class="w-32 px-3 py-2 text-right font-medium">Subtotal</th>
-              <th scope="col" class="w-12 px-3 py-2"><span class="sr-only">Quitar</span></th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-default">
-            <tr v-for="(line, index) in lines" :key="line.key">
-              <td class="px-3 py-2">
-                <USelect
-                  :model-value="line.productId === '' ? undefined : line.productId"
-                  :items="productItems"
-                  :placeholder="productPlaceholder"
-                  :aria-label="productLabel(index)"
-                  :disabled="disabled || loadingProducts || customerId === null"
-                  class="w-full"
-                  @update:model-value="(value: string) => chooseProduct(index, value)"
-                />
-              </td>
-              <td class="px-3 py-2">
-                <UInput
-                  :model-value="line.quantity"
-                  type="number"
-                  :min="1"
-                  :max="MAX_ITEM_QUANTITY"
-                  :step="1"
-                  :aria-label="quantityLabel(index)"
-                  :disabled="disabled"
-                  @update:model-value="
-                    (value: string | number) => update(index, { quantity: String(value) })
-                  "
-                />
-              </td>
-              <td class="px-3 py-2">
-                <div class="flex items-center gap-2">
-                  <UInput
-                    :model-value="line.unitPrice"
-                    inputmode="decimal"
-                    placeholder="12.50"
-                    :aria-label="unitPriceLabel(index)"
-                    :disabled="disabled"
-                    class="w-28"
-                    @update:model-value="
-                      (value: string | number) =>
-                        update(index, { unitPrice: String(value), priceOrigin: null })
-                    "
-                  />
-                  <UBadge
-                    v-if="line.priceOrigin !== null && line.priceOrigin !== 'LIST'"
-                    color="info"
-                    variant="subtle"
-                    size="sm"
-                    label="Pactado"
-                  />
-                </div>
-              </td>
-              <td class="px-3 py-2 text-right tabular-nums">
-                {{ lineSubtotal(line) === null ? "—" : formatSoles(lineSubtotal(line)!) }}
-              </td>
-              <td class="px-3 py-2 text-right">
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-x"
-                  :aria-label="removeLabel(index)"
-                  :disabled="disabled || lines.length <= 1"
-                  @click="removeLine(index)"
-                />
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <UTable :data="lines" :columns="columns" caption="Productos del pedido">
+      <template #productId-cell="{ row }">
+        <USelect
+          :model-value="row.original.productId === '' ? undefined : row.original.productId"
+          :items="productItems"
+          :placeholder="productPlaceholder"
+          :aria-label="productLabel(row.index)"
+          :disabled="disabled || loadingProducts || customerId === null"
+          @update:model-value="(value: string) => chooseProduct(row.index, value)"
+        />
+      </template>
+      <template #quantity-cell="{ row }">
+        <UInput
+          :model-value="row.original.quantity"
+          type="number"
+          :min="1"
+          :max="MAX_ITEM_QUANTITY"
+          :step="1"
+          :aria-label="quantityLabel(row.index)"
+          :disabled="disabled"
+          @update:model-value="
+            (value: string | number) => update(row.index, { quantity: String(value) })
+          "
+        />
+      </template>
+      <template #unitPrice-cell="{ row }">
+        <UFieldGroup>
+          <UInput
+            :model-value="row.original.unitPrice"
+            inputmode="decimal"
+            placeholder="12.50"
+            :aria-label="unitPriceLabel(row.index)"
+            :disabled="disabled"
+            @update:model-value="
+              (value: string | number) =>
+                update(row.index, { unitPrice: String(value), priceOrigin: null })
+            "
+          />
+          <UBadge
+            v-if="row.original.priceOrigin !== null && row.original.priceOrigin !== 'LIST'"
+            color="info"
+            variant="subtle"
+            size="sm"
+            label="Pactado"
+          />
+        </UFieldGroup>
+      </template>
+      <template #subtotal-cell="{ row }">
+        {{ lineSubtotal(row.original) === null ? "—" : formatSoles(lineSubtotal(row.original)!) }}
+      </template>
+      <template #actions-cell="{ row }">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-x"
+          :aria-label="removeLabel(row.index)"
+          :disabled="disabled || lines.length <= 1"
+          @click="removeLine(row.index)"
+        />
+      </template>
+    </UTable>
 
-      <ul v-if="errors.some((error) => error !== undefined)" class="space-y-1 text-sm text-error">
-        <template v-for="(line, index) in lines" :key="line.key">
-          <li v-if="errors[index]">Producto {{ index + 1 }}: {{ errors[index] }}</li>
-        </template>
-      </ul>
-
-      <div class="flex items-center justify-between gap-4">
+    <template #footer>
+      <UFieldGroup>
         <UButton
           color="neutral"
           variant="outline"
@@ -268,13 +266,9 @@ const productPlaceholder = computed(() => {
           :disabled="disabled"
           @click="addLine"
         />
-        <p class="text-right">
-          <span class="text-sm text-muted">Total</span>
-          <span class="ml-3 font-display text-2xl font-semibold text-highlighted tabular-nums">{{
-            formatSoles(total)
-          }}</span>
-        </p>
-      </div>
+        <UBadge color="neutral" variant="soft" label="Total" />
+        <UBadge color="primary" variant="subtle" :label="formatSoles(total)" />
+      </UFieldGroup>
     </template>
-  </div>
+  </UCard>
 </template>

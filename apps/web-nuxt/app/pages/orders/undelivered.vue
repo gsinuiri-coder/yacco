@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ORDERS_PAGE_SIZE, formatCalendarDay, formatSoles, nextCalendarDay } from "@yacco/shared";
+import { ORDERS_PAGE_SIZE, formatCalendarDay, nextCalendarDay } from "@yacco/shared";
 import type { Order } from "@yacco/shared";
 import type { TableColumn } from "@nuxt/ui";
 
@@ -108,16 +108,8 @@ const columns: TableColumn<Order>[] = [
   { accessorKey: "deliveryDate", header: "Fecha original" },
   { accessorKey: "failureReason", header: "Motivo" },
   { accessorKey: "items", header: "Productos" },
-  {
-    accessorKey: "total",
-    header: "Total",
-    meta: { class: { th: "text-right", td: "text-right" } },
-  },
-  {
-    id: "actions",
-    header: "Acción",
-    meta: { class: { th: "text-right", td: "text-right" } },
-  },
+  { accessorKey: "total", header: "Total" },
+  { id: "actions", header: "Acción" },
 ];
 </script>
 
@@ -133,133 +125,123 @@ const columns: TableColumn<Order>[] = [
       />
     </template>
 
-    <div class="space-y-4">
+    <UAlert
+      v-if="actionNotice"
+      role="status"
+      color="info"
+      variant="subtle"
+      icon="i-lucide-info"
+      :title="actionNotice"
+    />
+    <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
+
+    <UCard>
+      <template #header>
+        <UPageGrid>
+          <UFormField label="Fecha de reparto">
+            <UInput v-model="deliveryDate" type="date" />
+          </UFormField>
+          <UButton
+            v-if="deliveryDate"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-x"
+            label="Ver todas las fechas"
+            @click="deliveryDate = ''"
+          />
+          <UButton
+            v-if="deliveryDate && list.items.value.length > 0"
+            color="primary"
+            variant="solid"
+            icon="i-lucide-calendar-clock"
+            label="Reprogramar todos"
+            @click="openBatchModal"
+          />
+        </UPageGrid>
+      </template>
+
       <UAlert
-        v-if="actionNotice"
+        v-if="list.slow.value && list.loading.value"
         role="status"
-        color="info"
+        color="neutral"
         variant="subtle"
-        icon="i-lucide-info"
-        :title="actionNotice"
+        :title="SLOW_REQUEST_MESSAGE"
       />
-      <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
 
-      <UCard :ui="{ body: 'p-0 sm:p-0' }">
-        <div class="flex flex-wrap items-end justify-between gap-4 border-b border-default p-4">
-          <div class="flex flex-wrap items-end gap-4">
-            <UFormField label="Fecha de reparto">
-              <UInput v-model="deliveryDate" type="date" />
-            </UFormField>
-            <UButton
-              v-if="deliveryDate"
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-x"
-              label="Ver todas las fechas"
-              @click="deliveryDate = ''"
+      <ListStatus
+        v-if="list.errorMessage.value || list.loading.value || list.items.value.length === 0"
+        :error-message="list.errorMessage.value"
+        :loading="list.loading.value"
+        :empty="list.items.value.length === 0"
+        loading-label="Cargando pedidos no entregados…"
+        empty-icon="i-lucide-calendar-check"
+        empty-title="No hay pedidos no entregados sin reprogramar"
+        empty-description="Todos los pedidos fallidos de esta consulta ya fueron reprogramados o no hubo ninguno."
+        @retry="list.retry"
+      />
+
+      <template v-else>
+        <UTable
+          :data="list.items.value"
+          :columns="columns"
+          caption="Pedidos no entregados pendientes de reprogramar"
+        >
+          <template #customer-cell="{ row }">
+            <UUser
+              :to="`/orders/${row.original.id}`"
+              :name="row.original.customer.name"
+              :description="row.original.customer.phone"
+              :aria-label="`Ver pedido de ${row.original.customer.name}`"
             />
-          </div>
+          </template>
 
-          <div v-if="deliveryDate && list.items.value.length > 0">
+          <template #location-cell="{ row }">
+            {{ row.original.location?.name ?? "Principal" }}
+          </template>
+
+          <template #deliveryDate-cell="{ row }">
+            {{ formatCalendarDay(row.original.deliveryDate) }}
+          </template>
+
+          <template #failureReason-cell="{ row }">
+            <UBadge
+              color="error"
+              variant="subtle"
+              :label="row.original.failureReason ?? 'Sin motivo registrado'"
+            />
+          </template>
+
+          <template #items-cell="{ row }">
+            {{ itemsSummary(row.original) }}
+          </template>
+
+          <template #total-cell="{ row }">
+            <MoneyAmount :value="row.original.total" />
+          </template>
+
+          <template #actions-cell="{ row }">
             <UButton
               color="primary"
-              variant="solid"
+              variant="outline"
+              size="xs"
               icon="i-lucide-calendar-clock"
-              label="Reprogramar todos"
-              @click="openBatchModal"
+              label="Reprogramar"
+              @click="openSingleModal(row.original)"
             />
-          </div>
-        </div>
-
-        <UAlert
-          v-if="list.slow.value && list.loading.value"
-          role="status"
-          color="neutral"
-          variant="subtle"
-          class="rounded-none"
-          :title="SLOW_REQUEST_MESSAGE"
-        />
-
-        <ListStatus
-          v-if="list.errorMessage.value || list.loading.value || list.items.value.length === 0"
-          :error-message="list.errorMessage.value"
-          :loading="list.loading.value"
-          :empty="list.items.value.length === 0"
-          loading-label="Cargando pedidos no entregados…"
-          empty-icon="i-lucide-calendar-check"
-          empty-title="No hay pedidos no entregados sin reprogramar"
-          empty-description="Todos los pedidos fallidos de esta consulta ya fueron reprogramados o no hubo ninguno."
-          @retry="list.retry"
-        />
-
-        <template v-else>
-          <UTable
-            :data="list.items.value"
-            :columns="columns"
-            caption="Pedidos no entregados pendientes de reprogramar"
-            :ui="{ caption: 'sr-only' }"
-          >
-            <template #customer-cell="{ row }">
-              <NuxtLink
-                :to="`/orders/${row.original.id}`"
-                class="font-medium text-highlighted hover:text-primary"
-                :aria-label="`Ver pedido de ${row.original.customer.name}`"
-              >
-                {{ row.original.customer.name }}
-              </NuxtLink>
-              <p class="text-sm text-muted">{{ row.original.customer.phone }}</p>
-            </template>
-
-            <template #location-cell="{ row }">
-              <span>{{ row.original.location?.name ?? "Principal" }}</span>
-            </template>
-
-            <template #deliveryDate-cell="{ row }">
-              <span class="tabular-nums">{{ formatCalendarDay(row.original.deliveryDate) }}</span>
-            </template>
-
-            <template #failureReason-cell="{ row }">
-              <span class="text-sm text-error font-medium">
-                {{ row.original.failureReason ?? "Sin motivo registrado" }}
-              </span>
-            </template>
-
-            <template #items-cell="{ row }">
-              <span class="text-sm">{{ itemsSummary(row.original) }}</span>
-            </template>
-
-            <template #total-cell="{ row }">
-              <span class="font-medium tabular-nums">{{ formatSoles(row.original.total) }}</span>
-            </template>
-
-            <template #actions-cell="{ row }">
-              <div class="text-right">
-                <UButton
-                  color="primary"
-                  variant="outline"
-                  size="xs"
-                  icon="i-lucide-calendar-clock"
-                  label="Reprogramar"
-                  @click="openSingleModal(row.original)"
-                />
-              </div>
-            </template>
-          </UTable>
-        </template>
-      </UCard>
-    </div>
+          </template>
+        </UTable>
+      </template>
+    </UCard>
 
     <!-- Modal / Confirmación individual -->
     <UModal v-model:open="singleModalOpen" title="Reprogramar pedido">
       <template #body>
-        <div class="space-y-4">
-          <p v-if="singleOrder" class="text-sm text-muted">
-            Cliente: <strong class="text-highlighted">{{ singleOrder.customer.name }}</strong>
+        <UPageList>
+          <p v-if="singleOrder">
+            Cliente: <strong>{{ singleOrder.customer.name }}</strong>
             <span v-if="singleOrder.location"> — {{ singleOrder.location.name }}</span>
           </p>
-          <p v-if="singleOrder?.failureReason" class="text-sm text-muted">
-            Motivo original: <span class="text-error">{{ singleOrder.failureReason }}</span>
-          </p>
+          <p v-if="singleOrder?.failureReason">Motivo original: {{ singleOrder.failureReason }}</p>
           <UFormField label="Nueva fecha de entrega">
             <UInput v-model="singleTargetDate" type="date" />
           </UFormField>
@@ -270,10 +252,10 @@ const columns: TableColumn<Order>[] = [
             variant="subtle"
             :title="SLOW_REQUEST_MESSAGE"
           />
-        </div>
+        </UPageList>
       </template>
       <template #footer>
-        <div class="flex justify-end gap-2">
+        <UFieldGroup>
           <UButton
             color="neutral"
             variant="outline"
@@ -287,19 +269,19 @@ const columns: TableColumn<Order>[] = [
             :label="singleLoading ? 'Reprogramando…' : 'Confirmar'"
             @click="confirmSingleReschedule"
           />
-        </div>
+        </UFieldGroup>
       </template>
     </UModal>
 
     <!-- Modal / Confirmación por fecha -->
     <UModal v-model:open="batchModalOpen" title="Reprogramar todos los pedidos de la fecha">
       <template #body>
-        <div class="space-y-4">
-          <p class="text-sm text-muted">
+        <UPageList>
+          <p>
             Fecha original:
-            <strong class="text-highlighted">{{ formatCalendarDay(deliveryDate) }}</strong>
+            <strong>{{ formatCalendarDay(deliveryDate) }}</strong>
           </p>
-          <p class="text-sm text-muted">
+          <p>
             Se reprogramarán todos los pedidos no entregados de esta fecha en una sola operación
             (todo o nada).
           </p>
@@ -313,10 +295,10 @@ const columns: TableColumn<Order>[] = [
             variant="subtle"
             :title="SLOW_REQUEST_MESSAGE"
           />
-        </div>
+        </UPageList>
       </template>
       <template #footer>
-        <div class="flex justify-end gap-2">
+        <UFieldGroup>
           <UButton
             color="neutral"
             variant="outline"
@@ -330,7 +312,7 @@ const columns: TableColumn<Order>[] = [
             :label="batchLoading ? 'Reprogramando todos…' : 'Confirmar todos'"
             @click="confirmBatchReschedule"
           />
-        </div>
+        </UFieldGroup>
       </template>
     </UModal>
   </AppPage>
