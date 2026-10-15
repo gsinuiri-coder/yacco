@@ -583,6 +583,120 @@ test("volver a registrar el original se rechaza si una de sus ventas ya está en
   expect(rejected.body.message).toBe("Una o más ventas ya tienen un comprobante vigente");
 });
 
+test("volver a registrar el original libera la marca «No lleva comprobante» de una de sus ventas", async () => {
+  await configureIssuerSettings();
+  const markedSaleId = await createSale("5.90", "2026-10-14T20:00:00.000Z");
+  const freeSaleId = await createSale("2.36", "2026-10-14T20:10:00.000Z");
+  const paper = { series: "B015", number: "000101", saleIds: [markedSaleId, freeSaleId] };
+  const original = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(markedSaleId, paper))
+    .expect(201);
+  await request(server())
+    .patch(`/api/v1/receipts/${original.body.id}/void`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "Se cargó con la fecha equivocada" })
+    .expect(200);
+  await request(server())
+    .post("/api/v1/receipts/exemptions")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send({ customerId, saleIds: [markedSaleId], reason: "Consumo interno" })
+    .expect(201);
+
+  await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(receiptBody(markedSaleId, { ...paper, filesFromReceiptId: original.body.id }))
+    .expect(201);
+
+  const [exemption] = await prisma.saleReceiptExemption.findMany({
+    where: { saleId: markedSaleId },
+  });
+  expect(exemption).toMatchObject({
+    releasedById: sellerId,
+    releaseReason: "Se registró el comprobante B015-000101",
+  });
+  expect(exemption!.releasedAt).toEqual(expect.any(Date));
+});
+
+test("volver a registrar un original con su nota de crédito vigente se rechaza en la API", async () => {
+  await configureIssuerSettings();
+  const saleId = await createSale("14.16", "2026-10-14T20:20:00.000Z");
+  const paper = { series: "B016", number: "000202" };
+  const original = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(saleId, paper))
+    .expect(201);
+  await request(server())
+    .post(`/api/v1/receipts/${original.body.id}/credit-notes`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(creditNoteBody(ReceiptMedium.MANUAL, "000016"))
+    .expect(201);
+
+  for (const body of [
+    receiptBody(saleId, paper),
+    receiptBody(saleId, { ...paper, series: "b016", filesFromReceiptId: original.body.id }),
+  ]) {
+    const rejected = await request(server())
+      .post("/api/v1/receipts")
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .send(body)
+      .expect(409);
+    expect(rejected.body.message).toBe(
+      "Ese comprobante tiene una nota de crédito vigente: no se puede volver a registrar",
+    );
+  }
+  expect(await prisma.receipt.count({ where: { series: "B016", number: "000202" } })).toBe(1);
+});
+
+test("los adjuntos solo se vuelven a asociar desde el mismo papel anulado", async () => {
+  await configureIssuerSettings();
+  const firstSaleId = await createSale("3.54", "2026-10-14T20:30:00.000Z");
+  const secondSaleId = await createSale("1.18", "2026-10-14T20:40:00.000Z");
+  const photographed = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(firstSaleId, { series: "B017", number: "000001" }))
+    .expect(201);
+  await request(server())
+    .post(`/api/v1/receipts/${photographed.body.id}/files`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .attach("file", Buffer.from("%PDF-1.7\notro papel"), "talonario.pdf")
+    .expect(201);
+  const other = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(secondSaleId, { series: "B017", number: "000002" }))
+    .expect(201);
+  for (const receipt of [photographed, other]) {
+    await request(server())
+      .patch(`/api/v1/receipts/${receipt.body.id}/void`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ reason: "Se cargó con la fecha equivocada" })
+      .expect(200);
+  }
+
+  const rejected = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(
+      receiptBody(secondSaleId, {
+        series: "B017",
+        number: "000002",
+        filesFromReceiptId: photographed.body.id,
+      }),
+    )
+    .expect(400);
+  expect(rejected.body.message).toBe(
+    "Los adjuntos solo se vuelven a asociar desde un comprobante anulado del mismo cliente, con el mismo tipo, serie y número",
+  );
+  expect(
+    await prisma.receipt.count({ where: { series: "B017", number: "000002", voidedAt: null } }),
+  ).toBe(0);
+});
+
 async function createCustomer(
   name: string,
   document: { documentType: "DNI" | "RUC"; documentNumber: string } | null,

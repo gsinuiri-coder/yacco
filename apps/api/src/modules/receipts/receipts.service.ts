@@ -304,9 +304,12 @@ export class ReceiptsService {
         const settings = await this.findSettings(tx);
         const sales = await this.findSales(tx, dto.saleIds);
         const preview = this.buildPreview(dto, settings, sales);
-        const sourceFiles = await this.findReusableFiles(tx, dto);
+        await this.assertNoLiveCreditNote(tx, dto.type, series, number);
+        const sourceFiles = await this.findReusableFiles(tx, dto, series, number);
         const releasedAt = new Date();
 
+        // Registering releases a live «No lleva comprobante» mark, also when
+        // the original is registered again (decision 2026-10-14 21:25).
         await tx.saleReceiptExemption.updateMany({
           where: { saleId: { in: dto.saleIds }, releasedAt: null },
           data: {
@@ -567,16 +570,48 @@ export class ReceiptsService {
     return released.count;
   }
 
+  /**
+   * A paper whose credit note is still live was cancelled with SUNAT: loading
+   * it again would leave both the note and the paper it cancelled in force.
+   */
+  private async assertNoLiveCreditNote(
+    client: ReceiptClient,
+    type: ReceiptType,
+    series: string,
+    number: string,
+  ): Promise<void> {
+    const cancelled = await client.receipt.findFirst({
+      where: {
+        type,
+        series,
+        number,
+        voidedAt: { not: null },
+        creditNotes: { some: { voidedAt: null } },
+      },
+      select: { id: true },
+    });
+    if (cancelled !== null) {
+      throw new ConflictException(
+        "Ese comprobante tiene una nota de crédito vigente: no se puede volver a registrar",
+      );
+    }
+  }
+
+  /** Files are only carried over from a voided load of the very same paper. */
   private async findReusableFiles(
     client: ReceiptClient,
     dto: CreateReceiptDto,
+    series: string,
+    number: string,
   ): Promise<{ objectKey: string; contentType: string }[]> {
     if (dto.filesFromReceiptId === undefined) return [];
     const source = await client.receipt.findUnique({
       where: { id: dto.filesFromReceiptId },
       select: {
         customerId: true,
-        medium: true,
+        type: true,
+        series: true,
+        number: true,
         voidedAt: true,
         files: { select: { objectKey: true, contentType: true } },
       },
@@ -587,9 +622,14 @@ export class ReceiptsService {
         "Solo se vuelven a asociar los adjuntos de un comprobante anulado",
       );
     }
-    if (source.customerId !== dto.customerId || source.medium !== dto.medium) {
+    if (
+      source.customerId !== dto.customerId ||
+      source.type !== dto.type ||
+      source.series !== series ||
+      source.number !== number
+    ) {
       throw new BadRequestException(
-        "Los adjuntos solo se vuelven a asociar a un comprobante del mismo cliente y medio",
+        "Los adjuntos solo se vuelven a asociar desde un comprobante anulado del mismo cliente, con el mismo tipo, serie y número",
       );
     }
     return source.files;

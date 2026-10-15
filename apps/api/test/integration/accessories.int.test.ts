@@ -482,6 +482,61 @@ describe("Accessories Module Integration Tests", () => {
         ).debtBalance.toFixed(2),
       ).toBe(debtBefore.minus(35).toFixed(2));
     });
+
+    test("anular un cobro con un pago confirmado anula el pago y devuelve solo lo que quedaba debiendo", async () => {
+      const prisma = ctx.app.get(PrismaService);
+      const chargeRes = await request(server())
+        .post(`/api/v1/customer-locations/${loc1Id}/accessories/charges`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ productId: accessoryId, quantity: 1, reason: "Cliente rompió el surtidor" })
+        .expect(201);
+      // El cliente pagó S/ 20.00 de los S/ 35.00 en efectivo: el pago queda
+      // confirmado y la deuda baja en el mismo paso, como al registrar un cobro.
+      const cash = await prisma.paymentMethod.upsert({
+        where: { name: "Efectivo" },
+        update: {},
+        create: { name: "Efectivo" },
+      });
+      const admin = await prisma.user.findUniqueOrThrow({ where: { username: ADMIN_USERNAME } });
+      const paidAt = new Date();
+      const payment = await prisma.$transaction(async (tx) => {
+        await tx.customer.update({
+          where: { id: customerId },
+          data: { debtBalance: { decrement: 20 } },
+        });
+        return tx.payment.create({
+          data: {
+            customerId,
+            locationId: loc1Id,
+            saleId: chargeRes.body.saleId,
+            paymentMethodId: cash.id,
+            paidAt,
+            amount: "20.00",
+            status: "CONFIRMED",
+            confirmedAt: paidAt,
+            confirmedById: admin.id,
+            recordedById: admin.id,
+          },
+        });
+      });
+      const debtBefore = (await prisma.customer.findUniqueOrThrow({ where: { id: customerId } }))
+        .debtBalance;
+
+      await request(server())
+        .post(`/api/v1/accessories/movements/${chargeRes.body.id}/void`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ reason: "Se cobró por error" })
+        .expect(201);
+
+      expect(
+        (
+          await prisma.customer.findUniqueOrThrow({ where: { id: customerId } })
+        ).debtBalance.toFixed(2),
+      ).toBe(debtBefore.minus(15).toFixed(2));
+      const voidedPayment = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      expect(voidedPayment.voidedAt).toEqual(expect.any(Date));
+      expect(voidedPayment.voidedById).toBe(admin.id);
+    });
   });
 
   describe("Reconciliation & Reporting", () => {

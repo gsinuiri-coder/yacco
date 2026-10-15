@@ -219,6 +219,7 @@ describe("ReceiptsService transactional writes", () => {
           voidReason: null,
         }),
         findUnique: jest.fn<() => Promise<unknown>>(),
+        findFirst: jest.fn<() => Promise<unknown>>().mockResolvedValue(null),
         updateMany: jest.fn<() => Promise<unknown>>().mockResolvedValue({ count: 1 }),
       },
       receiptSale: {
@@ -359,6 +360,8 @@ describe("ReceiptsService transactional writes", () => {
       objectKey: `receipts/${ORIGINAL_ID}/55555555-5555-4555-8555-555555555555.pdf`,
       contentType: "application/pdf",
     };
+    const OTHER_PAPER =
+      "Los adjuntos solo se vuelven a asociar desde un comprobante anulado del mismo cliente, con el mismo tipo, serie y número";
 
     function createDto() {
       return {
@@ -376,7 +379,9 @@ describe("ReceiptsService transactional writes", () => {
     function originalRow(overrides: Record<string, unknown> = {}) {
       return {
         customerId: CUSTOMER_ID,
-        medium: ReceiptMedium.MANUAL,
+        type: ReceiptType.SALES_RECEIPT,
+        series: "B001",
+        number: "000001",
         voidedAt: new Date("2026-10-14T09:00:00.000Z"),
         files: [ORIGINAL_FILE],
         ...overrides,
@@ -415,22 +420,56 @@ describe("ReceiptsService transactional writes", () => {
         originalRow({ voidedAt: null }),
         "Solo se vuelven a asociar los adjuntos de un comprobante anulado",
       ],
-      [
-        "another customer's original",
-        originalRow({ customerId: OTHER_CUSTOMER_ID }),
-        "Los adjuntos solo se vuelven a asociar a un comprobante del mismo cliente y medio",
-      ],
-      [
-        "an original of another medium",
-        originalRow({ medium: ReceiptMedium.EXTERNAL_ELECTRONIC }),
-        "Los adjuntos solo se vuelven a asociar a un comprobante del mismo cliente y medio",
-      ],
+      ["another customer's original", originalRow({ customerId: OTHER_CUSTOMER_ID }), OTHER_PAPER],
+      ["an original of another type", originalRow({ type: ReceiptType.INVOICE }), OTHER_PAPER],
+      ["a credit note", originalRow({ type: ReceiptType.CREDIT_NOTE }), OTHER_PAPER],
+      ["an original of another series", originalRow({ series: "B002" }), OTHER_PAPER],
+      ["an original of another number", originalRow({ number: "000002" }), OTHER_PAPER],
     ])("rejects %s before writing anything", async (_label, original, message) => {
       const { tx, createMany } = withReceiptFiles(buildTransactionMock());
       tx.receipt.findUnique.mockResolvedValue(original);
       const service = new ReceiptsService(buildTransactionalPrisma(tx as never) as never);
 
       await expect(service.create(createDto(), USER_ID)).rejects.toThrow(message);
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+      expect(createMany).not.toHaveBeenCalled();
+    });
+
+    test("the same paper loaded under another medium still takes its files", async () => {
+      const { tx, createMany } = withReceiptFiles(buildTransactionMock());
+      tx.receipt.findUnique.mockResolvedValue(originalRow());
+      const service = new ReceiptsService(buildTransactionalPrisma(tx as never) as never);
+
+      await service.create({ ...createDto(), medium: ReceiptMedium.EXTERNAL_ELECTRONIC }, USER_ID);
+
+      expect(createMany).toHaveBeenCalledTimes(1);
+    });
+
+    test("an original whose credit note is still live cannot be registered again", async () => {
+      const { tx, createMany } = withReceiptFiles(buildTransactionMock());
+      tx.receipt.findUnique.mockResolvedValue(originalRow());
+      tx.receipt.findFirst.mockResolvedValue({ id: ORIGINAL_ID });
+      const service = new ReceiptsService(buildTransactionalPrisma(tx as never) as never);
+
+      await expect(
+        service.create(
+          { ...createDto(), series: " b001 ", filesFromReceiptId: undefined },
+          USER_ID,
+        ),
+      ).rejects.toThrow(
+        "Ese comprobante tiene una nota de crédito vigente: no se puede volver a registrar",
+      );
+      expect(tx.receipt.findFirst).toHaveBeenCalledWith({
+        where: {
+          type: ReceiptType.SALES_RECEIPT,
+          series: "B001",
+          number: "000001",
+          voidedAt: { not: null },
+          creditNotes: { some: { voidedAt: null } },
+        },
+        select: { id: true },
+      });
+      expect(tx.saleReceiptExemption.updateMany).not.toHaveBeenCalled();
       expect(tx.receipt.create).not.toHaveBeenCalled();
       expect(createMany).not.toHaveBeenCalled();
     });
