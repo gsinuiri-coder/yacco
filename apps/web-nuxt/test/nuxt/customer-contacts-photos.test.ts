@@ -207,6 +207,19 @@ describe("Documentos, contactos, fotos y aprobaciones", () => {
       expect(screen.getByText("Sin teléfono")).toBeTruthy();
     });
 
+    it("cada contacto es un ítem de una lista válida (li dentro de ul)", async () => {
+      endpoint(`/api/v1/customers/${CUSTOMER_ID}/contacts`, () => contactList);
+
+      await renderSuspended(CustomerContactsSection, {
+        props: { customerId: CUSTOMER_ID, canEdit: true },
+      });
+
+      await screen.findByText("Carlos Gómez");
+      const items = screen.getAllByRole("listitem");
+      expect(items).toHaveLength(2);
+      for (const item of items) expect(item.parentElement?.tagName).toBe("UL");
+    });
+
     it("permite agregar un nuevo contacto", async () => {
       let contacts = [...contactList];
       const bodies: unknown[] = [];

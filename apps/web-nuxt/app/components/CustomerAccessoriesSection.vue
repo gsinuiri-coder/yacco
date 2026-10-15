@@ -200,6 +200,12 @@ const totalBorrowedCount = computed(() =>
     0,
   ),
 );
+const columns = [
+  { accessorKey: "productName", header: "Accesorio" },
+  { accessorKey: "quantity", header: "Prestados", meta: RIGHT_ALIGNED },
+  { id: "price", header: "Precio ref.", meta: RIGHT_ALIGNED },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
+];
 </script>
 
 <template>
@@ -231,123 +237,106 @@ const totalBorrowedCount = computed(() =>
       @retry="load"
     />
 
-    <div v-else class="space-y-6">
-      <div
-        v-for="entry in locationsWithBalances"
-        :key="entry.location.id"
-        class="rounded-md border border-default p-4"
-      >
-        <div class="flex items-center justify-between pb-3 border-b border-default">
-          <p class="font-medium text-highlighted">{{ entry.location.name }}</p>
+    <UPageBody v-else>
+      <UPageCard v-for="entry in locationsWithBalances" :key="entry.location.id" variant="soft">
+        <template #title>
+          {{ entry.location.name }}
           <UBadge
             v-if="!entry.location.active"
             color="warning"
             variant="subtle"
             label="Local retirado"
           />
-        </div>
+        </template>
 
-        <p v-if="entry.balances.length === 0" class="py-3 text-sm text-muted">
-          Sin accesorios prestados en este local.
-        </p>
+        <UAlert
+          v-if="entry.balances.length === 0"
+          color="neutral"
+          variant="soft"
+          title="Sin accesorios prestados en este local."
+        />
 
-        <table v-else class="w-full mt-2 text-sm">
-          <caption class="sr-only">
-            Accesorios prestados en
-            {{
-              entry.location.name
-            }}
-          </caption>
-          <thead class="text-left text-xs tracking-wide text-muted uppercase">
-            <tr>
-              <th scope="col" class="py-2 font-medium">Accesorio</th>
-              <th scope="col" class="py-2 text-right font-medium">Prestados</th>
-              <th scope="col" class="py-2 text-right font-medium">Precio ref.</th>
-              <th scope="col" class="py-2 text-right font-medium">
-                <span class="sr-only">Acciones</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-default">
-            <tr v-for="item in entry.balances" :key="item.productId">
-              <td class="py-2 font-medium text-highlighted">{{ item.productName }}</td>
-              <td class="py-2 text-right font-semibold tabular-nums text-highlighted">
-                {{ item.quantity }}
-              </td>
-              <td class="py-2 text-right tabular-nums text-muted">
-                {{ formatSoles(item.agreedPrice ?? item.listPrice) }}
-              </td>
-              <td class="py-2 text-right">
-                <div class="flex justify-end gap-1">
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    label="Devolver"
-                    @click="startReturn(entry.location.id, item)"
-                  />
-                  <UButton
-                    v-if="isAdmin"
-                    color="warning"
-                    variant="ghost"
-                    size="sm"
-                    label="Cobrar"
-                    @click="startCharge(entry.location.id, item)"
-                  />
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <UTable
+          v-else
+          :data="entry.balances"
+          :columns="columns"
+          :caption="`Accesorios prestados en ${entry.location.name}`"
+        >
+          <template #price-cell="{ row }">
+            {{ formatSoles(row.original.agreedPrice ?? row.original.listPrice) }}
+          </template>
+          <template #actions-cell="{ row }">
+            <div class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Devolver"
+                @click="startReturn(entry.location.id, row.original)"
+              />
+              <UButton
+                v-if="isAdmin"
+                color="warning"
+                variant="ghost"
+                size="sm"
+                label="Cobrar"
+                @click="startCharge(entry.location.id, row.original)"
+              />
+            </div>
+          </template>
+        </UTable>
+      </UPageCard>
 
-      <p v-if="totalBorrowedCount > 0" class="text-right text-sm text-muted">
-        Total prestado al cliente:
-        <span class="font-semibold text-highlighted tabular-nums">{{ totalBorrowedCount }}</span>
-        {{ totalBorrowedCount === 1 ? "accesorio" : "accesorios" }}
-      </p>
-    </div>
+      <UAlert
+        v-if="totalBorrowedCount > 0"
+        color="info"
+        variant="soft"
+        :title="`Total prestado al cliente: ${totalBorrowedCount} ${
+          totalBorrowedCount === 1 ? 'accesorio' : 'accesorios'
+        }`"
+      />
+    </UPageBody>
 
     <!-- Modal Prestar -->
     <UModal v-model:open="loanModalOpen" title="Prestar accesorio a local">
       <template #body>
-        <form class="space-y-4" novalidate @submit.prevent="submitLoan">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" novalidate @submit="submitLoan">
           <UAlert v-if="loanError" role="alert" color="error" variant="subtle" :title="loanError" />
 
           <UFormField label="Local del cliente" required>
             <USelect
               v-model="loanLocationId"
+              class="w-full"
               :items="
                 locationsWithBalances.map((e) => ({
                   label: e.location.name,
                   value: e.location.id,
                 }))
               "
-              class="w-full"
             />
           </UFormField>
 
           <UFormField label="Accesorio" required>
             <USelect
               v-model="loanProductId"
-              :items="accessoriesCatalog.map((a) => ({ label: a.name, value: a.id }))"
               class="w-full"
+              :items="accessoriesCatalog.map((a) => ({ label: a.name, value: a.id }))"
             />
           </UFormField>
 
           <UFormField label="Cantidad a prestar" required>
             <UInput
               v-model="loanQuantity"
+              class="w-full"
               type="number"
               min="1"
               step="1"
               placeholder="1"
               :disabled="loanSubmitting"
-              class="w-full"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -357,7 +346,7 @@ const totalBorrowedCount = computed(() =>
             />
             <UButton type="submit" label="Registrar préstamo" :loading="loanSubmitting" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
@@ -367,7 +356,13 @@ const totalBorrowedCount = computed(() =>
       :title="`Devolver accesorio: ${returnTargetItem?.productName}`"
     >
       <template #body>
-        <form class="space-y-4" novalidate @submit.prevent="submitReturn">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          @submit="submitReturn"
+        >
           <UAlert
             v-if="returnError"
             role="alert"
@@ -376,25 +371,24 @@ const totalBorrowedCount = computed(() =>
             :title="returnError"
           />
 
-          <p class="text-sm text-muted">
-            Cantidad actualmente prestada:
-            <span class="font-semibold text-highlighted tabular-nums">
-              {{ returnTargetItem?.quantity }}
-            </span>
-          </p>
+          <UAlert
+            color="info"
+            variant="soft"
+            :title="`Cantidad actualmente prestada: ${returnTargetItem?.quantity ?? ''}`"
+          />
 
           <UFormField label="Cantidad a devolver a planta" required>
             <UInput
               v-model="returnQuantity"
+              class="w-full"
               type="number"
               min="1"
               step="1"
               :disabled="returnSubmitting"
-              class="w-full"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -404,7 +398,7 @@ const totalBorrowedCount = computed(() =>
             />
             <UButton type="submit" label="Registrar devolución" :loading="returnSubmitting" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
@@ -414,7 +408,13 @@ const totalBorrowedCount = computed(() =>
       :title="`Cobrar accesorio prestado: ${chargeTargetItem?.productName}`"
     >
       <template #body>
-        <form class="space-y-4" novalidate @submit.prevent="submitCharge">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          @submit="submitCharge"
+        >
           <UAlert
             v-if="chargeError"
             role="alert"
@@ -423,20 +423,21 @@ const totalBorrowedCount = computed(() =>
             :title="chargeError"
           />
 
-          <p class="text-sm text-muted">
-            Al cobrar este accesorio prestado, se descuenta de los prestados y se genera una venta
-            fiada que incrementa la deuda en soles del cliente.
-          </p>
+          <UAlert
+            color="warning"
+            variant="soft"
+            description="Al cobrar este accesorio prestado, se descuenta de los prestados y se genera una venta fiada que incrementa la deuda en soles del cliente."
+          />
 
           <UFormField label="Cantidad a cobrar" required>
             <UInput
               v-model="chargeQuantity"
+              class="w-full"
               type="number"
               min="1"
               :max="chargeTargetItem?.quantity"
               step="1"
               :disabled="chargeSubmitting"
-              class="w-full"
             />
           </UFormField>
 
@@ -447,25 +448,25 @@ const totalBorrowedCount = computed(() =>
           >
             <UInput
               v-model="chargeReason"
+              class="w-full"
               placeholder="Motivo del cobro"
               :disabled="chargeSubmitting"
-              class="w-full"
             />
           </UFormField>
 
           <UFormField label="Precio unitario" help="Precio a cobrar por cada unidad">
             <UInput
               v-model="chargeUnitPrice"
+              class="w-full"
               inputmode="decimal"
               placeholder="35.00"
               :disabled="chargeSubmitting"
-              class="w-full"
             >
-              <template #leading><span class="text-sm text-muted">S/</span></template>
+              <template #leading><span>S/</span></template>
             </UInput>
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -480,7 +481,7 @@ const totalBorrowedCount = computed(() =>
               :loading="chargeSubmitting"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </SectionCard>

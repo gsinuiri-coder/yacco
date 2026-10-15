@@ -32,26 +32,26 @@ const caption = computed(() => {
   return "Ventas sin comprobante";
 });
 
-const RIGHT = { class: { th: "text-right", td: "text-right" } };
-
 const columns = computed<TableColumn<ReceiptSaleStatusRow>[]>(() => {
   const sale: TableColumn<ReceiptSaleStatusRow>[] = [
     { accessorKey: "soldAt", header: "Venta" },
     { accessorKey: "location", header: "Local" },
-    { accessorKey: "total", header: "Total", meta: RIGHT },
+    { accessorKey: "total", header: "Total", meta: RIGHT_ALIGNED },
   ];
   if (status.value === "AVAILABLE") {
     return [
-      { id: "select", meta: { class: { td: "w-0" } } },
+      { id: "select", header: hiddenHeader("Elegir"), meta: SHRINK_TO_CONTENT },
       ...sale,
-      { id: "register", meta: RIGHT },
+      { id: "register", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
     ];
   }
   if (status.value === "RECEIPTED") return [...sale, { id: "receipt", header: "Comprobante" }];
   return [
     ...sale,
     { id: "exemption", header: "Motivo" },
-    ...(props.isAdmin ? [{ id: "release", meta: RIGHT }] : []),
+    ...(props.isAdmin
+      ? [{ id: "release", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+      : []),
   ];
 });
 
@@ -169,24 +169,22 @@ async function releaseExemption(exemptionId: string): Promise<void> {
       />
     </template>
 
-    <div class="space-y-4">
+    <UPageBody>
       <SegmentedFilter v-model="status" label="Estado" :options="statusOptions" />
 
       <UAlert v-if="notice" role="status" color="success" variant="subtle" :title="notice" />
       <UAlert v-if="loadError" role="status" color="error" variant="subtle" :title="loadError" />
       <UAlert v-if="error" role="alert" color="error" variant="subtle" :title="error" />
 
-      <div v-if="loading" role="status" class="flex items-center gap-2 text-muted">
-        <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
-        Cargando ventas…
-      </div>
+      <UAlert v-if="loading" role="status" color="neutral" variant="soft" title="Cargando ventas…">
+        <template #leading>
+          <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
+        </template>
+      </UAlert>
       <UAlert v-else-if="rows.length === 0" color="neutral" variant="soft" :title="emptyTitle" />
 
       <template v-else>
-        <UTable :data="rows" :columns="columns" :caption="caption" :ui="{ caption: 'sr-only' }">
-          <template #select-header>
-            <span class="sr-only">Elegir</span>
-          </template>
+        <UTable :data="rows" :columns="columns" :caption="caption">
           <template #select-cell="{ row }">
             <UCheckbox
               :model-value="selectedSaleIds.includes(row.original.id)"
@@ -199,18 +197,13 @@ async function releaseExemption(exemptionId: string): Promise<void> {
             />
           </template>
           <template #soldAt-cell="{ row }">
-            <span class="tabular-nums">{{ formatInstantInLima(row.original.soldAt) }}</span>
+            {{ formatInstantInLima(row.original.soldAt) }}
           </template>
           <template #location-cell="{ row }">
-            <span class="font-medium text-highlighted">{{ row.original.location.name }}</span>
+            {{ row.original.location.name }}
           </template>
           <template #total-cell="{ row }">
-            <span class="font-medium text-highlighted tabular-nums">
-              {{ formatSoles(row.original.total) }}
-            </span>
-          </template>
-          <template #register-header>
-            <span class="sr-only">Acciones</span>
+            {{ formatSoles(row.original.total) }}
           </template>
           <template #register-cell="{ row }">
             <UButton
@@ -222,20 +215,19 @@ async function releaseExemption(exemptionId: string): Promise<void> {
             />
           </template>
           <template #exemption-cell="{ row }">
-            <span class="text-muted">{{ row.original.exemption?.reason }}</span>
+            {{ row.original.exemption?.reason }}
           </template>
           <template #receipt-cell="{ row }">
-            <ULink
+            <UButton
               v-if="row.original.receipt"
               :to="`/receipts/${row.original.receipt.id}`"
-              class="font-medium text-primary hover:underline"
-            >
-              {{ RECEIPT_TYPE[row.original.receipt.type].label }}
-              {{ receiptNumber(row.original.receipt.series, row.original.receipt.number) }}
-            </ULink>
-          </template>
-          <template #release-header>
-            <span class="sr-only">Acciones</span>
+              color="primary"
+              variant="link"
+              :label="`${RECEIPT_TYPE[row.original.receipt.type].label} ${receiptNumber(
+                row.original.receipt.series,
+                row.original.receipt.number,
+              )}`"
+            />
           </template>
           <template #release-cell="{ row }">
             <UButton
@@ -249,10 +241,10 @@ async function releaseExemption(exemptionId: string): Promise<void> {
           </template>
         </UTable>
 
-        <div v-if="status === 'AVAILABLE'" class="border-t border-default pt-4">
-          <div v-if="marking" class="space-y-3">
+        <UPageCard v-if="status === 'AVAILABLE'" variant="soft">
+          <UPageBody v-if="marking">
             <UFormField label="Motivo para marcar las ventas" required>
-              <UTextarea v-model="markReason" :rows="2" :disabled="saving" class="w-full" />
+              <UTextarea v-model="markReason" class="w-full" :rows="2" :disabled="saving" />
             </UFormField>
             <div class="flex justify-end gap-2">
               <UButton
@@ -269,7 +261,7 @@ async function releaseExemption(exemptionId: string): Promise<void> {
                 @click="markExempt"
               />
             </div>
-          </div>
+          </UPageBody>
           <UButton
             v-else
             color="neutral"
@@ -278,12 +270,12 @@ async function releaseExemption(exemptionId: string): Promise<void> {
             :disabled="selectedSaleIds.length === 0"
             @click="startMarking"
           />
-        </div>
+        </UPageCard>
 
-        <div v-if="status === 'EXEMPT' && releasingId" class="border-t border-default pt-4">
-          <div class="space-y-3">
+        <UPageCard v-if="status === 'EXEMPT' && releasingId" variant="soft">
+          <UPageBody>
             <UFormField label="Motivo para liberar la marca" required>
-              <UTextarea v-model="releaseReason" :rows="2" :disabled="saving" class="w-full" />
+              <UTextarea v-model="releaseReason" class="w-full" :rows="2" :disabled="saving" />
             </UFormField>
             <div class="flex justify-end gap-2">
               <UButton
@@ -300,9 +292,9 @@ async function releaseExemption(exemptionId: string): Promise<void> {
                 @click="releaseExemption(releasingId)"
               />
             </div>
-          </div>
-        </div>
+          </UPageBody>
+        </UPageCard>
       </template>
-    </div>
+    </UPageBody>
   </SectionCard>
 </template>

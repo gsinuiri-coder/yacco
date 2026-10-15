@@ -790,6 +790,22 @@ describe("Ficha del cliente", () => {
       expect(balanceQueries[0]).toMatchObject({ customerId: ID });
     });
 
+    it("cada ubicación es un ítem de una lista válida (li dentro de ul)", async () => {
+      stubCustomerPage({
+        balances: [
+          locationRow({}),
+          locationRow({ location: { id: "loc-2", name: "Sucursal Playa", active: true } }),
+        ],
+      });
+      await renderCustomerPage();
+
+      const section = await screen.findByRole("region", { name: "Envases" });
+      await within(section).findByText("Sucursal Playa");
+      const items = within(section).getAllByRole("listitem");
+      expect(items).toHaveLength(2);
+      for (const item of items) expect(item.parentElement?.tagName).toBe("UL");
+    });
+
     it("un saldo negativo se muestra como está, con su explicación", async () => {
       stubCustomerPage({
         balances: [

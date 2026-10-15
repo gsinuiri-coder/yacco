@@ -103,7 +103,13 @@ async function removeContact(contactId: string): Promise<void> {
       />
     </template>
 
-    <div v-if="loading" class="py-3 text-sm text-muted">Cargando contactos…</div>
+    <UAlert
+      v-if="loading"
+      role="status"
+      color="neutral"
+      variant="soft"
+      title="Cargando contactos…"
+    />
 
     <UAlert
       v-else-if="loadError"
@@ -114,40 +120,39 @@ async function removeContact(contactId: string): Promise<void> {
       :title="loadError"
     />
 
-    <div v-else-if="contacts.length === 0" class="py-3 text-sm text-muted">
-      Sin contactos registrados.
-    </div>
+    <UAlert
+      v-else-if="contacts.length === 0"
+      color="neutral"
+      variant="soft"
+      title="Sin contactos registrados."
+    />
 
-    <ul v-else class="flex flex-col divide-y divide-default">
-      <li
+    <UPageList v-else as="ul">
+      <UPageCard
         v-for="contact in contacts"
         :key="contact.id"
-        class="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
+        as="li"
+        :title="contact.name"
+        :description="contact.phone || 'Sin teléfono'"
+        variant="soft"
       >
-        <div>
-          <p class="font-medium text-highlighted">{{ contact.name }}</p>
-          <p v-if="contact.phone" class="text-xs text-muted tabular-nums">
-            {{ contact.phone }}
-          </p>
-          <p v-else class="text-xs text-dimmed">Sin teléfono</p>
-        </div>
-
-        <UButton
-          v-if="canEdit"
-          color="error"
-          variant="ghost"
-          size="xs"
-          icon="i-lucide-trash-2"
-          label="Quitar"
-          :loading="removingId === contact.id"
-          @click="removeContact(contact.id)"
-        />
-      </li>
-    </ul>
+        <template v-if="canEdit" #footer>
+          <UButton
+            color="error"
+            variant="ghost"
+            size="xs"
+            icon="i-lucide-trash-2"
+            label="Quitar"
+            :loading="removingId === contact.id"
+            @click="removeContact(contact.id)"
+          />
+        </template>
+      </UPageCard>
+    </UPageList>
 
     <UModal v-model:open="addModalOpen" title="Agregar contacto">
       <template #body>
-        <form class="space-y-4" @submit.prevent="addContact">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="addContact">
           <UAlert
             v-if="addError"
             role="alert"
@@ -164,8 +169,8 @@ async function removeContact(contactId: string): Promise<void> {
           >
             <UInput
               v-model="newName"
-              placeholder="Nombre de la persona"
               class="w-full"
+              placeholder="Nombre de la persona"
               autocomplete="off"
             />
           </UFormField>
@@ -173,14 +178,14 @@ async function removeContact(contactId: string): Promise<void> {
           <UFormField label="Teléfono (opcional)">
             <UInput
               v-model="newPhone"
+              class="w-full"
               type="tel"
               placeholder="Teléfono o celular"
-              class="w-full"
               autocomplete="off"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -190,7 +195,7 @@ async function removeContact(contactId: string): Promise<void> {
             />
             <UButton type="submit" label="Guardar contacto" :loading="adding" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </SectionCard>

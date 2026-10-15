@@ -2,7 +2,8 @@
 
 status: in-progress
 item: Fase 3 — 9. Panel por rol y solo Nuxt UI (goal en .relay/goals/fase3-9-nuxt-ui-y-panel.md)
-branch: refactor/nuxt-ui-customers
-last-step: PR #326 pasó los cinco checks obligatorios: ci, analyze, CodeQL, gitleaks y SonarCloud.
-next-step: Subir este relevo, esperar nuevamente los cinco checks sobre la cabeza definitiva y hacer squash-merge sin admin; borrar la rama.
-updated: 2026-10-15T15:13:25-05:00 por Codex (relevo)
+branch: refactor/nuxt-ui-customer-sections
+last-step: Capturas «after-*» rehechas con Playwright (script temporal ya borrado; Playwright levantó y bajó la API y Nuxt), más estados con datos: after-*-prices-with-rows, -prices-editing, -maquila-with-balances, -maquila-return-modal, -account-statement-voided. Arreglos que salieron de las capturas y de `reviewer` (sin bloqueos): «Devolver llenos» vuelve abajo de los saldos (#footer de UPageCard se pinta antes del contenido) y li dentro de ul (UPageList as="ul" en Contactos, Envases, Maquila); los dos con tests y rojo/verde en guard-red-green.md. Web 64/692 verde (líneas 91,54%), lint y typecheck OK. Notas para el cuerpo del PR: (a) clases escritas en el script de CustomerAccountStatementSection.vue (monto anulado "text-right text-muted line-through", fila anulada "bg-elevated/60") con su razón; la guarda solo mira class="..." del template; (b) en móvil la barra fija tapa el borde superior de algunas capturas de sección; (c) el título largo del modal Devolver se corta junto a la X (UModal nativo, igual que en main); (d) tablas anchas (estado de cuenta, movimientos) se desplazan en horizontal dentro de la tarjeta; (e) los estados con datos solo tienen «after».
+pr: https://github.com/gsinuiri-coder/yacco/pull/327 (abierto 2026-10-15; cuerpo en .relay/pr-body-9b-customer-sections.md)
+next-step: Esperar los cinco checks del PR #327 (ci, analyze, CodeQL, gitleaks, SonarCloud); si alguno falla, arreglarlo en la rama. En verde: squash-merge sin --admin y borrar la rama. Después seguir 9b con la próxima área (rutas y liquidación, u otra del goal; SectionCard va con el PR de layout).
+updated: 2026-10-15T17:55:00-05:00 por Claude (relevo)

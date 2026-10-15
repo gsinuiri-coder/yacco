@@ -280,6 +280,16 @@ function canVoid(mov: MaquilaMovementItem): boolean {
   if (mov.type === "RECEIVED" || mov.type === "RETURNED") return isAdmin.value;
   return false;
 }
+
+const movementColumns = [
+  { accessorKey: "occurredAt", header: "Fecha" },
+  { accessorKey: "type", header: "Tipo" },
+  { accessorKey: "containerTypeName", header: "Envase" },
+  { accessorKey: "quantity", header: "Cant.", meta: RIGHT_ALIGNED },
+  { accessorKey: "saleTotal", header: "Cargo S/", meta: RIGHT_ALIGNED },
+  { accessorKey: "recordedByName", header: "Registrado por" },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
+];
 </script>
 
 <template>
@@ -309,119 +319,96 @@ function canVoid(mov: MaquilaMovementItem): boolean {
       @retry="load"
     />
 
-    <div v-else class="space-y-6">
-      <!-- Saldos -->
-      <div>
-        <h3 class="mb-3 text-xs font-medium tracking-wide text-muted uppercase">
-          Saldos actuales de maquila
-        </h3>
-        <div v-if="balances.length === 0" class="text-sm text-muted">
-          Este cliente no tiene bidones registrados en planta.
-        </div>
-        <div v-else class="divide-y divide-default rounded-md border border-default">
-          <div
-            v-for="b in balances"
-            :key="b.containerTypeId"
-            class="flex flex-wrap items-center justify-between gap-4 p-3"
+    <UPageBody v-else>
+      <UPageCard variant="soft">
+        <template #title>
+          <h3>Saldos actuales de maquila</h3>
+        </template>
+        <UAlert
+          v-if="balances.length === 0"
+          color="neutral"
+          variant="soft"
+          title="Este cliente no tiene bidones registrados en planta."
+        />
+        <UPageList v-else as="ul">
+          <UPageCard
+            v-for="balance in balances"
+            :key="balance.containerTypeId"
+            as="li"
+            :title="balance.containerTypeName"
+            variant="soft"
           >
-            <div>
-              <p class="font-medium text-highlighted">{{ b.containerTypeName }}</p>
-              <div class="mt-1 flex flex-wrap gap-2 text-xs">
-                <UBadge
-                  :color="b.emptyAtPlant > 0 ? 'info' : 'neutral'"
-                  variant="subtle"
-                  :label="`${b.emptyAtPlant} vacíos en planta`"
-                />
-                <UBadge
-                  :color="b.fullToReturn > 0 ? 'success' : 'neutral'"
-                  variant="subtle"
-                  :label="`${b.fullToReturn} llenos por devolver`"
-                />
-              </div>
-              <p class="mt-1 text-xs text-muted">
-                Precio de maquila:
-                <span class="font-medium text-highlighted">
-                  {{ b.unitPrice != null ? formatSoles(b.unitPrice) : "Sin precio registrado" }}
-                </span>
-              </p>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge
+                :color="balance.emptyAtPlant > 0 ? 'info' : 'neutral'"
+                variant="subtle"
+                :label="`${balance.emptyAtPlant} vacíos en planta`"
+              />
+              <UBadge
+                :color="balance.fullToReturn > 0 ? 'success' : 'neutral'"
+                variant="subtle"
+                :label="`${balance.fullToReturn} llenos por devolver`"
+              />
             </div>
-            <div>
+            <p>
+              Precio de maquila:
+              <span>{{
+                balance.unitPrice != null ? formatSoles(balance.unitPrice) : "Sin precio registrado"
+              }}</span>
+            </p>
+            <!-- En el slot por defecto y no en #footer: UPageCard pinta el footer
+                 antes del contenido, y la acción quedaría arriba de los saldos. -->
+            <div v-if="balance.fullToReturn > 0">
               <UButton
-                v-if="b.fullToReturn > 0"
                 size="sm"
                 icon="i-lucide-arrow-up-right"
                 label="Devolver llenos"
-                @click="openReturnModal(b)"
+                @click="openReturnModal(balance)"
               />
             </div>
-          </div>
-        </div>
-      </div>
+          </UPageCard>
+        </UPageList>
+      </UPageCard>
 
-      <!-- Movimientos recientes -->
-      <div v-if="movements.length > 0">
-        <h3 class="mb-3 text-xs font-medium tracking-wide text-muted uppercase">
-          Movimientos de maquila
-        </h3>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-elevated text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-3 py-2 font-medium">Fecha</th>
-                <th scope="col" class="px-3 py-2 font-medium">Tipo</th>
-                <th scope="col" class="px-3 py-2 font-medium">Envase</th>
-                <th scope="col" class="px-3 py-2 text-right font-medium">Cant.</th>
-                <th scope="col" class="px-3 py-2 text-right font-medium">Cargo S/</th>
-                <th scope="col" class="px-3 py-2 font-medium">Registrado por</th>
-                <th scope="col" class="px-3 py-2 text-right">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="m in movements" :key="m.id">
-                <td class="px-3 py-2 whitespace-nowrap text-muted">
-                  {{ formatInstantInLima(m.occurredAt) }}
-                </td>
-                <td class="px-3 py-2">
-                  <UBadge
-                    :color="TYPE_CONFIG[m.type].color"
-                    variant="subtle"
-                    size="xs"
-                    :label="TYPE_CONFIG[m.type].label"
-                  />
-                  <p v-if="m.reason" class="mt-0.5 text-[10px] text-muted italic">
-                    Motivo: {{ m.reason }}
-                  </p>
-                </td>
-                <td class="px-3 py-2">{{ m.containerTypeName }}</td>
-                <td class="px-3 py-2 text-right font-medium tabular-nums">{{ m.quantity }}</td>
-                <td class="px-3 py-2 text-right tabular-nums">
-                  {{ m.saleTotal ? formatSoles(m.saleTotal) : "—" }}
-                </td>
-                <td class="px-3 py-2 text-muted">{{ m.recordedByName }}</td>
-                <td class="px-3 py-2 text-right">
-                  <UButton
-                    v-if="canVoid(m)"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    icon="i-lucide-ban"
-                    label="Anular"
-                    @click="openVoidModal(m)"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      <UPageCard v-if="movements.length > 0" variant="soft">
+        <template #title>
+          <h3>Movimientos de maquila</h3>
+        </template>
+        <UTable :data="movements" :columns="movementColumns" caption="Movimientos de maquila">
+          <template #occurredAt-cell="{ row }">
+            {{ formatInstantInLima(row.original.occurredAt) }}
+          </template>
+          <template #type-cell="{ row }">
+            <UBadge
+              :color="TYPE_CONFIG[row.original.type].color"
+              variant="subtle"
+              size="xs"
+              :label="TYPE_CONFIG[row.original.type].label"
+            />
+            <p v-if="row.original.reason">Motivo: {{ row.original.reason }}</p>
+          </template>
+          <template #saleTotal-cell="{ row }">
+            {{ row.original.saleTotal ? formatSoles(row.original.saleTotal) : "—" }}
+          </template>
+          <template #actions-cell="{ row }">
+            <UButton
+              v-if="canVoid(row.original)"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              icon="i-lucide-ban"
+              label="Anular"
+              @click="openVoidModal(row.original)"
+            />
+          </template>
+        </UTable>
+      </UPageCard>
+    </UPageBody>
 
     <!-- Modal Recibir -->
     <UModal v-model:open="receiveModalOpen" title="Recibir bidones del cliente">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitReceive">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitReceive">
           <UAlert
             v-if="receiveError"
             role="alert"
@@ -433,24 +420,24 @@ function canVoid(mov: MaquilaMovementItem): boolean {
           <UFormField label="Tipo de envase" required>
             <USelect
               v-model="receiveContainerTypeId"
+              class="w-full"
               :items="containerTypes.map((t) => ({ label: t.name, value: t.id }))"
               :disabled="receiveSubmitting"
-              class="w-full"
             />
           </UFormField>
 
           <UFormField label="Cantidad de vacíos dejados" required>
             <UInput
               v-model="receiveQuantity"
+              class="w-full"
               type="number"
               :min="1"
               :step="1"
               :disabled="receiveSubmitting"
-              class="w-full"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -460,14 +447,14 @@ function canVoid(mov: MaquilaMovementItem): boolean {
             />
             <UButton type="submit" label="Registrar recepción" :loading="receiveSubmitting" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
     <!-- Modal Devolver -->
     <UModal v-model:open="returnModalOpen" title="Devolver bidones llenos (se lleva el cliente)">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitReturn">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitReturn">
           <UAlert
             v-if="returnError"
             role="alert"
@@ -476,30 +463,21 @@ function canVoid(mov: MaquilaMovementItem): boolean {
             :title="returnError"
           />
 
-          <div v-if="targetBalance" class="rounded bg-elevated p-3 text-sm space-y-1">
+          <UPageCard v-if="targetBalance" variant="soft">
             <p>
-              Envase: <span class="font-medium">{{ targetBalance.containerTypeName }}</span>
+              Envase: <span>{{ targetBalance.containerTypeName }}</span>
             </p>
             <p>
               Llenos disponibles para devolver:
-              <span class="font-medium tabular-nums">{{ targetBalance.fullToReturn }}</span>
+              <span>{{ targetBalance.fullToReturn }}</span>
             </p>
             <p>
               Precio unitario de maquila:
-              <span
-                class="font-medium"
-                :class="effectiveUnitPrice ? 'text-highlighted' : 'text-error'"
-              >
-                {{
-                  effectivePriceLoading
-                    ? "Consultando precio…"
-                    : effectiveUnitPrice
-                      ? formatSoles(effectiveUnitPrice)
-                      : "Falta el precio de maquila de este cliente"
-                }}
-              </span>
+              <span v-if="effectivePriceLoading">Consultando precio…</span>
+              <span v-else-if="effectiveUnitPrice">{{ formatSoles(effectiveUnitPrice) }}</span>
+              <span v-else class="text-error">Falta el precio de maquila de este cliente</span>
             </p>
-          </div>
+          </UPageCard>
 
           <UAlert
             v-if="targetBalance && !effectivePriceLoading && !effectiveUnitPrice"
@@ -513,82 +491,75 @@ function canVoid(mov: MaquilaMovementItem): boolean {
           <UFormField label="Cantidad que se lleva" required>
             <UInput
               v-model="returnQuantity"
+              class="w-full"
               type="number"
               :min="1"
               :max="targetBalance?.fullToReturn"
               :step="1"
               :disabled="returnSubmitting || effectivePriceLoading || !effectiveUnitPrice"
-              class="w-full"
             />
           </UFormField>
 
-          <div
+          <UAlert
             v-if="effectiveUnitPrice"
-            class="flex items-center justify-between rounded border border-default p-3 text-sm"
-          >
-            <span class="text-muted">Total a cobrar por el servicio:</span>
-            <span class="font-display text-lg font-semibold tabular-nums text-highlighted">
-              {{ formatSoles(returnAmount || "0.00") }}
-            </span>
-          </div>
+            color="info"
+            variant="soft"
+            title="Total a cobrar por el servicio:"
+            :description="formatSoles(returnAmount || '0.00')"
+          />
 
-          <div v-if="locations.length > 0">
-            <UFormField label="Local del cliente (opcional)">
-              <USelect
-                v-model="returnLocationId"
-                :items="locations.map((l) => ({ label: l.name, value: l.id }))"
-                :disabled="returnSubmitting"
-                class="w-full"
-              />
-            </UFormField>
-          </div>
+          <UFormField v-if="locations.length > 0" label="Local del cliente (opcional)">
+            <USelect
+              v-model="returnLocationId"
+              class="w-full"
+              :items="locations.map((location) => ({ label: location.name, value: location.id }))"
+              :disabled="returnSubmitting"
+            />
+          </UFormField>
 
           <!-- Cobro -->
-          <div class="border-t border-default pt-3 space-y-3">
-            <div class="flex items-center justify-between">
-              <label class="text-sm font-medium text-highlighted">Modalidad de cobro</label>
-              <div class="flex gap-2">
-                <UButton
-                  size="xs"
-                  :color="!payNow ? 'primary' : 'neutral'"
-                  :variant="!payNow ? 'solid' : 'outline'"
-                  label="Al fiado (deuda en S/)"
-                  @click="payNow = false"
-                />
-                <UButton
-                  size="xs"
-                  :color="payNow ? 'primary' : 'neutral'"
-                  :variant="payNow ? 'solid' : 'outline'"
-                  label="Cobrar ahora"
-                  @click="payNow = true"
-                />
-              </div>
-            </div>
+          <UPageCard title="Modalidad de cobro" variant="soft">
+            <UFieldGroup>
+              <UButton
+                size="xs"
+                :color="!payNow ? 'primary' : 'neutral'"
+                :variant="!payNow ? 'solid' : 'outline'"
+                label="Al fiado (deuda en S/)"
+                @click="payNow = false"
+              />
+              <UButton
+                size="xs"
+                :color="payNow ? 'primary' : 'neutral'"
+                :variant="payNow ? 'solid' : 'outline'"
+                label="Cobrar ahora"
+                @click="payNow = true"
+              />
+            </UFieldGroup>
 
-            <div v-if="payNow" class="space-y-3 rounded bg-elevated p-3">
+            <UPageBody v-if="payNow">
               <UFormField label="Medio de pago" required>
                 <USelect
                   v-model="returnPaymentMethodId"
+                  class="w-full"
                   :items="paymentMethods.map((m) => ({ label: m.name, value: m.id }))"
                   :disabled="returnSubmitting"
-                  class="w-full"
                 />
               </UFormField>
 
               <UFormField label="Monto cobrado" required>
                 <UInput
                   v-model="returnAmount"
+                  class="w-full"
                   inputmode="decimal"
                   :disabled="returnSubmitting"
-                  class="w-full"
                 >
-                  <template #leading><span class="text-sm text-muted">S/</span></template>
+                  <template #leading><span>S/</span></template>
                 </UInput>
               </UFormField>
-            </div>
-          </div>
+            </UPageBody>
+          </UPageCard>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -603,31 +574,32 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               :disabled="effectivePriceLoading || !effectiveUnitPrice"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
     <!-- Modal Anular Movimiento -->
     <UModal v-model:open="voidModalOpen" title="Anular movimiento de maquila">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitVoid">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitVoid">
           <UAlert v-if="voidError" role="alert" color="error" variant="subtle" :title="voidError" />
 
-          <p class="text-sm text-muted">
-            La anulación emite un movimiento inverso auditable en el libro. Si anulas una
-            devolución, también se anulará la venta y el cobro asociado.
-          </p>
+          <UAlert
+            color="warning"
+            variant="soft"
+            description="La anulación emite un movimiento inverso auditable en el libro. Si anulas una devolución, también se anulará la venta y el cobro asociado."
+          />
 
           <UFormField label="Motivo de la anulación" required>
             <UInput
               v-model="voidReason"
+              class="w-full"
               placeholder="Ej. Error en la cantidad anotada"
               :disabled="voidSubmitting"
-              class="w-full"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -642,7 +614,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               :loading="voidSubmitting"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </SectionCard>

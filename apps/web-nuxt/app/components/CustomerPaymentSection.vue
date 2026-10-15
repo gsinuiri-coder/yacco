@@ -116,7 +116,7 @@ async function submit(): Promise<void> {
       @retry="loadMethods"
     />
 
-    <form v-else class="space-y-4" novalidate @submit.prevent="submit">
+    <UForm v-else :state="{}" :validate-on="[]" :loading-auto="false" novalidate @submit="submit">
       <UAlert v-if="submitError" role="alert" color="error" variant="subtle" :title="submitError" />
       <UAlert
         v-if="result"
@@ -131,21 +131,21 @@ async function submit(): Promise<void> {
         <UFormField label="Método de pago" name="paymentMethod">
           <USelect
             v-model="methodId"
+            class="w-full"
             :items="methodItems"
             placeholder="Selecciona un método"
             :disabled="submitting"
-            class="w-full"
           />
         </UFormField>
         <UFormField label="Monto" name="paymentAmount">
           <UInput
             v-model="amount"
+            class="w-full"
             inputmode="decimal"
             placeholder="12.50"
             :disabled="submitting"
-            class="w-full"
           >
-            <template #leading><span class="text-sm text-muted">S/</span></template>
+            <template #leading><span>S/</span></template>
           </UInput>
         </UFormField>
         <UButton
@@ -155,6 +155,6 @@ async function submit(): Promise<void> {
           :label="submitting ? 'Registrando…' : 'Registrar cobro'"
         />
       </div>
-    </form>
+    </UForm>
   </SectionCard>
 </template>

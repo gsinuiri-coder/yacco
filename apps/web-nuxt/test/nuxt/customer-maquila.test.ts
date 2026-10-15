@@ -151,6 +151,29 @@ describe("CustomerMaquilaSection", () => {
     expect(screen.getByText("S/ 4.00")).toBeTruthy();
   });
 
+  it("muestra «Devolver llenos» después de los saldos y el precio, como en la ficha original", async () => {
+    stubCustomerMaquila();
+
+    await renderSection();
+
+    const returnBtn = await screen.findByRole("button", { name: "Devolver llenos" });
+    const following = Node.DOCUMENT_POSITION_FOLLOWING;
+    for (const text of ["6 llenos por devolver", "S/ 4.00"]) {
+      expect(screen.getByText(text).compareDocumentPosition(returnBtn) & following).toBe(following);
+    }
+  });
+
+  it("cada saldo es un ítem de una lista válida (li dentro de ul)", async () => {
+    stubCustomerMaquila();
+
+    await renderSection();
+
+    await screen.findByText("Con caño");
+    const items = screen.getAllByRole("listitem");
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item.parentElement?.tagName).toBe("UL");
+  });
+
   it("registra recepción de bidones vacíos", async () => {
     stubCustomerMaquila();
     const receiveWrite = stubWrite(cleanups, "/api/v1/maquila/receptions", "POST", () => ({

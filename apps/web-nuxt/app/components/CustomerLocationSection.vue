@@ -127,86 +127,92 @@ function mapsUrl(draft: LocationDraft): string | null {
       @retry="load"
     />
 
-    <div v-else class="divide-y divide-default">
-      <fieldset v-for="draft in drafts" :key="draft.location.id" class="py-5 first:pt-0 last:pb-0">
-        <legend class="mb-3 font-medium text-highlighted">{{ draft.location.name }}</legend>
-        <form class="space-y-4" novalidate @submit.prevent="save(draft)">
-          <UAlert
-            v-if="draft.submitError"
-            role="alert"
-            color="error"
-            variant="subtle"
-            :title="draft.submitError"
-          />
-          <UAlert
-            v-if="draft.saved"
-            role="status"
-            color="success"
-            variant="subtle"
-            icon="i-lucide-circle-check"
-            title="Contacto y ubicación guardados."
-          />
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField
-              label="Persona que recibe (opcional)"
-              :name="`contactName-${draft.location.id}`"
-            >
-              <UInput
-                v-model="draft.contactName"
-                autocomplete="name"
-                placeholder="Ej. Rosa Quispe"
-                :disabled="draft.submitting"
-                class="w-full"
-                @update:model-value="markDirty(draft)"
-              />
-            </UFormField>
-            <UFormField
-              label="Enlace de Google Maps o coordenadas"
-              :name="`locationCoordinates-${draft.location.id}`"
-            >
-              <UInput
-                v-model="draft.locationInput"
-                placeholder="-12.046374, -77.042793"
-                :disabled="draft.submitting"
-                class="w-full"
-                @update:model-value="markDirty(draft)"
-              />
-            </UFormField>
-          </div>
-
-          <p class="text-sm text-muted">
-            Pega un enlace de Google Maps, incluso abreviado, o escribe latitud, longitud.
-          </p>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              type="submit"
-              icon="i-lucide-map-pin-check"
-              :loading="draft.submitting"
-              :label="draft.submitting ? 'Guardando…' : 'Guardar contacto y ubicación'"
-              :aria-label="`Guardar contacto y ubicación de ${draft.location.name}`"
+    <UPageBody v-else>
+      <fieldset v-for="draft in drafts" :key="draft.location.id">
+        <legend>{{ draft.location.name }}</legend>
+        <UPageCard variant="soft">
+          <UForm
+            :state="draft"
+            :validate-on="[]"
+            :loading-auto="false"
+            novalidate
+            @submit="save(draft)"
+          >
+            <UAlert
+              v-if="draft.submitError"
+              role="alert"
+              color="error"
+              variant="subtle"
+              :title="draft.submitError"
             />
-            <UButton
-              v-if="mapsUrl(draft)"
-              :to="mapsUrl(draft)!"
-              target="_blank"
-              rel="noopener noreferrer"
-              external
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-map"
-              label="Abrir en Maps"
+            <UAlert
+              v-if="draft.saved"
+              role="status"
+              color="success"
+              variant="subtle"
+              icon="i-lucide-circle-check"
+              title="Contacto y ubicación guardados."
             />
-          </div>
-        </form>
 
-        <CustomerLocationPhotos
-          :location-id="draft.location.id"
-          :location-name="draft.location.name"
-          :is-admin="session.hasRole('ADMIN')"
-          :can-upload="session.hasRole('ADMIN') || session.hasRole('SELLER')"
-        />
+            <UPageGrid>
+              <UFormField
+                label="Persona que recibe (opcional)"
+                :name="`contactName-${draft.location.id}`"
+              >
+                <UInput
+                  v-model="draft.contactName"
+                  class="w-full"
+                  autocomplete="name"
+                  placeholder="Ej. Rosa Quispe"
+                  :disabled="draft.submitting"
+                  @update:model-value="markDirty(draft)"
+                />
+              </UFormField>
+              <UFormField
+                label="Enlace de Google Maps o coordenadas"
+                :name="`locationCoordinates-${draft.location.id}`"
+              >
+                <UInput
+                  v-model="draft.locationInput"
+                  class="w-full"
+                  placeholder="-12.046374, -77.042793"
+                  :disabled="draft.submitting"
+                  @update:model-value="markDirty(draft)"
+                />
+              </UFormField>
+            </UPageGrid>
+
+            <p>Pega un enlace de Google Maps, incluso abreviado, o escribe latitud, longitud.</p>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                type="submit"
+                icon="i-lucide-map-pin-check"
+                :loading="draft.submitting"
+                :label="draft.submitting ? 'Guardando…' : 'Guardar contacto y ubicación'"
+                :aria-label="`Guardar contacto y ubicación de ${draft.location.name}`"
+              />
+              <UButton
+                v-if="mapsUrl(draft)"
+                :to="mapsUrl(draft)!"
+                target="_blank"
+                rel="noopener noreferrer"
+                external
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-map"
+                label="Abrir en Maps"
+              />
+            </div>
+          </UForm>
+
+          <CustomerLocationPhotos
+            :location-id="draft.location.id"
+            :location-name="draft.location.name"
+            :is-admin="session.hasRole('ADMIN')"
+            :can-upload="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+          />
+        </UPageCard>
       </fieldset>
-    </div>
+    </UPageBody>
   </SectionCard>
 </template>

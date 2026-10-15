@@ -57,6 +57,16 @@ const productItems = computed(() =>
 const chosenProduct = computed(() =>
   products.value.find((product) => product.id === newProductId.value),
 );
+const adminColumns = [
+  { accessorKey: "product", header: "Producto" },
+  { accessorKey: "price", header: "Precio", meta: RIGHT_ALIGNED },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
+];
+const effectiveColumns = [
+  { accessorKey: "product", header: "Producto" },
+  { accessorKey: "price", header: "Precio", meta: RIGHT_ALIGNED },
+  { accessorKey: "source", header: "Origen" },
+];
 
 function startAdd(): void {
   adding.value = true;
@@ -181,40 +191,44 @@ async function confirmDelete(priceId: string): Promise<void> {
       @retry="load"
     />
 
-    <div v-else-if="isAdmin" class="space-y-4">
+    <UPageBody v-else-if="isAdmin">
       <UAlert v-if="createError" role="alert" color="error" variant="subtle" :title="createError" />
 
-      <form
+      <UForm
         v-if="adding"
-        class="grid gap-4 rounded-md bg-elevated p-4 sm:grid-cols-[1fr_12rem] sm:items-start"
+        :state="{}"
+        :validate-on="[]"
+        :loading-auto="false"
         novalidate
-        @submit.prevent="create"
+        @submit="create"
       >
-        <UFormField label="Producto" name="newPriceProduct">
-          <USelect
-            v-model="newProductId"
-            :items="productItems"
-            placeholder="Selecciona un producto"
-            :disabled="creating"
-            class="w-full"
-          />
-        </UFormField>
-        <UFormField
-          label="Precio pactado"
-          name="newPriceValue"
-          :help="
-            chosenProduct ? `Precio de lista: ${formatSoles(chosenProduct.listPrice)}` : undefined
-          "
-        >
-          <UInput
-            v-model="newPrice"
-            inputmode="decimal"
-            placeholder="12.50"
-            :disabled="creating"
-            class="w-full"
-          />
-        </UFormField>
-        <div class="flex justify-end gap-2 sm:col-span-2">
+        <UPageGrid>
+          <UFormField label="Producto" name="newPriceProduct">
+            <USelect
+              v-model="newProductId"
+              class="w-full"
+              :items="productItems"
+              placeholder="Selecciona un producto"
+              :disabled="creating"
+            />
+          </UFormField>
+          <UFormField
+            label="Precio pactado"
+            name="newPriceValue"
+            :help="
+              chosenProduct ? `Precio de lista: ${formatSoles(chosenProduct.listPrice)}` : undefined
+            "
+          >
+            <UInput
+              v-model="newPrice"
+              class="w-full"
+              inputmode="decimal"
+              placeholder="12.50"
+              :disabled="creating"
+            />
+          </UFormField>
+        </UPageGrid>
+        <div class="flex justify-end gap-2">
           <UButton
             color="neutral"
             variant="ghost"
@@ -228,127 +242,109 @@ async function confirmDelete(priceId: string): Promise<void> {
             :label="creating ? 'Guardando…' : 'Guardar precio'"
           />
         </div>
-      </form>
+      </UForm>
 
-      <p v-if="prices.length === 0" class="py-6 text-center text-muted">
-        Este cliente no tiene precios pactados: rige el precio de lista para todos sus productos.
-      </p>
+      <UAlert
+        v-if="prices.length === 0"
+        color="neutral"
+        variant="soft"
+        title="Este cliente no tiene precios pactados: rige el precio de lista para todos sus productos."
+      />
 
-      <table v-else class="w-full text-sm">
-        <caption class="sr-only">
-          Precios pactados del cliente
-        </caption>
-        <thead class="text-left text-xs tracking-wide text-muted uppercase">
-          <tr>
-            <th scope="col" class="py-2 font-medium">Producto</th>
-            <th scope="col" class="py-2 text-right font-medium">Precio</th>
-            <th scope="col" class="py-2"><span class="sr-only">Acciones</span></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-default">
-          <template v-for="price in prices" :key="price.id">
-            <tr>
-              <td class="py-3 font-medium text-highlighted">{{ price.product.name }}</td>
-              <td class="py-3 text-right tabular-nums">
-                <UInput
-                  v-if="editingId === price.id"
-                  v-model="editPrice"
-                  :aria-label="`Precio de ${price.product.name}`"
-                  inputmode="decimal"
-                  :disabled="saving"
-                  class="ml-auto w-32"
-                />
-                <template v-else>{{ formatSoles(price.price) }}</template>
-              </td>
-              <td class="py-3 text-right">
-                <div
-                  v-if="deletingId === price.id"
-                  class="flex flex-wrap items-center justify-end gap-2"
-                >
-                  <span class="text-muted">¿Eliminar? Volverá a regir el precio de lista.</span>
-                  <UButton
-                    color="neutral"
-                    variant="outline"
-                    size="sm"
-                    label="No"
-                    :disabled="saving"
-                    @click="deletingId = null"
-                  />
-                  <UButton
-                    color="error"
-                    size="sm"
-                    :disabled="saving"
-                    :label="saving ? 'Eliminando…' : 'Sí, eliminar'"
-                    @click="confirmDelete(price.id)"
-                  />
-                </div>
-                <div v-else-if="editingId === price.id" class="flex justify-end gap-2">
-                  <UButton
-                    color="neutral"
-                    variant="outline"
-                    size="sm"
-                    label="Cancelar"
-                    :disabled="saving"
-                    @click="editingId = null"
-                  />
-                  <UButton
-                    size="sm"
-                    :disabled="saving"
-                    :label="saving ? 'Guardando…' : 'Guardar'"
-                    @click="saveEdit(price.id)"
-                  />
-                </div>
-                <div v-else class="flex justify-end gap-1">
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    label="Editar"
-                    :aria-label="`Editar precio de ${price.product.name}`"
-                    @click="startEdit(price)"
-                  />
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    label="Eliminar"
-                    :aria-label="`Eliminar precio de ${price.product.name}`"
-                    @click="startDelete(price.id)"
-                  />
-                </div>
-              </td>
-            </tr>
-            <tr v-if="rowError?.priceId === price.id">
-              <td colspan="3" class="pb-3">
-                <UAlert role="alert" color="error" variant="subtle" :title="rowError.message" />
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-    </div>
+      <UTable v-else :data="prices" :columns="adminColumns" caption="Precios pactados del cliente">
+        <template #product-cell="{ row }">
+          {{ row.original.product.name }}
+        </template>
+        <template #price-cell="{ row }">
+          <UInput
+            v-if="editingId === row.original.id"
+            v-model="editPrice"
+            class="w-32"
+            :aria-label="`Precio de ${row.original.product.name}`"
+            inputmode="decimal"
+            :disabled="saving"
+          />
+          <template v-else>{{ formatSoles(row.original.price) }}</template>
+        </template>
+        <template #actions-cell="{ row }">
+          <div
+            v-if="deletingId === row.original.id"
+            class="flex flex-wrap items-center justify-end gap-2"
+          >
+            <span>¿Eliminar? Volverá a regir el precio de lista.</span>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              label="No"
+              :disabled="saving"
+              @click="deletingId = null"
+            />
+            <UButton
+              color="error"
+              size="sm"
+              :disabled="saving"
+              :label="saving ? 'Eliminando…' : 'Sí, eliminar'"
+              @click="confirmDelete(row.original.id)"
+            />
+          </div>
+          <div v-else-if="editingId === row.original.id" class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              label="Cancelar"
+              :disabled="saving"
+              @click="editingId = null"
+            />
+            <UButton
+              size="sm"
+              :disabled="saving"
+              :label="saving ? 'Guardando…' : 'Guardar'"
+              @click="saveEdit(row.original.id)"
+            />
+          </div>
+          <div v-else class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              label="Editar"
+              :aria-label="`Editar precio de ${row.original.product.name}`"
+              @click="startEdit(row.original)"
+            />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              label="Eliminar"
+              :aria-label="`Eliminar precio de ${row.original.product.name}`"
+              @click="startDelete(row.original.id)"
+            />
+          </div>
+          <UAlert
+            v-if="rowError?.priceId === row.original.id"
+            role="alert"
+            color="error"
+            variant="subtle"
+            :title="rowError.message"
+          />
+        </template>
+      </UTable>
+    </UPageBody>
 
-    <table v-else class="w-full text-sm">
-      <caption class="sr-only">
-        Precios efectivos del cliente
-      </caption>
-      <thead class="text-left text-xs tracking-wide text-muted uppercase">
-        <tr>
-          <th scope="col" class="py-2 font-medium">Producto</th>
-          <th scope="col" class="py-2 text-right font-medium">Precio</th>
-          <th scope="col" class="py-2 pl-4 font-medium">Origen</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-default">
-        <tr v-for="item in effective" :key="item.product.id">
-          <td class="py-3 font-medium text-highlighted">{{ item.product.name }}</td>
-          <td class="py-3 text-right tabular-nums">{{ formatSoles(item.price) }}</td>
-          <td class="py-3 pl-4">
-            <span v-if="item.source === 'LIST'" class="text-muted">Precio de lista</span>
-            <UBadge v-else color="info" variant="subtle" label="Pactado" />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <UTable
+      v-else
+      :data="effective"
+      :columns="effectiveColumns"
+      caption="Precios efectivos del cliente"
+    >
+      <template #product-cell="{ row }">{{ row.original.product.name }}</template>
+      <template #price-cell="{ row }">{{ formatSoles(row.original.price) }}</template>
+      <template #source-cell="{ row }">
+        <template v-if="row.original.source === 'LIST'">Precio de lista</template>
+        <UBadge v-else color="info" variant="subtle" label="Pactado" />
+      </template>
+    </UTable>
   </SectionCard>
 </template>
