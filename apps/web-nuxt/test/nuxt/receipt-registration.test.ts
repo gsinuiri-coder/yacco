@@ -122,6 +122,32 @@ describe("Registrar comprobante", () => {
     });
   });
 
+  it("trae todas las páginas de ventas sin comprobante, no solo las primeras cien", async () => {
+    const queries: Array<Record<string, string>> = [];
+    cleanups.push(
+      registerEndpoint(`/api/v1/customers/${CUSTOMER_ID}`, {
+        method: "GET",
+        handler: () => customer,
+      }),
+      registerEndpoint("/api/v1/receipts/sales", {
+        method: "GET",
+        handler: (event: H3Event) => {
+          const query = getQuery(event) as Record<string, string>;
+          queries.push(query);
+          const page = Number(query.page);
+          return pageOf([sales[page - 1]!], { page, limit: 100, total: 101, totalPages: 2 });
+        },
+      }),
+    );
+
+    await renderPage();
+
+    const table = await screen.findByRole("table", { name: "Ventas sin comprobante" });
+    await waitFor(() => expect(within(table).getByText("Sucursal Norte")).toBeTruthy());
+    expect(within(table).getByText("Local Centro")).toBeTruthy();
+    expect(queries.map((query) => query.page)).toEqual(["1", "2"]);
+  });
+
   it("parte con la venta indicada ya elegida", async () => {
     stubPrerequisites();
 

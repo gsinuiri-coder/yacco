@@ -243,7 +243,7 @@ describe("ReceiptsService transactional writes", () => {
       {
         type: ReceiptType.SALES_RECEIPT,
         medium: ReceiptMedium.MANUAL,
-        series: " B001 ",
+        series: " b001 ",
         number: " 000001 ",
         issuedOn: "2026-10-14",
         customerId: CUSTOMER_ID,
@@ -262,6 +262,8 @@ describe("ReceiptsService transactional writes", () => {
     });
     expect(tx.receipt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        series: "B001",
+        number: "000001",
         taxableAmount: decimal("2.59"),
         taxAmount: decimal("0.46"),
         total: decimal("3.05"),
@@ -478,7 +480,7 @@ describe("ReceiptsService transactional writes", () => {
       "receipt-1",
       {
         medium: ReceiptMedium.EXTERNAL_ELECTRONIC,
-        series: "FC01",
+        series: " fc01 ",
         number: "000123",
         issuedOn: "2026-10-14",
         reason: "Operación anulada",
@@ -489,6 +491,7 @@ describe("ReceiptsService transactional writes", () => {
     expect(tx.receipt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         type: ReceiptType.CREDIT_NOTE,
+        series: "FC01",
         affectedReceiptId: "receipt-1",
         reason: "Operación anulada",
         total: decimal("118.00"),

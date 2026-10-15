@@ -41,6 +41,7 @@ describe("ReceiptFilesService", () => {
     tx.receipt.findUnique.mockResolvedValue({
       id: RECEIPT_ID,
       medium: ReceiptMedium.MANUAL,
+      voidedAt: null,
       files: [],
     });
     tx.receiptFile.create.mockImplementation(async (args) => (args as { data: unknown }).data);
@@ -69,6 +70,7 @@ describe("ReceiptFilesService", () => {
     tx.receipt.findUnique.mockResolvedValue({
       id: RECEIPT_ID,
       medium: ReceiptMedium.EXTERNAL_ELECTRONIC,
+      voidedAt: null,
       files: [{ objectKey: `receipts/${RECEIPT_ID}/document.pdf`, contentType: "application/pdf" }],
     });
     tx.receiptFile.create.mockImplementation(async (args) => (args as { data: unknown }).data);
@@ -89,6 +91,7 @@ describe("ReceiptFilesService", () => {
     manual.tx.receipt.findUnique.mockResolvedValue({
       id: RECEIPT_ID,
       medium: ReceiptMedium.MANUAL,
+      voidedAt: null,
       files: [{ objectKey: "existing.jpg", contentType: "image/jpeg" }],
     });
     await expect(
@@ -99,11 +102,28 @@ describe("ReceiptFilesService", () => {
     electronic.tx.receipt.findUnique.mockResolvedValue({
       id: RECEIPT_ID,
       medium: ReceiptMedium.EXTERNAL_ELECTRONIC,
+      voidedAt: null,
       files: [{ objectKey: "existing.pdf", contentType: "application/pdf" }],
     });
     await expect(
       electronic.service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") }, USER_ID),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it("rejects a file for a voided receipt before storing anything", async () => {
+    const { tx, storage, service } = buildService();
+    tx.receipt.findUnique.mockResolvedValue({
+      id: RECEIPT_ID,
+      medium: ReceiptMedium.MANUAL,
+      voidedAt: new Date("2026-10-14T09:00:00.000Z"),
+      files: [],
+    });
+
+    await expect(
+      service.upload(RECEIPT_ID, { buffer: Buffer.from("%PDF-1.7") }, USER_ID),
+    ).rejects.toThrow("No se adjuntan archivos a un comprobante anulado");
+    expect(tx.receiptFile.create).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
   });
 
   it("returns 404 for an unknown receipt before storing anything", async () => {

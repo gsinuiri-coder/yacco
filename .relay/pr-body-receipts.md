@@ -241,6 +241,21 @@ Tests:       13 passed, 13 total
 las restricciones de la base (CHECK e índices parciales), no la anulación.
 La evidencia de anular y de la nota de crédito es la de arriba, por API.
 
+### Menores de la revisión
+
+- La API guarda la serie en mayúsculas (alta y nota de crédito). Rojo:
+  `- "series": "FC01"` / `+ "series": "fc01"` y el alta con `" b001 "`
+  (2 failed, 19 passed); verde 21/21.
+- No se adjuntan archivos a un comprobante anulado (409). Rojo: «rejects a
+  file for a voided receipt before storing anything» (1 failed, 43 passed);
+  verde 44/44. Integración de comprobantes 17/17 después del cambio.
+- `findSettings` se reusa en la vista previa; el lock y la anulación con
+  liberación de ventas son un solo método para `void` y para la nota de
+  crédito.
+- «Registrar comprobante» trae todas las páginas de ventas libres. Rojo:
+  «trae todas las páginas de ventas sin comprobante, no solo las primeras
+  cien» (1 failed, 8 passed); verde 9/9.
+
 ### Textos compuestos sólo por espacios
 
 Rojo: los siete casos de razón social, dirección, serie, número y motivos no

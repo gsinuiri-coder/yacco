@@ -54,10 +54,14 @@ export class ReceiptFilesService {
         select: {
           id: true,
           medium: true,
+          voidedAt: true,
           files: { select: { objectKey: true, contentType: true } },
         },
       });
       if (receipt === null) throw new NotFoundException("El comprobante no existe");
+      if (receipt.voidedAt !== null) {
+        throw new ConflictException("No se adjuntan archivos a un comprobante anulado");
+      }
 
       const validated = validateReceiptFile(file.buffer, receipt.medium);
       this.assertFileSlotAvailable(receipt.medium, receipt.files, validated.category);

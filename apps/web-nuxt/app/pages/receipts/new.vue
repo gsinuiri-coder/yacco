@@ -120,16 +120,19 @@ async function loadSales(): Promise<void> {
   salesLoading.value = true;
   salesError.value = null;
   try {
-    const result = await api.request<Page<ReceiptSaleStatusRow>>("/receipts/sales", {
-      query: {
-        customerId: customer.value.id,
-        status: "AVAILABLE",
-        page: 1,
-        limit: 100,
-      },
-    });
-    sales.value = result.data;
-    preselectSales(result.data);
+    const loaded: ReceiptSaleStatusRow[] = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const result = await api.request<Page<ReceiptSaleStatusRow>>("/receipts/sales", {
+        query: { customerId: customer.value.id, status: "AVAILABLE", page, limit: 100 },
+      });
+      loaded.push(...result.data);
+      totalPages = result.totalPages;
+      page += 1;
+    } while (page <= totalPages);
+    sales.value = loaded;
+    preselectSales(loaded);
   } catch (error) {
     salesError.value = describeApiFailure(error);
   } finally {

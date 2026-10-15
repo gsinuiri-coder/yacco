@@ -123,6 +123,12 @@ const RECEIPT_STATUS_SALE_SELECT = {
   },
 } satisfies Prisma.SaleSelect;
 
+// The office writes series in capitals (B001, F001); the API stores them the
+// same way whatever the client sends, so uniqueness doesn't depend on casing.
+function normalizeSeries(series: string): string {
+  return series.trim().toUpperCase();
+}
+
 function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
@@ -280,18 +286,8 @@ export class ReceiptsService {
       throw new BadRequestException("La nota de crédito se registra desde un comprobante vigente");
     }
 
-    const settings = await this.prisma.issuerSettingsVersion.findFirst({
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: { id: true, taxRate: true, receiptDocumentThreshold: true },
-    });
-    if (settings === null) {
-      throw new ConflictException("Configurá primero los datos de facturación");
-    }
-
-    const sales = await this.prisma.sale.findMany({
-      where: { id: { in: dto.saleIds } },
-      select: RECEIPT_SALE_SELECT,
-    });
+    const settings = await this.findSettings(this.prisma);
+    const sales = await this.findSales(this.prisma, dto.saleIds);
     return this.buildPreview(dto, settings, sales);
   }
 
@@ -299,7 +295,7 @@ export class ReceiptsService {
     if (dto.type === ReceiptType.CREDIT_NOTE) {
       throw new BadRequestException("La nota de crédito se registra desde un comprobante vigente");
     }
-    const series = dto.series.trim();
+    const series = normalizeSeries(dto.series);
     const number = dto.number.trim();
 
     try {
@@ -382,16 +378,10 @@ export class ReceiptsService {
 
   async void(id: string, dto: ReceiptReasonDto, voidedById: string): Promise<VoidReceiptResultDto> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`SELECT id FROM receipts WHERE id = ${id}::uuid FOR UPDATE`);
+      await this.lockReceipt(tx, id);
       const receipt = await tx.receipt.findUnique({
         where: { id },
-        select: {
-          id: true,
-          type: true,
-          medium: true,
-          voidedAt: true,
-          sales: { where: { releasedAt: null }, select: { saleId: true, releasedAt: true } },
-        },
+        select: { id: true, type: true, medium: true, voidedAt: true },
       });
       if (receipt === null) throw new NotFoundException("El comprobante no existe");
       if (receipt.voidedAt !== null) throw new ConflictException("El comprobante ya fue anulado");
@@ -401,18 +391,13 @@ export class ReceiptsService {
         throw new ConflictException("Una nota de crédito electrónica no se puede anular");
       }
 
-      const releasedAt = new Date();
-      const { count } = await tx.receipt.updateMany({
-        where: { id, voidedAt: null },
-        data: { voidedAt: releasedAt, voidedById, voidReason: dto.reason.trim() },
+      const releasedSales = await this.voidAndReleaseSales(tx, {
+        id,
+        voidedById,
+        reason: dto.reason.trim(),
+        alreadyVoided: "El comprobante ya fue anulado",
       });
-      if (count !== 1) throw new ConflictException("El comprobante ya fue anulado");
-
-      const released = await tx.receiptSale.updateMany({
-        where: { receiptId: id, releasedAt: null },
-        data: { releasedAt, releasedById: voidedById },
-      });
-      return { id, releasedSales: released.count };
+      return { id, releasedSales };
     });
   }
 
@@ -447,9 +432,7 @@ export class ReceiptsService {
   ): Promise<ReceiptResponseDto> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw(
-          Prisma.sql`SELECT id FROM receipts WHERE id = ${affectedReceiptId}::uuid FOR UPDATE`,
-        );
+        await this.lockReceipt(tx, affectedReceiptId);
         const original = await tx.receipt.findUnique({
           where: { id: affectedReceiptId },
           select: {
@@ -461,7 +444,6 @@ export class ReceiptsService {
             taxAmount: true,
             total: true,
             voidedAt: true,
-            sales: { where: { releasedAt: null }, select: { saleId: true, releasedAt: true } },
           },
         });
         if (original === null) throw new NotFoundException("El comprobante no existe");
@@ -473,25 +455,17 @@ export class ReceiptsService {
         if (original.voidedAt !== null) {
           throw new ConflictException("El comprobante original ya fue anulado");
         }
-        const releasedAt = new Date();
-        const { count } = await tx.receipt.updateMany({
-          where: { id: affectedReceiptId, voidedAt: null },
-          data: {
-            voidedAt: releasedAt,
-            voidedById: createdById,
-            voidReason: dto.reason.trim(),
-          },
-        });
-        if (count !== 1) throw new ConflictException("El comprobante original ya fue anulado");
-        await tx.receiptSale.updateMany({
-          where: { receiptId: affectedReceiptId, releasedAt: null },
-          data: { releasedAt, releasedById: createdById },
+        await this.voidAndReleaseSales(tx, {
+          id: affectedReceiptId,
+          voidedById: createdById,
+          reason: dto.reason.trim(),
+          alreadyVoided: "El comprobante original ya fue anulado",
         });
         const creditNote = await tx.receipt.create({
           data: {
             type: ReceiptType.CREDIT_NOTE,
             medium: dto.medium,
-            series: dto.series.trim(),
+            series: normalizeSeries(dto.series),
             number: dto.number.trim(),
             issuedOn: parseBusinessDate(dto.issuedOn, "La fecha de emisión"),
             customerId: original.customerId,
@@ -569,6 +543,28 @@ export class ReceiptsService {
       throw new ConflictException("Configurá primero los datos de facturación");
     }
     return settings;
+  }
+
+  private async lockReceipt(tx: Prisma.TransactionClient, id: string): Promise<void> {
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM receipts WHERE id = ${id}::uuid FOR UPDATE`);
+  }
+
+  /** Stamps the void columns and releases every live sale, once, with who and when. */
+  private async voidAndReleaseSales(
+    tx: Prisma.TransactionClient,
+    params: { id: string; voidedById: string; reason: string; alreadyVoided: string },
+  ): Promise<number> {
+    const voidedAt = new Date();
+    const { count } = await tx.receipt.updateMany({
+      where: { id: params.id, voidedAt: null },
+      data: { voidedAt, voidedById: params.voidedById, voidReason: params.reason },
+    });
+    if (count !== 1) throw new ConflictException(params.alreadyVoided);
+    const released = await tx.receiptSale.updateMany({
+      where: { receiptId: params.id, releasedAt: null },
+      data: { releasedAt: voidedAt, releasedById: params.voidedById },
+    });
+    return released.count;
   }
 
   private async findReusableFiles(
