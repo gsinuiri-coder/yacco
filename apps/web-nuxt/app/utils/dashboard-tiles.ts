@@ -41,7 +41,7 @@ export function dashboardTiles(dashboard: RoleDashboard): DashboardTile[] {
       : {
           label: "Ventas del día",
           value: formatSoles(dashboard.salesToday),
-          to: withQuery("/routes", { date: today }),
+          to: withQuery("/sales", { soldFrom: today, soldTo: today }),
         },
     dashboard.paymentsToday === undefined
       ? null
@@ -58,7 +58,11 @@ export function dashboardTiles(dashboard: RoleDashboard): DashboardTile[] {
       : {
           label: "Pedidos del día",
           value: String(dashboard.ordersToday),
-          to: withQuery("/orders", { deliveryDateFrom: today, deliveryDateTo: today }),
+          to: withQuery("/orders", {
+            status: "NOT_CANCELLED",
+            deliveryDateFrom: today,
+            deliveryDateTo: today,
+          }),
         },
     dashboard.undeliveredOrders === undefined
       ? null

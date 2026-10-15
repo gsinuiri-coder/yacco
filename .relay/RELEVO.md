@@ -3,6 +3,6 @@
 status: in-progress
 item: Fase 3 — 9. Panel por rol y solo Nuxt UI (goal en .relay/goals/fase3-9-nuxt-ui-y-panel.md)
 branch: feat/role-dashboards
-last-step: TDD rojo de las decisiones de enlaces terminado y documentado: 11 fallas web dirigidas, 1 de OrdersService y 2 de integración prueban la ausencia de Ventas, Todos menos anulados y maquila por devolver. Tests agregados en feat/role-dashboards.
-next-step: Implementar el endpoint y pantalla Ventas, el filtro Todos menos anulados y el resumen de maquila por devolver; correr los tests dirigidos hasta verde y actualizar este relevo con el resultado.
-updated: 2026-10-15T08:34:41-05:00 por Codex (relevo)
+last-step: Decisiones de enlaces implementadas con TDD: GET /sales y pantalla Ventas (anuladas visibles, total vigente), Pedidos con Todos menos anulados y Producción con llenos de maquila por devolver al supervisor. API unit 86/86, integración 9/9, web dirigida 70/70, typecheck y lint verdes; detector UI sin hallazgos.
+next-step: Correr las suites completas, revisar el diff con reviewer, corregir hallazgos, actualizar la evidencia y abrir el PR de 9a con --body-file. Esperar los cinco checks verdes, squash sin --admin y borrar la rama; después iniciar 9b.
+updated: 2026-10-15T08:48:36-05:00 por Codex (relevo)

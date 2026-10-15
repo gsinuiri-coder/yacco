@@ -29,6 +29,7 @@ export const NAVIGATION: NavigationSection[] = [
       { label: "Panel", icon: "i-lucide-layout-dashboard", to: "/" },
       { label: "Clientes", icon: "i-lucide-users", to: "/customers" },
       { label: "Pedidos", icon: "i-lucide-clipboard-list", to: "/orders" },
+      { label: "Ventas", icon: "i-lucide-shopping-bag", to: "/sales" },
       { label: "Rutas", icon: "i-lucide-truck", to: "/routes" },
       { label: "Pagos", icon: "i-lucide-wallet", to: "/payments" },
       { label: "Comprobantes", icon: "i-lucide-receipt-text", to: "/receipts" },

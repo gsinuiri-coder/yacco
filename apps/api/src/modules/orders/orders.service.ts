@@ -690,6 +690,7 @@ export class OrdersService {
 function buildOrderFilter(query: ListOrdersQueryDto): Prisma.OrderWhereInput {
   const {
     status,
+    excludeCancelled,
     customerId,
     zoneId,
     deliveryDateFrom,
@@ -709,7 +710,11 @@ function buildOrderFilter(query: ListOrdersQueryDto): Prisma.OrderWhereInput {
   }
 
   return {
-    ...(status !== undefined ? { status } : {}),
+    ...(status !== undefined
+      ? { status }
+      : excludeCancelled === true
+        ? { status: { not: OrderStatus.CANCELLED } }
+        : {}),
     // Los dos miran al cliente del pedido; juntos, las dos condiciones valen.
     ...(customerId !== undefined || zoneId !== undefined
       ? {

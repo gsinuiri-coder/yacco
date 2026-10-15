@@ -54,6 +54,14 @@ export class ListOrdersQueryDto {
   @IsEnum(OrderStatus, { message: "El estado no es un estado de pedido válido" })
   status?: OrderStatus;
 
+  @ApiPropertyOptional({
+    description: "true: todos los estados salvo CANCELLED; se ignora si se envía status",
+  })
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean({ message: "El filtro de anulados debe ser verdadero o falso" })
+  excludeCancelled?: boolean;
+
   @ApiPropertyOptional({ format: "uuid" })
   @IsOptional()
   @IsUUID("4", { message: "El cliente debe ser un identificador válido" })

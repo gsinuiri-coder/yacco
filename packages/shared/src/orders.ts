@@ -62,6 +62,8 @@ export interface OrderListQuery {
   page?: number;
   limit?: number;
   status?: OrderStatus;
+  /** true: every status except CANCELLED; ignored when status is present. */
+  excludeCancelled?: boolean;
   customerId?: string;
   /** Only orders of customers in this zone. */
   zoneId?: string;

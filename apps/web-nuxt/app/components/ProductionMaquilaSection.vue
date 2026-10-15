@@ -17,6 +17,10 @@ const canFill = computed(
     session.hasRole("PLANT_OPERATOR"),
 );
 const canVoid = computed(() => session.hasRole("ADMIN") || session.hasRole("PLANT_SUPERVISOR"));
+const canViewReturns = computed(
+  () =>
+    session.hasRole("ADMIN") || session.hasRole("SELLER") || session.hasRole("PLANT_SUPERVISOR"),
+);
 
 const customers = ref<MaquilaCustomerSummary[]>([]);
 const fillings = ref<MaquilaMovementItem[]>([]);
@@ -52,6 +56,7 @@ const fillSubmitting = ref(false);
 const fillError = ref<string | null>(null);
 
 const customersWithEmpties = computed(() => customers.value.filter((c) => c.emptyAtPlantTotal > 0));
+const customersWithReturns = computed(() => customers.value.filter((c) => c.fullToReturnTotal > 0));
 
 const selectedCustomer = computed(() =>
   customers.value.find((c) => c.customerId === selectedCustomerId.value),
@@ -193,6 +198,29 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
           </div>
         </div>
       </div>
+
+      <section v-if="canViewReturns" aria-label="Llenos de maquila por devolver">
+        <h3>Llenos de clientes por devolver</h3>
+        <p v-if="customersWithReturns.length === 0">
+          No hay bidones llenos de clientes pendientes de devolución.
+        </p>
+        <UPageGrid v-else>
+          <UPageCard
+            v-for="customer in customersWithReturns"
+            :key="customer.customerId"
+            :title="customer.customerName"
+            :description="`${customer.fullToReturnTotal} llenos`"
+            variant="subtle"
+          >
+            <p
+              v-for="balance in customer.balances.filter((item) => item.fullToReturn > 0)"
+              :key="balance.containerTypeId"
+            >
+              {{ balance.containerTypeName }}: {{ balance.fullToReturn }}
+            </p>
+          </UPageCard>
+        </UPageGrid>
+      </section>
 
       <!-- Llenados recientes -->
       <div>

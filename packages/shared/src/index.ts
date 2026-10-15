@@ -23,6 +23,7 @@ export * from "./receipts.js";
 export * from "./route-pit-stops.js";
 export * from "./route-settlement.js";
 export * from "./routes.js";
+export * from "./sales.js";
 export * from "./settings.js";
 export * from "./users.js";
 export * from "./vehicles.js";
