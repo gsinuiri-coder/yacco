@@ -600,7 +600,7 @@ describe("PaymentsService", () => {
   });
 
   describe("findAll", () => {
-    it("filters by status/paymentMethodId/customerId/paidFrom/paidTo, and totals reflects the SAME where as the page", async () => {
+    it("filters the page by status/paymentMethodId/customerId/paidFrom/paidTo and totals only active rows", async () => {
       prisma.payment.count.mockResolvedValue(3);
       prisma.payment.findMany.mockResolvedValue([paymentRow()]);
       prisma.payment.aggregate.mockResolvedValue({
@@ -633,7 +633,7 @@ describe("PaymentsService", () => {
         expect.objectContaining({ where: expectedWhere, orderBy: { paidAt: "asc" } }),
       );
       expect(prisma.payment.aggregate).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expectedWhere }),
+        expect.objectContaining({ where: { ...expectedWhere, voidedAt: null } }),
       );
       expect(result.totals).toEqual({ count: 3, amount: "75.00" });
       expect(result.total).toBe(3);
@@ -641,7 +641,7 @@ describe("PaymentsService", () => {
 
     /**
      * Un cobro anulado SIGUE en la bandeja, con su monto original y su motivo
-     * a la vista, y sigue sumando en `totals`. Esconder un cobro que el
+     * a la vista, pero no suma en `totals`. Esconder un cobro que el
      * cliente sabe que hizo es peor que mostrarlo tachado: quien lo busca no
      * lo encontraría y lo registraría de nuevo. Mismo idioma que el estado de
      * cuenta, donde una fila anulada aparece con su monto y efecto cero.
@@ -660,8 +660,8 @@ describe("PaymentsService", () => {
         }),
       ]);
       prisma.payment.aggregate.mockResolvedValue({
-        _count: { _all: 2 },
-        _sum: { amount: decimal("50.00") },
+        _count: { _all: 1 },
+        _sum: { amount: decimal("25.00") },
       });
 
       const result = await service.findAll({ page: 1, limit: 20 });
@@ -670,12 +670,15 @@ describe("PaymentsService", () => {
       expect(voided?.voidedAt).toEqual(voidedAt);
       expect(voided?.voidReason).toBe("La parada se corrigió: no había pagado");
       expect(voided?.amount).toBe("25.00");
-      // El `where` de la página no filtra lo anulado, y el total tampoco: el
-      // total describe la lista, y tiene que cuadrar con lo que el ojo suma.
+      // El `where` de la página no filtra lo anulado; el total sí, porque
+      // expresa el dinero vigente sin esconder la corrección.
       expect(prisma.payment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { isOpeningBalance: false } }),
       );
-      expect(result.totals).toEqual({ count: 2, amount: "50.00" });
+      expect(prisma.payment.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isOpeningBalance: false, voidedAt: null } }),
+      );
+      expect(result.totals).toEqual({ count: 1, amount: "25.00" });
     });
 
     it("un cobro en pie viaja con voidedAt y voidReason en null", async () => {
@@ -733,6 +736,45 @@ describe("PaymentsService", () => {
       });
     });
 
+    it("filters by an exclusive paidBefore bound", async () => {
+      prisma.payment.count.mockResolvedValue(0);
+      prisma.payment.findMany.mockResolvedValue([]);
+      prisma.payment.aggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { amount: null } });
+
+      await service.findAll({
+        page: 1,
+        limit: 20,
+        paidBefore: "2026-09-01T00:00:00.000Z",
+      });
+
+      expect(prisma.payment.count).toHaveBeenCalledWith({
+        where: {
+          isOpeningBalance: false,
+          paidAt: { lt: new Date("2026-09-01T00:00:00.000Z") },
+        },
+      });
+      expect(prisma.payment.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            isOpeningBalance: false,
+            paidAt: { lt: new Date("2026-09-01T00:00:00.000Z") },
+            voidedAt: null,
+          },
+        }),
+      );
+    });
+
+    it("rejects paidFrom at or after paidBefore", async () => {
+      await expect(
+        service.findAll({
+          page: 1,
+          limit: 20,
+          paidFrom: "2026-09-01T00:00:00.000Z",
+          paidBefore: "2026-09-01T00:00:00.000Z",
+        }),
+      ).rejects.toThrow(/debe ser anterior/);
+    });
+
     it("rejects paidFrom after paidTo", async () => {
       await expect(
         service.findAll({
@@ -753,7 +795,7 @@ describe("PaymentsService", () => {
 
       expect(prisma.payment.count).toHaveBeenCalledWith({ where: { isOpeningBalance: false } });
       expect(prisma.payment.aggregate).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { isOpeningBalance: false } }),
+        expect.objectContaining({ where: { isOpeningBalance: false, voidedAt: null } }),
       );
     });
 
@@ -765,7 +807,9 @@ describe("PaymentsService", () => {
       await service.findAll({ page: 1, limit: 20, includeOpeningBalance: true });
 
       expect(prisma.payment.count).toHaveBeenCalledWith({ where: {} });
-      expect(prisma.payment.aggregate).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+      expect(prisma.payment.aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { voidedAt: null } }),
+      );
     });
   });
 });

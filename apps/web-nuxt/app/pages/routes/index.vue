@@ -8,10 +8,18 @@ useHead({ title: "Rutas · Yacco" });
 // Reka Select no admite "" como opción: "todos" viaja como este centinela.
 const ALL = "all";
 
-const date = ref("");
+// El día y el estado pueden llegar en la URL (los enlaces del Panel).
+const query = useRoute().query;
+const date = ref(queryText(query.date));
 const driverId = ref(ALL);
 const zoneId = ref(ALL);
-const status = ref<RouteStatus | typeof ALL>(ALL);
+const status = ref<RouteStatus | typeof ALL>(
+  queryChoice<RouteStatus | typeof ALL>(
+    query.status,
+    Object.keys(ROUTE_STATUS) as RouteStatus[],
+    ALL,
+  ),
+);
 
 // Los catálogos de los filtros, cada uno de su endpoint. Si alguno cae, el
 // filtro queda sin opciones pero la lista sigue: ninguno hace falta para leer.

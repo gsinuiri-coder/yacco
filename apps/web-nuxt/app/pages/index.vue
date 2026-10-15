@@ -5,6 +5,11 @@ useHead({ title: "Panel · Yacco" });
 
 const session = useSession();
 const today = formatCalendarDay(limaToday());
+// Buscar clientes es trabajo de la oficina: la API no le abre clientes a la planta.
+const isOffice = computed(() => session.hasRole("ADMIN") || session.hasRole("SELLER"));
+const hasSummary = computed(
+  () => isOffice.value || session.hasRole("PLANT_SUPERVISOR") || session.hasRole("PLANT_OPERATOR"),
+);
 </script>
 
 <template>
@@ -15,9 +20,12 @@ const today = formatCalendarDay(limaToday());
         <h2 class="mt-1 text-3xl font-semibold text-highlighted sm:text-4xl">
           Hola, {{ session.user.value?.username }}
         </h2>
-        <p class="mt-2 text-muted">Busca un cliente por nombre o teléfono para abrir su ficha.</p>
+        <p v-if="isOffice" class="mt-2 text-muted">
+          Busca un cliente por nombre o teléfono para abrir su ficha.
+        </p>
       </div>
-      <CustomerQuickSearch />
+      <CustomerQuickSearch v-if="isOffice" />
+      <RoleDashboardSummary v-if="hasSummary" />
       <PendingApprovalsCard v-if="session.hasRole('ADMIN')" />
       <UpcomingReviewsCard v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')" />
       <SetupChecklistCard v-if="session.hasRole('ADMIN')" />

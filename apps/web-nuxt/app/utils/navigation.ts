@@ -29,6 +29,7 @@ export const NAVIGATION: NavigationSection[] = [
       { label: "Panel", icon: "i-lucide-layout-dashboard", to: "/" },
       { label: "Clientes", icon: "i-lucide-users", to: "/customers" },
       { label: "Pedidos", icon: "i-lucide-clipboard-list", to: "/orders" },
+      { label: "Ventas", icon: "i-lucide-shopping-bag", to: "/sales" },
       { label: "Rutas", icon: "i-lucide-truck", to: "/routes" },
       { label: "Pagos", icon: "i-lucide-wallet", to: "/payments" },
       { label: "Comprobantes", icon: "i-lucide-receipt-text", to: "/receipts" },
@@ -176,6 +177,7 @@ export function visibleNavigation(roles: readonly UserRole[]): NavigationSection
       sections.push({ label: "Reparto", links: [MY_ROUTE] });
     }
     const plantLinks: NavigationLink[] = [
+      { label: "Panel", icon: "i-lucide-layout-dashboard", to: "/" },
       { label: "Producción", icon: "i-lucide-factory", to: "/production" },
       { label: "Inventario de envases", icon: "i-lucide-package-open", to: "/inventory" },
     ];

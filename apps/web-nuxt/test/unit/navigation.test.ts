@@ -27,20 +27,20 @@ describe("navigation utils", () => {
     expect(isPlantOnly(["PLANT_OPERATOR", "DRIVER"])).toBe(false);
   });
 
-  it("supervisor de planta ve solo producción, inventario y movimientos", () => {
+  it("supervisor de planta ve solo su Panel, producción, inventario y movimientos", () => {
     const nav = visibleNavigation(["PLANT_SUPERVISOR"]);
     expect(nav).toHaveLength(1);
     expect(nav[0]?.label).toBe("Envases y producción");
     const paths = nav[0]?.links.map((link) => link.to);
-    expect(paths).toEqual(["/production", "/inventory", "/container-movements"]);
+    expect(paths).toEqual(["/", "/production", "/inventory", "/container-movements"]);
   });
 
-  it("operador de planta ve solo producción e inventario", () => {
+  it("operador de planta ve solo su Panel, producción e inventario", () => {
     const nav = visibleNavigation(["PLANT_OPERATOR"]);
     expect(nav).toHaveLength(1);
     expect(nav[0]?.label).toBe("Envases y producción");
     const paths = nav[0]?.links.map((link) => link.to);
-    expect(paths).toEqual(["/production", "/inventory"]);
+    expect(paths).toEqual(["/", "/production", "/inventory"]);
   });
 
   it("operador que además es chofer ve reparto y su parte de planta", () => {
@@ -49,7 +49,7 @@ describe("navigation utils", () => {
     expect(nav[0]?.label).toBe("Reparto");
     expect(nav[0]?.links.map((link) => link.to)).toEqual(["/my-route"]);
     expect(nav[1]?.label).toBe("Envases y producción");
-    expect(nav[1]?.links.map((link) => link.to)).toEqual(["/production", "/inventory"]);
+    expect(nav[1]?.links.map((link) => link.to)).toEqual(["/", "/production", "/inventory"]);
   });
 
   it("supervisor que además es chofer ve reparto y sus tres pantallas de planta", () => {
@@ -59,6 +59,7 @@ describe("navigation utils", () => {
     expect(nav[0]?.links.map((link) => link.to)).toEqual(["/my-route"]);
     expect(nav[1]?.label).toBe("Envases y producción");
     expect(nav[1]?.links.map((link) => link.to)).toEqual([
+      "/",
       "/production",
       "/inventory",
       "/container-movements",
@@ -73,6 +74,15 @@ describe("navigation utils", () => {
       "Reportes",
       "Administración",
     ]);
+  });
+
+  it("administrador y vendedor tienen Ventas en el trabajo diario", () => {
+    for (const role of ["ADMIN", "SELLER"] as const) {
+      const daily = visibleNavigation([role]).find((section) => section.label === "Día a día");
+      expect(daily?.links).toEqual(
+        expect.arrayContaining([expect.objectContaining({ label: "Ventas", to: "/sales" })]),
+      );
+    }
   });
 
   it("la cuenta de verificación no ve ningún menú", () => {

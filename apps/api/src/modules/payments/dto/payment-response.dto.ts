@@ -102,9 +102,9 @@ export class PaymentRowDto {
   isOpeningBalance!: boolean;
 }
 
-/** Sums the FULL filtered set, never just the page — see PaymentsService.findAll. */
+/** Sums active rows in the FULL filtered set, never just the page — see PaymentsService.findAll. */
 export class PaymentTotalsDto {
-  @ApiProperty({ description: "Cantidad de pagos que cumplen el filtro" })
+  @ApiProperty({ description: "Cantidad de pagos vigentes que cumplen el filtro" })
   count!: number;
 
   @ApiProperty({ type: String, example: "1250.00" })
@@ -127,7 +127,7 @@ export class PaginatedPaymentsDto {
   @ApiProperty({ description: "Número total de páginas para el filtro actual" })
   totalPages!: number;
 
-  @ApiProperty({ type: PaymentTotalsDto })
+  @ApiProperty({ type: PaymentTotalsDto, description: "Totales vigentes; no incluyen anulados" })
   totals!: PaymentTotalsDto;
 }
 

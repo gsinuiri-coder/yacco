@@ -111,6 +111,16 @@ describe("Rutas", () => {
     expect(screen.getByText("2 rutas")).toBeTruthy();
   });
 
+  it("abierta desde el Panel, arranca con el día y el estado de la URL", async () => {
+    stubCatalogs();
+    const seen = stubRoutes(() => [buildRoute()]);
+
+    await renderSuspended(App, { route: "/routes?date=2026-08-28&status=IN_PROGRESS" });
+    await screen.findByText("28/08/2026");
+
+    expect(seen[0]).toMatchObject({ date: "2026-08-28", status: "IN_PROGRESS" });
+  });
+
   it("los filtros viajan en la query (el día como texto) y «Limpiar filtros» los deshace", async () => {
     stubCatalogs();
     const seen = stubRoutes(() => [buildRoute()]);

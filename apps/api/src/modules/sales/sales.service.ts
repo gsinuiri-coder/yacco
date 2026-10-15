@@ -11,9 +11,13 @@ import {
 } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ContainerMovementsService } from "../container-movements/container-movements.service.js";
+import { limaDayStartUtc } from "../container-movements/container-movements.service.js";
 import { MONEY_MESSAGE, MONEY_PATTERN } from "../customers/dto/create-customer.dto.js";
+import { parseBusinessDate } from "../orders/orders.service.js";
 import type { CreateOpeningChargeDto } from "./dto/create-opening-charge.dto.js";
 import type { CreateOpeningCreditDto } from "./dto/create-opening-credit.dto.js";
+import type { ListSalesQueryDto } from "./dto/list-sales-query.dto.js";
+import { SaleOrigin, type PaginatedSalesDto, type SaleRowDto } from "./dto/sale-response.dto.js";
 
 export interface StopDeliveryItemInput {
   productId: string;
@@ -240,6 +244,80 @@ function isPrismaKnownError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const SALE_LIST_INCLUDE = {
+  location: {
+    select: {
+      id: true,
+      name: true,
+      customer: { select: { id: true, name: true } },
+    },
+  },
+  items: {
+    select: {
+      quantity: true,
+      product: { select: { id: true, name: true, type: true } },
+    },
+  },
+  maquilaMovements: { select: { id: true }, take: 1 },
+  accessoryMovements: { select: { id: true }, take: 1 },
+} satisfies Prisma.SaleInclude;
+
+type SaleListRecord = Prisma.SaleGetPayload<{ include: typeof SALE_LIST_INCLUDE }>;
+
+function saleOrigin(sale: SaleListRecord): SaleOrigin {
+  if (sale.stopId !== null) return SaleOrigin.ROUTE;
+  if (sale.maquilaMovements.length > 0) return SaleOrigin.MAQUILA;
+  if (
+    sale.accessoryMovements.length > 0 ||
+    sale.items.some((item) => item.product.type === ProductType.ACCESSORY)
+  ) {
+    return SaleOrigin.ACCESSORY;
+  }
+  return SaleOrigin.OFFICE;
+}
+
+function toSaleRow(sale: SaleListRecord): SaleRowDto {
+  return {
+    id: sale.id,
+    soldAt: sale.soldAt,
+    total: sale.total.toFixed(2),
+    customer: sale.location.customer,
+    location: { id: sale.location.id, name: sale.location.name },
+    items: sale.items.map((item) => ({
+      product: { id: item.product.id, name: item.product.name },
+      quantity: item.quantity,
+    })),
+    origin: saleOrigin(sale),
+    voidedAt: sale.voidedAt,
+    voidReason: sale.voidReason,
+  };
+}
+
+function buildSaleListFilter(query: ListSalesQueryDto): Prisma.SaleWhereInput {
+  const from =
+    query.soldFrom === undefined ? undefined : parseBusinessDate(query.soldFrom, "La fecha desde");
+  const to =
+    query.soldTo === undefined ? undefined : parseBusinessDate(query.soldTo, "La fecha hasta");
+  if (from !== undefined && to !== undefined && from > to) {
+    throw new BadRequestException("La fecha desde no puede ser posterior a la fecha hasta");
+  }
+
+  const soldAt: Prisma.DateTimeFilter<"Sale"> = {};
+  if (query.soldFrom !== undefined) soldAt.gte = limaDayStartUtc(query.soldFrom);
+  if (query.soldTo !== undefined) {
+    soldAt.lt = new Date(limaDayStartUtc(query.soldTo).getTime() + DAY_MS);
+  }
+
+  return {
+    // Un cargo de apertura trae deuda vieja, no una venta hecha en Yacco.
+    isOpeningBalance: false,
+    ...(query.customerId === undefined ? {} : { location: { customerId: query.customerId } }),
+    ...(query.soldFrom === undefined && query.soldTo === undefined ? {} : { soldAt }),
+  };
+}
+
 /**
  * This module has no controller, so the DTOs' `@Matches(MONEY_PATTERN)`
  * decorator never runs through a `ValidationPipe` — it is documentation, not
@@ -351,6 +429,36 @@ export class SalesService {
     private readonly prisma: PrismaService,
     private readonly containerMovementsService: ContainerMovementsService,
   ) {}
+
+  /**
+   * Libro de ventas para la oficina. Las anuladas siguen en `data`, marcadas;
+   * `totalAmount` suma el mismo filtro pero solo las vigentes, igual que el
+   * número «Ventas del día» del Panel.
+   */
+  async findAll(query: ListSalesQueryDto): Promise<PaginatedSalesDto> {
+    const { page, limit } = query;
+    const where = buildSaleListFilter(query);
+    const [total, sales, amount] = await this.prisma.$transaction([
+      this.prisma.sale.count({ where }),
+      this.prisma.sale.findMany({
+        where,
+        include: SALE_LIST_INCLUDE,
+        orderBy: [{ soldAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.sale.aggregate({ where: { ...where, voidedAt: null }, _sum: { total: true } }),
+    ]);
+
+    return {
+      data: sales.map(toSaleRow),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      totalAmount: (amount._sum.total ?? new Prisma.Decimal(0)).toFixed(2),
+    };
+  }
 
   /**
    * Neither opening method has a controller. Opening money enters only through the

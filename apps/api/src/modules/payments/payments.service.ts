@@ -56,12 +56,24 @@ function toPaymentRow(payment: PaymentWithRelations): PaymentRowDto {
 }
 
 function buildPaymentFilter(query: ListPaymentsQueryDto): Prisma.PaymentWhereInput {
-  const { status, paymentMethodId, customerId, paidFrom, paidTo, includeOpeningBalance } = query;
+  const {
+    status,
+    paymentMethodId,
+    customerId,
+    paidFrom,
+    paidTo,
+    paidBefore,
+    includeOpeningBalance,
+  } = query;
   const from = paidFrom === undefined ? undefined : new Date(paidFrom);
   const to = paidTo === undefined ? undefined : new Date(paidTo);
+  const before = paidBefore === undefined ? undefined : new Date(paidBefore);
 
   if (from !== undefined && to !== undefined && from > to) {
     throw new BadRequestException("La fecha desde no puede ser posterior a la fecha hasta");
+  }
+  if (from !== undefined && before !== undefined && from >= before) {
+    throw new BadRequestException("La fecha desde debe ser anterior a la fecha límite");
   }
 
   return {
@@ -71,11 +83,12 @@ function buildPaymentFilter(query: ListPaymentsQueryDto): Prisma.PaymentWhereInp
     // Default excludes opening credits: real debt, but money that moved
     // before the system existed — see includeOpeningBalance's own doc.
     ...(includeOpeningBalance === true ? {} : { isOpeningBalance: false }),
-    ...(from !== undefined || to !== undefined
+    ...(from !== undefined || to !== undefined || before !== undefined
       ? {
           paidAt: {
             ...(from !== undefined ? { gte: from } : {}),
             ...(to !== undefined ? { lte: to } : {}),
+            ...(before !== undefined ? { lt: before } : {}),
           },
         }
       : {}),
@@ -316,17 +329,15 @@ export class PaymentsService {
   /**
    * The office's confirmation tray: every payment, oldest paidAt first — the
    * longest-unconfirmed one is the riskiest, so it leads. `totals` is
-   * computed with the SAME `where` as the page, via a separate `aggregate`,
-   * not derived from `data`: the office needs "how much Yape is sitting
+   * computed across the same filters as the page plus `voidedAt: null`, via a
+   * separate `aggregate`, not derived from `data`: the office needs "how much Yape is sitting
    * unconfirmed today" across the whole filtered set, not just the 20 rows
    * on screen.
    *
-   * `voidedAt` NO se filtra acá, a diferencia de las cuatro sumas de
-   * `RouteSettlementService.computeExpected`, y la diferencia es deliberada:
-   * ese total describe LA LISTA, no un saldo. Tiene que sumar exactamente las
-   * filas que se muestran —por eso comparte el `where` con la página— y ya
-   * incluye los REJECTED por la misma razón. Filtrar lo anulado acá dejaría
-   * un total que no cuadra con lo que el ojo suma en pantalla.
+   * `voidedAt` NO se filtra de la lista: una fila anulada permanece visible.
+   * Sí se filtra de `totals`, porque ese resumen expresa cobros vigentes y es
+   * el número que enlaza el Panel. Así la corrección queda auditable sin volver
+   * a contar dinero que ya fue revertido.
    *
    * Y el `where` de la página TAMPOCO lo filtra, que es la otra mitad de la
    * misma decisión: un cobro anulado sigue apareciendo en la bandeja, con su
@@ -335,7 +346,7 @@ export class PaymentsService {
    * de cuenta, donde una fila anulada aparece con su monto y efecto cero.
    * Esconder un cobro que el cliente sabe que hizo es peor que mostrarlo
    * tachado: el que lo busca no lo encontraría y volvería a registrarlo. No lo
-   * "arregles" agregando `voidedAt: null` acá.
+   * ocultes agregando `voidedAt: null` al `where` de la página.
    *
    * Las guardas `voidedAt: null` de `confirm()` y `reject()` siguen donde
    * están: con el cobro anulado a la vista pasan a ser red de seguridad, no
@@ -354,7 +365,11 @@ export class PaymentsService {
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.payment.aggregate({ where, _count: { _all: true }, _sum: { amount: true } }),
+      this.prisma.payment.aggregate({
+        where: { ...where, voidedAt: null },
+        _count: { _all: true },
+        _sum: { amount: true },
+      }),
     ]);
 
     return {

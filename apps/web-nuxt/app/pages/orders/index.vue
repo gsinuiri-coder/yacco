@@ -5,25 +5,37 @@ import type { TableColumn } from "@nuxt/ui";
 
 useHead({ title: "Pedidos · Yacco" });
 
-type StatusFilter = OrderStatus | "all";
+type StatusFilter = OrderStatus | "all" | "not-cancelled";
 const STATUS_ITEMS = [
   { label: "Todos", value: "all" },
+  { label: "Todos menos anulados", value: "not-cancelled" },
   ...(Object.entries(ORDER_STATUS) as Array<[OrderStatus, { label: string }]>).map(
     ([value, { label }]) => ({ label, value }),
   ),
 ];
+const STATUS_QUERY_ITEMS: readonly (OrderStatus | "NOT_CANCELLED" | "all")[] = [
+  "all",
+  "NOT_CANCELLED",
+  ...(Object.keys(ORDER_STATUS) as OrderStatus[]),
+];
 
-const status = ref<StatusFilter>("all");
-// "AAAA-MM-DD" tal cual lo da el campo de fecha: nunca pasa por Date.
-const deliveryDateFrom = ref("");
-const deliveryDateTo = ref("");
+// "AAAA-MM-DD" tal cual lo da el campo de fecha: nunca pasa por Date. Puede
+// llegar en la URL (los enlaces del Panel).
+const query = useRoute().query;
+const statusFromQuery = queryChoice(query.status, STATUS_QUERY_ITEMS, "all");
+const status = ref<StatusFilter>(
+  statusFromQuery === "NOT_CANCELLED" ? "not-cancelled" : statusFromQuery,
+);
+const deliveryDateFrom = ref(queryText(query.deliveryDateFrom));
+const deliveryDateTo = ref(queryText(query.deliveryDateTo));
 const customer = ref<Customer | null>(null);
 
 const list = usePagedList<Order>(
   "/orders",
   ORDERS_PAGE_SIZE,
   computed(() => ({
-    status: status.value === "all" ? undefined : status.value,
+    status: status.value === "all" || status.value === "not-cancelled" ? undefined : status.value,
+    excludeCancelled: status.value === "not-cancelled" ? true : undefined,
     deliveryDateFrom: deliveryDateFrom.value,
     deliveryDateTo: deliveryDateTo.value,
     customerId: customer.value?.id,

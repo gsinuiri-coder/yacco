@@ -4,8 +4,8 @@ import {
   formatInstantInLima,
   formatDebtBalance,
   formatSoles,
-  limaDayEnd,
   limaDayStart,
+  nextCalendarDay,
 } from "@yacco/shared";
 import type {
   Customer,
@@ -29,11 +29,19 @@ const api = useApi();
 const isAdmin = computed(() => session.hasRole("ADMIN"));
 const ALL = "all";
 
-const status = ref<PaymentStatus | typeof ALL>("PENDING");
+// El estado y los días pueden llegar en la URL (los enlaces del Panel).
+const query = useRoute().query;
+const status = ref<PaymentStatus | typeof ALL>(
+  queryChoice<PaymentStatus | typeof ALL>(
+    query.status,
+    [ALL, ...(Object.keys(PAYMENT_STATUS) as PaymentStatus[])],
+    "PENDING",
+  ),
+);
 const methodId = ref(ALL);
 const customer = ref<Customer | null>(null);
-const paidFromDay = ref("");
-const paidToDay = ref("");
+const paidFromDay = ref(queryText(query.paidFrom));
+const paidToDay = ref(queryText(query.paidTo));
 
 // Catálogo de su endpoint; si falla, el filtro queda en «Todos» y la bandeja sigue.
 const methods = useCatalog<PaymentMethod>("/payment-methods");
@@ -58,7 +66,7 @@ const list = usePagedList<PaymentRow>(
     customerId: customer.value?.id,
     // Filtran por INSTANTE: el día elegido se vuelve límite en Lima como texto.
     paidFrom: limaDayStart(paidFromDay.value),
-    paidTo: limaDayEnd(paidToDay.value),
+    paidBefore: limaDayStart(nextCalendarDay(paidToDay.value)),
   })),
 );
 
@@ -86,7 +94,7 @@ const totals = computed(
 const summary = computed(() => {
   if (totals.value === null) return list.firstLoad.value ? "Cargando…" : "";
   const { count, amount } = totals.value;
-  return `${count} ${count === 1 ? "pago" : "pagos"} con este filtro · ${formatSoles(amount)}`;
+  return `${count} ${count === 1 ? "pago vigente" : "pagos vigentes"} con este filtro · ${formatSoles(amount)}`;
 });
 
 const actingId = ref<string | null>(null);

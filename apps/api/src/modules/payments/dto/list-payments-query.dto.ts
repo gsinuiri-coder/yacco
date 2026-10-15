@@ -31,7 +31,7 @@ function toOptionalBoolean({ value }: { value: unknown }): unknown {
 }
 
 /**
- * `paidFrom`/`paidTo` are instants (ISO-8601), not business dates: `paidAt`
+ * `paidFrom`/`paidTo`/`paidBefore` are instants (ISO-8601), not business dates: `paidAt`
  * is a timestamptz, so this filters against it directly — unlike
  * `deliveryDate`/`routes.date`, there is no calendar-day parsing here.
  */
@@ -75,6 +75,13 @@ export class ListPaymentsQueryDto {
   @IsOptional()
   @IsDateString({}, { message: "La fecha hasta debe ser un instante válido (ISO-8601)" })
   paidTo?: string;
+
+  @ApiPropertyOptional({
+    description: "Instante ISO-8601: solo pagos cobrados estrictamente antes de aquí",
+  })
+  @IsOptional()
+  @IsDateString({}, { message: "La fecha límite debe ser un instante válido (ISO-8601)" })
+  paidBefore?: string;
 
   /**
    * An opening credit is real debt on the account statement, but it's money

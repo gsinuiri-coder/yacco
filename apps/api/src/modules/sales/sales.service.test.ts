@@ -645,6 +645,158 @@ describe("SalesService.registerStopDeliveryWithinTransaction", () => {
   });
 });
 
+describe("SalesService.findAll", () => {
+  function firstListCall<T>(calls: readonly (readonly unknown[])[]): T {
+    const call = calls[0];
+    if (call === undefined) throw new Error("expected the Prisma mock to have been called");
+    return call[0] as T;
+  }
+
+  function listSale(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "sale-office",
+      locationId: LOCATION_ID,
+      stopId: null,
+      soldAt: new Date("2026-10-15T16:00:00.000Z"),
+      total: decimal("15.00"),
+      creditLimitExceeded: false,
+      isOpeningBalance: false,
+      externalId: null,
+      recordedById: RECORDED_BY_ID,
+      priceOverrideAuthorizedById: null,
+      voidedAt: null,
+      voidedById: null,
+      voidReason: null,
+      location: {
+        id: LOCATION_ID,
+        name: "Principal",
+        customer: { id: CUSTOMER_ID, name: "Bodega Santa Rosa" },
+      },
+      items: [
+        {
+          quantity: 1,
+          product: { id: REFILL_PRODUCT_ID, name: "Recarga 20L", type: ProductType.REFILL },
+        },
+      ],
+      maquilaMovements: [],
+      accessoryMovements: [],
+      ...overrides,
+    };
+  }
+
+  function listPrismaMock() {
+    const prisma = {
+      sale: {
+        count: jest.fn<() => Promise<unknown>>(),
+        findMany: jest.fn<() => Promise<unknown>>(),
+        aggregate: jest.fn<() => Promise<unknown>>(),
+      },
+      $transaction: jest.fn<(queries: unknown[]) => Promise<unknown[]>>(),
+    };
+    prisma.$transaction.mockImplementation((queries) => Promise.all(queries));
+    return prisma;
+  }
+
+  it("lista ruta, oficina, maquila y accesorios; deja anuladas visibles y suma solo vigentes", async () => {
+    const prisma = listPrismaMock();
+    prisma.sale.count.mockResolvedValue(4);
+    prisma.sale.findMany.mockResolvedValue([
+      listSale({ id: "sale-route", stopId: STOP_ID }),
+      listSale({ id: "sale-maquila", maquilaMovements: [{ id: "movement-maquila" }] }),
+      listSale({
+        id: "sale-accessory",
+        items: [
+          {
+            quantity: 1,
+            product: {
+              id: "product-accessory",
+              name: "Surtidor",
+              type: ProductType.ACCESSORY,
+            },
+          },
+        ],
+        voidedAt: new Date("2026-10-15T17:00:00.000Z"),
+        voidReason: "Se anotó dos veces",
+      }),
+      listSale(),
+    ]);
+    prisma.sale.aggregate.mockResolvedValue({ _sum: { total: decimal("45.00") } });
+    const service = new SalesService(
+      prisma as never,
+      buildContainerMovementsMock() as unknown as ContainerMovementsService,
+    );
+
+    const result = await service.findAll({
+      page: 1,
+      limit: 20,
+      customerId: CUSTOMER_ID,
+      soldFrom: "2026-10-15",
+      soldTo: "2026-10-15",
+    });
+
+    expect(result.data.map((sale) => sale.origin)).toEqual([
+      "ROUTE",
+      "MAQUILA",
+      "ACCESSORY",
+      "OFFICE",
+    ]);
+    expect(result.data[2]).toMatchObject({
+      total: "15.00",
+      voidedAt: new Date("2026-10-15T17:00:00.000Z"),
+      voidReason: "Se anotó dos veces",
+    });
+    expect(result.totalAmount).toBe("45.00");
+
+    const findArgs = firstListCall<{
+      where: Record<string, unknown>;
+    }>(prisma.sale.findMany.mock.calls);
+    expect(findArgs.where).toMatchObject({
+      isOpeningBalance: false,
+      location: { customerId: CUSTOMER_ID },
+      soldAt: {
+        gte: new Date("2026-10-15T05:00:00.000Z"),
+        lt: new Date("2026-10-16T05:00:00.000Z"),
+      },
+    });
+    const aggregateArgs = firstListCall<{
+      where: Record<string, unknown>;
+    }>(prisma.sale.aggregate.mock.calls);
+    expect(aggregateArgs.where).toMatchObject({ isOpeningBalance: false, voidedAt: null });
+  });
+
+  it("sin filas devuelve total exacto 0.00 y no inventa filtros de fecha", async () => {
+    const prisma = listPrismaMock();
+    prisma.sale.count.mockResolvedValue(0);
+    prisma.sale.findMany.mockResolvedValue([]);
+    prisma.sale.aggregate.mockResolvedValue({ _sum: { total: null } });
+    const service = new SalesService(
+      prisma as never,
+      buildContainerMovementsMock() as unknown as ContainerMovementsService,
+    );
+
+    const result = await service.findAll({ page: 1, limit: 20 });
+
+    expect(result.totalAmount).toBe("0.00");
+    expect(prisma.sale.count).toHaveBeenCalledWith({ where: { isOpeningBalance: false } });
+  });
+
+  it("rechaza un rango invertido y una fecha imposible antes de consultar", async () => {
+    const prisma = listPrismaMock();
+    const service = new SalesService(
+      prisma as never,
+      buildContainerMovementsMock() as unknown as ContainerMovementsService,
+    );
+
+    await expect(
+      service.findAll({ page: 1, limit: 20, soldFrom: "2026-10-16", soldTo: "2026-10-15" }),
+    ).rejects.toThrow("La fecha desde no puede ser posterior");
+    await expect(
+      service.findAll({ page: 1, limit: 20, soldFrom: "2026-02-31" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
 describe("SalesService.voidStopDeliveryWithinTransaction", () => {
   const SALE_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
   const PAYMENT_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";

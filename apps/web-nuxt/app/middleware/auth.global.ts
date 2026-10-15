@@ -30,12 +30,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo(MY_ROUTE_PATH, { replace: true });
   }
 
-  // Quien trabaja sólo en planta entra directo a «Producción», y cualquier otra
-  // pantalla fuera de su alcance lo redirige allí.
+  // Quien trabaja sólo en planta tiene su Panel y sus pantallas de planta;
+  // cualquier otra pantalla fuera de su alcance lo redirige a «Producción».
   if (isPlantOnly(session.user.value.roles)) {
     const allowed = session.hasRole("PLANT_SUPERVISOR")
-      ? ["/production", "/inventory", "/container-movements"]
-      : ["/production", "/inventory"];
+      ? ["/", "/production", "/inventory", "/container-movements"]
+      : ["/", "/production", "/inventory"];
     if (!allowed.includes(to.path)) {
       return navigateTo("/production", { replace: true });
     }
