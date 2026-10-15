@@ -18,7 +18,7 @@ function buildTransactionMock() {
 function buildService() {
   const tx = buildTransactionMock();
   const prisma = {
-    receiptFile: { findUnique: jest.fn<() => Promise<unknown>>() },
+    receiptFile: { findFirst: jest.fn<() => Promise<unknown>>() },
     $transaction: jest.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
       callback(tx),
     ),
@@ -116,12 +116,11 @@ describe("ReceiptFilesService", () => {
     expect(storage.upload).not.toHaveBeenCalled();
   });
 
-  it("reads an existing file through StorageService", async () => {
+  it("reads a file reused from the original receipt through its stored object key", async () => {
     const { prisma, storage, service } = buildService();
     const fileName = "22222222-2222-4222-8222-222222222222.pdf";
-    const objectKey = `receipts/${RECEIPT_ID}/${fileName}`;
-    prisma.receiptFile.findUnique.mockResolvedValue({
-      receiptId: RECEIPT_ID,
+    const objectKey = `receipts/44444444-4444-4444-8444-444444444444/${fileName}`;
+    prisma.receiptFile.findFirst.mockResolvedValue({
       objectKey,
       contentType: "application/pdf",
     });
@@ -133,6 +132,10 @@ describe("ReceiptFilesService", () => {
 
     const result = await service.get(RECEIPT_ID, fileName);
 
+    expect(prisma.receiptFile.findFirst).toHaveBeenCalledWith({
+      where: { receiptId: RECEIPT_ID, objectKey: { endsWith: `/${fileName}` } },
+      select: { objectKey: true, contentType: true },
+    });
     expect(storage.get).toHaveBeenCalledWith(objectKey);
     expect(result).toEqual(
       expect.objectContaining({ contentType: "application/pdf", contentLength: 3 }),
@@ -143,6 +146,6 @@ describe("ReceiptFilesService", () => {
     const { prisma, service } = buildService();
 
     await expect(service.get(RECEIPT_ID, "../secret.pdf")).rejects.toThrow(NotFoundException);
-    expect(prisma.receiptFile.findUnique).not.toHaveBeenCalled();
+    expect(prisma.receiptFile.findFirst).not.toHaveBeenCalled();
   });
 });

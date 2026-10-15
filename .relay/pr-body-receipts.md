@@ -72,6 +72,40 @@ Tests: 8 passed, 8 total
 El mismo caso comprueba que dos vigentes con el mismo tipo, serie y número se
 rechazan con 409 aunque uno sea manual y el otro electrónico.
 
+### Anular una nota de crédito y volver a registrar el original (corrección 20:00)
+
+Rojo, antes de rechazar la nota electrónica y de aceptar `filesFromReceiptId`:
+
+```text
+pnpm test:integration -- receipts.int.test.ts
+FAIL test/integration/receipts.int.test.ts (31.307 s)
+  ● una nota de crédito electrónica no se anula
+    expected 409 "Conflict", got 200 "OK"
+    > 458 |     .expect(409);
+  ● volver a registrar el original crea uno nuevo con el mismo número, las mismas ventas y sus adjuntos
+    expected 201 "Created", got 400 "Bad Request"
+    > 502 |     .expect(201);
+  ● volver a registrar el original se rechaza si una de sus ventas ya está en otro comprobante
+    expected 409 "Conflict", got 400 "Bad Request"
+    > 566 |     .expect(409);
+Tests:       3 failed, 5 passed, 8 total
+```
+
+Verde:
+
+```text
+pnpm test:integration -- receipts.int.test.ts
+Tests:       8 passed, 8 total
+```
+
+«Anular una nota manual solo la marca» pasó en verde desde el principio: el
+`void` ya no tocaba el original. El test compara las filas de `receipts` y
+`receipt_sales` del original antes y después, y confirma que el vendedor
+recibe 403. Los adjuntos se reasocian con el mismo `object_key` y una fila
+nueva en `receipt_files` con quién y cuándo; la lectura del archivo busca por
+nombre dentro del comprobante porque la clave lleva el id del original. Sin
+esquema nuevo.
+
 ### Textos compuestos sólo por espacios
 
 Rojo: los siete casos de razón social, dirección, serie, número y motivos no

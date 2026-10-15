@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma, ReceiptType } from "@prisma/client";
+import { Prisma, ReceiptMedium, ReceiptType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import type { CreateReceiptDto } from "./dto/create-receipt.dto.js";
@@ -288,6 +288,7 @@ export class ReceiptsService {
         const settings = await this.findSettings(tx);
         const sales = await this.findSales(tx, dto.saleIds);
         const preview = this.buildPreview(dto, settings, sales);
+        const sourceFiles = await this.findReusableFiles(tx, dto);
         const releasedAt = new Date();
 
         await tx.saleReceiptExemption.updateMany({
@@ -315,6 +316,17 @@ export class ReceiptsService {
             sales: { create: dto.saleIds.map((saleId) => ({ saleId })) },
           },
         });
+        if (sourceFiles.length > 0) {
+          await tx.receiptFile.createMany({
+            data: sourceFiles.map((file) => ({
+              receiptId: receipt.id,
+              objectKey: file.objectKey,
+              contentType: file.contentType,
+              createdAt: releasedAt,
+              createdById,
+            })),
+          });
+        }
         return toReceiptResponse(receipt);
       });
     } catch (error) {
@@ -355,12 +367,19 @@ export class ReceiptsService {
         where: { id },
         select: {
           id: true,
+          type: true,
+          medium: true,
           voidedAt: true,
           sales: { where: { releasedAt: null }, select: { saleId: true, releasedAt: true } },
         },
       });
       if (receipt === null) throw new NotFoundException("El comprobante no existe");
       if (receipt.voidedAt !== null) throw new ConflictException("El comprobante ya fue anulado");
+      // Voiding a manual credit note only stamps the note: the original stays
+      // voided and is restored by registering it again.
+      if (receipt.type === ReceiptType.CREDIT_NOTE && receipt.medium !== ReceiptMedium.MANUAL) {
+        throw new ConflictException("Una nota de crédito electrónica no se puede anular");
+      }
 
       const releasedAt = new Date();
       const { count } = await tx.receipt.updateMany({
@@ -530,6 +549,34 @@ export class ReceiptsService {
       throw new ConflictException("Configurá primero los datos de facturación");
     }
     return settings;
+  }
+
+  private async findReusableFiles(
+    client: ReceiptClient,
+    dto: CreateReceiptDto,
+  ): Promise<{ objectKey: string; contentType: string }[]> {
+    if (dto.filesFromReceiptId === undefined) return [];
+    const source = await client.receipt.findUnique({
+      where: { id: dto.filesFromReceiptId },
+      select: {
+        customerId: true,
+        medium: true,
+        voidedAt: true,
+        files: { select: { objectKey: true, contentType: true } },
+      },
+    });
+    if (source === null) throw new NotFoundException("El comprobante original no existe");
+    if (source.voidedAt === null) {
+      throw new ConflictException(
+        "Solo se vuelven a asociar los adjuntos de un comprobante anulado",
+      );
+    }
+    if (source.customerId !== dto.customerId || source.medium !== dto.medium) {
+      throw new BadRequestException(
+        "Los adjuntos solo se vuelven a asociar a un comprobante del mismo cliente y medio",
+      );
+    }
+    return source.files;
   }
 
   private findSales(client: ReceiptClient, saleIds: string[]): Promise<ReceiptSale[]> {

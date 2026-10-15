@@ -82,14 +82,15 @@ export class ReceiptFilesService {
     if (!RECEIPT_FILE_NAME_PATTERN.test(fileName)) {
       throw new NotFoundException("El archivo no existe");
     }
-    const objectKey = `receipts/${receiptId}/${fileName}`;
-    const file = await this.prisma.receiptFile.findUnique({
-      where: { receiptId_objectKey: { receiptId, objectKey } },
-      select: { contentType: true },
+    // A receipt registered again reuses the original's object key, which
+    // carries the original's id: match by file name within this receipt.
+    const file = await this.prisma.receiptFile.findFirst({
+      where: { receiptId, objectKey: { endsWith: `/${fileName}` } },
+      select: { objectKey: true, contentType: true },
     });
     if (file === null) throw new NotFoundException("El archivo no existe");
 
-    const stored = await this.storageService.get(objectKey);
+    const stored = await this.storageService.get(file.objectKey);
     return {
       stream: stored.stream,
       contentType: file.contentType,

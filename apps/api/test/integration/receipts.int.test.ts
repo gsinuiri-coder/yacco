@@ -371,6 +371,202 @@ test("tipo, serie y número son únicos solo entre los vigentes: anular y volver
   expect(voided.body).toMatchObject({ ...paper, status: "VOIDED" });
 });
 
+function creditNoteBody(medium: ReceiptMedium, number: string) {
+  return {
+    medium,
+    series: "BC01",
+    number,
+    issuedOn: "2026-10-14",
+    reason: "El cliente devolvió el pedido",
+  };
+}
+
+async function receiptRows(receiptId: string) {
+  const [receipt] = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "receipts" WHERE "id" = ${receiptId}::uuid
+  `;
+  const sales = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "receipt_sales" WHERE "receipt_id" = ${receiptId}::uuid ORDER BY "sale_id"
+  `;
+  return { receipt, sales };
+}
+
+test("anular una nota de crédito manual solo la marca: el original y sus ventas no se tocan", async () => {
+  await configureIssuerSettings();
+  const firstSaleId = await createSale("23.60", "2026-10-14T19:00:00.000Z");
+  const secondSaleId = await createSale("8.10", "2026-10-14T19:10:00.000Z");
+  const original = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(
+      receiptBody(firstSaleId, {
+        series: "B010",
+        number: "000123",
+        saleIds: [firstSaleId, secondSaleId],
+      }),
+    )
+    .expect(201);
+  const creditNote = await request(server())
+    .post(`/api/v1/receipts/${original.body.id}/credit-notes`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(creditNoteBody(ReceiptMedium.MANUAL, "000010"))
+    .expect(201);
+  const before = await receiptRows(original.body.id);
+  expect(before.receipt).toMatchObject({ voided_at: expect.any(Date) });
+  expect(before.sales).toHaveLength(2);
+
+  await request(server())
+    .patch(`/api/v1/receipts/${creditNote.body.id}/void`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send({ reason: "Se anotó la nota equivocada" })
+    .expect(403);
+  await request(server())
+    .patch(`/api/v1/receipts/${creditNote.body.id}/void`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "Se anotó la nota equivocada" })
+    .expect(200);
+
+  const voidedNote = await request(server())
+    .get(`/api/v1/receipts/${creditNote.body.id}`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .expect(200);
+  expect(voidedNote.body).toMatchObject({
+    status: "VOIDED",
+    voidReason: "Se anotó la nota equivocada",
+  });
+  expect(await receiptRows(original.body.id)).toEqual(before);
+});
+
+test("una nota de crédito electrónica no se anula", async () => {
+  await configureIssuerSettings();
+  const saleId = await createSale("17.70", "2026-10-14T19:20:00.000Z");
+  const original = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(saleId, { medium: ReceiptMedium.EXTERNAL_ELECTRONIC, series: "B011" }))
+    .expect(201);
+  const creditNote = await request(server())
+    .post(`/api/v1/receipts/${original.body.id}/credit-notes`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(creditNoteBody(ReceiptMedium.EXTERNAL_ELECTRONIC, "000011"))
+    .expect(201);
+
+  const rejected = await request(server())
+    .patch(`/api/v1/receipts/${creditNote.body.id}/void`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "Se anotó la nota equivocada" })
+    .expect(409);
+  expect(rejected.body.message).toBe("Una nota de crédito electrónica no se puede anular");
+  expect(
+    (await prisma.receipt.findUniqueOrThrow({ where: { id: creditNote.body.id } })).voidedAt,
+  ).toBeNull();
+});
+
+test("volver a registrar el original crea uno nuevo con el mismo número, las mismas ventas y sus adjuntos", async () => {
+  await configureIssuerSettings();
+  const firstSaleId = await createSale("30.68", "2026-10-14T19:30:00.000Z");
+  const secondSaleId = await createSale("4.72", "2026-10-14T19:40:00.000Z");
+  const paper = { series: "B012", number: "000456" };
+  const original = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(firstSaleId, { ...paper, saleIds: [firstSaleId, secondSaleId] }))
+    .expect(201);
+  const pdf = Buffer.from("%PDF-1.7\ntalonario original");
+  const uploaded = await request(server())
+    .post(`/api/v1/receipts/${original.body.id}/files`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .attach("file", pdf, "talonario.pdf")
+    .expect(201);
+  const creditNote = await request(server())
+    .post(`/api/v1/receipts/${original.body.id}/credit-notes`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(creditNoteBody(ReceiptMedium.MANUAL, "000012"))
+    .expect(201);
+  await request(server())
+    .patch(`/api/v1/receipts/${creditNote.body.id}/void`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "La nota no se llegó a entregar" })
+    .expect(200);
+
+  const restored = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(
+      receiptBody(firstSaleId, {
+        ...paper,
+        saleIds: [firstSaleId, secondSaleId],
+        filesFromReceiptId: original.body.id,
+      }),
+    )
+    .expect(201);
+  expect(restored.body).toMatchObject({ ...paper, total: "35.40", voidedAt: null });
+  expect(restored.body.id).not.toBe(original.body.id);
+
+  const detail = await request(server())
+    .get(`/api/v1/receipts/${restored.body.id}`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .expect(200);
+  expect(detail.body.sales.map(({ id }: { id: string }) => id)).toEqual([
+    firstSaleId,
+    secondSaleId,
+  ]);
+  expect(detail.body.files).toEqual([
+    { fileName: uploaded.body.fileName, contentType: "application/pdf" },
+  ]);
+  const [originalFile, restoredFile] = await prisma.$queryRaw<
+    { receipt_id: string; object_key: string; created_by: string }[]
+  >`
+    SELECT "receipt_id", "object_key", "created_by" FROM "receipt_files"
+    WHERE "receipt_id" IN (${original.body.id}::uuid, ${restored.body.id}::uuid)
+    ORDER BY "created_at"
+  `;
+  expect(originalFile).toMatchObject({ receipt_id: original.body.id, created_by: adminId });
+  expect(restoredFile).toMatchObject({
+    receipt_id: restored.body.id,
+    object_key: originalFile!.object_key,
+    created_by: sellerId,
+  });
+  const raw = await request(server())
+    .get(`/api/v1/receipts/${restored.body.id}/files/${uploaded.body.fileName}/raw`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .expect(200);
+  expect(raw.body).toEqual(pdf);
+});
+
+test("volver a registrar el original se rechaza si una de sus ventas ya está en otro comprobante", async () => {
+  await configureIssuerSettings();
+  const reusedSaleId = await createSale("11.80", "2026-10-14T19:50:00.000Z");
+  const paper = { series: "B013", number: "000789" };
+  const original = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(reusedSaleId, paper))
+    .expect(201);
+  const creditNote = await request(server())
+    .post(`/api/v1/receipts/${original.body.id}/credit-notes`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(creditNoteBody(ReceiptMedium.MANUAL, "000013"))
+    .expect(201);
+  await request(server())
+    .patch(`/api/v1/receipts/${creditNote.body.id}/void`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "La nota no se llegó a entregar" })
+    .expect(200);
+  await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(reusedSaleId, { series: "B014", number: "000001" }))
+    .expect(201);
+
+  const rejected = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(reusedSaleId, { ...paper, filesFromReceiptId: original.body.id }))
+    .expect(409);
+  expect(rejected.body.message).toBe("Una o más ventas ya tienen un comprobante vigente");
+});
+
 test("el alta de un comprobante gana el lock y evita que una anulación concurrente deje ambos vigentes", async () => {
   const saleId = await createSale("35.00", "2026-10-14T17:00:00.000Z");
   const held = await holdSaleLock(prisma, saleId);

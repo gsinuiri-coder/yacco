@@ -1,10 +1,11 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ReceiptMedium, ReceiptType } from "@prisma/client";
 import {
   ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsEnum,
+  IsOptional,
   IsString,
   IsUUID,
   Matches,
@@ -49,4 +50,12 @@ export class CreateReceiptDto {
   @ArrayUnique()
   @IsUUID(undefined, { each: true })
   saleIds!: string[];
+
+  @ApiPropertyOptional({
+    format: "uuid",
+    description: "Comprobante anulado del que se vuelven a asociar los adjuntos",
+  })
+  @IsOptional()
+  @IsUUID()
+  filesFromReceiptId?: string;
 }

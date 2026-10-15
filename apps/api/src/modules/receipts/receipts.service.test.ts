@@ -317,6 +317,123 @@ describe("ReceiptsService transactional writes", () => {
     });
   });
 
+  test("voiding a manual credit note stamps only the note; an electronic one is rejected", async () => {
+    const tx = buildTransactionMock();
+    tx.receiptSale.updateMany.mockResolvedValue({ count: 0 });
+    tx.receipt.findUnique.mockResolvedValue({
+      id: "credit-note-1",
+      type: ReceiptType.CREDIT_NOTE,
+      medium: ReceiptMedium.MANUAL,
+      voidedAt: null,
+      sales: [],
+    });
+    const service = new ReceiptsService(buildTransactionalPrisma(tx) as never);
+
+    await expect(
+      service.void("credit-note-1", { reason: "Se anotó la nota equivocada" }, USER_ID),
+    ).resolves.toEqual({ id: "credit-note-1", releasedSales: 0 });
+    expect(tx.receipt.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.receipt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "credit-note-1", voidedAt: null } }),
+    );
+
+    tx.receipt.updateMany.mockClear();
+    tx.receipt.findUnique.mockResolvedValue({
+      id: "credit-note-2",
+      type: ReceiptType.CREDIT_NOTE,
+      medium: ReceiptMedium.EXTERNAL_ELECTRONIC,
+      voidedAt: null,
+      sales: [],
+    });
+    await expect(
+      service.void("credit-note-2", { reason: "Se anotó la nota equivocada" }, USER_ID),
+    ).rejects.toThrow("Una nota de crédito electrónica no se puede anular");
+    expect(tx.receipt.updateMany).not.toHaveBeenCalled();
+  });
+
+  describe("registering again with the original's files", () => {
+    const ORIGINAL_ID = "44444444-4444-4444-8444-444444444444";
+    const ORIGINAL_FILE = {
+      objectKey: `receipts/${ORIGINAL_ID}/55555555-5555-4555-8555-555555555555.pdf`,
+      contentType: "application/pdf",
+    };
+
+    function createDto() {
+      return {
+        type: ReceiptType.SALES_RECEIPT,
+        medium: ReceiptMedium.MANUAL,
+        series: "B001",
+        number: "000001",
+        issuedOn: "2026-10-14",
+        customerId: CUSTOMER_ID,
+        saleIds: SALE_IDS,
+        filesFromReceiptId: ORIGINAL_ID,
+      };
+    }
+
+    function originalRow(overrides: Record<string, unknown> = {}) {
+      return {
+        customerId: CUSTOMER_ID,
+        medium: ReceiptMedium.MANUAL,
+        voidedAt: new Date("2026-10-14T09:00:00.000Z"),
+        files: [ORIGINAL_FILE],
+        ...overrides,
+      };
+    }
+
+    function withReceiptFiles(tx: ReturnType<typeof buildTransactionMock>) {
+      const createMany = jest.fn<() => Promise<unknown>>().mockResolvedValue({ count: 1 });
+      return { tx: { ...tx, receiptFile: { createMany } }, createMany };
+    }
+
+    test("copies each file row with the same object key and its own who and when", async () => {
+      const { tx, createMany } = withReceiptFiles(buildTransactionMock());
+      tx.receipt.findUnique.mockResolvedValue(originalRow());
+      const service = new ReceiptsService(buildTransactionalPrisma(tx as never) as never);
+
+      await service.create(createDto(), USER_ID);
+
+      expect(createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            receiptId: "receipt-1",
+            objectKey: ORIGINAL_FILE.objectKey,
+            contentType: "application/pdf",
+            createdAt: expect.any(Date),
+            createdById: USER_ID,
+          },
+        ],
+      });
+    });
+
+    test.each([
+      ["a missing original", null, "El comprobante original no existe"],
+      [
+        "an active original",
+        originalRow({ voidedAt: null }),
+        "Solo se vuelven a asociar los adjuntos de un comprobante anulado",
+      ],
+      [
+        "another customer's original",
+        originalRow({ customerId: OTHER_CUSTOMER_ID }),
+        "Los adjuntos solo se vuelven a asociar a un comprobante del mismo cliente y medio",
+      ],
+      [
+        "an original of another medium",
+        originalRow({ medium: ReceiptMedium.EXTERNAL_ELECTRONIC }),
+        "Los adjuntos solo se vuelven a asociar a un comprobante del mismo cliente y medio",
+      ],
+    ])("rejects %s before writing anything", async (_label, original, message) => {
+      const { tx, createMany } = withReceiptFiles(buildTransactionMock());
+      tx.receipt.findUnique.mockResolvedValue(original);
+      const service = new ReceiptsService(buildTransactionalPrisma(tx as never) as never);
+
+      await expect(service.create(createDto(), USER_ID)).rejects.toThrow(message);
+      expect(tx.receipt.create).not.toHaveBeenCalled();
+      expect(createMany).not.toHaveBeenCalled();
+    });
+  });
+
   test("manually releasing an exemption records all three release fields", async () => {
     const tx = buildTransactionMock();
     tx.saleReceiptExemption.findUnique.mockResolvedValue({
