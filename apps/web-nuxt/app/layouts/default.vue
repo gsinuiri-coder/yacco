@@ -28,18 +28,18 @@ const menus = computed(() =>
 
 <template>
   <UDashboardGroup>
-    <UDashboardSidebar collapsible :ui="{ footer: 'border-t border-default' }">
+    <UDashboardSidebar collapsible :default-size="20">
       <template #header="{ collapsed }">
-        <NuxtLink to="/" class="flex items-center gap-2" aria-label="Yacco, ir al panel">
-          <span
-            class="grid size-8 shrink-0 place-items-center rounded-md bg-primary font-display text-lg font-semibold text-inverted"
-            aria-hidden="true"
-            >Y</span
-          >
-          <span v-if="!collapsed" class="font-display text-lg font-semibold text-highlighted"
-            >Yacco</span
-          >
-        </NuxtLink>
+        <UButton
+          to="/"
+          icon="i-lucide-droplets"
+          :label="collapsed ? undefined : 'Yacco'"
+          aria-label="Yacco, ir al panel"
+          color="neutral"
+          variant="ghost"
+          size="xl"
+          :square="collapsed"
+        />
       </template>
 
       <template #default="{ collapsed }">
@@ -50,24 +50,21 @@ const menus = computed(() =>
 
       <template #footer="{ collapsed }">
         <ClientOnly>
-          <div class="flex w-full items-center gap-2">
-            <UAvatar
-              :alt="session.user.value?.username"
-              size="sm"
-              class="bg-secondary-100 text-secondary-800"
-            />
-            <span v-if="!collapsed" class="min-w-0 flex-1 truncate text-sm font-medium">
-              {{ session.user.value?.username }}
-            </span>
-            <UButton
-              icon="i-lucide-log-out"
-              color="neutral"
-              variant="ghost"
-              :aria-label="collapsed ? 'Cerrar sesión' : undefined"
-              :label="collapsed ? undefined : 'Cerrar sesión'"
-              @click="session.logout()"
-            />
-          </div>
+          <UUser
+            v-if="!collapsed"
+            :name="session.user.value?.username"
+            :avatar="{ alt: session.user.value?.username }"
+            size="sm"
+          />
+          <UButton
+            icon="i-lucide-log-out"
+            color="neutral"
+            variant="ghost"
+            :aria-label="collapsed ? 'Cerrar sesión' : undefined"
+            :label="collapsed ? undefined : 'Cerrar sesión'"
+            :square="collapsed"
+            @click="session.logout()"
+          />
         </ClientOnly>
       </template>
     </UDashboardSidebar>
@@ -79,7 +76,13 @@ const menus = computed(() =>
       <template #fallback>
         <UDashboardPanel>
           <template #body>
-            <p role="status" class="text-muted">Cargando sesión…</p>
+            <UAlert
+              role="status"
+              title="Cargando sesión…"
+              icon="i-lucide-loader-circle"
+              color="neutral"
+              variant="soft"
+            />
           </template>
         </UDashboardPanel>
       </template>
