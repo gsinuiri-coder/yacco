@@ -73,41 +73,45 @@ const countLink = computed(() => `/container-counts?customerId=${props.customerI
       @retry="load"
     />
 
-    <ul v-else class="divide-y divide-default">
-      <li
-        v-for="row in rows"
-        :key="row.location.id"
-        class="flex flex-wrap items-start justify-between gap-2 py-3"
-      >
-        <div>
-          <p class="font-medium text-highlighted">{{ row.location.name }}</p>
+    <UPageList v-else>
+      <li v-for="row in rows" :key="row.location.id">
+        <UPageCard
+          :title="row.location.name"
+          :description="
+            row.containers.length > 0
+              ? describeContainers(row.containers)
+              : 'Sin envases registrados'
+          "
+          variant="soft"
+        >
+          <UFieldGroup>
+            <UBadge
+              v-if="!row.location.active"
+              color="warning"
+              variant="subtle"
+              label="Ubicación retirada"
+            />
+            <UBadge
+              v-if="row.containers.some((container) => container.quantity < 0)"
+              color="error"
+              variant="subtle"
+              label="Entrega sin registrar"
+            />
+          </UFieldGroup>
           <UBadge
-            v-if="!row.location.active"
-            color="warning"
+            v-if="row.lastCountedAt === null"
+            color="info"
             variant="subtle"
-            label="Ubicación retirada"
+            label="Sin contar"
           />
-          <p v-if="row.containers.length > 0" class="text-sm tabular-nums">
-            {{ describeContainers(row.containers) }}
-          </p>
-          <p v-else class="text-sm text-muted">Sin envases registrados</p>
-          <UBadge
-            v-if="row.containers.some((container) => container.quantity < 0)"
-            color="error"
-            variant="subtle"
-            label="Entrega sin registrar"
+          <UAlert
+            v-else
+            color="neutral"
+            variant="soft"
+            :title="`Contado el ${formatInstantInLima(row.lastCountedAt)}`"
           />
-        </div>
-        <UBadge
-          v-if="row.lastCountedAt === null"
-          color="info"
-          variant="subtle"
-          label="Sin contar"
-        />
-        <p v-else class="text-sm text-muted tabular-nums">
-          Contado el {{ formatInstantInLima(row.lastCountedAt) }}
-        </p>
+        </UPageCard>
       </li>
-    </ul>
+    </UPageList>
   </SectionCard>
 </template>

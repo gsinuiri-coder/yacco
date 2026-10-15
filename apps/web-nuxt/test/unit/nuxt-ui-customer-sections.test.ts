@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const SECTION_TEMPLATES = [
+  "../../app/components/SectionCard.vue",
   "../../app/components/CustomerAccountStatementSection.vue",
   "../../app/components/CustomerContactsSection.vue",
   "../../app/components/CustomerLocationSection.vue",
@@ -33,6 +34,8 @@ describe("secciones de cliente con Nuxt UI nativo", () => {
   );
 
   it("usa formularios y tablas nativos donde hay captura de datos o grillas", () => {
+    expect(templateOf("../../app/components/SectionCard.vue")).toContain("<UPageCard");
+
     for (const path of [
       "../../app/components/CustomerContactsSection.vue",
       "../../app/components/CustomerLocationSection.vue",

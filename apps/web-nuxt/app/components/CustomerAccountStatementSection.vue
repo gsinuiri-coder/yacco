@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formatDebtBalance, formatInstantInLima, formatSoles } from "@yacco/shared";
-import type { AccountStatement, AccountStatementEntry, PaymentStatus } from "@yacco/shared";
+import type { AccountStatement, PaymentStatus } from "@yacco/shared";
 
 /**
  * Estado de cuenta: cargos y abonos intercalados, con el saldo corriente que
@@ -47,19 +47,22 @@ const STATUS: Record<PaymentStatus, { label: string; color: "warning" | "success
 };
 
 const entries = computed(() => statement.value?.entries ?? []);
-
-function rowKey(entry: AccountStatementEntry): string {
-  return entry.saleId ?? entry.paymentId ?? entry.date;
-}
+const columns = [
+  { accessorKey: "date", header: "Fecha" },
+  { accessorKey: "type", header: "Tipo" },
+  { accessorKey: "amount", header: "Monto" },
+  { accessorKey: "runningBalance", header: "Saldo" },
+  { accessorKey: "detail", header: "Detalle" },
+];
 </script>
 
 <template>
   <SectionCard title="Estado de cuenta" description="Cargos y abonos, del más antiguo al último.">
     <template v-if="!loading && !loadError && statement" #actions>
-      <span class="text-sm text-muted">Saldo</span>
-      <span class="text-lg font-semibold text-highlighted tabular-nums">{{
-        formatDebtBalance(statement.closingBalance)
-      }}</span>
+      <span>
+        Saldo ·
+        <span>{{ formatDebtBalance(statement.closingBalance) }}</span>
+      </span>
     </template>
 
     <ListStatus
@@ -75,77 +78,52 @@ function rowKey(entry: AccountStatementEntry): string {
       @retry="load"
     />
 
-    <div v-else class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <caption class="sr-only">
-          Estado de cuenta del cliente
-        </caption>
-        <thead class="text-left text-xs tracking-wide text-muted uppercase">
-          <tr>
-            <th scope="col" class="py-2 font-medium">Fecha</th>
-            <th scope="col" class="py-2 font-medium">Tipo</th>
-            <th scope="col" class="py-2 text-right font-medium">Monto</th>
-            <th scope="col" class="py-2 text-right font-medium">Saldo</th>
-            <th scope="col" class="py-2 pl-4 font-medium">Detalle</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-default">
-          <tr
-            v-for="entry in entries"
-            :key="rowKey(entry)"
-            :class="entry.voidedAt === null ? undefined : 'bg-elevated/60'"
-          >
-            <td class="py-3 whitespace-nowrap text-muted tabular-nums">
-              {{ formatInstantInLima(entry.date) }}
-            </td>
-            <td class="py-3">
-              <span class="flex flex-wrap items-center gap-1.5">
-                {{ entry.type === "CHARGE" ? "Cargo" : "Abono" }}
-                <UBadge
-                  v-if="entry.isOpeningBalance"
-                  color="neutral"
-                  variant="soft"
-                  size="sm"
-                  label="Saldo inicial"
-                />
-                <!-- "Anulado": va pegado a Cargo o Abono, los dos masculinos. -->
-                <UBadge
-                  v-if="entry.voidedAt !== null"
-                  color="error"
-                  variant="subtle"
-                  size="sm"
-                  label="Anulado"
-                />
-              </span>
-            </td>
-            <!-- El tachado refuerza al badge, nunca lo reemplaza. -->
-            <td
-              class="py-3 text-right tabular-nums"
-              :class="entry.voidedAt === null ? undefined : 'text-muted line-through'"
-            >
-              {{ formatSoles(entry.amount) }}
-            </td>
-            <td class="py-3 text-right font-medium tabular-nums">
-              {{ formatDebtBalance(entry.runningBalance) }}
-            </td>
-            <td class="py-3 pl-4">
-              <span v-if="entry.type === 'PAYMENT'" class="flex flex-wrap items-center gap-1.5">
-                {{ entry.paymentMethodName }}
-                <UBadge
-                  v-if="entry.status !== null"
-                  :color="STATUS[entry.status].color"
-                  variant="subtle"
-                  size="sm"
-                  :label="STATUS[entry.status].label"
-                />
-              </span>
-              <span v-else-if="entry.locationName !== null" class="text-muted">{{
-                entry.locationName
-              }}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <UTable v-else :data="entries" :columns="columns" caption="Estado de cuenta del cliente">
+      <template #date-cell="{ row }">
+        {{ formatInstantInLima(row.original.date) }}
+      </template>
+      <template #type-cell="{ row }">
+        <UFieldGroup>
+          <UBadge
+            color="neutral"
+            variant="soft"
+            :label="row.original.type === 'CHARGE' ? 'Cargo' : 'Abono'"
+          />
+          <UBadge
+            v-if="row.original.isOpeningBalance"
+            color="neutral"
+            variant="soft"
+            size="sm"
+            label="Saldo inicial"
+          />
+          <UBadge
+            v-if="row.original.voidedAt !== null"
+            color="error"
+            variant="subtle"
+            size="sm"
+            label="Anulado"
+          />
+        </UFieldGroup>
+      </template>
+      <template #amount-cell="{ row }">
+        {{ formatSoles(row.original.amount) }}
+      </template>
+      <template #runningBalance-cell="{ row }">
+        {{ formatDebtBalance(row.original.runningBalance) }}
+      </template>
+      <template #detail-cell="{ row }">
+        <UFieldGroup v-if="row.original.type === 'PAYMENT'">
+          <span>{{ row.original.paymentMethodName }}</span>
+          <UBadge
+            v-if="row.original.status !== null"
+            :color="STATUS[row.original.status].color"
+            variant="subtle"
+            size="sm"
+            :label="STATUS[row.original.status].label"
+          />
+        </UFieldGroup>
+        <span v-else-if="row.original.locationName !== null">{{ row.original.locationName }}</span>
+      </template>
+    </UTable>
   </SectionCard>
 </template>
