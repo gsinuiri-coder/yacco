@@ -780,6 +780,42 @@ test("HU-26 E1: tres ventas de montos distintos cuadran total, base e IGV y qued
   expect(await salesByStatus(owner.id, "AVAILABLE")).toEqual([]);
 });
 
+test("HU-26 E1: una factura a un cliente con RUC se registra con los mismos montos", async () => {
+  await configureIssuerSettings();
+  const company = await createCustomer("Empresa E1", {
+    documentType: "RUC",
+    documentNumber: "20600000001",
+  });
+  const saleIds = [
+    await createSaleAt(company.locationId, "1.00", "2026-10-14T13:30:00.000Z"),
+    await createSaleAt(company.locationId, "1.01", "2026-10-14T13:40:00.000Z"),
+    await createSaleAt(company.locationId, "1.04", "2026-10-14T13:50:00.000Z"),
+  ];
+
+  const invoice = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(
+      receiptBody(saleIds[0]!, {
+        type: ReceiptType.INVOICE,
+        series: "F001",
+        number: "000901",
+        customerId: company.id,
+        saleIds,
+      }),
+    )
+    .expect(201);
+
+  expect(invoice.body).toMatchObject({
+    type: ReceiptType.INVOICE,
+    series: "F001",
+    total: "3.05",
+    taxableAmount: "2.59",
+    taxAmount: "0.46",
+  });
+  expect(await salesByStatus(company.id, "RECEIPTED")).toEqual([...saleIds].sort());
+});
+
 test("HU-26 E2: una venta comprobada no entra en otro comprobante; ventas de dos clientes se rechazan", async () => {
   await configureIssuerSettings();
   const owner = await createCustomer("Cliente E2", {
@@ -907,6 +943,52 @@ test("HU-26 E3: anular libera todas las ventas una sola vez, con quién y cuánd
   expect(await prisma.receiptSale.findMany({ where: { receiptId: created.body.id } })).toEqual(
     released,
   );
+  expect(await salesByStatus(owner.id, "AVAILABLE")).toEqual([...saleIds].sort());
+});
+
+test("HU-26 E3 por nota de crédito: libera las ventas con quién y cuándo y el original queda a la vista como anulado", async () => {
+  await configureIssuerSettings();
+  const owner = await createCustomer("Cliente E3 nota", {
+    documentType: "DNI",
+    documentNumber: "40000007",
+  });
+  const saleIds = [
+    await createSaleAt(owner.locationId, "5.00", "2026-10-14T14:50:00.000Z"),
+    await createSaleAt(owner.locationId, "8.00", "2026-10-14T14:55:00.000Z"),
+  ];
+  const created = await request(server())
+    .post("/api/v1/receipts")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send(receiptBody(saleIds[0]!, { customerId: owner.id, saleIds, number: "000920" }))
+    .expect(201);
+
+  const creditNote = await request(server())
+    .post(`/api/v1/receipts/${created.body.id}/credit-notes`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .send(creditNoteBody(ReceiptMedium.MANUAL, "000920"))
+    .expect(201);
+
+  const released = await prisma.receiptSale.findMany({ where: { receiptId: created.body.id } });
+  expect(released).toHaveLength(2);
+  for (const row of released) {
+    expect(row.releasedById).toBe(sellerId);
+    expect(row.releasedAt).toEqual(expect.any(Date));
+  }
+  const original = await request(server())
+    .get(`/api/v1/receipts/${created.body.id}`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .expect(200);
+  expect(original.body).toMatchObject({
+    status: "VOIDED",
+    voidReason: "El cliente devolvió el pedido",
+    voidedBy: { id: sellerId },
+    creditNotes: [{ id: creditNote.body.id, status: "ACTIVE" }],
+  });
+  const list = await request(server())
+    .get("/api/v1/receipts?status=VOIDED")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .expect(200);
+  expect(list.body.data.map(({ id }: { id: string }) => id)).toContain(created.body.id);
   expect(await salesByStatus(owner.id, "AVAILABLE")).toEqual([...saleIds].sort());
 });
 
