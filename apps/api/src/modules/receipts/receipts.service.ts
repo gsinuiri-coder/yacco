@@ -681,7 +681,8 @@ export class ReceiptsService {
   }
 
   private async lockSales(client: ReceiptClient, saleIds: string[]): Promise<void> {
-    for (const saleId of [...saleIds].sort()) {
+    // Always the same order, so two registrations never wait on each other in a cycle.
+    for (const saleId of [...saleIds].sort((a, b) => a.localeCompare(b))) {
       await client.$queryRaw(
         Prisma.sql`SELECT id FROM sales WHERE id = ${saleId}::uuid FOR UPDATE`,
       );
