@@ -70,14 +70,16 @@ describe("Pedidos", () => {
     const seen = stubOrders(() => pageOf([buildOrder()]));
 
     await renderSuspended(App, {
-      route: "/orders?deliveryDateFrom=2026-10-14&deliveryDateTo=2026-10-14",
+      route: "/orders?status=NOT_CANCELLED&deliveryDateFrom=2026-10-14&deliveryDateTo=2026-10-14",
     });
     await screen.findByText("S/ 37.50");
 
     expect(seen[0]).toMatchObject({
+      excludeCancelled: "true",
       deliveryDateFrom: "2026-10-14",
       deliveryDateTo: "2026-10-14",
     });
+    expect(screen.getByLabelText("Estado").textContent).toContain("Todos menos anulados");
   });
 
   it("la fecha de entrega es el día exacto, sin correrse por el huso de Lima", async () => {
@@ -114,6 +116,17 @@ describe("Pedidos", () => {
     await user.click(await screen.findByRole("option", { name: /Panadería Aurora/ }));
     await waitFor(() => expect(seen.at(-1)?.customerId).toBe("c-aurora"));
     expect(seen.at(-1)).toMatchObject({ page: "1", limit: "20" });
+  });
+
+  it("«Todos menos anulados» pide el filtro que coincide con el número del Panel", async () => {
+    const seen = stubOrders(() => pageOf([buildOrder()]));
+
+    await renderOrders();
+    await screen.findByText("Bodega Santa Rosa");
+    await chooseStatus("Todos menos anulados");
+
+    await waitFor(() => expect(seen.at(-1)?.excludeCancelled).toBe("true"));
+    expect(seen.at(-1)).not.toHaveProperty("status");
   });
 
   it("«Limpiar filtros» vuelve a pedir sin filtros", async () => {

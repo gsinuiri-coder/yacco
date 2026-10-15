@@ -76,6 +76,15 @@ describe("navigation utils", () => {
     ]);
   });
 
+  it("administrador y vendedor tienen Ventas en el trabajo diario", () => {
+    for (const role of ["ADMIN", "SELLER"] as const) {
+      const daily = visibleNavigation([role]).find((section) => section.label === "Día a día");
+      expect(daily?.links).toEqual(
+        expect.arrayContaining([expect.objectContaining({ label: "Ventas", to: "/sales" })]),
+      );
+    }
+  });
+
   it("la cuenta de verificación no ve ningún menú", () => {
     expect(visibleNavigation(["VIEWER"])).toEqual([]);
   });

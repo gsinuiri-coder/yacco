@@ -4,7 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { getQuery } from "h3";
 import type { H3Event } from "h3";
 import { limaToday } from "@yacco/shared";
-import type { ProductionBatch, ProductionBatchCodeProposal, UserRole } from "@yacco/shared";
+import type {
+  MaquilaCustomerSummary,
+  ProductionBatch,
+  ProductionBatchCodeProposal,
+  UserRole,
+} from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "~/app.vue";
 import { pageOf } from "../support/fixtures";
@@ -59,6 +64,7 @@ function stubPage(
   proposal: (
     date: string,
   ) => ProductionBatchCodeProposal | Promise<ProductionBatchCodeProposal> = proposalFor,
+  maquilaCustomers: MaquilaCustomerSummary[] = [],
 ) {
   const queries: Array<Record<string, unknown>> = [];
   const proposalDates: string[] = [];
@@ -79,7 +85,7 @@ function stubPage(
         return pageOf(batches);
       },
     }),
-    registerEndpoint("/api/v1/maquila/customers", () => []),
+    registerEndpoint("/api/v1/maquila/customers", () => maquilaCustomers),
     registerEndpoint("/api/v1/maquila/movements", () => ({
       data: [],
       total: 0,
@@ -396,6 +402,51 @@ describe("Producción", () => {
     await renderProduction(["PLANT_OPERATOR"]);
 
     expect(await screen.findByRole("form", { name: "Registrar llenada" })).toBeTruthy();
+  });
+
+  it("el supervisor ve los llenos de maquila por devolver, por cliente y tipo", async () => {
+    stubPage([batch()], proposalFor, [
+      {
+        customerId: "customer-maquila",
+        customerName: "Hotel Manantial",
+        emptyAtPlantTotal: 0,
+        fullToReturnTotal: 5,
+        balances: [
+          {
+            customerId: "customer-maquila",
+            containerTypeId: "ct-cano",
+            containerTypeName: "Con caño",
+            emptyAtPlant: 0,
+            fullToReturn: 5,
+          },
+        ],
+      },
+    ]);
+
+    await renderProduction(["PLANT_SUPERVISOR"]);
+
+    const returns = await screen.findByRole("region", {
+      name: "Llenos de maquila por devolver",
+    });
+    expect(within(returns).getByText("Hotel Manantial")).toBeTruthy();
+    expect(within(returns).getByText("5 llenos")).toBeTruthy();
+    expect(within(returns).getByText("Con caño: 5")).toBeTruthy();
+  });
+
+  it("el operador no recibe el resumen de llenos de maquila por devolver", async () => {
+    stubPage([batch()], proposalFor, [
+      {
+        customerId: "customer-maquila",
+        customerName: "Hotel Manantial",
+        emptyAtPlantTotal: 0,
+        fullToReturnTotal: 5,
+        balances: [],
+      },
+    ]);
+
+    await renderProduction(["PLANT_OPERATOR"]);
+
+    expect(screen.queryByRole("region", { name: "Llenos de maquila por devolver" })).toBeNull();
   });
 
   // HU-01 E4: el detalle separa hora, responsable, tipo, cantidad y nota de cada llenada.

@@ -361,6 +361,48 @@ describe("Panel por rol — GET /reports/dashboard", () => {
     expect(panel).not.toHaveProperty("myFillingsToday");
   });
 
+  test("Ventas filtrada por hoy muestra anuladas pero suma exactamente lo mismo que el Panel", async () => {
+    const panel = await dashboardOf(adminToken);
+    const response = await request(server())
+      .get(`/api/v1/sales?soldFrom=${TODAY}&soldTo=${TODAY}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.totalAmount).toBe(panel.salesToday);
+    expect(response.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ total: "50.00", voidedAt: expect.any(String) }),
+        expect.objectContaining({ total: "10.00", origin: "MAQUILA", voidedAt: null }),
+        expect.objectContaining({ total: "2.50", origin: "MAQUILA", voidedAt: null }),
+      ]),
+    );
+    expect(response.body.data).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ total: "30.00" })]),
+    );
+
+    await request(server())
+      .get(`/api/v1/sales?soldFrom=${TODAY}&soldTo=${TODAY}`)
+      .set("Authorization", `Bearer ${tokens.seller}`)
+      .expect(200);
+    await request(server())
+      .get(`/api/v1/sales?soldFrom=${TODAY}&soldTo=${TODAY}`)
+      .set("Authorization", `Bearer ${tokens.supervisor}`)
+      .expect(403);
+  });
+
+  test("Pedidos filtrado como Todos menos anulados coincide con el número del Panel", async () => {
+    const panel = await dashboardOf(tokens.seller);
+    const response = await request(server())
+      .get(`/api/v1/orders?excludeCancelled=true&deliveryDateFrom=${TODAY}&deliveryDateTo=${TODAY}`)
+      .set("Authorization", `Bearer ${tokens.seller}`)
+      .expect(200);
+
+    expect(response.body.total).toBe(panel.ordersToday);
+    expect(response.body.data).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: OrderStatus.CANCELLED })]),
+    );
+  });
+
   test("el vendedor recibe pedidos del día, no entregados, rutas en curso y cobros por confirmar", async () => {
     const panel = await dashboardOf(tokens.seller);
 

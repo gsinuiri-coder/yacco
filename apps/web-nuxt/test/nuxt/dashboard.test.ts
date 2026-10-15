@@ -303,7 +303,9 @@ describe("Panel por rol", () => {
     const region = await summary();
 
     await within(region).findByRole("link", { name: "Ventas del día: S/ 1,250.50" });
-    expect(hrefOf(region, "Ventas del día: S/ 1,250.50")).toBe("/routes?date=2026-10-14");
+    expect(hrefOf(region, "Ventas del día: S/ 1,250.50")).toBe(
+      "/sales?soldFrom=2026-10-14&soldTo=2026-10-14",
+    );
     expect(hrefOf(region, "Cobros del día: S/ 300.00")).toBe(
       "/payments?status=CONFIRMED&paidFrom=2026-10-14&paidTo=2026-10-14",
     );
@@ -327,7 +329,7 @@ describe("Panel por rol", () => {
 
     await within(region).findByRole("link", { name: "Pedidos del día: 18" });
     expect(hrefOf(region, "Pedidos del día: 18")).toBe(
-      "/orders?deliveryDateFrom=2026-10-14&deliveryDateTo=2026-10-14",
+      "/orders?status=NOT_CANCELLED&deliveryDateFrom=2026-10-14&deliveryDateTo=2026-10-14",
     );
     expect(hrefOf(region, "No entregados: 3")).toBe("/orders/undelivered");
     expect(hrefOf(region, "Rutas en curso: 1")).toBe("/routes?status=IN_PROGRESS");

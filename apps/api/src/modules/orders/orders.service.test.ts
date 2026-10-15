@@ -617,6 +617,22 @@ describe("OrdersService", () => {
       });
     });
 
+    it("excludeCancelled=true returns every status except CANCELLED", async () => {
+      prisma.order.count.mockResolvedValue(0);
+      prisma.order.findMany.mockResolvedValue([]);
+
+      await service.findAll({
+        page: DEFAULT_PAGE,
+        limit: DEFAULT_LIMIT,
+        excludeCancelled: true,
+      });
+
+      const countArgs = firstCallArgs(prisma.order.count) as {
+        where: { status?: { not: OrderStatus } };
+      };
+      expect(countArgs.where.status).toEqual({ not: OrderStatus.CANCELLED });
+    });
+
     it("applies no filter when only pagination is given", async () => {
       prisma.order.count.mockResolvedValue(0);
       prisma.order.findMany.mockResolvedValue([]);
