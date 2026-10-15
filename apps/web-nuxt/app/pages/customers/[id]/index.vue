@@ -54,114 +54,115 @@ async function onStatementChanged(): Promise<void> {
       back-label="Volver a clientes"
       @retry="resource.reload"
     >
-      <div v-if="customer" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <div class="space-y-6">
-          <section
-            aria-label="Datos del cliente"
-            class="rounded-lg border border-default bg-default p-5"
-          >
-            <div class="flex items-start justify-between gap-4">
-              <div>
-                <p class="text-xs font-medium tracking-wide text-muted uppercase">Deuda actual</p>
-                <p
-                  class="mt-1 font-display text-3xl font-semibold tabular-nums"
-                  :class="isAboveZero(customer.debtBalance) ? 'text-error' : 'text-highlighted'"
+      <UPageBody v-if="customer">
+        <UPageSection as="div" orientation="horizontal">
+          <template #body>
+            <UCard as="section" aria-label="Datos del cliente">
+              <UPageBody>
+                <UPageCard
+                  title="Deuda actual"
+                  :description="formatDebtBalance(customer.debtBalance)"
+                  icon="i-lucide-wallet-cards"
+                  :highlight="isAboveZero(customer.debtBalance)"
+                  :highlight-color="isAboveZero(customer.debtBalance) ? 'error' : 'primary'"
+                  variant="soft"
                 >
-                  {{ formatDebtBalance(customer.debtBalance) }}
-                </p>
-                <p class="mt-1 text-sm text-muted">
-                  Límite de crédito:
-                  {{
-                    customer.creditLimit === null ? "Sin límite" : formatSoles(customer.creditLimit)
-                  }}
-                </p>
-              </div>
-              <UBadge
-                :color="customer.active ? 'success' : 'neutral'"
-                variant="subtle"
-                size="lg"
-                :label="customer.active ? 'Activo' : 'Desactivado'"
-              />
-            </div>
-            <dl class="mt-5 grid gap-4 border-t border-default pt-5 text-sm sm:grid-cols-2">
-              <div>
-                <dt class="text-muted">Teléfono</dt>
-                <dd class="font-medium text-highlighted">{{ customer.phone }}</dd>
-              </div>
-              <div>
-                <dt class="text-muted">Zona</dt>
-                <dd>
-                  <UBadge
-                    v-if="customer.zone"
-                    color="neutral"
+                  <template #footer>
+                    <UFieldGroup>
+                      <UBadge
+                        :color="customer.active ? 'success' : 'neutral'"
+                        variant="subtle"
+                        :label="customer.active ? 'Activo' : 'Desactivado'"
+                      />
+                      <UBadge
+                        color="neutral"
+                        variant="soft"
+                        :label="`Límite de crédito: ${
+                          customer.creditLimit === null
+                            ? 'Sin límite'
+                            : formatSoles(customer.creditLimit)
+                        }`"
+                      />
+                    </UFieldGroup>
+                  </template>
+                </UPageCard>
+
+                <UPageGrid>
+                  <UPageCard title="Teléfono" :description="customer.phone" variant="soft" />
+                  <UPageCard
+                    title="Zona"
+                    :description="customer.zone?.name ?? 'Sin zona'"
                     variant="soft"
-                    :label="customer.zone.name"
                   />
-                  <span v-else class="text-dimmed">Sin zona</span>
-                </dd>
-              </div>
-              <div class="sm:col-span-2">
-                <dt class="text-muted">Dirección</dt>
-                <dd class="font-medium text-highlighted">
-                  <LinkedText :text="customer.address" />
-                </dd>
-                <dd class="text-muted"><LinkedText :text="customer.addressReference" /></dd>
-              </div>
-              <div
-                v-if="customer.documentType && customer.documentNumber"
-                class="sm:col-span-2 border-t border-default pt-4"
-              >
-                <dt class="text-muted">Documento ({{ customer.documentType }})</dt>
-                <dd class="font-medium text-highlighted tabular-nums">
-                  {{ customer.documentNumber }}
-                </dd>
-                <p v-if="customer.legalName" class="mt-1 text-xs text-muted">
-                  Razón social:
-                  <span class="font-medium text-highlighted">{{ customer.legalName }}</span>
-                </p>
-                <p v-if="customer.fiscalAddress" class="mt-1 text-xs text-muted">
-                  Dirección fiscal:
-                  <span class="font-medium text-highlighted">{{ customer.fiscalAddress }}</span>
-                </p>
-              </div>
-            </dl>
-          </section>
+                  <UPageCard title="Dirección" variant="soft">
+                    <template #description>
+                      <LinkedText :text="customer.address" />
+                    </template>
+                    <template #footer>
+                      <LinkedText :text="customer.addressReference" />
+                    </template>
+                  </UPageCard>
+                </UPageGrid>
+                <UPageCard
+                  v-if="customer.documentType && customer.documentNumber"
+                  :title="`Documento (${customer.documentType})`"
+                  :description="customer.documentNumber"
+                  variant="soft"
+                >
+                  <UPageBody v-if="customer.legalName || customer.fiscalAddress">
+                    <UPageCard
+                      v-if="customer.legalName"
+                      title="Razón social"
+                      :description="customer.legalName"
+                      variant="subtle"
+                    />
+                    <UPageCard
+                      v-if="customer.fiscalAddress"
+                      title="Dirección fiscal"
+                      :description="customer.fiscalAddress"
+                      variant="subtle"
+                    />
+                  </UPageBody>
+                </UPageCard>
+              </UPageBody>
+            </UCard>
+          </template>
 
-          <CustomerContactsSection
+          <CustomerAccountStatementSection
             :customer-id="customer.id"
-            :can-edit="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+            :refresh-signal="statementRefresh"
           />
+        </UPageSection>
 
-          <CustomerLocationSection :customer-id="customer.id" />
-
-          <CustomerPaymentSection :customer-id="customer.id" @registered="paymentRegistered" />
-          <CustomerReceiptsSection
-            v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
-            :customer-id="customer.id"
-            :is-admin="session.hasRole('ADMIN')"
-          />
-          <CustomerPricesSection :customer-id="customer.id" :is-admin="session.hasRole('ADMIN')" />
-          <CustomerContainersSection
-            v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
-            :customer-id="customer.id"
-          />
-          <CustomerAccessoriesSection
-            v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
-            :customer-id="customer.id"
-            @statement-changed="onStatementChanged"
-          />
-          <CustomerMaquilaSection
-            v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
-            :customer-id="customer.id"
-            @statement-changed="onStatementChanged"
-          />
-        </div>
-
-        <CustomerAccountStatementSection
+        <CustomerContactsSection
           :customer-id="customer.id"
-          :refresh-signal="statementRefresh"
+          :can-edit="session.hasRole('ADMIN') || session.hasRole('SELLER')"
         />
-      </div>
+
+        <CustomerLocationSection :customer-id="customer.id" />
+
+        <CustomerPaymentSection :customer-id="customer.id" @registered="paymentRegistered" />
+        <CustomerReceiptsSection
+          v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+          :customer-id="customer.id"
+          :is-admin="session.hasRole('ADMIN')"
+        />
+        <CustomerPricesSection :customer-id="customer.id" :is-admin="session.hasRole('ADMIN')" />
+        <CustomerContainersSection
+          v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+          :customer-id="customer.id"
+        />
+        <CustomerAccessoriesSection
+          v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+          :customer-id="customer.id"
+          @statement-changed="onStatementChanged"
+        />
+        <CustomerMaquilaSection
+          v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')"
+          :customer-id="customer.id"
+          @statement-changed="onStatementChanged"
+        />
+      </UPageBody>
     </ResourceState>
   </AppPage>
 </template>

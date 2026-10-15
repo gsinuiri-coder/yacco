@@ -59,12 +59,8 @@ const columns: TableColumn<Customer>[] = [
   { accessorKey: "name", header: "Cliente" },
   { accessorKey: "zone", header: "Zona" },
   { accessorKey: "active", header: "Estado" },
-  {
-    accessorKey: "debtBalance",
-    header: "Deuda",
-    meta: { class: { th: "text-right", td: "text-right" } },
-  },
-  { id: "actions", header: "", meta: { class: { td: "text-right w-0" } } },
+  { accessorKey: "debtBalance", header: "Deuda" },
+  { id: "actions", header: "" },
 ];
 
 function openCustomer(_event: Event, row: { original: Customer }): void {
@@ -78,29 +74,29 @@ function openCustomer(_event: Event, row: { original: Customer }): void {
       <UButton to="/customers/new" icon="i-lucide-user-plus" label="Nuevo cliente" />
     </template>
 
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
-        <UFormField label="Buscar" class="min-w-64 flex-1">
-          <UInput
-            v-model="searchInput"
-            type="search"
-            icon="i-lucide-search"
-            placeholder="Nombre o teléfono"
-            class="w-full"
-          />
-        </UFormField>
-        <UFormField label="Zona">
-          <USelect v-model="zoneFilter" :items="zoneItems" class="w-48" />
-        </UFormField>
-        <SegmentedFilter v-model="status" label="Estado" :options="STATUS_OPTIONS" />
-      </div>
+    <UCard>
+      <template #header>
+        <UPageGrid>
+          <UFormField label="Buscar">
+            <UInput
+              v-model="searchInput"
+              type="search"
+              icon="i-lucide-search"
+              placeholder="Nombre o teléfono"
+            />
+          </UFormField>
+          <UFormField label="Zona">
+            <USelect v-model="zoneFilter" :items="zoneItems" />
+          </UFormField>
+          <SegmentedFilter v-model="status" label="Estado" :options="STATUS_OPTIONS" />
+        </UPageGrid>
+      </template>
 
       <UAlert
         v-if="list.slow.value && list.loading.value"
         role="status"
         color="neutral"
         variant="subtle"
-        class="rounded-none"
         :title="SLOW_REQUEST_MESSAGE"
       />
 
@@ -133,25 +129,18 @@ function openCustomer(_event: Event, row: { original: Customer }): void {
           :data="list.items.value"
           :columns="columns"
           caption="Clientes registrados con su zona y su deuda"
-          :ui="{ caption: 'sr-only', tr: 'cursor-pointer' }"
           @select="openCustomer"
         >
           <template #name-cell="{ row }">
-            <NuxtLink
+            <UUser
               :to="`/customers/${row.original.id}`"
-              class="font-medium text-highlighted hover:text-primary"
-              >{{ row.original.name }}</NuxtLink
-            >
-            <p class="text-sm text-muted">{{ row.original.phone }}</p>
+              :name="row.original.name"
+              :description="row.original.phone"
+              :aria-label="row.original.name"
+            />
           </template>
           <template #zone-cell="{ row }">
-            <UBadge
-              v-if="row.original.zone"
-              color="neutral"
-              variant="soft"
-              :label="row.original.zone.name"
-            />
-            <span v-else class="text-sm text-dimmed">Sin zona</span>
+            <UBadge color="neutral" variant="soft" :label="row.original.zone?.name ?? 'Sin zona'" />
           </template>
           <template #active-cell="{ row }">
             <UBadge

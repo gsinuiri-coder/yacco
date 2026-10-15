@@ -49,16 +49,14 @@ async function register(values: CustomerFormValues): Promise<void> {
         label="Clientes"
       />
     </template>
-    <div class="max-w-3xl">
-      <CustomerForm
-        :initial-values="blankCustomerForm()"
-        submit-label="Registrar cliente"
-        :submitting="submitting"
-        :submit-error="submitError"
-        :zones="zones"
-        @submit="register"
-        @cancel="navigateTo('/customers')"
-      />
-    </div>
+    <CustomerForm
+      :initial-values="blankCustomerForm()"
+      submit-label="Registrar cliente"
+      :submitting="submitting"
+      :submit-error="submitError"
+      :zones="zones"
+      @submit="register"
+      @cancel="navigateTo('/customers')"
+    />
   </AppPage>
 </template>

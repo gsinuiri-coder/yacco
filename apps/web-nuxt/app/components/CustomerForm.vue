@@ -65,39 +65,44 @@ function submit(): void {
 </script>
 
 <template>
-  <UCard>
-    <form class="space-y-6" novalidate @submit.prevent="submit">
-      <UAlert
-        v-if="submitError"
-        role="alert"
-        color="error"
-        variant="subtle"
-        icon="i-lucide-circle-alert"
-        :title="submitError"
-      />
+  <UForm
+    :state="values"
+    :validate-on="[]"
+    :loading-auto="false"
+    :disabled="submitting"
+    novalidate
+    @submit="submit"
+  >
+    <UAlert
+      v-if="submitError"
+      role="alert"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-circle-alert"
+      :title="submitError"
+    />
 
-      <fieldset class="grid gap-5 sm:grid-cols-2" :disabled="submitting">
-        <legend class="sr-only">Datos del cliente</legend>
+    <UCard>
+      <UPageGrid>
         <UFormField label="Nombre" name="name" :error="errors.name">
-          <UInput v-model="values.name" class="w-full" autocomplete="off" />
+          <UInput v-model="values.name" autocomplete="off" />
         </UFormField>
         <UFormField label="Teléfono" name="phone" :error="errors.phone">
-          <UInput v-model="values.phone" type="tel" class="w-full" autocomplete="off" />
+          <UInput v-model="values.phone" type="tel" autocomplete="off" />
         </UFormField>
-        <UFormField label="Dirección" name="address" :error="errors.address" class="sm:col-span-2">
-          <UInput v-model="values.address" class="w-full" autocomplete="off" />
+        <UFormField label="Dirección" name="address" :error="errors.address">
+          <UInput v-model="values.address" autocomplete="off" />
         </UFormField>
         <UFormField
           label="Referencia"
           name="addressReference"
           :error="errors.addressReference"
           help="Cómo encontrar la puerta: un color, una esquina, un negocio al lado."
-          class="sm:col-span-2"
         >
-          <UInput v-model="values.addressReference" class="w-full" autocomplete="off" />
+          <UInput v-model="values.addressReference" autocomplete="off" />
         </UFormField>
         <UFormField label="Zona (opcional)" name="zoneId">
-          <USelect v-model="zoneModel" :items="zoneItems" class="w-full" />
+          <USelect v-model="zoneModel" :items="zoneItems" />
         </UFormField>
         <UFormField
           label="Límite de crédito (opcional)"
@@ -105,82 +110,69 @@ function submit(): void {
           :error="errors.creditLimit"
           help="En soles, con dos decimales. Avisa al superarse; nunca bloquea la venta."
         >
-          <UInput
-            v-model="values.creditLimit"
-            inputmode="decimal"
-            placeholder="150.00"
-            class="w-full"
-          >
-            <template #leading><span class="text-sm text-muted">S/</span></template>
+          <UInput v-model="values.creditLimit" inputmode="decimal" placeholder="150.00">
+            <template #leading>S/</template>
           </UInput>
         </UFormField>
+      </UPageGrid>
+    </UCard>
 
-        <div class="sm:col-span-2 border-t border-default pt-4">
-          <p class="text-xs font-medium tracking-wide text-muted uppercase mb-4">
-            Comprobante y datos fiscales (opcional)
-          </p>
-          <div class="grid gap-5 sm:grid-cols-2">
-            <UFormField label="Tipo de documento" name="documentType" :error="errors.documentType">
-              <USelect v-model="docTypeModel" :items="docTypeItems" class="w-full" />
-            </UFormField>
-            <UFormField
-              label="Número de documento"
-              name="documentNumber"
-              :error="errors.documentNumber"
-            >
-              <UInput
-                v-model="values.documentNumber"
-                class="w-full"
-                autocomplete="off"
-                :placeholder="
-                  values.documentType === 'RUC'
-                    ? '11 dígitos'
-                    : values.documentType === 'DNI'
-                      ? '8 dígitos'
-                      : ''
-                "
-              />
-            </UFormField>
-            <UFormField
-              label="Razón social / Nombre legal"
-              name="legalName"
-              :error="errors.legalName"
-            >
-              <UInput v-model="values.legalName" class="w-full" autocomplete="off" />
-            </UFormField>
-            <UFormField label="Dirección fiscal" name="fiscalAddress" :error="errors.fiscalAddress">
-              <UInput v-model="values.fiscalAddress" class="w-full" autocomplete="off" />
-            </UFormField>
-          </div>
-        </div>
+    <UPageCard title="Comprobante y datos fiscales (opcional)" variant="soft">
+      <UPageGrid>
+        <UFormField label="Tipo de documento" name="documentType" :error="errors.documentType">
+          <USelect v-model="docTypeModel" :items="docTypeItems" />
+        </UFormField>
+        <UFormField
+          label="Número de documento"
+          name="documentNumber"
+          :error="errors.documentNumber"
+        >
+          <UInput
+            v-model="values.documentNumber"
+            autocomplete="off"
+            :placeholder="
+              values.documentType === 'RUC'
+                ? '11 dígitos'
+                : values.documentType === 'DNI'
+                  ? '8 dígitos'
+                  : ''
+            "
+          />
+        </UFormField>
+        <UFormField label="Razón social / Nombre legal" name="legalName" :error="errors.legalName">
+          <UInput v-model="values.legalName" autocomplete="off" />
+        </UFormField>
+        <UFormField label="Dirección fiscal" name="fiscalAddress" :error="errors.fiscalAddress">
+          <UInput v-model="values.fiscalAddress" autocomplete="off" />
+        </UFormField>
+      </UPageGrid>
+    </UPageCard>
 
-        <div class="sm:col-span-2">
-          <slot name="summary" />
-        </div>
+    <slot v-if="$slots.summary" name="summary" />
 
+    <UCard v-if="showActiveToggle">
+      <template #header>
         <UCheckbox
-          v-if="showActiveToggle"
           v-model="values.active"
           label="Cliente activo"
           description="Al desactivarlo deja de aparecer en el reparto. No se borra: su historial de pedidos y deuda se conserva."
-          class="sm:col-span-2"
         />
-      </fieldset>
+      </template>
+    </UCard>
 
-      <div class="flex justify-end gap-3 border-t border-default pt-5">
-        <UButton
-          color="neutral"
-          variant="outline"
-          label="Cancelar"
-          :disabled="submitting"
-          @click="emit('cancel')"
-        />
-        <UButton
-          type="submit"
-          :loading="submitting"
-          :label="submitting ? 'Guardando…' : submitLabel"
-        />
-      </div>
-    </form>
-  </UCard>
+    <UFieldGroup>
+      <UButton
+        color="neutral"
+        variant="outline"
+        label="Cancelar"
+        :disabled="submitting"
+        @click="emit('cancel')"
+      />
+      <UButton
+        type="submit"
+        :loading="submitting"
+        :label="submitting ? 'Guardando…' : submitLabel"
+      />
+    </UFieldGroup>
+  </UForm>
 </template>
