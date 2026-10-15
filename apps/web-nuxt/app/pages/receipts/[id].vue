@@ -49,12 +49,12 @@ const canVoid = computed(
     (receipt.value.type !== "CREDIT_NOTE" || receipt.value.medium === "MANUAL"),
 );
 
-// Nothing comes back to life: the original is restored by registering it again.
+// Nothing comes back to life: the original is restored by registering it
+// again, and the API says when that is still possible.
 const restoreSourceId = computed(() => {
   const current = receipt.value;
-  if (current === null || current.status !== "VOIDED") return null;
-  if (current.type === "CREDIT_NOTE") return current.affectedReceiptId;
-  return current.creditNotes.some((note) => note.status === "ACTIVE") ? null : current.id;
+  if (current === null || !current.canRegisterAgain) return null;
+  return current.type === "CREDIT_NOTE" ? current.affectedReceiptId : current.id;
 });
 
 function startAction(nextAction: "void" | "credit-note"): void {
@@ -186,6 +186,21 @@ async function createCreditNote(): Promise<void> {
           icon="i-lucide-ban"
           title="Anulado"
           :description="receipt.voidReason ?? undefined"
+        />
+        <UAlert
+          v-if="receipt.registeredAgainId"
+          color="info"
+          variant="subtle"
+          icon="i-lucide-rotate-ccw"
+          title="El original ya se volvió a registrar"
+          :actions="[
+            {
+              label: 'Ver el comprobante vigente',
+              to: `/receipts/${receipt.registeredAgainId}`,
+              color: 'neutral',
+              variant: 'outline',
+            },
+          ]"
         />
 
         <UCard v-if="action === 'void'" class="max-w-2xl">

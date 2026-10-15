@@ -100,7 +100,14 @@ const RECEIPT_DETAIL_INCLUDE = {
     select: { id: true, series: true, number: true, medium: true, voidedAt: true },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   },
+  affectedReceipt: { select: { type: true, series: true, number: true } },
 } satisfies Prisma.ReceiptInclude;
+
+interface Paper {
+  type: ReceiptType;
+  series: string;
+  number: string;
+}
 
 function receiptStatus(voidedAt: Date | null): ReceiptStatus {
   return voidedAt === null ? ReceiptStatus.ACTIVE : ReceiptStatus.VOIDED;
@@ -209,10 +216,18 @@ export class ReceiptsService {
       sales,
       files,
       creditNotes,
+      affectedReceipt,
       ...receiptFields
     } = receipt;
+    // A credit note is restored through the paper it cancelled.
+    const paper = receipt.type === ReceiptType.CREDIT_NOTE ? affectedReceipt : receipt;
+    const registerAgain =
+      receipt.voidedAt === null || paper === null
+        ? { canRegisterAgain: false, registeredAgainId: null }
+        : await this.registerAgainState(paper);
     return {
       ...toReceiptResponse(receiptFields),
+      ...registerAgain,
       status: receiptStatus(receipt.voidedAt),
       customer,
       createdBy,
@@ -304,7 +319,7 @@ export class ReceiptsService {
         const settings = await this.findSettings(tx);
         const sales = await this.findSales(tx, dto.saleIds);
         const preview = this.buildPreview(dto, settings, sales);
-        await this.assertNoLiveCreditNote(tx, dto.type, series, number);
+        await this.assertNoLiveCreditNote(tx, { type: dto.type, series, number });
         const sourceFiles = await this.findReusableFiles(tx, dto, series, number);
         const releasedAt = new Date();
 
@@ -570,27 +585,41 @@ export class ReceiptsService {
     return released.count;
   }
 
+  private async registerAgainState(
+    paper: Paper,
+  ): Promise<{ canRegisterAgain: boolean; registeredAgainId: string | null }> {
+    const [active, cancelled] = await Promise.all([
+      this.prisma.receipt.findFirst({
+        where: { type: paper.type, series: paper.series, number: paper.number, voidedAt: null },
+        select: { id: true },
+      }),
+      this.findCancelledPaper(this.prisma, paper),
+    ]);
+    return {
+      canRegisterAgain: active === null && cancelled === null,
+      registeredAgainId: active?.id ?? null,
+    };
+  }
+
   /**
    * A paper whose credit note is still live was cancelled with SUNAT: loading
    * it again would leave both the note and the paper it cancelled in force.
    */
-  private async assertNoLiveCreditNote(
-    client: ReceiptClient,
-    type: ReceiptType,
-    series: string,
-    number: string,
-  ): Promise<void> {
-    const cancelled = await client.receipt.findFirst({
+  private findCancelledPaper(client: ReceiptClient, paper: Paper): Promise<{ id: string } | null> {
+    return client.receipt.findFirst({
       where: {
-        type,
-        series,
-        number,
+        type: paper.type,
+        series: paper.series,
+        number: paper.number,
         voidedAt: { not: null },
         creditNotes: { some: { voidedAt: null } },
       },
       select: { id: true },
     });
-    if (cancelled !== null) {
+  }
+
+  private async assertNoLiveCreditNote(client: ReceiptClient, paper: Paper): Promise<void> {
+    if ((await this.findCancelledPaper(client, paper)) !== null) {
       throw new ConflictException(
         "Ese comprobante tiene una nota de crédito vigente: no se puede volver a registrar",
       );

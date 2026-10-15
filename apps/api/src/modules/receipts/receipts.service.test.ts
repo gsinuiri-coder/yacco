@@ -696,8 +696,109 @@ describe("ReceiptsService reads", () => {
         ],
         createdBy: { id: "user-1", username: "vendedor" },
         voidedBy: null,
+        canRegisterAgain: false,
+        registeredAgainId: null,
       }),
     );
+  });
+
+  describe("whether a voided paper can be registered again", () => {
+    function detailRow(overrides: Record<string, unknown> = {}) {
+      return receiptRow({
+        issuerSettingsVersion: {
+          id: "settings-1",
+          taxId: "20123456789",
+          legalName: "Agua Clara SAC",
+          fiscalAddress: "Av. Lima 123",
+          taxRate: decimal("18.00"),
+          receiptDocumentThreshold: decimal("700.00"),
+        },
+        voidedAt: new Date("2026-10-14T10:00:00.000Z"),
+        voidedById: "user-1",
+        voidReason: "Se cargó mal",
+        voidedBy: { id: "user-1", username: "admin" },
+        sales: [],
+        files: [],
+        creditNotes: [],
+        affectedReceipt: null,
+        ...overrides,
+      });
+    }
+
+    // One query asks for a live load of the paper, the other for a cancelled
+    // load with a live credit note; each answer is set separately.
+    function buildReadPrisma(row: unknown, answers: { active: unknown; cancelled: unknown }) {
+      const findFirst = jest.fn(async (args: { where: { voidedAt: unknown } }) =>
+        args.where.voidedAt === null ? answers.active : answers.cancelled,
+      );
+      return {
+        receipt: {
+          findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue(row),
+          findFirst,
+        },
+      };
+    }
+
+    test("a voided receipt already loaded again points to the live one", async () => {
+      const prisma = buildReadPrisma(detailRow(), {
+        active: { id: "receipt-2" },
+        cancelled: null,
+      });
+      const service = new ReceiptsService(prisma as never);
+
+      await expect(service.findOne("receipt-1")).resolves.toMatchObject({
+        canRegisterAgain: false,
+        registeredAgainId: "receipt-2",
+      });
+      expect(prisma.receipt.findFirst).toHaveBeenCalledWith({
+        where: {
+          type: ReceiptType.SALES_RECEIPT,
+          series: "B001",
+          number: "000001",
+          voidedAt: null,
+        },
+        select: { id: true },
+      });
+    });
+
+    test("a voided receipt whose paper has a live credit note cannot be loaded again", async () => {
+      const prisma = buildReadPrisma(detailRow(), { active: null, cancelled: { id: "receipt-1" } });
+      const service = new ReceiptsService(prisma as never);
+
+      await expect(service.findOne("receipt-1")).resolves.toMatchObject({
+        canRegisterAgain: false,
+        registeredAgainId: null,
+      });
+    });
+
+    test("a voided credit note asks about the paper it affected", async () => {
+      const prisma = buildReadPrisma(
+        detailRow({
+          id: "credit-note-1",
+          type: ReceiptType.CREDIT_NOTE,
+          series: "BC01",
+          number: "000009",
+          affectedReceiptId: "receipt-1",
+          affectedReceipt: { type: ReceiptType.INVOICE, series: "F001", number: "000045" },
+        }),
+        { active: null, cancelled: null },
+      );
+      const service = new ReceiptsService(prisma as never);
+
+      await expect(service.findOne("credit-note-1")).resolves.toMatchObject({
+        canRegisterAgain: true,
+        registeredAgainId: null,
+      });
+      expect(prisma.receipt.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            type: ReceiptType.INVOICE,
+            series: "F001",
+            number: "000045",
+          }),
+        }),
+      );
+    });
   });
 
   test("classifies live sales as receipted, exempt, or available without hiding any class", async () => {

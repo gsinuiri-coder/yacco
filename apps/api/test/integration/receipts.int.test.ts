@@ -494,6 +494,8 @@ test("volver a registrar el original crea uno nuevo con el mismo número, las mi
     .expect(200);
   expect(originalDetail.body).toMatchObject({
     status: "VOIDED",
+    canRegisterAgain: true,
+    registeredAgainId: null,
     creditNotes: [
       {
         id: creditNote.body.id,
@@ -518,6 +520,16 @@ test("volver a registrar el original crea uno nuevo con el mismo número, las mi
     .expect(201);
   expect(restored.body).toMatchObject({ ...paper, total: "35.40", voidedAt: null });
   expect(restored.body.id).not.toBe(original.body.id);
+  for (const voidedId of [original.body.id, creditNote.body.id]) {
+    const voided = await request(server())
+      .get(`/api/v1/receipts/${voidedId}`)
+      .set("Authorization", `Bearer ${sellerToken}`)
+      .expect(200);
+    expect(voided.body).toMatchObject({
+      canRegisterAgain: false,
+      registeredAgainId: restored.body.id,
+    });
+  }
 
   const detail = await request(server())
     .get(`/api/v1/receipts/${restored.body.id}`)
@@ -649,6 +661,11 @@ test("volver a registrar un original con su nota de crédito vigente se rechaza 
     );
   }
   expect(await prisma.receipt.count({ where: { series: "B016", number: "000202" } })).toBe(1);
+  const detail = await request(server())
+    .get(`/api/v1/receipts/${original.body.id}`)
+    .set("Authorization", `Bearer ${sellerToken}`)
+    .expect(200);
+  expect(detail.body).toMatchObject({ canRegisterAgain: false, registeredAgainId: null });
 });
 
 test("los adjuntos solo se vuelven a asociar desde el mismo papel anulado", async () => {

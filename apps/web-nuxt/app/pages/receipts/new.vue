@@ -46,11 +46,16 @@ const reuseFiles = ref(true);
 const restoreSalesTaken = ref(false);
 let pendingSaleIds: string[] = [];
 
+// The API only carries files over from a voided load of the very same paper.
 const reusableFiles = computed(() => {
   const source = restoreSource.value;
   if (source === null) return [];
-  if (customer.value?.id !== source.customer.id || medium.value !== source.medium) return [];
-  return source.files;
+  const samePaper =
+    customer.value?.id === source.customer.id &&
+    type.value === source.type &&
+    series.value.trim().toUpperCase() === source.series &&
+    number.value.trim() === source.number;
+  return samePaper ? source.files : [];
 });
 const filesToReuse = computed(() => (reuseFiles.value ? reusableFiles.value : []));
 const reuseLabel = computed(
@@ -133,23 +138,38 @@ function preselectSales(available: ReceiptSaleStatusRow[]): void {
   selectedSaleIds.value = requested.filter((id) => availableIds.has(id));
 }
 
+async function fetchSales(
+  customerId: string,
+  status: "AVAILABLE" | "EXEMPT",
+): Promise<ReceiptSaleStatusRow[]> {
+  const loaded: ReceiptSaleStatusRow[] = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const result = await api.request<Page<ReceiptSaleStatusRow>>("/receipts/sales", {
+      query: { customerId, status, page, limit: 100 },
+    });
+    loaded.push(...result.data);
+    totalPages = result.totalPages;
+    page += 1;
+  } while (page <= totalPages);
+  return loaded;
+}
+
 async function loadSales(): Promise<void> {
   resetSelection();
   if (customer.value === null) return;
   salesLoading.value = true;
   salesError.value = null;
   try {
-    const loaded: ReceiptSaleStatusRow[] = [];
-    let page = 1;
-    let totalPages = 1;
-    do {
-      const result = await api.request<Page<ReceiptSaleStatusRow>>("/receipts/sales", {
-        query: { customerId: customer.value.id, status: "AVAILABLE", page, limit: 100 },
-      });
-      loaded.push(...result.data);
-      totalPages = result.totalPages;
-      page += 1;
-    } while (page <= totalPages);
+    const loaded = await fetchSales(customer.value.id, "AVAILABLE");
+    if (pendingSaleIds.length > 0) {
+      // Registering the original again releases a «No lleva comprobante»
+      // mark on its sales, like any other registration.
+      const originalSales = new Set(pendingSaleIds);
+      const exempt = await fetchSales(customer.value.id, "EXEMPT");
+      loaded.push(...exempt.filter((sale) => originalSales.has(sale.id)));
+    }
     sales.value = loaded;
     preselectSales(loaded);
   } catch (error) {
@@ -374,8 +394,8 @@ async function retryFiles(): Promise<void> {
               role="alert"
               color="error"
               variant="subtle"
-              title="Una o más ventas del original ya tienen otro comprobante o están marcadas «No lleva comprobante»."
-              description="Anula ese comprobante o libera la marca antes de volver a registrar el original."
+              title="Una o más ventas del original ya tienen otro comprobante."
+              description="Anula ese comprobante antes de volver a registrar el original."
             />
             <CustomerPicker
               v-model="customer"
@@ -433,6 +453,13 @@ async function retryFiles(): Promise<void> {
               </template>
               <template #location-cell="{ row }">
                 <span class="font-medium text-highlighted">{{ row.original.location.name }}</span>
+                <UBadge
+                  v-if="row.original.status === 'EXEMPT'"
+                  class="ml-2"
+                  color="warning"
+                  variant="subtle"
+                  label="Marcada «No lleva comprobante»: se libera al registrar"
+                />
               </template>
               <template #total-cell="{ row }">
                 <span class="font-medium text-highlighted tabular-nums">

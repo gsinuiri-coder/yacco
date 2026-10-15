@@ -57,7 +57,7 @@ const sales = [
   },
 ];
 
-function stubPrerequisites(): Array<Record<string, string>> {
+function stubPrerequisites(exemptSales: unknown[] = []): Array<Record<string, string>> {
   const queries: Array<Record<string, string>> = [];
   cleanups.push(
     registerEndpoint(`/api/v1/customers/${CUSTOMER_ID}`, {
@@ -67,8 +67,9 @@ function stubPrerequisites(): Array<Record<string, string>> {
     registerEndpoint("/api/v1/receipts/sales", {
       method: "GET",
       handler: (event: H3Event) => {
-        queries.push(getQuery(event) as Record<string, string>);
-        return pageOf(sales);
+        const query = getQuery(event) as Record<string, string>;
+        queries.push(query);
+        return pageOf(query.status === "EXEMPT" ? exemptSales : sales);
       },
     }),
   );
@@ -338,8 +339,34 @@ describe("Registrar comprobante", () => {
       };
     }
 
-    async function renderRestore(saleIds: string[]): Promise<void> {
-      stubPrerequisites();
+    const exemptSale = {
+      id: SALE_THREE,
+      soldAt: "2026-10-12T16:00:00.000Z",
+      total: "30.00",
+      location: { id: "loc-1", name: "Local Centro" },
+      status: "EXEMPT",
+      receipt: null,
+      exemption: { id: "exemption-1", reason: "Consumo interno" },
+    };
+    const otherExemptSale = { ...exemptSale, id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
+
+    function previewOf(saleIds: string[]) {
+      return registerEndpoint("/api/v1/receipts/preview", {
+        method: "POST",
+        handler: () => ({
+          customerId: CUSTOMER_ID,
+          saleIds,
+          issuerSettingsVersionId: "44444444-4444-4444-8444-444444444444",
+          taxRate: "18.00",
+          taxableAmount: "100.00",
+          taxAmount: "18.00",
+          total: "118.00",
+        }),
+      });
+    }
+
+    async function renderRestore(saleIds: string[], exemptSales: unknown[] = []): Promise<void> {
+      stubPrerequisites(exemptSales);
       cleanups.push(
         signIn(["SELLER"]),
         registerEndpoint(`/api/v1/receipts/${ORIGINAL_ID}`, {
@@ -415,17 +442,65 @@ describe("Registrar comprobante", () => {
       ]);
     });
 
-    it("avisa y no deja calcular si una venta del original ya no está libre", async () => {
+    it("avisa y no deja calcular si una venta del original ya tiene otro comprobante", async () => {
       await renderRestore([SALE_ONE, SALE_THREE]);
 
       expect(
-        await screen.findByText(
-          "Una o más ventas del original ya tienen otro comprobante o están marcadas «No lleva comprobante».",
-        ),
+        await screen.findByText("Una o más ventas del original ya tienen otro comprobante."),
       ).toBeTruthy();
       expect(
         (screen.getByRole("button", { name: "Calcular montos" }) as HTMLButtonElement).disabled,
       ).toBe(true);
+    });
+
+    it("incluye la venta del original marcada «No lleva comprobante», que se libera al registrar", async () => {
+      cleanups.push(previewOf([SALE_ONE, SALE_THREE]));
+      const bodies = stubWrite(cleanups, "/api/v1/receipts", "POST", () => ({ id: RECEIPT_ID }));
+
+      // Otra venta marcada del mismo cliente, que no es del original, no se ofrece.
+      await renderRestore([SALE_ONE, SALE_THREE], [exemptSale, otherExemptSale]);
+
+      const table = await screen.findByRole("table", { name: "Ventas sin comprobante" });
+      await waitFor(() =>
+        expect(
+          within(table)
+            .getByRole("checkbox", { name: /12\/10\/2026.*Local Centro/ })
+            .getAttribute("aria-checked"),
+        ).toBe("true"),
+      );
+      expect(
+        within(table).getAllByText("Marcada «No lleva comprobante»: se libera al registrar"),
+      ).toHaveLength(1);
+      expect(screen.queryByText("Una o más ventas del original ya tienen otro comprobante.")).toBe(
+        null,
+      );
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Calcular montos" }));
+      await screen.findByRole("region", { name: "Vista previa de montos" });
+      await user.click(screen.getByRole("button", { name: "Registrar comprobante" }));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({ saleIds: [SALE_ONE, SALE_THREE] });
+    });
+
+    it("vuelve a asociar los adjuntos solo mientras sea el mismo papel, aunque cambie el medio", async () => {
+      await renderRestore([SALE_ONE, SALE_TWO]);
+      const reuseName = "Volver a asociar los adjuntos del original (foto)";
+      expect(await screen.findByRole("checkbox", { name: reuseName })).toBeTruthy();
+
+      await choose("Medio", "Electrónico");
+      expect(screen.getByRole("checkbox", { name: reuseName })).toBeTruthy();
+
+      const user = userEvent.setup();
+      await user.clear(screen.getByLabelText("Número"));
+      await user.type(screen.getByLabelText("Número"), "000046");
+      expect(screen.queryByRole("checkbox", { name: reuseName })).toBe(null);
+
+      await user.clear(screen.getByLabelText("Número"));
+      await user.type(screen.getByLabelText("Número"), "000045");
+      await user.clear(screen.getByLabelText("Serie"));
+      await user.type(screen.getByLabelText("Serie"), "f001");
+      expect(screen.getByRole("checkbox", { name: reuseName })).toBeTruthy();
     });
   });
 });

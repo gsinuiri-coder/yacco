@@ -74,6 +74,8 @@ function receiptDetail(overrides: Record<string, unknown> = {}) {
     files: [],
     creditNotes: [],
     voidedBy: null,
+    canRegisterAgain: false,
+    registeredAgainId: null,
     ...overrides,
   };
 }
@@ -97,6 +99,7 @@ const voidedFields = {
   voidedById: "11111111-1111-4111-8111-111111111111",
   voidReason: "La nota no se llegó a entregar",
   voidedBy: { id: "11111111-1111-4111-8111-111111111111", username: "administrador" },
+  canRegisterAgain: true,
 };
 
 async function renderDetail(id: string, detail: unknown): Promise<void> {
@@ -435,6 +438,7 @@ describe("Comprobantes", () => {
       RECEIPT_ID,
       receiptDetail({
         ...voidedFields,
+        canRegisterAgain: false,
         creditNotes: [
           {
             id: CREDIT_NOTE_ID,
@@ -450,6 +454,20 @@ describe("Comprobantes", () => {
     expect(
       screen.getByRole("link", { name: "Nota de crédito BC01-000007 (vigente)" }),
     ).toBeTruthy();
+    expect(screen.queryByRole("link", { name: RESTORE_LINK })).toBeNull();
+  });
+
+  it("la nota anulada cuyo original ya se volvió a registrar enlaza al vigente en vez de ofrecerlo otra vez", async () => {
+    const registeredAgainId = "66666666-6666-4666-8666-666666666666";
+    await renderDetail(
+      CREDIT_NOTE_ID,
+      creditNoteDetail({ ...voidedFields, canRegisterAgain: false, registeredAgainId }),
+    );
+
+    expect(screen.getByText("El original ya se volvió a registrar")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Ver el comprobante vigente" }).getAttribute("href"),
+    ).toBe(`/receipts/${registeredAgainId}`);
     expect(screen.queryByRole("link", { name: RESTORE_LINK })).toBeNull();
   });
 });

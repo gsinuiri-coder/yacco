@@ -106,6 +106,17 @@ export class ReceiptDetailDto extends ReceiptRowDto {
   creditNotes!: ReceiptCreditNoteDto[];
   @ApiPropertyOptional({ type: ReceiptUserDto, nullable: true })
   voidedBy!: ReceiptUserDto | null;
+  @ApiProperty({
+    description:
+      "Anulado, y su papel (el original, para una nota de crédito) no está vigente ni tiene una nota de crédito vigente",
+  })
+  canRegisterAgain!: boolean;
+  @ApiPropertyOptional({
+    format: "uuid",
+    nullable: true,
+    description: "Comprobante vigente con el mismo tipo, serie y número",
+  })
+  registeredAgainId!: string | null;
 }
 
 export class ReceiptSaleStatusReceiptDto {

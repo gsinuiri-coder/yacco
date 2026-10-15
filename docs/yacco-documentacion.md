@@ -226,9 +226,14 @@ original y libera sus ventas en la misma transacción. Solo una nota de crédito
 anular, por el administrador y con motivo, y la anulación marca solo la nota: el original sigue
 anulado y sus ventas siguen libres. Para restaurarlo se vuelve a registrar («Volver a registrar
 el original»), con el mismo número, las mismas ventas y, si se quiere, los mismos adjuntos; se
-rechaza como cualquier otro registro si alguna de esas ventas ya tiene otro comprobante o una
-marca vigente. Una nota de crédito electrónica no se anula. Una venta con comprobante vigente no
-se puede anular: primero se anula el comprobante.
+rechaza si alguna de esas ventas ya tiene otro comprobante vigente, y una marca «No lleva
+comprobante» vigente se libera como en cualquier otro registro. Un comprobante cuya nota de
+crédito sigue vigente no se puede volver a registrar: la API lo rechaza. Los adjuntos solo se
+vuelven a asociar desde un comprobante anulado del mismo cliente con el mismo tipo, serie y
+número. Una nota de crédito electrónica no se anula. Una venta con comprobante vigente no se
+puede anular: primero se anula el comprobante. Anular el cobro de un accesorio anula su venta
+por el mismo camino que cualquier venta: anula sus pagos y devuelve a la deuda solo lo que
+quedaba pendiente.
 
 Cuando una venta no llevará comprobante, administrador o vendedor la marca con motivo. La marca
 es inmutable; se libera manualmente por un administrador o automáticamente al registrar un
@@ -1374,7 +1379,7 @@ Endpoints de la API (prefijo `/api/v1`), tal como están en los controllers al 2
 | GET            | `/receipts/sales`                                           | Ventas vigentes de un cliente, distinguidas como comprobadas, «No lleva comprobante» o disponibles                                                                                                                                                                                                     | ADMIN, SELLER                                                                    |
 | GET            | `/receipts/:id`                                             | Detalle del comprobante con ventas, adjuntos, versión fiscal y auditoría                                                                                                                                                                                                                               | ADMIN, SELLER                                                                    |
 | POST           | `/receipts/preview`                                         | Calcula total, base e IGV desde las ventas antes de registrar                                                                                                                                                                                                                                          | ADMIN, SELLER                                                                    |
-| POST           | `/receipts`                                                 | Registra una boleta o factura manual o electrónica emitida fuera de Yacco; libera marcas «No lleva comprobante» de las ventas elegidas; con `filesFromReceiptId` vuelve a asociar los adjuntos de un comprobante anulado del mismo cliente y medio                                                     | ADMIN, SELLER                                                                    |
+| POST           | `/receipts`                                                 | Registra una boleta o factura manual o electrónica emitida fuera de Yacco; libera marcas «No lleva comprobante» de las ventas elegidas; con `filesFromReceiptId` vuelve a asociar los adjuntos del mismo papel anulado (cliente, tipo, serie y número)                                                 | ADMIN, SELLER                                                                    |
 | POST           | `/receipts/exemptions`                                      | Marca una o varias ventas del mismo cliente como «No lleva comprobante», con motivo                                                                                                                                                                                                                    | ADMIN, SELLER                                                                    |
 | PATCH          | `/receipts/exemptions/:id/release`                          | Libera manualmente una marca «No lleva comprobante», una sola vez y con motivo                                                                                                                                                                                                                         | ADMIN                                                                            |
 | PATCH          | `/receipts/:id/void`                                        | Anula un comprobante con motivo y libera todas sus ventas una sola vez; una nota de crédito solo si es manual, y la anulación la marca solo a ella                                                                                                                                                     | ADMIN                                                                            |

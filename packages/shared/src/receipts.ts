@@ -73,6 +73,10 @@ export interface ReceiptDetail extends ReceiptRow {
   files: ReceiptFile[];
   creditNotes: ReceiptCreditNote[];
   voidedBy: ReceiptUser | null;
+  /** Voided, and its paper (the original, for a credit note) is neither live nor cancelled by a live credit note. */
+  canRegisterAgain: boolean;
+  /** The live receipt with the same type, series and number, once loaded again. */
+  registeredAgainId: string | null;
 }
 
 export interface ReceiptSaleStatusReceipt {
