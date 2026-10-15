@@ -163,6 +163,17 @@ describe("CustomerMaquilaSection", () => {
     }
   });
 
+  it("cada saldo es un ítem de una lista válida (li dentro de ul)", async () => {
+    stubCustomerMaquila();
+
+    await renderSection();
+
+    await screen.findByText("Con caño");
+    const items = screen.getAllByRole("listitem");
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item.parentElement?.tagName).toBe("UL");
+  });
+
   it("registra recepción de bidones vacíos", async () => {
     stubCustomerMaquila();
     const receiveWrite = stubWrite(cleanups, "/api/v1/maquila/receptions", "POST", () => ({

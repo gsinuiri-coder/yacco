@@ -330,7 +330,7 @@ const movementColumns = [
           variant="soft"
           title="Este cliente no tiene bidones registrados en planta."
         />
-        <UPageList v-else>
+        <UPageList v-else as="ul">
           <UPageCard
             v-for="balance in balances"
             :key="balance.containerTypeId"

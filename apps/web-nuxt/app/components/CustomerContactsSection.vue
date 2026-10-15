@@ -127,7 +127,7 @@ async function removeContact(contactId: string): Promise<void> {
       title="Sin contactos registrados."
     />
 
-    <UPageList v-else>
+    <UPageList v-else as="ul">
       <UPageCard
         v-for="contact in contacts"
         :key="contact.id"

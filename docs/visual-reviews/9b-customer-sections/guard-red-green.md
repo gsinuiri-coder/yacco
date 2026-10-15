@@ -51,3 +51,34 @@ Con el botón en el slot por defecto, después del precio:
  Test Files  1 passed (1)
       Tests  7 passed (7)
 ```
+
+# Ítems de lista dentro de `ul` — rojo y verde
+
+`UPageList` pinta un `<div role="list">`, y las secciones ponen `UPageCard
+as="li"` adentro: un `li` fuera de `ul`/`ol` es HTML inválido. Arreglo:
+`<UPageList as="ul">` (prop nativa, sin clases) en Contactos, Envases y
+Maquila. Tests nuevos «cada … es un ítem de una lista válida (li dentro de ul)»
+en `customer-contacts-photos`, `customer-detail` y `customer-maquila`.
+
+## Rojo
+
+Sin `as="ul"`:
+
+```
+× cada saldo es un ítem de una lista válida (li dentro de ul) 114ms
+× cada contacto es un ítem de una lista válida (li dentro de ul) 57ms
+× cada ubicación es un ítem de una lista válida (li dentro de ul) 498ms
+AssertionError: expected 'DIV' to be 'UL' // Object.is equality
+ Test Files  3 failed (3)
+      Tests  3 failed | 53 passed (56)
+```
+
+## Verde
+
+Con `as="ul"`, suite completa de `apps/web-nuxt`:
+
+```
+ Test Files  64 passed (64)
+      Tests  692 passed (692)
+All files          |   90.14 |     83.7 |   89.89 |   91.54 |
+```

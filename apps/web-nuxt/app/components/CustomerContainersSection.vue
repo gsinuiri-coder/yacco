@@ -73,7 +73,7 @@ const countLink = computed(() => `/container-counts?customerId=${props.customerI
       @retry="load"
     />
 
-    <UPageList v-else>
+    <UPageList v-else as="ul">
       <UPageCard
         v-for="row in rows"
         :key="row.location.id"
