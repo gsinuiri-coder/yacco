@@ -3,6 +3,6 @@
 status: in-progress
 item: Fase 3 — 9. Panel por rol y solo Nuxt UI (goal en .relay/goals/fase3-9-nuxt-ui-y-panel.md)
 branch: refactor/nuxt-ui-customers
-last-step: PR #325 de Pedidos fusionado por squash en main (9dcc437) con los cinco checks verdes; rama eliminada.
-next-step: Auditar Clientes, tomar capturas antes y escribir el guard rojo de componentes nativos antes de migrar sus pantallas.
-updated: 2026-10-15T13:31:51-05:00 por Codex (relevo)
+last-step: Auditadas las cuatro pantallas base y CustomerForm; capturas antes verificadas. Las secciones operativas de la ficha quedan para un PR separado por tamaño.
+next-step: Escribir y ejecutar en rojo el guard de Nuxt UI para las cinco plantillas base de Clientes.
+updated: 2026-10-15T13:33:38-05:00 por Codex (relevo)
