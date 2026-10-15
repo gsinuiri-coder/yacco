@@ -24,3 +24,30 @@ Sin esa clase, suite completa de `apps/web-nuxt`:
       Tests  688 passed (688)
 All files          |   90.14 |     83.7 |   89.89 |   91.54 |
 ```
+
+# «Devolver llenos» después de los saldos — rojo y verde
+
+Las capturas con datos mostraron el botón arriba de los saldos: `UPageCard`
+pinta su `#footer` antes del slot por defecto. En main iba después de los
+saldos y el precio. Test: `test/nuxt/customer-maquila.test.ts`, «muestra
+«Devolver llenos» después de los saldos y el precio…».
+
+## Rojo
+
+Con el botón otra vez en `<template #footer>`:
+
+```
+× muestra «Devolver llenos» después de los saldos y el precio, como en la ficha original 161ms
+AssertionError: expected +0 to be 4 // Object.is equality
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+```
+
+## Verde
+
+Con el botón en el slot por defecto, después del precio:
+
+```
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+```

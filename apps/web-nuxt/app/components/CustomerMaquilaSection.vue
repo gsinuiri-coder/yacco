@@ -356,14 +356,16 @@ const movementColumns = [
                 balance.unitPrice != null ? formatSoles(balance.unitPrice) : "Sin precio registrado"
               }}</span>
             </p>
-            <template v-if="balance.fullToReturn > 0" #footer>
+            <!-- En el slot por defecto y no en #footer: UPageCard pinta el footer
+                 antes del contenido, y la acción quedaría arriba de los saldos. -->
+            <div v-if="balance.fullToReturn > 0">
               <UButton
                 size="sm"
                 icon="i-lucide-arrow-up-right"
                 label="Devolver llenos"
                 @click="openReturnModal(balance)"
               />
-            </template>
+            </div>
           </UPageCard>
         </UPageList>
       </UPageCard>
