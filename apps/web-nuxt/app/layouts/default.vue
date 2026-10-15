@@ -28,7 +28,7 @@ const menus = computed(() =>
 
 <template>
   <UDashboardGroup>
-    <UDashboardSidebar collapsible>
+    <UDashboardSidebar collapsible :default-size="20">
       <template #header="{ collapsed }">
         <UButton
           to="/"

@@ -19,5 +19,12 @@ export default defineAppConfig({
         footer: "border-t border-default justify-between",
       },
     },
+    user: {
+      slots: {
+        root: "min-w-0 flex-1",
+        wrapper: "min-w-0",
+        name: "truncate",
+      },
+    },
   },
 });

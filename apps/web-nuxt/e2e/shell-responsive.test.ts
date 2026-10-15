@@ -29,8 +29,8 @@ test("un nombre largo no tapa la salida y la barra se puede contraer", async ({ 
   await signIn(page, person);
 
   const sidebar = page.locator("[data-collapsed]").first();
-  const username = page.getByText(person.username, { exact: true });
-  const logout = page.getByRole("button", { name: "Cerrar sesión" });
+  const username = sidebar.getByText(person.username, { exact: true });
+  const logout = sidebar.getByRole("button", { name: "Cerrar sesión" });
   await expect(username).toBeVisible();
   await expect(logout).toBeVisible();
 
