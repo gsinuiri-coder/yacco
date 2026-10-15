@@ -236,52 +236,52 @@ model User {
   licenseCategory  String?   @map("license_category") @db.VarChar(20)
   licenseExpiresOn DateTime? @map("license_expires_on") @db.Date
 
-  roles                                UserRoleAssignment[]
-  productionBatches                    ProductionBatch[]
-  batchItemsRecorded                   BatchItem[]                         @relation("BatchItemRecordedBy")
-  containerMovements                   ContainerMovement[]
-  containerCounts                      ContainerCount[]
-  orders                               Order[]
-  orderGroups                          OrderGroup[]
-  routesAsDriver                       Route[]                             @relation("RouteDriver")
-  routesCreated                        Route[]                             @relation("RouteCreatedBy")
-  routeStopsAdded                      RouteStop[]                         @relation("RouteStopAddedBy")
-  routeStopsCorrected                  RouteStop[]                         @relation("RouteStopCorrectedBy")
-  salesRecorded                        Sale[]                              @relation("SaleRecordedBy")
-  salesPriceOverridesAuthorized        Sale[]                              @relation("SalePriceOverrideAuthorizedBy")
-  salesVoided                          Sale[]                              @relation("SaleVoidedBy")
-  paymentsRecorded                     Payment[]                           @relation("PaymentRecordedBy")
-  paymentsConfirmed                    Payment[]                           @relation("PaymentConfirmedBy")
-  paymentsRejected                     Payment[]                           @relation("PaymentRejectedBy")
-  paymentsVoided                       Payment[]                           @relation("PaymentVoidedBy")
-  routeSettlements                     RouteSettlement[]
-  pitStopsRecorded                     RoutePitStop[]                      @relation("RoutePitStopRecordedBy")
-  pitStopsVoided                       RoutePitStop[]                      @relation("RoutePitStopVoidedBy")
-  vehiclesCreated                      Vehicle[]                           @relation("VehicleCreatedBy")
-  vehiclesUpdated                      Vehicle[]                           @relation("VehicleUpdatedBy")
-  vehicleReviewTypesCreated            VehicleReviewType[]                 @relation("VehicleReviewTypeCreatedBy")
-  vehicleReviewsRecorded               VehicleReview[]                     @relation("VehicleReviewRecordedBy")
-  vehicleReviewsVoided                 VehicleReview[]                     @relation("VehicleReviewVoidedBy")
-  routeVehicleAssignments              RouteVehicleAssignment[]            @relation("RouteVehicleAssignedBy")
-  syncOperations                       SyncOperation[]
-  productPriceChanges                  ProductPriceChange[]
-  customerContactsCreated              CustomerContact[]                   @relation("CustomerContactCreatedBy")
-  customerContactsRemoved              CustomerContact[]                   @relation("CustomerContactRemovedBy")
-  customerLocationPhotosUploaded       CustomerLocationPhoto[]             @relation("CustomerLocationPhotoUploadedBy")
-  customerLocationPhotosReviewed       CustomerLocationPhoto[]             @relation("CustomerLocationPhotoReviewedBy")
-  customerLocationPhotosHidden         CustomerLocationPhoto[]             @relation("CustomerLocationPhotoHiddenBy")
+  roles                         UserRoleAssignment[]
+  productionBatches             ProductionBatch[]
+  batchItemsRecorded            BatchItem[]              @relation("BatchItemRecordedBy")
+  containerMovements            ContainerMovement[]
+  containerCounts               ContainerCount[]
+  orders                        Order[]
+  orderGroups                   OrderGroup[]
+  routesAsDriver                Route[]                  @relation("RouteDriver")
+  routesCreated                 Route[]                  @relation("RouteCreatedBy")
+  routeStopsAdded               RouteStop[]              @relation("RouteStopAddedBy")
+  routeStopsCorrected           RouteStop[]              @relation("RouteStopCorrectedBy")
+  salesRecorded                 Sale[]                   @relation("SaleRecordedBy")
+  salesPriceOverridesAuthorized Sale[]                   @relation("SalePriceOverrideAuthorizedBy")
+  salesVoided                   Sale[]                   @relation("SaleVoidedBy")
+  paymentsRecorded              Payment[]                @relation("PaymentRecordedBy")
+  paymentsConfirmed             Payment[]                @relation("PaymentConfirmedBy")
+  paymentsRejected              Payment[]                @relation("PaymentRejectedBy")
+  paymentsVoided                Payment[]                @relation("PaymentVoidedBy")
+  routeSettlements              RouteSettlement[]
+  pitStopsRecorded              RoutePitStop[]           @relation("RoutePitStopRecordedBy")
+  pitStopsVoided                RoutePitStop[]           @relation("RoutePitStopVoidedBy")
+  vehiclesCreated               Vehicle[]                @relation("VehicleCreatedBy")
+  vehiclesUpdated               Vehicle[]                @relation("VehicleUpdatedBy")
+  vehicleReviewTypesCreated     VehicleReviewType[]      @relation("VehicleReviewTypeCreatedBy")
+  vehicleReviewsRecorded        VehicleReview[]          @relation("VehicleReviewRecordedBy")
+  vehicleReviewsVoided          VehicleReview[]          @relation("VehicleReviewVoidedBy")
+  routeVehicleAssignments       RouteVehicleAssignment[] @relation("RouteVehicleAssignedBy")
+  syncOperations                SyncOperation[]
+  productPriceChanges           ProductPriceChange[]
+  customerContactsCreated             CustomerContact[]                  @relation("CustomerContactCreatedBy")
+  customerContactsRemoved             CustomerContact[]                  @relation("CustomerContactRemovedBy")
+  customerLocationPhotosUploaded      CustomerLocationPhoto[]            @relation("CustomerLocationPhotoUploadedBy")
+  customerLocationPhotosReviewed      CustomerLocationPhoto[]            @relation("CustomerLocationPhotoReviewedBy")
+  customerLocationPhotosHidden        CustomerLocationPhoto[]            @relation("CustomerLocationPhotoHiddenBy")
   customerLocationCoordinatesRequested CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateRequestedBy")
-  customerLocationCoordinatesReviewed  CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateReviewedBy")
-  accessoryMovementsRecorded           AccessoryMovement[]                 @relation("AccessoryMovementRecordedBy")
-  accessoryCountsRecorded              AccessoryCount[]                    @relation("AccessoryCountRecordedBy")
-  maquilaMovementsRecorded             MaquilaContainerMovement[]          @relation("MaquilaMovementRecordedBy")
-  issuerSettingsVersionsCreated        IssuerSettingsVersion[]             @relation("IssuerSettingsVersionCreatedBy")
-  receiptsCreated                      Receipt[]                           @relation("ReceiptCreatedBy")
-  receiptsVoided                       Receipt[]                           @relation("ReceiptVoidedBy")
-  receiptFilesCreated                  ReceiptFile[]                       @relation("ReceiptFileCreatedBy")
-  receiptSalesReleased                 ReceiptSale[]                       @relation("ReceiptSaleReleasedBy")
-  saleReceiptExemptionsCreated         SaleReceiptExemption[]              @relation("SaleReceiptExemptionCreatedBy")
-  saleReceiptExemptionsReleased        SaleReceiptExemption[]              @relation("SaleReceiptExemptionReleasedBy")
+  customerLocationCoordinatesReviewed CustomerLocationCoordinateRequest[] @relation("CustomerLocationCoordinateReviewedBy")
+  accessoryMovementsRecorded          AccessoryMovement[]                 @relation("AccessoryMovementRecordedBy")
+  accessoryCountsRecorded             AccessoryCount[]                    @relation("AccessoryCountRecordedBy")
+  maquilaMovementsRecorded            MaquilaContainerMovement[]          @relation("MaquilaMovementRecordedBy")
+  issuerSettingsVersionsCreated       IssuerSettingsVersion[]             @relation("IssuerSettingsVersionCreatedBy")
+  receiptsCreated                     Receipt[]                           @relation("ReceiptCreatedBy")
+  receiptsVoided                      Receipt[]                           @relation("ReceiptVoidedBy")
+  receiptFilesCreated                 ReceiptFile[]                       @relation("ReceiptFileCreatedBy")
+  receiptSalesReleased                ReceiptSale[]                       @relation("ReceiptSaleReleasedBy")
+  saleReceiptExemptionsCreated        SaleReceiptExemption[]              @relation("SaleReceiptExemptionCreatedBy")
+  saleReceiptExemptionsReleased       SaleReceiptExemption[]              @relation("SaleReceiptExemptionReleasedBy")
 
   @@map("users")
 }
@@ -323,12 +323,12 @@ model ContainerType {
   name   String  @unique
   active Boolean @default(true)
 
-  products         Product[]
-  batchItems       BatchItem[]
-  movements        ContainerMovement[]
-  balances         CustomerContainerBalance[]
-  counts           ContainerCount[]
-  pitStopCounts    RoutePitStopCount[]
+  products   Product[]
+  batchItems BatchItem[]
+  movements  ContainerMovement[]
+  balances      CustomerContainerBalance[]
+  counts        ContainerCount[]
+  pitStopCounts RoutePitStopCount[]
   maquilaBalances  MaquilaBalance[]
   maquilaMovements MaquilaContainerMovement[]
 
@@ -375,17 +375,17 @@ model Customer {
   externalCode String?  @unique @map("external_code")
 
   // Document and tax details (Fase 3, Fila 4)
-  documentType   String? @map("document_type") @db.VarChar(20)
-  documentNumber String? @map("document_number") @db.VarChar(30)
-  legalName      String? @map("legal_name")
-  fiscalAddress  String? @map("fiscal_address")
+  documentType   String?  @map("document_type") @db.VarChar(20)
+  documentNumber String?  @map("document_number") @db.VarChar(30)
+  legalName      String?  @map("legal_name")
+  fiscalAddress  String?  @map("fiscal_address")
 
-  zone             Zone?                      @relation(fields: [zoneId], references: [id], onDelete: Restrict)
-  locations        CustomerLocation[]
-  contacts         CustomerContact[]
-  prices           CustomerPrice[]
-  payments         Payment[]
-  orderGroups      OrderGroup[]
+  zone        Zone?              @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  locations   CustomerLocation[]
+  contacts    CustomerContact[]
+  prices      CustomerPrice[]
+  payments    Payment[]
+  orderGroups OrderGroup[]
   maquilaBalances  MaquilaBalance[]
   maquilaMovements MaquilaContainerMovement[]
   receipts         Receipt[]
@@ -418,14 +418,14 @@ model CustomerLocation {
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
-  prices             CustomerPrice[]
-  balances           CustomerContainerBalance[]
-  movements          ContainerMovement[]
-  counts             ContainerCount[]
-  orders             Order[]
-  routeStops         RouteStop[]
-  sales              Sale[]
-  payments           Payment[]
+  prices     CustomerPrice[]
+  balances   CustomerContainerBalance[]
+  movements  ContainerMovement[]
+  counts     ContainerCount[]
+  orders     Order[]
+  routeStops RouteStop[]
+  sales      Sale[]
+  payments   Payment[]
   photos             CustomerLocationPhoto[]
   coordinateRequests CustomerLocationCoordinateRequest[]
   accessoryBalances  CustomerAccessoryBalance[]
@@ -442,12 +442,12 @@ model Product {
   listPrice       Decimal     @map("list_price") @db.Decimal(10, 2)
   active          Boolean     @default(true)
 
-  containerType             ContainerType?             @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
-  customerPrices            CustomerPrice[]
-  orderItems                OrderItem[]
-  saleItems                 SaleItem[]
-  priceChanges              ProductPriceChange[]
-  accessoryStock            AccessoryStock?
+  containerType              ContainerType?              @relation(fields: [containerTypeId], references: [id], onDelete: Restrict)
+  customerPrices             CustomerPrice[]
+  orderItems                 OrderItem[]
+  saleItems                  SaleItem[]
+  priceChanges               ProductPriceChange[]
+  accessoryStock             AccessoryStock?
   customerAccessoryBalances CustomerAccessoryBalance[]
   accessoryMovements        AccessoryMovement[]
   accessoryCounts           AccessoryCount[]
@@ -755,9 +755,9 @@ model RoutePitStop {
   voidedById    String?   @map("voided_by") @db.Uuid
   voidReason    String?   @map("void_reason")
 
-  route              Route                    @relation(fields: [routeId], references: [id], onDelete: Restrict)
-  recordedBy         User                     @relation("RoutePitStopRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
-  voidedBy           User?                    @relation("RoutePitStopVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  route      Route                @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  recordedBy User                 @relation("RoutePitStopRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  voidedBy   User?                @relation("RoutePitStopVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
   counts             RoutePitStopCount[]
   loads              RouteLoad[]
   movements          ContainerMovement[]
@@ -825,11 +825,11 @@ model Sale {
   voidedById                  String?   @map("voided_by") @db.Uuid
   voidReason                  String?   @map("void_reason")
 
-  location                  CustomerLocation           @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  stop                      RouteStop?                 @relation(fields: [stopId], references: [id], onDelete: Restrict)
-  recordedBy                User                       @relation("SaleRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
-  priceOverrideAuthorizedBy User?                      @relation("SalePriceOverrideAuthorizedBy", fields: [priceOverrideAuthorizedById], references: [id], onDelete: Restrict)
-  voidedBy                  User?                      @relation("SaleVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  location                  CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  stop                      RouteStop?       @relation(fields: [stopId], references: [id], onDelete: Restrict)
+  recordedBy                User             @relation("SaleRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  priceOverrideAuthorizedBy User?            @relation("SalePriceOverrideAuthorizedBy", fields: [priceOverrideAuthorizedById], references: [id], onDelete: Restrict)
+  voidedBy                  User?            @relation("SaleVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
   items                     SaleItem[]
   payments                  Payment[]
   accessoryMovements        AccessoryMovement[]
@@ -1209,19 +1209,19 @@ model CustomerLocationPhoto {
 }
 
 model CustomerLocationCoordinateRequest {
-  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  locationId        String                  @map("location_id") @db.Uuid
-  latitude          Decimal                 @db.Decimal(9, 6)
-  longitude         Decimal                 @db.Decimal(9, 6)
-  accuracyM         Decimal?                @map("accuracy_m") @db.Decimal(10, 2)
-  previousLatitude  Decimal?                @map("previous_latitude") @db.Decimal(9, 6)
-  previousLongitude Decimal?                @map("previous_longitude") @db.Decimal(9, 6)
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  locationId        String                   @map("location_id") @db.Uuid
+  latitude          Decimal                  @db.Decimal(9, 6)
+  longitude         Decimal                  @db.Decimal(9, 6)
+  accuracyM         Decimal?                 @map("accuracy_m") @db.Decimal(10, 2)
+  previousLatitude  Decimal?                 @map("previous_latitude") @db.Decimal(9, 6)
+  previousLongitude Decimal?                 @map("previous_longitude") @db.Decimal(9, 6)
   status            CoordinateRequestStatus
-  requestedById     String                  @map("requested_by") @db.Uuid
-  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  reviewedById      String?                 @map("reviewed_by") @db.Uuid
-  reviewedAt        DateTime?               @map("reviewed_at") @db.Timestamptz(6)
-  rejectionReason   String?                 @map("rejection_reason") @db.Text
+  requestedById     String                   @map("requested_by") @db.Uuid
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  reviewedById      String?                  @map("reviewed_by") @db.Uuid
+  reviewedAt        DateTime?                @map("reviewed_at") @db.Timestamptz(6)
+  rejectionReason   String?                  @map("rejection_reason") @db.Text
 
   location    CustomerLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
   requestedBy User             @relation("CustomerLocationCoordinateRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
@@ -1280,13 +1280,13 @@ model AccessoryMovement {
 }
 
 model AccessoryCount {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  productId    String   @map("product_id") @db.Uuid
-  expectedQty  Int      @map("expected_qty")
-  countedQty   Int      @map("counted_qty")
-  reason       String?
-  recordedById String   @map("recorded_by") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  expectedQty Int      @map("expected_qty")
+  countedQty  Int      @map("counted_qty")
+  reason      String?
+  recordedById String  @map("recorded_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
   recordedBy User    @relation("AccessoryCountRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
@@ -1332,3 +1332,4 @@ model MaquilaContainerMovement {
   @@index([customerId, occurredAt])
   @@map("maquila_container_movements")
 }
+
