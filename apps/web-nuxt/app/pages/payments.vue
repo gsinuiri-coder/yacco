@@ -29,11 +29,19 @@ const api = useApi();
 const isAdmin = computed(() => session.hasRole("ADMIN"));
 const ALL = "all";
 
-const status = ref<PaymentStatus | typeof ALL>("PENDING");
+// El estado y los días pueden llegar en la URL (los enlaces del Panel).
+const query = useRoute().query;
+const status = ref<PaymentStatus | typeof ALL>(
+  queryChoice<PaymentStatus | typeof ALL>(
+    query.status,
+    [ALL, ...(Object.keys(PAYMENT_STATUS) as PaymentStatus[])],
+    "PENDING",
+  ),
+);
 const methodId = ref(ALL);
 const customer = ref<Customer | null>(null);
-const paidFromDay = ref("");
-const paidToDay = ref("");
+const paidFromDay = ref(queryText(query.paidFrom));
+const paidToDay = ref(queryText(query.paidTo));
 
 // Catálogo de su endpoint; si falla, el filtro queda en «Todos» y la bandeja sigue.
 const methods = useCatalog<PaymentMethod>("/payment-methods");

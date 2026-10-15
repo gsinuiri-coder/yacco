@@ -14,9 +14,11 @@ const STATUS_ITEMS = [
 ];
 
 const status = ref<StatusFilter>("all");
-// "AAAA-MM-DD" tal cual lo da el campo de fecha: nunca pasa por Date.
-const deliveryDateFrom = ref("");
-const deliveryDateTo = ref("");
+// "AAAA-MM-DD" tal cual lo da el campo de fecha: nunca pasa por Date. Puede
+// llegar en la URL (los enlaces del Panel).
+const query = useRoute().query;
+const deliveryDateFrom = ref(queryText(query.deliveryDateFrom));
+const deliveryDateTo = ref(queryText(query.deliveryDateTo));
 const customer = ref<Customer | null>(null);
 
 const list = usePagedList<Order>(

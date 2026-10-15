@@ -55,6 +55,38 @@ export interface ProductionReport {
   total: number;
 }
 
+/** PlantStockRowDto: vacíos y llenos en planta de un tipo de envase. */
+export interface PlantStockRow {
+  containerType: NamedReference;
+  empty: number;
+  full: number;
+}
+
+/**
+ * RoleDashboardDto: el Panel de quien pide, según sus roles. Cada campo viaja
+ * solo si alguno de sus roles lo ve, y lo que dos roles comparten viaja una
+ * vez. Los montos (texto con dos decimales) son del administrador y del
+ * vendedor; el supervisor y el operador nunca los reciben.
+ */
+export interface RoleDashboard {
+  /** El día de Lima del resumen, "AAAA-MM-DD". */
+  today: string;
+  salesToday?: string;
+  paymentsToday?: string;
+  totalDebt?: string;
+  routesInProgress?: number;
+  ordersToday?: number;
+  undeliveredOrders?: number;
+  pendingPayments?: { count: number; amount: string };
+  producedToday?: ContainerTypeQuantity[];
+  plantStock?: PlantStockRow[];
+  maquilaPending?: { emptyToFill: number; fullToReturn: number };
+  /** Solo las llenadas de hoy de quien pide. */
+  myFillingsToday?: ContainerTypeQuantity[];
+  /** Vacíos para llenar; no viaja si ya va `plantStock`. */
+  emptyToFill?: ContainerTypeQuantity[];
+}
+
 /**
  * SetupChecklistDto: los hechos detrás de la tarjeta «Puesta en marcha» del
  * Panel (solo ADMIN). El web arma los ítems y sus textos.

@@ -176,6 +176,7 @@ export function visibleNavigation(roles: readonly UserRole[]): NavigationSection
       sections.push({ label: "Reparto", links: [MY_ROUTE] });
     }
     const plantLinks: NavigationLink[] = [
+      { label: "Panel", icon: "i-lucide-layout-dashboard", to: "/" },
       { label: "Producción", icon: "i-lucide-factory", to: "/production" },
       { label: "Inventario de envases", icon: "i-lucide-package-open", to: "/inventory" },
     ];

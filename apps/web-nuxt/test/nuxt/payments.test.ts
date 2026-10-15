@@ -101,6 +101,36 @@ describe("Pagos", () => {
     expect(within(row).getByText("vendedor1")).toBeTruthy();
   });
 
+  it("abierta desde el Panel, arranca con el estado y los días de la URL", async () => {
+    const seen = stubPayments([[payment()]]);
+    cleanups.push(signIn(["ADMIN"]));
+
+    await renderSuspended(App, {
+      route: "/payments?status=CONFIRMED&paidFrom=2026-10-14&paidTo=2026-10-14",
+    });
+    await screen.findByRole("heading", { name: "Pagos", level: 1 });
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    expect(seen[0]).toEqual({
+      status: "CONFIRMED",
+      paidFrom: "2026-10-14T00:00:00-05:00",
+      paidTo: "2026-10-14T23:59:59-05:00",
+      page: "1",
+      limit: "20",
+    });
+  });
+
+  it("un estado que no existe en la URL no filtra: arranca en Pendiente", async () => {
+    const seen = stubPayments([[payment()]]);
+    cleanups.push(signIn(["ADMIN"]));
+
+    await renderSuspended(App, { route: "/payments?status=INVENTADO" });
+    await screen.findByRole("heading", { name: "Pagos", level: 1 });
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    expect(seen[0]).toEqual({ status: "PENDING", page: "1", limit: "20" });
+  });
+
   it("el resumen suma el filtro completo, no la página", async () => {
     stubPayments([[payment()]], { count: 37, amount: "925.50" });
 

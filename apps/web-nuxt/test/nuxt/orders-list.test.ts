@@ -66,6 +66,20 @@ describe("Pedidos", () => {
     expect(screen.getByText("2 pedidos")).toBeTruthy();
   });
 
+  it("abierta desde el Panel, arranca con los días de entrega de la URL", async () => {
+    const seen = stubOrders(() => pageOf([buildOrder()]));
+
+    await renderSuspended(App, {
+      route: "/orders?deliveryDateFrom=2026-10-14&deliveryDateTo=2026-10-14",
+    });
+    await screen.findByText("S/ 37.50");
+
+    expect(seen[0]).toMatchObject({
+      deliveryDateFrom: "2026-10-14",
+      deliveryDateTo: "2026-10-14",
+    });
+  });
+
   it("la fecha de entrega es el día exacto, sin correrse por el huso de Lima", async () => {
     stubOrders(() => pageOf([buildOrder({ deliveryDate: "2026-08-25" })]));
 

@@ -125,8 +125,10 @@ async function register(): Promise<void> {
 }
 
 // --- Lotes (ADMIN y SELLER) ---
-const dateFrom = ref("");
-const dateTo = ref("");
+// El período puede llegar en la URL (los enlaces del Panel).
+const query = useRoute().query;
+const dateFrom = ref(queryText(query.dateFrom));
+const dateTo = ref(queryText(query.dateTo));
 const list = usePagedList<ProductionBatch>(
   "/production-batches",
   PRODUCTION_BATCHES_PAGE_SIZE,

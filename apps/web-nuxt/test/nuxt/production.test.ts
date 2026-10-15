@@ -114,6 +114,17 @@ describe("Producción", () => {
     for (const cleanup of cleanups.splice(0)) cleanup();
   });
 
+  it("abierta desde el Panel, la lista de lotes arranca con el período de la URL", async () => {
+    const { queries } = stubPage();
+    cleanups.push(signIn(["PLANT_OPERATOR"]));
+
+    await renderSuspended(App, { route: "/production?dateFrom=2026-10-14&dateTo=2026-10-14" });
+    await screen.findByRole("heading", { name: "Producción", level: 1 });
+
+    await waitFor(() => expect(queries.length).toBeGreaterThan(0));
+    expect(queries[0]).toMatchObject({ dateFrom: "2026-10-14", dateTo: "2026-10-14" });
+  });
+
   it("registra un lote de dos tipos: fecha como texto AAAA-MM-DD y cantidades enteras", async () => {
     const { queries } = stubPage();
     const bodies = stubWrite(cleanups, "/api/v1/production-batches", "POST", () => ({

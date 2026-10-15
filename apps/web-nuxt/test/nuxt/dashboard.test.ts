@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { getQuery, setResponseStatus } from "h3";
 import type { H3Event } from "h3";
-import type { Customer, SetupChecklist } from "@yacco/shared";
+import type { Customer, RoleDashboard, SetupChecklist } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "~/app.vue";
 import { buildCustomer, pageOf } from "../support/fixtures";
@@ -34,6 +34,7 @@ describe("Panel", () => {
   beforeEach(async () => {
     resetSession();
     cleanups.push(signIn(["ADMIN"], "giancarlo"));
+    cleanups.push(registerEndpoint("/api/v1/reports/dashboard", () => ({ today: "2026-10-14" })));
     await navigateTo("/login");
   });
 
@@ -253,6 +254,190 @@ describe("Panel — Puesta en marcha", () => {
 
     expect(screen.queryByRole("region", { name: "Puesta en marcha" })).toBeNull();
     expect(calls()).toBe(0);
+  });
+});
+
+describe("Panel por rol", () => {
+  const CON_CANO = { id: "ct-1", name: "Con caño" };
+  const SIN_CANO = { id: "ct-2", name: "Sin caño" };
+
+  function stubDashboard(dashboard: RoleDashboard) {
+    let calls = 0;
+    cleanups.push(
+      registerEndpoint("/api/v1/reports/dashboard", () => {
+        calls += 1;
+        return dashboard;
+      }),
+    );
+    return () => calls;
+  }
+
+  async function summary() {
+    return screen.findByRole("region", { name: "Resumen del día" });
+  }
+
+  function hrefOf(region: HTMLElement, name: string): string | null {
+    return within(region).getByRole("link", { name }).getAttribute("href");
+  }
+
+  beforeEach(async () => {
+    resetSession();
+    await navigateTo("/login");
+  });
+
+  afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+
+  it("el administrador ve ventas, cobros, deuda y rutas en curso, cada uno con su pantalla", async () => {
+    cleanups.push(signIn(["ADMIN"]));
+    stubDashboard({
+      today: "2026-10-14",
+      salesToday: "1250.50",
+      paymentsToday: "300.00",
+      totalDebt: "4820.00",
+      routesInProgress: 2,
+    });
+
+    await renderSuspended(App, { route: "/" });
+    const region = await summary();
+
+    await within(region).findByRole("link", { name: "Ventas del día: S/ 1,250.50" });
+    expect(hrefOf(region, "Ventas del día: S/ 1,250.50")).toBe("/routes?date=2026-10-14");
+    expect(hrefOf(region, "Cobros del día: S/ 300.00")).toBe(
+      "/payments?status=CONFIRMED&paidFrom=2026-10-14&paidTo=2026-10-14",
+    );
+    expect(hrefOf(region, "Deuda total: S/ 4,820.00")).toBe("/reports/debt");
+    expect(hrefOf(region, "Rutas en curso: 2")).toBe("/routes?status=IN_PROGRESS");
+    expect(within(region).queryByText("Pedidos del día")).toBeNull();
+  });
+
+  it("el vendedor ve pedidos, no entregados, rutas en curso y cobros por confirmar", async () => {
+    cleanups.push(signIn(["SELLER"]));
+    stubDashboard({
+      today: "2026-10-14",
+      ordersToday: 18,
+      undeliveredOrders: 3,
+      routesInProgress: 1,
+      pendingPayments: { count: 4, amount: "62.50" },
+    });
+
+    await renderSuspended(App, { route: "/" });
+    const region = await summary();
+
+    await within(region).findByRole("link", { name: "Pedidos del día: 18" });
+    expect(hrefOf(region, "Pedidos del día: 18")).toBe(
+      "/orders?deliveryDateFrom=2026-10-14&deliveryDateTo=2026-10-14",
+    );
+    expect(hrefOf(region, "No entregados: 3")).toBe("/orders/undelivered");
+    expect(hrefOf(region, "Rutas en curso: 1")).toBe("/routes?status=IN_PROGRESS");
+    expect(hrefOf(region, "Cobros por confirmar: 4 · S/ 62.50")).toBe("/payments?status=PENDING");
+    expect(within(region).queryByText("Ventas del día")).toBeNull();
+  });
+
+  it("el supervisor de planta entra al Panel y ve producción, stock y maquila, sin buscador", async () => {
+    cleanups.push(signIn(["PLANT_SUPERVISOR"]));
+    stubDashboard({
+      today: "2026-10-14",
+      producedToday: [
+        { containerType: CON_CANO, quantity: 40 },
+        { containerType: SIN_CANO, quantity: 3 },
+      ],
+      plantStock: [
+        { containerType: CON_CANO, empty: 55, full: 45 },
+        { containerType: SIN_CANO, empty: 0, full: 3 },
+      ],
+      maquilaPending: { emptyToFill: 4, fullToReturn: 1 },
+    });
+
+    await renderSuspended(App, { route: "/" });
+    const region = await summary();
+
+    await within(region).findByRole("link", {
+      name: "Producción del día: Con caño 40 · Sin caño 3",
+    });
+    expect(useRouter().currentRoute.value.path).toBe("/");
+    expect(hrefOf(region, "Producción del día: Con caño 40 · Sin caño 3")).toBe(
+      "/production?dateFrom=2026-10-14&dateTo=2026-10-14",
+    );
+    expect(hrefOf(region, "Vacíos en planta: Con caño 55")).toBe("/inventory");
+    expect(hrefOf(region, "Llenos en planta: Con caño 45 · Sin caño 3")).toBe("/inventory");
+    expect(hrefOf(region, "Maquila por llenar: 4")).toBe("/production");
+    expect(hrefOf(region, "Maquila por devolver: 1")).toBe("/production");
+    expect(screen.queryByLabelText("Buscar cliente")).toBeNull();
+    expect(within(region).queryByText(/S\//)).toBeNull();
+  });
+
+  it("el operador de planta ve sus llenadas de hoy y los vacíos para llenar", async () => {
+    cleanups.push(signIn(["PLANT_OPERATOR"]));
+    stubDashboard({
+      today: "2026-10-14",
+      myFillingsToday: [{ containerType: CON_CANO, quantity: 12 }],
+      emptyToFill: [{ containerType: CON_CANO, quantity: 55 }],
+    });
+
+    await renderSuspended(App, { route: "/" });
+    const region = await summary();
+
+    await within(region).findByRole("link", { name: "Mis llenadas de hoy: Con caño 12" });
+    expect(hrefOf(region, "Vacíos para llenar: Con caño 55")).toBe("/inventory");
+    expect(within(region).queryByText("Producción del día")).toBeNull();
+  });
+
+  it("sin llenadas todavía, sus llenadas de hoy dicen 0", async () => {
+    cleanups.push(signIn(["PLANT_OPERATOR"]));
+    stubDashboard({ today: "2026-10-14", myFillingsToday: [], emptyToFill: [] });
+
+    await renderSuspended(App, { route: "/" });
+    const region = await summary();
+
+    expect(
+      await within(region).findByRole("link", { name: "Mis llenadas de hoy: 0" }),
+    ).toBeTruthy();
+  });
+
+  it("con dos roles ve la suma, y lo que comparten una sola vez", async () => {
+    cleanups.push(signIn(["ADMIN", "SELLER"]));
+    stubDashboard({
+      today: "2026-10-14",
+      salesToday: "10.00",
+      paymentsToday: "0.00",
+      totalDebt: "0.00",
+      routesInProgress: 1,
+      ordersToday: 2,
+      undeliveredOrders: 0,
+      pendingPayments: { count: 0, amount: "0.00" },
+    });
+
+    await renderSuspended(App, { route: "/" });
+    const region = await summary();
+
+    await within(region).findByRole("link", { name: "Ventas del día: S/ 10.00" });
+    expect(within(region).getByRole("link", { name: "Pedidos del día: 2" })).toBeTruthy();
+    expect(within(region).getAllByRole("link", { name: /^Rutas en curso/ })).toHaveLength(1);
+  });
+
+  it("si el resumen falla lo dice, y se puede reintentar", async () => {
+    cleanups.push(signIn(["SELLER"]));
+    let attempt = 0;
+    cleanups.push(
+      registerEndpoint("/api/v1/reports/dashboard", (event: H3Event) => {
+        attempt++;
+        if (attempt === 1) {
+          setResponseStatus(event, 500);
+          return { message: "Base de datos no disponible" };
+        }
+        return { today: "2026-10-14", ordersToday: 5 };
+      }),
+    );
+
+    await renderSuspended(App, { route: "/" });
+    const region = await summary();
+
+    const alert = await within(region).findByRole("alert");
+    expect(alert.textContent).toContain("No se pudo cargar el resumen del día");
+    await userEvent.setup().click(within(region).getByRole("button", { name: "Reintentar" }));
+    expect(await within(region).findByRole("link", { name: "Pedidos del día: 5" })).toBeTruthy();
   });
 });
 
