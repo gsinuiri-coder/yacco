@@ -88,16 +88,16 @@ function openRoute(_event: Event, row: { original: Route }): void {
       <template #header>
         <UPageGrid>
           <UFormField label="Día">
-            <UInput v-model="date" type="date" />
+            <UInput v-model="date" type="date" class="w-full" />
           </UFormField>
           <UFormField label="Chofer">
-            <USelect v-model="driverId" :items="driverItems" />
+            <USelect v-model="driverId" :items="driverItems" class="w-full" />
           </UFormField>
           <UFormField label="Zona">
-            <USelect v-model="zoneId" :items="zoneItems" />
+            <USelect v-model="zoneId" :items="zoneItems" class="w-full" />
           </UFormField>
           <UFormField label="Estado">
-            <USelect v-model="status" :items="statusItems" />
+            <USelect v-model="status" :items="statusItems" class="w-full" />
           </UFormField>
           <UButton
             v-if="list.hasFilters.value"

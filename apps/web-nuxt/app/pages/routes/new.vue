@@ -185,32 +185,37 @@ async function submit(): Promise<void> {
             <USelect v-model="zoneId" :items="zoneItems" :disabled="submitting" class="w-full" />
           </UFormField>
         </UPageGrid>
+
+        <template #footer>
+          <UAlert
+            v-if="slow && submitting"
+            role="status"
+            color="neutral"
+            variant="subtle"
+            :title="SLOW_REQUEST_MESSAGE"
+          />
+          <div class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancelar"
+              :disabled="submitting"
+              @click="navigateTo('/routes')"
+            />
+            <UButton
+              type="submit"
+              :disabled="
+                submitting ||
+                noDrivers ||
+                noVehicles ||
+                drivers.failed.value ||
+                vehicles.failed.value
+              "
+              :label="submitting ? 'Planificando…' : 'Planificar ruta'"
+            />
+          </div>
+        </template>
       </UCard>
-
-      <UAlert
-        v-if="slow && submitting"
-        role="status"
-        color="neutral"
-        variant="subtle"
-        :title="SLOW_REQUEST_MESSAGE"
-      />
-
-      <UFieldGroup>
-        <UButton
-          color="neutral"
-          variant="outline"
-          label="Cancelar"
-          :disabled="submitting"
-          @click="navigateTo('/routes')"
-        />
-        <UButton
-          type="submit"
-          :disabled="
-            submitting || noDrivers || noVehicles || drivers.failed.value || vehicles.failed.value
-          "
-          :label="submitting ? 'Planificando…' : 'Planificar ruta'"
-        />
-      </UFieldGroup>
     </UForm>
   </AppPage>
 </template>
