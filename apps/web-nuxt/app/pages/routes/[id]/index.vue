@@ -89,121 +89,112 @@ async function transition(action: "start" | "finish"): Promise<void> {
       />
     </template>
 
-    <div class="space-y-6">
-      <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
+    <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
 
-      <RouteMarkOutcome
-        v-if="markOutcome"
-        :stop-name="markOutcome.stopName"
-        :result="markOutcome.result"
-      />
+    <RouteMarkOutcome
+      v-if="markOutcome"
+      :stop-name="markOutcome.stopName"
+      :result="markOutcome.result"
+    />
 
-      <div
-        v-if="confirmingFinish"
-        role="group"
-        aria-label="Confirmar el fin de la ruta"
-        class="rounded-lg border border-default bg-default p-5"
-      >
-        <template v-if="pendingStops === 0">
-          <p class="text-highlighted">
-            Todas las paradas están resueltas. Al terminar la ruta ya no se pueden marcar paradas ni
-            cambiar su orden.
-          </p>
-          <div class="mt-4 flex gap-2">
-            <UButton
-              color="neutral"
-              variant="outline"
-              label="No, todavía no"
-              :disabled="acting"
-              @click="confirmingFinish = false"
-            />
-            <UButton
-              :disabled="acting"
-              :label="acting ? 'Terminando…' : 'Sí, terminar la ruta'"
-              @click="transition('finish')"
-            />
-          </div>
-        </template>
-        <template v-else>
-          <p class="text-highlighted">
-            {{
-              pendingStops === 1
-                ? "Todavía no se puede terminar la ruta: queda 1 parada sin resolver."
-                : `Todavía no se puede terminar la ruta: quedan ${pendingStops} paradas sin resolver.`
-            }}
-            Cada parada tiene que quedar marcada como entregada o no entregada, o quitarse de la
-            ruta.
-          </p>
-          <UButton class="mt-4" label="Entendido" @click="confirmingFinish = false" />
-        </template>
-      </div>
-
-      <ResourceState
-        :loading="resource.loading.value"
-        :slow="resource.slow.value"
-        :not-found="resource.notFound.value"
-        :error-message="resource.errorMessage.value"
-        noun="ruta"
-        article="la"
-        back-to="/routes"
-        back-label="Volver a rutas"
-        @retry="resource.reload"
-      >
-        <template v-if="route">
-          <dl
-            class="grid gap-5 rounded-lg border border-default bg-default p-5 text-sm sm:grid-cols-5"
-          >
-            <div>
-              <dt class="text-muted">Chofer</dt>
-              <dd class="font-medium text-highlighted">{{ route.driver.name }}</dd>
-            </div>
-            <div>
-              <dt class="text-muted">Vehículo</dt>
-              <dd class="font-medium text-highlighted">
-                <span v-if="route.vehicle" class="font-mono">{{ route.vehicle.plate }}</span>
-                <span v-else class="text-dimmed">Sin vehículo</span>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">Estado</dt>
-              <dd>
-                <UBadge
-                  :color="ROUTE_STATUS[route.status].color"
-                  variant="subtle"
-                  :label="ROUTE_STATUS[route.status].label"
-                />
-              </dd>
-            </div>
-            <div>
-              <dt class="text-muted">Zona</dt>
-              <dd>
-                <UBadge v-if="route.zone" color="neutral" variant="soft" :label="route.zone.name" />
-                <span v-else class="text-dimmed">Sin zona</span>
-              </dd>
-            </div>
-            <!-- "Creada" y no "Planificada": el estado de al lado ya se llama así. -->
-            <div>
-              <dt class="text-muted">Creada</dt>
-              <dd class="text-highlighted tabular-nums">
-                {{ formatInstantInLima(route.createdAt) }}
-              </dd>
-            </div>
-          </dl>
-
-          <RouteVehiclesSection :route="route" @changed="resource.reload" />
-          <RouteStopsSection
-            :route="route"
-            @changed="resource.reload"
-            @marked="(outcome) => (markOutcome = outcome)"
+    <UAlert
+      v-if="confirmingFinish && pendingStops === 0"
+      role="group"
+      aria-label="Confirmar el fin de la ruta"
+      color="neutral"
+      variant="outline"
+      title="Todas las paradas están resueltas. Al terminar la ruta ya no se pueden marcar paradas ni cambiar su orden."
+    >
+      <template #actions>
+        <UFieldGroup>
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="No, todavía no"
+            :disabled="acting"
+            @click="confirmingFinish = false"
           />
-          <RouteLoadsSection :route="route" />
-          <RoutePitStopsSection
-            v-if="route.status !== 'PLANNED'"
-            :route="route"
-            @changed="resource.reload"
+          <UButton
+            :disabled="acting"
+            :label="acting ? 'Terminando…' : 'Sí, terminar la ruta'"
+            @click="transition('finish')"
           />
-        </template>
-      </ResourceState>
-    </div>
+        </UFieldGroup>
+      </template>
+    </UAlert>
+    <UAlert
+      v-else-if="confirmingFinish"
+      role="group"
+      aria-label="Confirmar el fin de la ruta"
+      color="neutral"
+      variant="outline"
+      :title="
+        pendingStops === 1
+          ? 'Todavía no se puede terminar la ruta: queda 1 parada sin resolver.'
+          : `Todavía no se puede terminar la ruta: quedan ${pendingStops} paradas sin resolver.`
+      "
+      description="Cada parada tiene que quedar marcada como entregada o no entregada, o quitarse de la ruta."
+    >
+      <template #actions>
+        <UButton label="Entendido" @click="confirmingFinish = false" />
+      </template>
+    </UAlert>
+
+    <ResourceState
+      :loading="resource.loading.value"
+      :slow="resource.slow.value"
+      :not-found="resource.notFound.value"
+      :error-message="resource.errorMessage.value"
+      noun="ruta"
+      article="la"
+      back-to="/routes"
+      back-label="Volver a rutas"
+      @retry="resource.reload"
+    >
+      <template v-if="route">
+        <UPageGrid>
+          <UPageCard title="Chofer" :description="route.driver.name" variant="soft" />
+          <UPageCard
+            title="Vehículo"
+            :description="route.vehicle ? route.vehicle.plate : 'Sin vehículo'"
+            variant="soft"
+          />
+          <UPageCard title="Estado" variant="soft">
+            <UFieldGroup>
+              <UBadge
+                :color="ROUTE_STATUS[route.status].color"
+                variant="subtle"
+                :label="ROUTE_STATUS[route.status].label"
+              />
+            </UFieldGroup>
+          </UPageCard>
+          <UPageCard v-if="route.zone" title="Zona" variant="soft">
+            <UFieldGroup>
+              <UBadge color="neutral" variant="soft" :label="route.zone.name" />
+            </UFieldGroup>
+          </UPageCard>
+          <UPageCard v-else title="Zona" description="Sin zona" variant="soft" />
+          <!-- "Creada" y no "Planificada": el estado de al lado ya se llama así. -->
+          <UPageCard
+            title="Creada"
+            :description="formatInstantInLima(route.createdAt)"
+            variant="soft"
+          />
+        </UPageGrid>
+
+        <RouteVehiclesSection :route="route" @changed="resource.reload" />
+        <RouteStopsSection
+          :route="route"
+          @changed="resource.reload"
+          @marked="(outcome) => (markOutcome = outcome)"
+        />
+        <RouteLoadsSection :route="route" />
+        <RoutePitStopsSection
+          v-if="route.status !== 'PLANNED'"
+          :route="route"
+          @changed="resource.reload"
+        />
+      </template>
+    </ResourceState>
   </AppPage>
 </template>

@@ -84,36 +84,37 @@ function openRoute(_event: Event, row: { original: Route }): void {
       <UButton to="/routes/new" icon="i-lucide-route" label="Planificar ruta" />
     </template>
 
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
-        <UFormField label="Día">
-          <UInput v-model="date" type="date" />
-        </UFormField>
-        <UFormField label="Chofer" class="w-48">
-          <USelect v-model="driverId" :items="driverItems" class="w-full" />
-        </UFormField>
-        <UFormField label="Zona" class="w-44">
-          <USelect v-model="zoneId" :items="zoneItems" class="w-full" />
-        </UFormField>
-        <UFormField label="Estado" class="w-44">
-          <USelect v-model="status" :items="statusItems" class="w-full" />
-        </UFormField>
-        <UButton
-          v-if="list.hasFilters.value"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-x"
-          label="Limpiar filtros"
-          @click="clearFilters"
-        />
-      </div>
+    <UCard>
+      <template #header>
+        <UPageGrid>
+          <UFormField label="Día">
+            <UInput v-model="date" type="date" class="w-full" />
+          </UFormField>
+          <UFormField label="Chofer">
+            <USelect v-model="driverId" :items="driverItems" class="w-full" />
+          </UFormField>
+          <UFormField label="Zona">
+            <USelect v-model="zoneId" :items="zoneItems" class="w-full" />
+          </UFormField>
+          <UFormField label="Estado">
+            <USelect v-model="status" :items="statusItems" class="w-full" />
+          </UFormField>
+          <UButton
+            v-if="list.hasFilters.value"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-x"
+            label="Limpiar filtros"
+            @click="clearFilters"
+          />
+        </UPageGrid>
+      </template>
 
       <UAlert
         v-if="list.slow.value && list.loading.value"
         role="status"
         color="neutral"
         variant="subtle"
-        class="rounded-none"
         :title="SLOW_REQUEST_MESSAGE"
       />
 
@@ -144,15 +145,13 @@ function openRoute(_event: Event, row: { original: Route }): void {
           :data="list.items.value"
           :columns="columns"
           caption="Rutas con día, chofer, zona, estado y cuántas paradas tienen"
-          :ui="{ caption: 'sr-only', tr: 'cursor-pointer' }"
           @select="openRoute"
         >
           <template #date-cell="{ row }">
-            <NuxtLink
+            <ULink
               :to="`/routes/${row.original.id}`"
-              class="font-medium text-highlighted tabular-nums hover:text-primary"
               :aria-label="`Ver la ruta de ${row.original.driver.name} del ${formatCalendarDay(row.original.date)}`"
-              >{{ formatCalendarDay(row.original.date) }}</NuxtLink
+              >{{ formatCalendarDay(row.original.date) }}</ULink
             >
           </template>
           <template #driver-cell="{ row }">{{ row.original.driver.name }}</template>
@@ -163,7 +162,7 @@ function openRoute(_event: Event, row: { original: Route }): void {
               variant="soft"
               :label="row.original.zone.name"
             />
-            <span v-else class="text-sm text-dimmed">Sin zona</span>
+            <template v-else>Sin zona</template>
           </template>
           <template #status-cell="{ row }">
             <UBadge
@@ -173,10 +172,10 @@ function openRoute(_event: Event, row: { original: Route }): void {
             />
           </template>
           <template #stops-cell="{ row }">
-            <p class="font-medium text-highlighted">{{ summarizeStops(row.original).total }}</p>
-            <p v-if="summarizeStops(row.original).resolved" class="text-sm text-muted">
-              {{ summarizeStops(row.original).resolved }}
-            </p>
+            <UUser
+              :name="summarizeStops(row.original).total"
+              :description="summarizeStops(row.original).resolved || undefined"
+            />
           </template>
         </UTable>
 

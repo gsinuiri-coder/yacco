@@ -61,6 +61,16 @@ const orderPlaceholder = computed(() => {
   return noPendingOrders.value ? "No hay pedidos pendientes sin asignar" : "Elige un pedido";
 });
 
+const ordersHelp = computed(() => {
+  if (noPendingOrders.value) {
+    return "Todos los pedidos pendientes ya están en una ruta. Usa autoventa para agregar un cliente sin pedido.";
+  }
+  if (ordersTotal.value > orders.value.length) {
+    return `Se muestran los ${orders.value.length} pedidos con entrega más próxima, de ${ordersTotal.value} pendientes sin asignar.`;
+  }
+  return undefined;
+});
+
 const customer = ref<Customer | null>(null);
 const locations = ref<CustomerLocation[]>([]);
 const locationId = ref<string | undefined>(undefined);
@@ -124,10 +134,24 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <form class="space-y-5" novalidate aria-label="Agregar parada" @submit.prevent="submit">
+  <UForm
+    :state="{}"
+    :validate-on="[]"
+    :loading-auto="false"
+    novalidate
+    aria-label="Agregar parada"
+    @submit="submit"
+  >
     <SegmentedFilter v-model="source" label="¿De dónde sale la parada?" :options="SOURCES" />
 
-    <UFormField v-if="source === 'ORDER'" label="Pedido pendiente">
+    <UFormField
+      v-if="source === 'ORDER'"
+      label="Pedido pendiente"
+      :error="
+        ordersError ? `No se pudieron cargar los pedidos pendientes: ${ordersError}` : undefined
+      "
+      :help="ordersHelp"
+    >
       <USelect
         v-model="orderId"
         :items="orderItems"
@@ -135,22 +159,9 @@ async function submit(): Promise<void> {
         :disabled="submitting || loadingOrders || noPendingOrders"
         class="w-full"
       />
-      <template #help>
-        <p v-if="ordersError" class="text-error">
-          No se pudieron cargar los pedidos pendientes: {{ ordersError }}
-        </p>
-        <p v-else-if="noPendingOrders">
-          Todos los pedidos pendientes ya están en una ruta. Usa autoventa para agregar un cliente
-          sin pedido.
-        </p>
-        <p v-else-if="ordersTotal > orders.length">
-          Se muestran los {{ orders.length }} pedidos con entrega más próxima, de
-          {{ ordersTotal }} pendientes sin asignar.
-        </p>
-      </template>
     </UFormField>
 
-    <div v-else class="grid gap-4 sm:grid-cols-2">
+    <UPageGrid v-else>
       <CustomerPicker v-model="customer" label="Cliente" :disabled="submitting" />
       <UFormField label="Dirección de entrega">
         <USelect
@@ -161,7 +172,7 @@ async function submit(): Promise<void> {
           class="w-full"
         />
       </UFormField>
-    </div>
+    </UPageGrid>
 
     <UAlert
       v-if="validationError"
@@ -172,7 +183,7 @@ async function submit(): Promise<void> {
     />
     <UAlert v-if="submitError" role="alert" color="error" variant="subtle" :title="submitError" />
 
-    <div class="flex justify-end gap-3">
+    <div class="flex justify-end gap-2">
       <UButton
         color="neutral"
         variant="outline"
@@ -186,5 +197,5 @@ async function submit(): Promise<void> {
         :label="submitting ? 'Agregando…' : 'Agregar parada'"
       />
     </div>
-  </form>
+  </UForm>
 </template>

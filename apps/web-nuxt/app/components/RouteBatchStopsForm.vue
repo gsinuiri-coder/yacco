@@ -71,6 +71,10 @@ function describeOrder(order: Order): string {
 const zoneSuffix = computed(() =>
   props.route.zone && !allZones.value ? ` en la zona ${props.route.zone.name}` : "",
 );
+const intro = computed(() => {
+  const zone = props.route.zone && !allZones.value ? ` de la zona ${props.route.zone.name}` : "";
+  return `Pedidos pendientes sin parada con entrega el ${formatCalendarDay(props.route.date)}${zone}. Van a quedar en este orden.`;
+});
 const count = computed(() => selected.value.size);
 const submitLabel = computed(
   () => `Agregar ${count.value} ${count.value === 1 ? "parada" : "paradas"}`,
@@ -100,17 +104,15 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <form
-    class="space-y-4"
+  <UForm
+    :state="{}"
+    :validate-on="[]"
+    :loading-auto="false"
     novalidate
     aria-label="Agregar pedidos pendientes"
-    @submit.prevent="submit"
+    @submit="submit"
   >
-    <p class="text-sm text-muted">
-      Pedidos pendientes sin parada con entrega el {{ formatCalendarDay(route.date)
-      }}<template v-if="route.zone && !allZones"> de la zona {{ route.zone.name }}</template
-      >. Van a quedar en este orden.
-    </p>
+    <UAlert color="neutral" variant="subtle" :title="intro" />
     <UCheckbox
       v-if="route.zoneId"
       v-model="allZones"
@@ -118,32 +120,42 @@ async function submit(): Promise<void> {
       :disabled="submitting"
     />
 
-    <p v-if="loading" role="status" class="text-sm text-muted">Cargando pedidos…</p>
+    <UAlert
+      v-if="loading"
+      role="status"
+      color="neutral"
+      variant="subtle"
+      title="Cargando pedidos…"
+    />
     <UAlert v-else-if="loadError" role="alert" color="error" variant="subtle" :title="loadError" />
-    <p v-else-if="orders.length === 0" class="text-sm text-muted">
-      No hay pedidos pendientes sin parada para el {{ formatCalendarDay(route.date)
-      }}{{ zoneSuffix }}.
-    </p>
+    <UAlert
+      v-else-if="orders.length === 0"
+      color="neutral"
+      variant="subtle"
+      :title="`No hay pedidos pendientes sin parada para el ${formatCalendarDay(route.date)}${zoneSuffix}.`"
+    />
     <template v-else>
-      <ul class="divide-y divide-default rounded-md border border-default">
-        <li v-for="order in orders" :key="order.id" class="px-3 py-2">
+      <UPageList as="ul">
+        <UPageCard v-for="order in orders" :key="order.id" as="li" variant="outline">
           <UCheckbox
             :model-value="selected.has(order.id)"
             :label="describeOrder(order)"
             :disabled="submitting"
             @update:model-value="(checked) => toggle(order.id, checked)"
           />
-        </li>
-      </ul>
-      <p v-if="ordersTotal > orders.length" class="text-sm text-muted">
-        Se muestran {{ orders.length }} de {{ ordersTotal }} pedidos: agrega estos y vuelve a abrir
-        la lista para ver el resto.
-      </p>
+        </UPageCard>
+      </UPageList>
+      <UAlert
+        v-if="ordersTotal > orders.length"
+        color="neutral"
+        variant="subtle"
+        :title="`Se muestran ${orders.length} de ${ordersTotal} pedidos: agrega estos y vuelve a abrir la lista para ver el resto.`"
+      />
     </template>
 
     <UAlert v-if="submitError" role="alert" color="error" variant="subtle" :title="submitError" />
 
-    <div class="flex justify-end gap-3">
+    <div class="flex justify-end gap-2">
       <UButton
         color="neutral"
         variant="outline"
@@ -157,5 +169,5 @@ async function submit(): Promise<void> {
         :label="submitting ? 'Agregando…' : submitLabel"
       />
     </div>
-  </form>
+  </UForm>
 </template>

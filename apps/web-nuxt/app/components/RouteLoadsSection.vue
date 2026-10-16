@@ -8,6 +8,7 @@ import type {
   RouteLoad,
   RouteTruckStockLine,
 } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import type { LoadPlanLine } from "../utils/fifo-load";
 
 /**
@@ -106,6 +107,15 @@ function describePlan(lines: LoadPlanLine[]): string {
     .join(", ");
 }
 
+const loadColumns = computed<TableColumn<RouteLoad>[]>(() => [
+  { id: "batch", header: "Lote" },
+  { id: "containerType", header: "Tipo de envase" },
+  { accessorKey: "quantity", header: "Cantidad", meta: RIGHT_ALIGNED },
+  ...(canRemove.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
+
 const typeItems = computed(() =>
   containerTypes.items.value.map((type) => ({ label: type.name, value: type.id })),
 );
@@ -181,14 +191,14 @@ async function remove(load: RouteLoad): Promise<void> {
 
 <template>
   <SectionCard title="Carga del camión" :description="sectionDescription">
-    <div class="space-y-5">
+    <UPageList>
       <div
         v-if="loadedByType.length > 0"
         role="group"
-        class="flex flex-wrap gap-2"
+        class="flex flex-wrap items-center gap-2"
         aria-label="Cargado en el camión"
       >
-        <span class="text-sm font-medium text-muted">Cargado:</span>
+        <span>Cargado:</span>
         <UBadge
           v-for="entry in loadedByType"
           :key="entry.name"
@@ -200,10 +210,10 @@ async function remove(load: RouteLoad): Promise<void> {
       <div
         v-if="truckStock.length > 0"
         role="group"
-        class="flex flex-wrap gap-2"
+        class="flex flex-wrap items-center gap-2"
         aria-label="Queda arriba del camión"
       >
-        <span class="text-sm font-medium text-muted">Queda arriba:</span>
+        <span>Queda arriba:</span>
         <UBadge
           v-for="line in truckStock"
           :key="line.containerType.id"
@@ -213,49 +223,55 @@ async function remove(load: RouteLoad): Promise<void> {
         />
       </div>
 
-      <form
-        v-if="editable"
-        class="grid gap-4 rounded-md bg-elevated p-4 sm:grid-cols-[1fr_10rem_auto] sm:items-start"
-        novalidate
-        aria-label="Cargar el camión"
-        @submit.prevent="submit"
-      >
-        <UFormField
-          label="Tipo de envase"
-          :help="plan ? `En la planta hay ${plan.available} disponibles.` : undefined"
+      <UPageCard v-if="editable" variant="soft">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          aria-label="Cargar el camión"
+          @submit="submit"
         >
-          <USelect
-            v-model="containerTypeId"
-            :items="typeItems"
-            placeholder="Elige un tipo de envase"
-            :disabled="submitting"
-            class="w-full"
+          <UPageGrid>
+            <UFormField
+              label="Tipo de envase"
+              :help="plan ? `En la planta hay ${plan.available} disponibles.` : undefined"
+            >
+              <USelect
+                v-model="containerTypeId"
+                :items="typeItems"
+                placeholder="Elige un tipo de envase"
+                :disabled="submitting"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Cantidad">
+              <UInput
+                v-model="quantity"
+                type="number"
+                :min="1"
+                :step="1"
+                :disabled="submitting"
+                class="w-full"
+              />
+            </UFormField>
+          </UPageGrid>
+          <UAlert
+            v-if="plan && requested !== null && plan.lines.length > 0"
+            color="neutral"
+            variant="subtle"
+            :title="`Sale de: ${describePlan(plan.lines)}`"
           />
-        </UFormField>
-        <UFormField label="Cantidad">
-          <UInput
-            v-model="quantity"
-            type="number"
-            :min="1"
-            :step="1"
-            :disabled="submitting"
-            class="w-full"
-          />
-        </UFormField>
-        <UButton
-          type="submit"
-          class="sm:mt-6"
-          icon="i-lucide-package-plus"
-          :disabled="submitting"
-          :label="submitting ? 'Cargando…' : 'Cargar al camión'"
-        />
-        <p
-          v-if="plan && requested !== null && plan.lines.length > 0"
-          class="text-sm text-muted sm:col-span-3"
-        >
-          Sale de: {{ describePlan(plan.lines) }}
-        </p>
-      </form>
+          <div class="flex justify-end gap-2">
+            <UButton
+              type="submit"
+              icon="i-lucide-package-plus"
+              :disabled="submitting"
+              :label="submitting ? 'Cargando…' : 'Cargar al camión'"
+            />
+          </div>
+        </UForm>
+      </UPageCard>
 
       <UAlert
         v-if="validationError"
@@ -284,68 +300,58 @@ async function remove(load: RouteLoad): Promise<void> {
       />
 
       <template v-else>
-        <table class="w-full text-sm">
-          <caption class="sr-only">
-            Lo cargado al camión, con el lote del que salió, el tipo de envase y la cantidad
-          </caption>
-          <thead class="text-left text-xs tracking-wide text-muted uppercase">
-            <tr>
-              <th scope="col" class="py-2 font-medium">Lote</th>
-              <th scope="col" class="py-2 font-medium">Tipo de envase</th>
-              <th scope="col" class="py-2 text-right font-medium">Cantidad</th>
-              <th v-if="canRemove" scope="col" class="py-2">
-                <span class="sr-only">Acciones</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-default">
-            <tr v-for="load in loads" :key="load.id">
-              <td class="py-3 font-medium text-highlighted">{{ load.batchItem.batch.code }}</td>
-              <td class="py-3">{{ load.batchItem.containerType.name }}</td>
-              <td class="py-3 text-right tabular-nums">{{ load.quantity }}</td>
-              <td v-if="canRemove" class="py-3 text-right">
-                <div
-                  v-if="removingId === load.id"
-                  role="group"
-                  :aria-label="`Confirmar corregir la carga del lote ${load.batchItem.batch.code}`"
-                  class="flex flex-wrap items-center justify-end gap-2"
-                >
-                  <span class="text-muted">¿Quitar esta carga del camión?</span>
-                  <UButton
-                    color="neutral"
-                    variant="outline"
-                    size="sm"
-                    label="No"
-                    :disabled="busyId !== null"
-                    @click="removingId = null"
-                  />
-                  <UButton
-                    color="error"
-                    size="sm"
-                    label="Sí, quitar"
-                    :disabled="busyId !== null"
-                    @click="remove(load)"
-                  />
-                </div>
-                <UButton
-                  v-else
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  label="Corregir"
-                  :aria-label="`Corregir la carga del lote ${load.batchItem.batch.code}`"
-                  :disabled="busyId !== null"
-                  @click="removingId = load.id"
-                />
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-if="route.status !== 'PLANNED'" class="text-sm text-muted">
-          Con la ruta ya iniciada, una carga mal ingresada no se borra: la diferencia se registra al
-          liquidar.
-        </p>
+        <UTable
+          :data="loads"
+          :columns="loadColumns"
+          caption="Lo cargado al camión, con el lote del que salió, el tipo de envase y la cantidad"
+        >
+          <template #batch-cell="{ row }">{{ row.original.batchItem.batch.code }}</template>
+          <template #containerType-cell="{ row }">
+            {{ row.original.batchItem.containerType.name }}
+          </template>
+          <template #actions-cell="{ row }">
+            <div
+              v-if="removingId === row.original.id"
+              role="group"
+              :aria-label="`Confirmar corregir la carga del lote ${row.original.batchItem.batch.code}`"
+              class="flex flex-wrap items-center justify-end gap-2"
+            >
+              <span>¿Quitar esta carga del camión?</span>
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                label="No"
+                :disabled="busyId !== null"
+                @click="removingId = null"
+              />
+              <UButton
+                color="error"
+                size="sm"
+                label="Sí, quitar"
+                :disabled="busyId !== null"
+                @click="remove(row.original)"
+              />
+            </div>
+            <UButton
+              v-else
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              label="Corregir"
+              :aria-label="`Corregir la carga del lote ${row.original.batchItem.batch.code}`"
+              :disabled="busyId !== null"
+              @click="removingId = row.original.id"
+            />
+          </template>
+        </UTable>
+        <UAlert
+          v-if="route.status !== 'PLANNED'"
+          color="neutral"
+          variant="subtle"
+          title="Con la ruta ya iniciada, una carga mal ingresada no se borra: la diferencia se registra al liquidar."
+        />
       </template>
-    </div>
+    </UPageList>
   </SectionCard>
 </template>

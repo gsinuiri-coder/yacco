@@ -104,8 +104,8 @@ async function submit(): Promise<void> {
       />
     </template>
 
-    <UCard class="max-w-3xl">
-      <form class="space-y-6" novalidate @submit.prevent="submit">
+    <UForm :state="{}" :validate-on="[]" :loading-auto="false" novalidate @submit="submit">
+      <UCard>
         <UAlert
           v-if="submitError"
           role="alert"
@@ -145,7 +145,7 @@ async function submit(): Promise<void> {
           title="No hay vehículos activos para asignar. Da de alta un vehículo antes de planificar la ruta."
         />
 
-        <div class="grid gap-5 sm:grid-cols-2">
+        <UPageGrid>
           <UFormField label="Día de la ruta" name="routeDate">
             <UInput v-model="date" type="date" :disabled="submitting" class="w-full" />
           </UFormField>
@@ -184,33 +184,38 @@ async function submit(): Promise<void> {
           >
             <USelect v-model="zoneId" :items="zoneItems" :disabled="submitting" class="w-full" />
           </UFormField>
-        </div>
+        </UPageGrid>
 
-        <UAlert
-          v-if="slow && submitting"
-          role="status"
-          color="neutral"
-          variant="subtle"
-          :title="SLOW_REQUEST_MESSAGE"
-        />
-
-        <div class="flex justify-end gap-3 border-t border-default pt-5">
-          <UButton
+        <template #footer>
+          <UAlert
+            v-if="slow && submitting"
+            role="status"
             color="neutral"
-            variant="outline"
-            label="Cancelar"
-            :disabled="submitting"
-            @click="navigateTo('/routes')"
+            variant="subtle"
+            :title="SLOW_REQUEST_MESSAGE"
           />
-          <UButton
-            type="submit"
-            :disabled="
-              submitting || noDrivers || noVehicles || drivers.failed.value || vehicles.failed.value
-            "
-            :label="submitting ? 'Planificando…' : 'Planificar ruta'"
-          />
-        </div>
-      </form>
-    </UCard>
+          <div class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancelar"
+              :disabled="submitting"
+              @click="navigateTo('/routes')"
+            />
+            <UButton
+              type="submit"
+              :disabled="
+                submitting ||
+                noDrivers ||
+                noVehicles ||
+                drivers.failed.value ||
+                vehicles.failed.value
+              "
+              :label="submitting ? 'Planificando…' : 'Planificar ruta'"
+            />
+          </div>
+        </template>
+      </UCard>
+    </UForm>
   </AppPage>
 </template>

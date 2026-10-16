@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatInstantInLima } from "@yacco/shared";
-import type { Route, Vehicle } from "@yacco/shared";
+import type { Route, RouteVehicleAssignment, Vehicle } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 const props = defineProps<{ route: Route }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -22,6 +23,23 @@ const reason = ref("");
 const saving = ref(false);
 const saveError = ref<string | null>(null);
 const warnings = ref<string[]>([]);
+
+/** Marca y modelo, y la capacidad si se conoce. */
+const vehicleDetail = computed(() => {
+  const vehicle = props.route.vehicle;
+  if (!vehicle) return undefined;
+  const capacity = vehicle.capacityUnits ? ` · Capacidad: ${vehicle.capacityUnits} bidones` : "";
+  return `${vehicle.brand} ${vehicle.model}${capacity}`;
+});
+
+const assignmentColumns: TableColumn<RouteVehicleAssignment>[] = [
+  { accessorKey: "createdAt", header: "Fecha y hora" },
+  { accessorKey: "vehicle", header: "Vehículo" },
+  { accessorKey: "assignedBy", header: "Asignado por" },
+  { id: "origin", header: "Origen / Pit" },
+  { accessorKey: "reason", header: "Motivo" },
+  { id: "status", header: "Estado" },
+];
 
 const vehicleOptions = computed(() =>
   activeVehicles.value
@@ -94,82 +112,59 @@ async function submitChangeVehicle(): Promise<void> {
       />
     </template>
 
-    <div class="space-y-4">
-      <!-- Vehículo actual -->
-      <div class="rounded-lg border border-default bg-elevated/40 p-4">
-        <div v-if="route.vehicle" class="flex flex-wrap items-center justify-between gap-4">
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <span class="font-mono text-base font-bold text-highlighted">
-                {{ route.vehicle.plate }}
-              </span>
-              <span class="font-medium text-highlighted">— {{ route.vehicle.name }}</span>
-            </div>
-            <p class="text-xs text-muted">
-              {{ route.vehicle.brand }} {{ route.vehicle.model }}
-              <span v-if="route.vehicle.capacityUnits">
-                · Capacidad: {{ route.vehicle.capacityUnits }} bidones
-              </span>
-            </p>
-          </div>
+    <UPageList>
+      <UPageCard v-if="route.vehicle" variant="soft" :description="vehicleDetail">
+        <template #title>
+          <span>{{ route.vehicle.plate }}</span> <span>— {{ route.vehicle.name }}</span>
+        </template>
+        <UFieldGroup>
           <UBadge color="primary" variant="subtle" label="Vehículo actual" />
-        </div>
-        <div v-else class="text-sm text-dimmed">
-          Esta ruta no tiene un vehículo asignado (ruta anterior a la incorporación de vehículos).
-        </div>
-      </div>
+        </UFieldGroup>
+      </UPageCard>
+      <UPageCard
+        v-else
+        variant="soft"
+        description="Esta ruta no tiene un vehículo asignado (ruta anterior a la incorporación de vehículos)."
+      />
 
-      <!-- Historial de asignaciones -->
-      <div v-if="route.vehicleAssignments && route.vehicleAssignments.length > 0" class="space-y-2">
-        <h4 class="text-xs font-semibold uppercase tracking-wider text-muted">
-          Historial de asignaciones
-        </h4>
-        <div class="overflow-x-auto rounded-lg border border-default">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-elevated text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-3 py-2 font-medium">Fecha y hora</th>
-                <th scope="col" class="px-3 py-2 font-medium">Vehículo</th>
-                <th scope="col" class="px-3 py-2 font-medium">Asignado por</th>
-                <th scope="col" class="px-3 py-2 font-medium">Origen / Pit</th>
-                <th scope="col" class="px-3 py-2 font-medium">Motivo</th>
-                <th scope="col" class="px-3 py-2 font-medium">Estado</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr
-                v-for="a in route.vehicleAssignments"
-                :key="a.id"
-                :class="{ 'opacity-60 bg-error/5': a.isVoided }"
-              >
-                <td class="px-3 py-2 whitespace-nowrap tabular-nums text-muted">
-                  {{ formatInstantInLima(a.createdAt) }}
-                </td>
-                <td class="px-3 py-2 font-medium text-highlighted">
-                  <span class="font-mono font-bold">{{ a.vehicle.plate }}</span>
-                  <span class="ml-1 text-muted">({{ a.vehicle.name }})</span>
-                </td>
-                <td class="px-3 py-2 text-muted">{{ a.assignedBy.name }}</td>
-                <td class="px-3 py-2 text-muted">
-                  {{ a.pitStopId ? "En parada en planta (pit)" : "Planificación / Oficina" }}
-                </td>
-                <td class="px-3 py-2 text-muted">{{ a.reason || "—" }}</td>
-                <td class="px-3 py-2">
-                  <UBadge
-                    v-if="a.isVoided"
-                    color="error"
-                    variant="subtle"
-                    size="sm"
-                    label="Anulada (pit revertido)"
-                  />
-                  <span v-else class="text-success font-medium">Vigente</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      <UPageCard
+        v-if="route.vehicleAssignments && route.vehicleAssignments.length > 0"
+        title="Historial de asignaciones"
+        variant="outline"
+      >
+        <UTable
+          :data="route.vehicleAssignments"
+          :columns="assignmentColumns"
+          caption="Historial de asignaciones de vehículo de la ruta"
+        >
+          <template #createdAt-cell="{ row }">
+            {{ formatInstantInLima(row.original.createdAt) }}
+          </template>
+          <template #vehicle-cell="{ row }">
+            {{ row.original.vehicle.plate }} ({{ row.original.vehicle.name }})
+          </template>
+          <template #assignedBy-cell="{ row }">
+            {{ row.original.assignedBy.name }}
+          </template>
+          <template #origin-cell="{ row }">
+            {{ row.original.pitStopId ? "En parada en planta (pit)" : "Planificación / Oficina" }}
+          </template>
+          <template #reason-cell="{ row }">
+            {{ row.original.reason || "—" }}
+          </template>
+          <template #status-cell="{ row }">
+            <UBadge
+              v-if="row.original.isVoided"
+              color="error"
+              variant="subtle"
+              size="sm"
+              label="Anulada (pit revertido)"
+            />
+            <UBadge v-else color="success" variant="subtle" size="sm" label="Vigente" />
+          </template>
+        </UTable>
+      </UPageCard>
+    </UPageList>
 
     <!-- Modal cambiar vehículo -->
     <UModal
@@ -178,7 +173,7 @@ async function submitChangeVehicle(): Promise<void> {
       description="Elige el nuevo vehículo asignado. La ruta sigue planificada y el cambio quedará auditado."
     >
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitChangeVehicle">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitChangeVehicle">
           <UFormField label="Nuevo vehículo" required>
             <USelect
               v-model="selectedVehicleId"
@@ -200,7 +195,7 @@ async function submitChangeVehicle(): Promise<void> {
 
           <UAlert v-if="saveError" role="alert" color="error" variant="subtle" :title="saveError" />
 
-          <div class="flex justify-end gap-2 pt-3">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -214,7 +209,7 @@ async function submitChangeVehicle(): Promise<void> {
               :disabled="saving || !selectedVehicleId"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </SectionCard>

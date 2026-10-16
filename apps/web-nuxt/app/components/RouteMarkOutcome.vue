@@ -35,7 +35,7 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <div class="space-y-2">
+  <UPageList>
     <UAlert
       role="status"
       :color="result.status === 'FAILED' ? 'neutral' : 'success'"
@@ -65,5 +65,5 @@ const summary = computed(() => {
       icon="i-lucide-triangle-alert"
       :title="`Según lo cargado, el camión tenía ${line.available} × ${line.containerType.name} y se registraron ${line.requested}. Quedó registrado igual; revisá la carga de la ruta.`"
     />
-  </div>
+  </UPageList>
 </template>
