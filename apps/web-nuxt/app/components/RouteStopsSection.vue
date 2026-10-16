@@ -342,9 +342,9 @@ function markDone(result: RouteStop): void {
         role="group"
         aria-label="Confirmar orden por cercanía"
         variant="soft"
-        title="Orden sugerido"
         description="Revísalo antes de cambiar la hoja de ruta. La propuesta empieza en la planta."
       >
+        <template #title><h3>Orden sugerido</h3></template>
         <UPageList as="ol">
           <UPageCard
             v-for="(stop, index) in proposedStops"
@@ -451,6 +451,7 @@ function markDone(result: RouteStop): void {
         v-else
         :data="stops"
         :columns="stopColumns"
+        :get-row-id="(stop) => stop.id"
         caption="Paradas de la ruta con su orden, cliente, dirección y referencia, origen y estado, incluida la corrección de la parada cuando la hubo"
       >
         <template #position-cell="{ row }">

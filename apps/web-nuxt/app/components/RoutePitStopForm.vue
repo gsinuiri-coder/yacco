@@ -342,10 +342,10 @@ async function submit(): Promise<void> {
     <UForm v-else :state="{}" :validate-on="[]" :loading-auto="false" novalidate @submit="submit">
       <!-- 1. CUADRE (obligatorio) -->
       <UPageCard
-        title="1. Cuadre"
         description="Conteo de bidones arriba del camión al llegar a la planta. Si hay diferencia respecto al libro, el motivo es obligatorio."
         variant="outline"
       >
+        <template #title><h4>1. Cuadre</h4></template>
         <UPageList>
           <UPageCard
             v-for="c in preview?.containers"
@@ -405,10 +405,10 @@ async function submit(): Promise<void> {
 
       <!-- 2. BAJA (opcional) -->
       <UPageCard
-        title="2. Baja (descarga)"
         description="Vacíos que bajan a la planta o llenos que vuelven al galpón. Dejar en blanco si no descarga de ese tipo."
         variant="outline"
       >
+        <template #title><h4>2. Baja (descarga)</h4></template>
         <UPageList>
           <UPageGrid v-for="c in preview?.containers" :key="c.containerTypeId">
             <UFormField :label="`Vacíos que bajan de ${c.containerTypeName}`">
@@ -437,10 +437,10 @@ async function submit(): Promise<void> {
 
       <!-- 3. SUBE (opcional) -->
       <UPageCard
-        title="3. Sube (carga FIFO)"
         description="Llenos que suben al camión. Se consumen estrictamente del lote más antiguo con unidades en planta."
         variant="outline"
       >
+        <template #title><h4>3. Sube (carga FIFO)</h4></template>
         <UPageList>
           <UPageList v-for="c in preview?.containers" :key="c.containerTypeId">
             <UFormField :label="`Llenos que suben de ${c.containerTypeName}`">
@@ -484,10 +484,10 @@ async function submit(): Promise<void> {
 
       <!-- 4. EFECTIVO (opcional) -->
       <UPageCard
-        title="4. Efectivo"
         description="Monto de dinero que el chofer entrega en la planta. Puede entregar parcial para conservar vuelto."
         variant="outline"
       >
+        <template #title><h4>4. Efectivo</h4></template>
         <UPageGrid>
           <UPageCard
             title="Cobrado en ruta"
@@ -543,10 +543,10 @@ async function submit(): Promise<void> {
 
       <!-- CAMBIO DE VEHÍCULO (OPCIONAL) -->
       <UPageCard
-        title="Cambio de vehículo (opcional)"
         description="El cuadre de esta parada corresponde al vehículo que se deja. Si la ruta cambia de vehículo en este pit, el nuevo vehículo pasará a ser el actual."
         variant="outline"
       >
+        <template #title><h4>Cambio de vehículo (opcional)</h4></template>
         <UFormField label="Cambia a vehículo">
           <USelect
             v-model="selectedVehicleId"

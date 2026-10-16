@@ -258,7 +258,8 @@ async function confirmVoid(pitId: string): Promise<void> {
           </UAlert>
 
           <UPageGrid>
-            <UPageCard title="Cuadre de envases" variant="soft">
+            <UPageCard variant="soft">
+              <template #title><h4>Cuadre de envases</h4></template>
               <ul>
                 <li v-for="c in pit.counts" :key="c.id">
                   <span>{{ c.containerType.name }}:</span>
@@ -271,11 +272,13 @@ async function confirmVoid(pitId: string): Promise<void> {
 
             <UPageCard
               v-if="!pit.unloads || pit.unloads.length === 0"
-              title="Baja (descarga)"
               description="No hubo descarga"
               variant="soft"
-            />
-            <UPageCard v-else title="Baja (descarga)" variant="soft">
+            >
+              <template #title><h4>Baja (descarga)</h4></template>
+            </UPageCard>
+            <UPageCard v-else variant="soft">
+              <template #title><h4>Baja (descarga)</h4></template>
               <ul>
                 <li v-for="(u, uIndex) in pit.unloads" :key="uIndex">
                   {{ u.type === "EMPTY_UNLOAD" ? "Vacíos descargados" : "Llenos vueltos" }}:
@@ -286,11 +289,13 @@ async function confirmVoid(pitId: string): Promise<void> {
 
             <UPageCard
               v-if="!pit.loads || pit.loads.length === 0"
-              title="Sube (carga)"
               description="No hubo carga"
               variant="soft"
-            />
-            <UPageCard v-else title="Sube (carga)" variant="soft">
+            >
+              <template #title><h4>Sube (carga)</h4></template>
+            </UPageCard>
+            <UPageCard v-else variant="soft">
+              <template #title><h4>Sube (carga)</h4></template>
               <ul>
                 <li v-for="l in pit.loads" :key="l.id">
                   {{ l.quantity }} de {{ l.batchItem.containerType.name }} (Lote
@@ -301,11 +306,13 @@ async function confirmVoid(pitId: string): Promise<void> {
 
             <UPageCard
               v-if="pit.cashDelivered === null"
-              title="Efectivo"
               description="No entregó efectivo"
               variant="soft"
-            />
-            <UPageCard v-else title="Efectivo" variant="soft">
+            >
+              <template #title><h4>Efectivo</h4></template>
+            </UPageCard>
+            <UPageCard v-else variant="soft">
+              <template #title><h4>Efectivo</h4></template>
               <div class="flex flex-wrap items-center gap-2">
                 <span>Entregado:</span>
                 <UBadge color="neutral" variant="subtle" :label="formatSoles(pit.cashDelivered)" />

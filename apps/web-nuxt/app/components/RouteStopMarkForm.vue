@@ -276,10 +276,12 @@ async function submit(): Promise<void> {
     </UFormField>
 
     <template v-else>
-      <UPageCard title="Lo que se entregó" variant="outline">
+      <UPageCard variant="outline">
+        <template #title><h4>Lo que se entregó</h4></template>
         <UTable
           :data="draft.items"
           :columns="itemColumns"
+          :get-row-id="(line) => String(line.key)"
           caption="Productos entregados en la parada, con su cantidad y su precio"
         >
           <template #product-cell="{ row }">
@@ -356,10 +358,10 @@ async function submit(): Promise<void> {
       </UPageCard>
 
       <UPageCard
-        title="Envases vacíos que devolvió"
         description="Si devuelve tantos vacíos como llenos recibe, su saldo de envases no se mueve. Si devuelve menos, la diferencia le queda debida, salvo que se le venda el envase."
         variant="outline"
       >
+        <template #title><h4>Envases vacíos que devolvió</h4></template>
         <div
           v-for="(row, index) in draft.returns"
           :key="row.key"
@@ -402,7 +404,8 @@ async function submit(): Promise<void> {
         </div>
       </UPageCard>
 
-      <UPageCard title="Cobro" variant="outline">
+      <UPageCard variant="outline">
+        <template #title><h4>Cobro</h4></template>
         <UPageGrid>
           <UFormField label="Método de pago">
             <USelect
