@@ -173,12 +173,7 @@ async function submitChangeVehicle(): Promise<void> {
       description="Elige el nuevo vehículo asignado. La ruta sigue planificada y el cambio quedará auditado."
     >
       <template #body>
-        <UForm
-          :state="{}"
-          :validate-on="[]"
-          :loading-auto="false"
-          @submit="submitChangeVehicle"
-        >
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitChangeVehicle">
           <UFormField label="Nuevo vehículo" required>
             <USelect
               v-model="selectedVehicleId"

@@ -112,11 +112,7 @@ async function submit(): Promise<void> {
     aria-label="Agregar pedidos pendientes"
     @submit="submit"
   >
-    <UAlert
-      color="neutral"
-      variant="subtle"
-      :title="intro"
-    />
+    <UAlert color="neutral" variant="subtle" :title="intro" />
     <UCheckbox
       v-if="route.zoneId"
       v-model="allZones"
