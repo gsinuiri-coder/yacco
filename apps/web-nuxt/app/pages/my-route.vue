@@ -83,7 +83,8 @@ async function marked(): Promise<void> {
 
 <template>
   <AppPage title="Mi ruta" :description="formatCalendarDay(today)">
-    <div class="mx-auto w-full max-w-xl space-y-6">
+    <!-- Mi ruta se usa en el celular: en escritorio conserva el ancho de columna. -->
+    <UPageList class="mx-auto w-full max-w-xl">
       <ListStatus
         v-if="loading || loadError || routes.length === 0"
         :error-message="loadError"
@@ -99,28 +100,28 @@ async function marked(): Promise<void> {
 
       <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
 
-      <section
+      <UPageList
         v-for="route in routes"
         :key="route.id"
-        class="space-y-4"
+        as="section"
         :aria-label="`Ruta ${route.zone?.name ?? 'sin zona'}`"
       >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-semibold text-highlighted">
-              {{ route.zone ? `Zona ${route.zone.name}` : "Ruta sin zona" }}
-            </h2>
-            <p class="text-sm text-muted">
-              {{ route.stops.length }} {{ route.stops.length === 1 ? "parada" : "paradas" }}
-            </p>
-          </div>
-          <UBadge
-            :color="ROUTE_STATUS[route.status].color"
-            variant="subtle"
-            size="lg"
-            :label="ROUTE_STATUS[route.status].label"
-          />
-        </div>
+        <UPageCard
+          variant="naked"
+          :description="`${route.stops.length} ${route.stops.length === 1 ? 'parada' : 'paradas'}`"
+        >
+          <template #title>
+            <div class="flex flex-wrap items-center gap-2">
+              <h2>{{ route.zone ? `Zona ${route.zone.name}` : "Ruta sin zona" }}</h2>
+              <UBadge
+                :color="ROUTE_STATUS[route.status].color"
+                variant="subtle"
+                size="lg"
+                :label="ROUTE_STATUS[route.status].label"
+              />
+            </div>
+          </template>
+        </UPageCard>
 
         <div
           v-if="(truckStock[route.id] ?? []).length > 0"
@@ -128,7 +129,7 @@ async function marked(): Promise<void> {
           class="flex flex-wrap items-center gap-2"
           aria-label="Queda arriba del camión"
         >
-          <span class="text-sm font-medium text-muted">Queda arriba:</span>
+          <span>Queda arriba:</span>
           <UBadge
             v-for="line in truckStock[route.id]"
             :key="line.containerType.id"
@@ -149,40 +150,34 @@ async function marked(): Promise<void> {
           @click="changeStatus(route, 'start')"
         />
 
-        <article
+        <UPageCard
           v-for="stop in stopsOf(route)"
           :key="stop.id"
-          class="space-y-3 rounded-lg border border-default p-4"
+          as="article"
+          variant="outline"
           :aria-label="`Parada ${stop.position}: ${stop.location.customer.name}`"
         >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <p class="text-xs font-medium text-muted uppercase">
-                Parada {{ stop.position }} · {{ STOP_ORIGIN[stop.origin] }}
-              </p>
-              <h3 class="text-base font-semibold text-highlighted">
-                {{ stop.location.customer.name }}
-              </h3>
-              <p class="text-sm"><LinkedText :text="stop.location.address" /></p>
-              <p class="text-sm text-muted">
-                <LinkedText :text="stop.location.addressReference" />
-              </p>
-              <p v-if="stop.location.contactName" class="mt-1 text-sm font-medium text-highlighted">
-                Recibe: {{ stop.location.contactName }}
-              </p>
+          <template #header>
+            <div class="flex flex-wrap items-center gap-2">
+              <span>Parada {{ stop.position }} · {{ STOP_ORIGIN[stop.origin] }}</span>
+              <UBadge
+                :color="STOP_STATUS[stop.status].color"
+                variant="subtle"
+                :label="STOP_STATUS[stop.status].label"
+              />
             </div>
-            <UBadge
-              :color="STOP_STATUS[stop.status].color"
-              variant="subtle"
-              :label="STOP_STATUS[stop.status].label"
-            />
-          </div>
+          </template>
+          <template #title>
+            <h3>{{ stop.location.customer.name }}</h3>
+          </template>
+          <template #description>
+            <p><LinkedText :text="stop.location.address" /></p>
+            <p><LinkedText :text="stop.location.addressReference" /></p>
+            <p v-if="stop.location.contactName">Recibe: {{ stop.location.contactName }}</p>
+            <p v-if="stop.failureReason">Motivo: {{ stop.failureReason }}</p>
+          </template>
 
-          <p v-if="stop.failureReason" class="text-sm text-muted">
-            Motivo: {{ stop.failureReason }}
-          </p>
-
-          <div class="flex flex-wrap gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <UButton
               :to="`tel:${stop.location.phone}`"
               color="neutral"
@@ -210,7 +205,7 @@ async function marked(): Promise<void> {
               icon="i-lucide-clipboard-check"
               :aria-label="`Registrar la parada ${stop.position}`"
               label="Registrar"
-              class="flex-1 justify-center"
+              block
               @click="markingStopId = stop.id"
             />
           </div>
@@ -224,7 +219,7 @@ async function marked(): Promise<void> {
             @cancel="markingStopId = null"
             @marked="marked"
           />
-        </article>
+        </UPageCard>
 
         <UButton
           v-if="route.status === 'IN_PROGRESS'"
@@ -242,7 +237,7 @@ async function marked(): Promise<void> {
           "
           @click="changeStatus(route, 'finish')"
         />
-      </section>
-    </div>
+      </UPageList>
+    </UPageList>
   </AppPage>
 </template>

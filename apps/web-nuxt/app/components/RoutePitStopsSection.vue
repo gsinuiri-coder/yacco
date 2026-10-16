@@ -113,14 +113,18 @@ async function confirmVoid(pitId: string): Promise<void> {
       />
     </template>
 
-    <div class="space-y-6">
-      <div v-if="creating" class="rounded-lg border border-primary/40 bg-elevated p-4">
+    <UPageList>
+      <UPageCard v-if="creating" variant="subtle">
         <RoutePitStopForm :route="route" @cancel="creating = false" @created="onPitCreated" />
-      </div>
+      </UPageCard>
 
-      <div v-if="loading && !creating" class="py-6 text-center text-sm text-muted">
-        Cargando paradas en planta…
-      </div>
+      <UAlert
+        v-if="loading && !creating"
+        role="status"
+        color="neutral"
+        variant="subtle"
+        title="Cargando paradas en planta…"
+      />
 
       <UAlert
         v-else-if="loadError"
@@ -141,53 +145,48 @@ async function confirmVoid(pitId: string): Promise<void> {
         empty-description="Durante el recorrido, el vehículo puede volver a la planta para cuadrar envases, descargar, recargar producto o entregar efectivo."
       />
 
-      <div v-else class="space-y-4">
-        <article
+      <template v-else>
+        <UPageCard
           v-for="pit in pits"
           :key="pit.id"
-          class="space-y-3 rounded-lg border border-default bg-elevated/30 p-4"
+          as="article"
+          variant="outline"
+          :description="`Registrada por ${pit.recordedBy.name}`"
         >
-          <!-- Encabezado de la parada -->
-          <header
-            class="flex flex-wrap items-center justify-between gap-3 border-b border-default pb-3"
+          <template #title>
+            <div class="flex flex-wrap items-center gap-2">
+              <h3>Parada del {{ formatInstantInLima(pit.createdAt) }}</h3>
+              <UBadge v-if="pit.voidedAt" color="error" variant="subtle" label="Anulado" />
+            </div>
+          </template>
+          <template
+            v-if="
+              canVoid &&
+              pit.voidedAt === null &&
+              pit.id === latestNonVoidedPit?.id &&
+              voidingPitId !== pit.id
+            "
+            #footer
           >
-            <div class="space-y-0.5">
-              <div class="flex items-center gap-2">
-                <h3 class="font-semibold text-highlighted">
-                  Parada del {{ formatInstantInLima(pit.createdAt) }}
-                </h3>
-                <UBadge v-if="pit.voidedAt" color="error" variant="subtle" label="Anulado" />
-              </div>
-              <p class="text-xs text-muted">Registrada por {{ pit.recordedBy.name }}</p>
-            </div>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-undo-2"
+              label="Anular parada"
+              @click="startVoiding(pit)"
+            />
+          </template>
 
-            <div v-if="canVoid && pit.voidedAt === null && pit.id === latestNonVoidedPit?.id">
-              <UButton
-                v-if="voidingPitId !== pit.id"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                icon="i-lucide-undo-2"
-                label="Anular parada"
-                @click="startVoiding(pit)"
-              />
-            </div>
-          </header>
-
-          <!-- Formulario de confirmación de anulación -->
-          <div
+          <!-- Confirmación de la anulación -->
+          <UPageCard
             v-if="voidingPitId === pit.id"
             role="group"
             aria-label="Confirmar anulación"
-            class="space-y-3 rounded-md border border-warning/40 bg-warning/5 p-4"
+            variant="subtle"
+            description="La parada quedará marcada como anulada. Se revertirán sus movimientos de carga y descarga, y su efectivo dejará de sumarse."
           >
-            <div>
-              <h4 class="font-semibold text-highlighted">Anular esta parada en planta</h4>
-              <p class="text-xs text-muted">
-                La parada quedará marcada como anulada. Se revertirán sus movimientos de carga y
-                descarga, y su efectivo dejará de sumarse.
-              </p>
-            </div>
+            <template #title><h4>Anular esta parada en planta</h4></template>
             <UFormField label="Motivo de la anulación" required>
               <UInput
                 v-model="voidReason"
@@ -220,104 +219,106 @@ async function confirmVoid(pitId: string): Promise<void> {
                 @click="confirmVoid(pit.id)"
               />
             </div>
-          </div>
+          </UPageCard>
 
-          <!-- Si está anulada: detalles de la anulación -->
-          <div
+          <!-- Si está anulada: quién, cuándo y por qué -->
+          <UAlert
             v-if="pit.voidedAt"
-            class="rounded-md border border-error/30 bg-error/5 p-3 text-xs text-error"
-          >
-            <p class="font-medium">
-              Anulada por {{ pit.voidedBy?.name }} el {{ formatInstantInLima(pit.voidedAt) }}
-            </p>
-            <p v-if="pit.voidReason" class="mt-0.5 text-muted">Motivo: {{ pit.voidReason }}</p>
-          </div>
+            color="error"
+            variant="subtle"
+            :title="`Anulada por ${pit.voidedBy?.name} el ${formatInstantInLima(pit.voidedAt)}`"
+            :description="pit.voidReason ? `Motivo: ${pit.voidReason}` : undefined"
+          />
 
-          <p v-if="pit.notes" class="text-sm text-highlighted">
-            <span class="font-medium">Nota:</span> {{ pit.notes }}
-          </p>
+          <UAlert
+            v-if="pit.notes"
+            color="neutral"
+            variant="subtle"
+            title="Nota:"
+            :description="pit.notes"
+          />
 
-          <!-- Detalles de la parada en planta -->
-          <div
+          <UAlert
             v-if="pit.vehicleId"
-            class="rounded-md bg-primary/5 border border-primary/20 p-2.5 text-xs flex flex-wrap items-center gap-2"
+            color="primary"
+            variant="subtle"
+            title="Cambio de vehículo en esta parada"
           >
-            <span class="font-semibold text-primary">Cambio de vehículo en esta parada</span>
-            <span v-if="pit.vehicleReason" class="text-muted"
-              >— Motivo: {{ pit.vehicleReason }}</span
-            >
-            <span v-if="pit.voidedAt" class="text-error font-medium"
-              >(Revertido al anular la parada)</span
-            >
-          </div>
+            <template v-if="pit.vehicleReason || pit.voidedAt" #description>
+              <div class="flex flex-wrap items-center gap-2">
+                <span v-if="pit.vehicleReason">— Motivo: {{ pit.vehicleReason }}</span>
+                <UBadge
+                  v-if="pit.voidedAt"
+                  color="error"
+                  variant="subtle"
+                  label="(Revertido al anular la parada)"
+                />
+              </div>
+            </template>
+          </UAlert>
 
-          <div class="grid gap-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
-            <!-- Cuadre -->
-            <div class="rounded-md bg-default p-3 space-y-1.5">
-              <h4 class="font-semibold text-highlighted">Cuadre de envases</h4>
-              <ul class="space-y-1">
-                <li v-for="c in pit.counts" :key="c.id" class="text-muted">
-                  <span class="font-medium text-highlighted">{{ c.containerType.name }}:</span>
+          <UPageGrid>
+            <UPageCard title="Cuadre de envases" variant="soft">
+              <ul>
+                <li v-for="c in pit.counts" :key="c.id">
+                  <span>{{ c.containerType.name }}:</span>
                   {{ c.countedFull }} ll (esp. {{ c.expectedFull }}), {{ c.countedEmpty }} vac (esp.
                   {{ c.expectedEmpty }})
-                  <p v-if="c.differenceReason" class="mt-0.5 text-warning italic">
-                    Motivo: {{ c.differenceReason }}
-                  </p>
+                  <p v-if="c.differenceReason">Motivo: {{ c.differenceReason }}</p>
                 </li>
               </ul>
-            </div>
+            </UPageCard>
 
-            <!-- Baja -->
-            <div class="rounded-md bg-default p-3 space-y-1.5">
-              <h4 class="font-semibold text-highlighted">Baja (descarga)</h4>
-              <div v-if="!pit.unloads || pit.unloads.length === 0" class="text-dimmed">
-                No hubo descarga
-              </div>
-              <ul v-else class="space-y-1 text-muted">
+            <UPageCard
+              v-if="!pit.unloads || pit.unloads.length === 0"
+              title="Baja (descarga)"
+              description="No hubo descarga"
+              variant="soft"
+            />
+            <UPageCard v-else title="Baja (descarga)" variant="soft">
+              <ul>
                 <li v-for="(u, uIndex) in pit.unloads" :key="uIndex">
                   {{ u.type === "EMPTY_UNLOAD" ? "Vacíos descargados" : "Llenos vueltos" }}:
                   {{ u.quantity }} de {{ u.containerType.name }}
                 </li>
               </ul>
-            </div>
+            </UPageCard>
 
-            <!-- Sube -->
-            <div class="rounded-md bg-default p-3 space-y-1.5">
-              <h4 class="font-semibold text-highlighted">Sube (carga)</h4>
-              <div v-if="!pit.loads || pit.loads.length === 0" class="text-dimmed">
-                No hubo carga
-              </div>
-              <ul v-else class="space-y-1 text-muted">
+            <UPageCard
+              v-if="!pit.loads || pit.loads.length === 0"
+              title="Sube (carga)"
+              description="No hubo carga"
+              variant="soft"
+            />
+            <UPageCard v-else title="Sube (carga)" variant="soft">
+              <ul>
                 <li v-for="l in pit.loads" :key="l.id">
                   {{ l.quantity }} de {{ l.batchItem.containerType.name }} (Lote
                   {{ l.batchItem.batch.code }})
                 </li>
               </ul>
-            </div>
+            </UPageCard>
 
-            <!-- Efectivo -->
-            <div class="rounded-md bg-default p-3 space-y-1.5">
-              <h4 class="font-semibold text-highlighted">Efectivo</h4>
-              <div v-if="pit.cashDelivered === null" class="text-dimmed">No entregó efectivo</div>
-              <div v-else class="space-y-1 text-muted">
-                <p>
-                  Entregado:
-                  <span class="font-semibold text-highlighted">{{
-                    formatSoles(pit.cashDelivered)
-                  }}</span>
-                </p>
-                <p v-if="pit.cashExpected !== null">
-                  Esperado: {{ formatSoles(pit.cashExpected) }} · Conserva:
-                  {{ formatSoles(subtractAmounts(pit.cashExpected, pit.cashDelivered)) }}
-                </p>
-                <p v-if="pit.cashReason" class="text-warning italic">
-                  Motivo: {{ pit.cashReason }}
-                </p>
+            <UPageCard
+              v-if="pit.cashDelivered === null"
+              title="Efectivo"
+              description="No entregó efectivo"
+              variant="soft"
+            />
+            <UPageCard v-else title="Efectivo" variant="soft">
+              <div class="flex flex-wrap items-center gap-2">
+                <span>Entregado:</span>
+                <UBadge color="neutral" variant="subtle" :label="formatSoles(pit.cashDelivered)" />
               </div>
-            </div>
-          </div>
-        </article>
-      </div>
-    </div>
+              <p v-if="pit.cashExpected !== null">
+                Esperado: {{ formatSoles(pit.cashExpected) }} · Conserva:
+                {{ formatSoles(subtractAmounts(pit.cashExpected, pit.cashDelivered)) }}
+              </p>
+              <p v-if="pit.cashReason">Motivo: {{ pit.cashReason }}</p>
+            </UPageCard>
+          </UPageGrid>
+        </UPageCard>
+      </template>
+    </UPageList>
   </SectionCard>
 </template>

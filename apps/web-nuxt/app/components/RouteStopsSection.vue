@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatInstantInLima } from "@yacco/shared";
 import type { PlantLocation, Route, RouteStop } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import { googleMapsLocationUrl } from "~/utils/customer-location";
 import { buildGoogleMapsRouteLegs, proposeNearbyStopIds } from "~/utils/route-planning";
 
@@ -29,6 +30,15 @@ const stops = computed(() => props.route.stops);
  */
 const canCorrect = computed(() => session.hasRole("ADMIN") && props.route.status !== "PLANNED");
 const showActions = computed(() => editable.value || canCorrect.value);
+const stopColumns = computed<TableColumn<RouteStop>[]>(() => [
+  { accessorKey: "position", header: "Orden" },
+  { id: "customer", header: "Cliente" },
+  { id: "origin", header: "Origen" },
+  { id: "status", header: "Estado" },
+  ...(showActions.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
 const correcting = ref<RouteStop | null>(null);
 
 const adding = ref(false);
@@ -226,7 +236,7 @@ function markDone(result: RouteStop): void {
 <template>
   <SectionCard title="Paradas" description="En el orden en que el chofer las va a visitar.">
     <template v-if="editable && !adding && !batching" #actions>
-      <div class="flex flex-wrap justify-end gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
         <UButton
           v-if="canReorder && stops.length > 1"
           color="neutral"
@@ -259,8 +269,8 @@ function markDone(result: RouteStop): void {
       </div>
     </template>
 
-    <div class="space-y-4">
-      <div v-if="batching" class="rounded-md bg-elevated p-4">
+    <UPageList>
+      <UPageCard v-if="batching" variant="soft">
         <RouteBatchStopsForm
           :route="route"
           @cancel="batching = false"
@@ -269,9 +279,9 @@ function markDone(result: RouteStop): void {
             emit('changed');
           "
         />
-      </div>
+      </UPageCard>
 
-      <div v-if="adding" class="rounded-md bg-elevated p-4">
+      <UPageCard v-if="adding" variant="soft">
         <RouteStopAddForm
           :route-id="route.id"
           @cancel="adding = false"
@@ -280,31 +290,35 @@ function markDone(result: RouteStop): void {
             emit('changed');
           "
         />
-      </div>
+      </UPageCard>
 
-      <div v-if="marking" class="rounded-md border border-primary/40 bg-primary/5 p-4">
-        <h3 class="text-base font-semibold text-highlighted">
-          Parada {{ marking.position }}: {{ marking.location.customer.name }}
-        </h3>
-        <p class="mb-4 text-sm text-muted">
-          {{ marking.location.name }} · <LinkedText :text="marking.location.address" />
-        </p>
+      <!-- El encabezado y la dirección van juntos en el slot #body: el título
+           de UPageCard es un div, y el h3 tiene que nombrar el panel entero. -->
+      <UPageCard v-if="marking" variant="subtle">
+        <template #body>
+          <h3 class="font-semibold text-highlighted">
+            Parada {{ marking.position }}: {{ marking.location.customer.name }}
+          </h3>
+          <p>{{ marking.location.name }} · <LinkedText :text="marking.location.address" /></p>
+        </template>
         <RouteStopMarkForm
           :route-id="route.id"
           :stop="marking"
           @cancel="marking = null"
           @marked="markDone"
         />
-      </div>
+      </UPageCard>
 
-      <div v-if="correcting" class="rounded-md border border-warning/40 bg-warning/5 p-4">
-        <h3 class="text-base font-semibold text-highlighted">
-          Corregir la parada {{ correcting.position }}: {{ correcting.location.customer.name }}
-        </h3>
-        <p class="mb-4 text-sm text-muted">
-          Lo anotado se anula con el motivo que escribas y sigue visible; se registra de nuevo con
-          estos datos.
-        </p>
+      <UPageCard
+        v-if="correcting"
+        variant="subtle"
+        description="Lo anotado se anula con el motivo que escribas y sigue visible; se registra de nuevo con estos datos."
+      >
+        <template #title>
+          <h3>
+            Corregir la parada {{ correcting.position }}: {{ correcting.location.customer.name }}
+          </h3>
+        </template>
         <RouteStopMarkForm
           :route-id="route.id"
           :stop="correcting"
@@ -312,7 +326,7 @@ function markDone(result: RouteStop): void {
           @cancel="correcting = null"
           @marked="correctionDone"
         />
-      </div>
+      </UPageCard>
 
       <UAlert v-if="stopError" role="alert" color="error" variant="subtle" :title="stopError" />
       <UAlert
@@ -323,38 +337,31 @@ function markDone(result: RouteStop): void {
         :title="routeToolsError"
       />
 
-      <div
+      <UPageCard
         v-if="proposedStopIds !== null"
         role="group"
         aria-label="Confirmar orden por cercanía"
-        class="space-y-3 rounded-md bg-elevated p-4"
+        variant="soft"
+        title="Orden sugerido"
+        description="Revísalo antes de cambiar la hoja de ruta. La propuesta empieza en la planta."
       >
-        <div>
-          <h3 class="font-semibold text-highlighted">Orden sugerido</h3>
-          <p class="text-sm text-muted">
-            Revísalo antes de cambiar la hoja de ruta. La propuesta empieza en la planta.
-          </p>
-        </div>
-        <ol class="list-decimal space-y-2 pl-5">
-          <li
-            v-for="stop in proposedStops"
+        <UPageList as="ol">
+          <UPageCard
+            v-for="(stop, index) in proposedStops"
             :key="stop.id"
-            class="pl-1 text-sm marker:font-semibold marker:text-muted"
-          >
-            <p class="font-medium text-highlighted">{{ stop.location.customer.name }}</p>
-            <p class="text-muted">{{ stop.location.name }} · {{ stop.location.address }}</p>
-          </li>
-        </ol>
-        <p v-if="stopsWithoutLocation.length > 0" class="text-sm text-warning">
-          {{ stopsWithoutLocation.length }}
-          {{
-            stopsWithoutLocation.length === 1
-              ? "parada sin ubicación queda"
-              : "paradas sin ubicación quedan"
-          }}
-          al final, en el orden actual.
-        </p>
-        <div class="flex flex-wrap gap-2">
+            as="li"
+            variant="naked"
+            :title="`${index + 1}. ${stop.location.customer.name}`"
+            :description="`${stop.location.name} · ${stop.location.address}`"
+          />
+        </UPageList>
+        <UAlert
+          v-if="stopsWithoutLocation.length > 0"
+          color="warning"
+          variant="subtle"
+          :title="`${stopsWithoutLocation.length} ${stopsWithoutLocation.length === 1 ? 'parada sin ubicación queda' : 'paradas sin ubicación quedan'} al final, en el orden actual.`"
+        />
+        <div class="flex flex-wrap items-center gap-2">
           <UButton label="Usar este orden" :loading="ordering" @click="applyProposedOrder" />
           <UButton
             color="neutral"
@@ -364,37 +371,42 @@ function markDone(result: RouteStop): void {
             @click="proposedStopIds = null"
           />
         </div>
-      </div>
+      </UPageCard>
 
-      <div
-        v-if="isOffice && stops.length > 0 && plantLocationLoaded && mapLegs.length === 0"
-        class="space-y-2 text-sm text-muted"
-      >
-        <template v-if="plantLocationFailure !== null">
-          <p>No se pudo preparar el recorrido. {{ plantLocationFailure }}</p>
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="sm"
-            label="Reintentar recorrido"
-            :loading="plantLocationLoading"
-            @click="retryPlantLocation"
-          />
-        </template>
-        <p
+      <template v-if="isOffice && stops.length > 0 && plantLocationLoaded && mapLegs.length === 0">
+        <UAlert
+          v-if="plantLocationFailure !== null"
+          color="neutral"
+          variant="subtle"
+          :title="`No se pudo preparar el recorrido. ${plantLocationFailure}`"
+          :actions="[
+            {
+              label: 'Reintentar recorrido',
+              color: 'neutral',
+              variant: 'outline',
+              size: 'sm',
+              loading: plantLocationLoading,
+              onClick: retryPlantLocation,
+            },
+          ]"
+        />
+        <UAlert
           v-else-if="
             plantLocation === null ||
             plantLocation.latitude === null ||
             plantLocation.longitude === null
           "
-        >
-          Configura la ubicación de la planta para abrir el recorrido en Maps.
-        </p>
-        <p v-else>
-          Ninguna parada entra al recorrido porque falta su ubicación. Completa la ubicación de
-          {{ stopsWithoutLocation.map((stop) => stop.location.customer.name).join(", ") }}.
-        </p>
-      </div>
+          color="neutral"
+          variant="subtle"
+          title="Configura la ubicación de la planta para abrir el recorrido en Maps."
+        />
+        <UAlert
+          v-else
+          color="neutral"
+          variant="subtle"
+          :title="`Ninguna parada entra al recorrido porque falta su ubicación. Completa la ubicación de ${stopsWithoutLocation.map((stop) => stop.location.customer.name).join(', ')}.`"
+        />
+      </template>
 
       <div v-if="mapLegs.length > 0" class="flex flex-wrap items-center gap-2">
         <UButton
@@ -413,11 +425,12 @@ function markDone(result: RouteStop): void {
           "
         />
       </div>
-      <p v-if="mapLegs.length > 0 && stopsWithoutLocation.length > 0" class="text-sm text-muted">
-        {{ stopsWithoutLocation.map((stop) => stop.location.customer.name).join(", ") }}
-        {{ stopsWithoutLocation.length === 1 ? "no entra" : "no entran" }} al recorrido porque
-        {{ stopsWithoutLocation.length === 1 ? "no tiene ubicación" : "no tienen ubicación" }}.
-      </p>
+      <UAlert
+        v-if="mapLegs.length > 0 && stopsWithoutLocation.length > 0"
+        color="neutral"
+        variant="subtle"
+        :title="`${stopsWithoutLocation.map((stop) => stop.location.customer.name).join(', ')} ${stopsWithoutLocation.length === 1 ? 'no entra' : 'no entran'} al recorrido porque ${stopsWithoutLocation.length === 1 ? 'no tiene ubicación' : 'no tienen ubicación'}.`"
+      />
 
       <ListStatus
         v-if="stops.length === 0"
@@ -434,170 +447,164 @@ function markDone(result: RouteStop): void {
         "
       />
 
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <caption class="sr-only">
-            Paradas de la ruta con su orden, cliente, dirección y referencia, origen y estado,
-            incluida la corrección de la parada cuando la hubo
-          </caption>
-          <thead class="text-left text-xs tracking-wide text-muted uppercase">
-            <tr>
-              <th scope="col" class="w-12 py-2 font-medium">Orden</th>
-              <th scope="col" class="py-2 font-medium">Cliente</th>
-              <th scope="col" class="py-2 font-medium">Origen</th>
-              <th scope="col" class="py-2 font-medium">Estado</th>
-              <th v-if="showActions" scope="col" class="py-2">
-                <span class="sr-only">Acciones</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-default">
-            <tr v-for="(stop, index) in stops" :key="stop.id" class="align-top">
-              <td class="py-3">
-                <span
-                  class="grid size-7 place-items-center rounded-full bg-elevated text-xs font-semibold tabular-nums"
-                  >{{ stop.position }}</span
-                >
-              </td>
-              <td class="py-3">
-                <p class="font-medium text-highlighted">{{ stop.location.customer.name }}</p>
-                <!-- El nombre de la locación casi siempre es "Principal"; sólo
-                     distingue algo cuando el cliente tiene más de un punto. -->
-                <p class="text-muted">
-                  {{ stop.location.name }} · <LinkedText :text="stop.location.address" />
-                </p>
-                <p v-if="stop.location.addressReference" class="text-sm text-muted">
-                  <LinkedText :text="stop.location.addressReference" />
-                </p>
-              </td>
-              <td class="py-3">{{ STOP_ORIGIN[stop.origin] }}</td>
-              <td class="space-y-1 py-3">
-                <div class="flex flex-wrap gap-1.5">
-                  <UBadge
-                    :color="STOP_STATUS[stop.status].color"
-                    variant="subtle"
-                    :label="STOP_STATUS[stop.status].label"
-                  />
-                  <UBadge
-                    v-if="stop.correction !== null"
-                    color="info"
-                    variant="soft"
-                    label="Corregida"
-                  />
-                </div>
-                <!-- El motivo va condicionado al ESTADO, no a que exista: una
-                     parada corregida de FAILED a DELIVERED conserva su motivo de
-                     falla original a propósito (es la evidencia del error de
-                     anotación, así lo advierte la API). Sin esta condición la
-                     fila se lee "Entregada / Nadie atendió". No lo "arregles"
-                     borrando el motivo del lado de la API. -->
-                <p v-if="stop.status === 'FAILED' && stop.failureReason" class="text-muted">
-                  {{ stop.failureReason }}
-                </p>
-                <UButton
-                  v-if="isOffice && stop.markedLatitude !== null && stop.markedLongitude !== null"
-                  :to="googleMapsLocationUrl(stop.markedLatitude, stop.markedLongitude)"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  external
-                  color="neutral"
-                  variant="link"
-                  size="sm"
-                  icon="i-lucide-map-pin"
-                  label="Ver dónde se marcó"
-                  class="px-0"
+      <UTable
+        v-else
+        :data="stops"
+        :columns="stopColumns"
+        caption="Paradas de la ruta con su orden, cliente, dirección y referencia, origen y estado, incluida la corrección de la parada cuando la hubo"
+      >
+        <template #position-cell="{ row }">
+          <UBadge color="neutral" variant="soft" :label="String(row.original.position)" />
+        </template>
+        <template #customer-cell="{ row }">
+          <UPageCard variant="naked" :title="row.original.location.customer.name">
+            <template #description>
+              <!-- El nombre de la locación casi siempre es "Principal"; sólo
+                   distingue algo cuando el cliente tiene más de un punto. -->
+              <p>
+                {{ row.original.location.name }} ·
+                <LinkedText :text="row.original.location.address" />
+              </p>
+              <p v-if="row.original.location.addressReference">
+                <LinkedText :text="row.original.location.addressReference" />
+              </p>
+            </template>
+          </UPageCard>
+        </template>
+        <template #origin-cell="{ row }">{{ STOP_ORIGIN[row.original.origin] }}</template>
+        <template #status-cell="{ row }">
+          <UPageCard variant="naked">
+            <template #title>
+              <div class="flex flex-wrap items-center gap-2">
+                <UBadge
+                  :color="STOP_STATUS[row.original.status].color"
+                  variant="subtle"
+                  :label="STOP_STATUS[row.original.status].label"
                 />
-                <template v-if="stop.correction !== null">
-                  <p class="text-muted">
-                    Corregida el {{ formatInstantInLima(stop.correction.correctedAt) }} por
-                    {{ stop.correction.correctedBy.name }}
-                  </p>
-                  <p v-if="stop.correction.correctionReason !== null" class="text-muted">
-                    Motivo: {{ stop.correction.correctionReason }}
-                  </p>
-                </template>
-              </td>
-              <td v-if="showActions" class="py-3 text-right">
-                <div
-                  v-if="removingId === stop.id"
-                  role="group"
-                  :aria-label="`Confirmar quitar a ${stop.location.customer.name}`"
-                  class="flex flex-wrap items-center justify-end gap-2"
-                >
-                  <span class="text-muted">¿Quitar esta parada?</span>
-                  <UButton
-                    color="neutral"
-                    variant="outline"
-                    size="sm"
-                    label="No"
-                    :disabled="busyId !== null"
-                    @click="removingId = null"
-                  />
-                  <UButton
-                    color="error"
-                    size="sm"
-                    label="Sí, quitar"
-                    :disabled="busyId !== null"
-                    @click="remove(stop)"
-                  />
-                </div>
-                <div v-else class="flex flex-wrap justify-end gap-1">
-                  <UButton
-                    v-if="canMark && stop.status === 'PENDING'"
-                    size="sm"
-                    label="Registrar"
-                    :aria-label="`Registrar la parada de ${stop.location.customer.name}`"
-                    :disabled="busyId !== null"
-                    @click="startMarking(stop)"
-                  />
-                  <UButton
-                    v-if="canCorrect && stop.status !== 'PENDING'"
-                    color="neutral"
-                    variant="outline"
-                    size="sm"
-                    label="Corregir"
-                    :aria-label="`Corregir la parada de ${stop.location.customer.name}`"
-                    :disabled="busyId !== null"
-                    @click="startCorrecting(stop)"
-                  />
-                  <UButton
-                    v-if="canReorder"
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-arrow-up"
-                    :aria-label="`Subir la parada de ${stop.location.customer.name}`"
-                    :disabled="index === 0 || busyId !== null"
-                    @click="move(index, -1)"
-                  />
-                  <UButton
-                    v-if="canReorder"
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-arrow-down"
-                    :aria-label="`Bajar la parada de ${stop.location.customer.name}`"
-                    :disabled="index === stops.length - 1 || busyId !== null"
-                    @click="move(index, 1)"
-                  />
-                  <!-- Una parada resuelta tiene venta y movimientos colgando: la
-                       API no deja quitarla y acá ni se ofrece. -->
-                  <UButton
-                    v-if="editable && stop.status === 'PENDING'"
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-trash-2"
-                    :aria-label="`Quitar la parada de ${stop.location.customer.name}`"
-                    :disabled="busyId !== null"
-                    @click="removingId = stop.id"
-                  />
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+                <UBadge
+                  v-if="row.original.correction !== null"
+                  color="info"
+                  variant="soft"
+                  label="Corregida"
+                />
+              </div>
+            </template>
+            <template #description>
+              <!-- El motivo va condicionado al ESTADO, no a que exista: una
+                   parada corregida de FAILED a DELIVERED conserva su motivo de
+                   falla original a propósito (es la evidencia del error de
+                   anotación, así lo advierte la API). Sin esta condición la
+                   fila se lee "Entregada / Nadie atendió". No lo "arregles"
+                   borrando el motivo del lado de la API. -->
+              <p v-if="row.original.status === 'FAILED' && row.original.failureReason">
+                {{ row.original.failureReason }}
+              </p>
+              <template v-if="row.original.correction !== null">
+                <p>
+                  Corregida el {{ formatInstantInLima(row.original.correction.correctedAt) }} por
+                  {{ row.original.correction.correctedBy.name }}
+                </p>
+                <p v-if="row.original.correction.correctionReason !== null">
+                  Motivo: {{ row.original.correction.correctionReason }}
+                </p>
+              </template>
+            </template>
+            <UButton
+              v-if="
+                isOffice &&
+                row.original.markedLatitude !== null &&
+                row.original.markedLongitude !== null
+              "
+              :to="googleMapsLocationUrl(row.original.markedLatitude, row.original.markedLongitude)"
+              target="_blank"
+              rel="noopener noreferrer"
+              external
+              color="neutral"
+              variant="link"
+              size="sm"
+              icon="i-lucide-map-pin"
+              label="Ver dónde se marcó"
+            />
+          </UPageCard>
+        </template>
+        <template #actions-cell="{ row }">
+          <div
+            v-if="removingId === row.original.id"
+            role="group"
+            :aria-label="`Confirmar quitar a ${row.original.location.customer.name}`"
+            class="flex flex-wrap items-center justify-end gap-2"
+          >
+            <span>¿Quitar esta parada?</span>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="sm"
+              label="No"
+              :disabled="busyId !== null"
+              @click="removingId = null"
+            />
+            <UButton
+              color="error"
+              size="sm"
+              label="Sí, quitar"
+              :disabled="busyId !== null"
+              @click="remove(row.original)"
+            />
+          </div>
+          <div v-else class="flex flex-wrap items-center justify-end gap-2">
+            <UButton
+              v-if="canMark && row.original.status === 'PENDING'"
+              size="sm"
+              label="Registrar"
+              :aria-label="`Registrar la parada de ${row.original.location.customer.name}`"
+              :disabled="busyId !== null"
+              @click="startMarking(row.original)"
+            />
+            <UButton
+              v-if="canCorrect && row.original.status !== 'PENDING'"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              label="Corregir"
+              :aria-label="`Corregir la parada de ${row.original.location.customer.name}`"
+              :disabled="busyId !== null"
+              @click="startCorrecting(row.original)"
+            />
+            <UButton
+              v-if="canReorder"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-arrow-up"
+              :aria-label="`Subir la parada de ${row.original.location.customer.name}`"
+              :disabled="row.index === 0 || busyId !== null"
+              @click="move(row.index, -1)"
+            />
+            <UButton
+              v-if="canReorder"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-arrow-down"
+              :aria-label="`Bajar la parada de ${row.original.location.customer.name}`"
+              :disabled="row.index === stops.length - 1 || busyId !== null"
+              @click="move(row.index, 1)"
+            />
+            <!-- Una parada resuelta tiene venta y movimientos colgando: la
+                 API no deja quitarla y acá ni se ofrece. -->
+            <UButton
+              v-if="editable && row.original.status === 'PENDING'"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-trash-2"
+              :aria-label="`Quitar la parada de ${row.original.location.customer.name}`"
+              :disabled="busyId !== null"
+              @click="removingId = row.original.id"
+            />
+          </div>
+        </template>
+      </UTable>
+    </UPageList>
   </SectionCard>
 </template>

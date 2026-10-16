@@ -310,65 +310,55 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between border-b border-default pb-3">
-      <div>
-        <h3 class="text-base font-semibold text-highlighted">Nueva parada en planta</h3>
-        <p class="text-sm text-muted">
-          Cuadre de envases, descargas al galpón, recargas FIFO y entrega de efectivo.
-        </p>
+  <UPageList>
+    <UPageCard
+      variant="naked"
+      orientation="horizontal"
+      description="Cuadre de envases, descargas al galpón, recargas FIFO y entrega de efectivo."
+    >
+      <template #title><h3>Nueva parada en planta</h3></template>
+      <div class="flex justify-end gap-2">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-x"
+          :disabled="submitting"
+          aria-label="Cerrar formulario"
+          @click="emit('cancel')"
+        />
       </div>
-      <UButton
-        color="neutral"
-        variant="ghost"
-        icon="i-lucide-x"
-        :disabled="submitting"
-        aria-label="Cerrar formulario"
-        @click="emit('cancel')"
-      />
-    </div>
+    </UPageCard>
 
-    <div v-if="loading" class="py-6 text-center text-sm text-muted">
-      Cargando información de la parada en planta…
-    </div>
+    <UAlert
+      v-if="loading"
+      role="status"
+      color="neutral"
+      variant="subtle"
+      title="Cargando información de la parada en planta…"
+    />
 
     <UAlert v-else-if="loadError" role="alert" color="error" variant="subtle" :title="loadError" />
 
-    <form v-else class="space-y-6" novalidate @submit.prevent="submit">
+    <UForm v-else :state="{}" :validate-on="[]" :loading-auto="false" novalidate @submit="submit">
       <!-- 1. CUADRE (obligatorio) -->
-      <div class="space-y-4 rounded-lg border border-default bg-elevated/40 p-4">
-        <div>
-          <h4 class="font-semibold text-highlighted">1. Cuadre</h4>
-          <p class="text-xs text-muted">
-            Conteo de bidones arriba del camión al llegar a la planta. Si hay diferencia respecto al
-            libro, el motivo es obligatorio.
-          </p>
-        </div>
-
-        <div class="divide-y divide-default space-y-4">
-          <div
+      <UPageCard
+        title="1. Cuadre"
+        description="Conteo de bidones arriba del camión al llegar a la planta. Si hay diferencia respecto al libro, el motivo es obligatorio."
+        variant="outline"
+      >
+        <UPageList>
+          <UPageCard
             v-for="c in preview?.containers"
             :key="c.containerTypeId"
-            class="space-y-2 pt-3 first:pt-0"
+            variant="naked"
+            :title="c.containerTypeName"
+            :description="`Libro actual: ${c.expectedFull} llenos · ${c.expectedEmpty} vacíos${
+              (c.previousFullDifferences ?? 0) !== 0 || (c.previousEmptyDifferences ?? 0) !== 0
+                ? ` (dif. acumulada previa: ${formatDifference(c.previousFullDifferences ?? 0)} ll, ${formatDifference(c.previousEmptyDifferences ?? 0)} vac)`
+                : ''
+            }`"
           >
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="font-medium text-highlighted">{{ c.containerTypeName }}</span>
-              <span class="text-xs text-muted">
-                Libro actual: {{ c.expectedFull }} llenos · {{ c.expectedEmpty }} vacíos
-                <template
-                  v-if="
-                    (c.previousFullDifferences ?? 0) !== 0 ||
-                    (c.previousEmptyDifferences ?? 0) !== 0
-                  "
-                >
-                  (dif. acumulada previa:
-                  {{ formatDifference(c.previousFullDifferences ?? 0) }} ll,
-                  {{ formatDifference(c.previousEmptyDifferences ?? 0) }} vac)
-                </template>
-              </span>
-            </div>
-
-            <div class="grid gap-3 sm:grid-cols-2">
+            <UPageGrid>
               <UFormField :label="`Llenos contados de ${c.containerTypeName}`">
                 <UInput
                   v-model="getCountState(c.containerTypeId).countedFull"
@@ -387,20 +377,19 @@ async function submit(): Promise<void> {
                   class="w-full"
                 />
               </UFormField>
-            </div>
+            </UPageGrid>
 
-            <div
+            <template
               v-if="
                 getContainerDifferences(c.containerTypeId).diffFull !== 0 ||
                 getContainerDifferences(c.containerTypeId).diffEmpty !== 0
               "
-              class="space-y-2 rounded-md bg-warning/10 p-3"
             >
-              <p class="text-xs font-medium text-warning">
-                Diferencia detectada:
-                {{ formatDifference(getContainerDifferences(c.containerTypeId).diffFull) }} llenos,
-                {{ formatDifference(getContainerDifferences(c.containerTypeId).diffEmpty) }} vacíos.
-              </p>
+              <UAlert
+                color="warning"
+                variant="subtle"
+                :title="`Diferencia detectada: ${formatDifference(getContainerDifferences(c.containerTypeId).diffFull)} llenos, ${formatDifference(getContainerDifferences(c.containerTypeId).diffEmpty)} vacíos.`"
+              />
               <UFormField :label="`Motivo de la diferencia de ${c.containerTypeName}`" required>
                 <UInput
                   v-model="getCountState(c.containerTypeId).differenceReason"
@@ -409,27 +398,19 @@ async function submit(): Promise<void> {
                   class="w-full"
                 />
               </UFormField>
-            </div>
-          </div>
-        </div>
-      </div>
+            </template>
+          </UPageCard>
+        </UPageList>
+      </UPageCard>
 
       <!-- 2. BAJA (opcional) -->
-      <div class="space-y-4 rounded-lg border border-default bg-elevated/40 p-4">
-        <div>
-          <h4 class="font-semibold text-highlighted">2. Baja (descarga)</h4>
-          <p class="text-xs text-muted">
-            Vacíos que bajan a la planta o llenos que vuelven al galpón. Dejar en blanco si no
-            descarga de ese tipo.
-          </p>
-        </div>
-
-        <div class="space-y-3">
-          <div
-            v-for="c in preview?.containers"
-            :key="c.containerTypeId"
-            class="grid gap-3 sm:grid-cols-2"
-          >
+      <UPageCard
+        title="2. Baja (descarga)"
+        description="Vacíos que bajan a la planta o llenos que vuelven al galpón. Dejar en blanco si no descarga de ese tipo."
+        variant="outline"
+      >
+        <UPageList>
+          <UPageGrid v-for="c in preview?.containers" :key="c.containerTypeId">
             <UFormField :label="`Vacíos que bajan de ${c.containerTypeName}`">
               <UInput
                 v-model="getUnloadState(c.containerTypeId).unloadEmpties"
@@ -450,22 +431,18 @@ async function submit(): Promise<void> {
                 class="w-full"
               />
             </UFormField>
-          </div>
-        </div>
-      </div>
+          </UPageGrid>
+        </UPageList>
+      </UPageCard>
 
       <!-- 3. SUBE (opcional) -->
-      <div class="space-y-4 rounded-lg border border-default bg-elevated/40 p-4">
-        <div>
-          <h4 class="font-semibold text-highlighted">3. Sube (carga FIFO)</h4>
-          <p class="text-xs text-muted">
-            Llenos que suben al camión. Se consumen estrictamente del lote más antiguo con unidades
-            en planta.
-          </p>
-        </div>
-
-        <div class="space-y-4">
-          <div v-for="c in preview?.containers" :key="c.containerTypeId" class="space-y-2">
+      <UPageCard
+        title="3. Sube (carga FIFO)"
+        description="Llenos que suben al camión. Se consumen estrictamente del lote más antiguo con unidades en planta."
+        variant="outline"
+      >
+        <UPageList>
+          <UPageList v-for="c in preview?.containers" :key="c.containerTypeId">
             <UFormField :label="`Llenos que suben de ${c.containerTypeName}`">
               <UInput
                 v-model="loadsState[c.containerTypeId]"
@@ -479,12 +456,12 @@ async function submit(): Promise<void> {
 
             <!-- Plan FIFO detalle -->
             <template v-if="getFifoPlan(c.containerTypeId)">
-              <div
+              <UPageCard
                 v-if="(getFifoPlan(c.containerTypeId)?.lines.length ?? 0) > 0"
-                class="space-y-1 rounded-md bg-default p-2 text-xs text-muted"
+                title="Consumo FIFO planeado:"
+                variant="soft"
               >
-                <p class="font-medium text-highlighted">Consumo FIFO planeado:</p>
-                <ul class="list-disc space-y-0.5 pl-4">
+                <ul>
                   <li
                     v-for="line in getFifoPlan(c.containerTypeId)?.lines ?? []"
                     :key="line.batchItemId"
@@ -493,51 +470,44 @@ async function submit(): Promise<void> {
                     {{ line.quantity }} un.
                   </li>
                 </ul>
-              </div>
-              <p
+              </UPageCard>
+              <UAlert
                 v-if="(getFifoPlan(c.containerTypeId)?.shortfall ?? 0) > 0"
-                class="text-xs text-warning"
-              >
-                Stock insuficiente en planta: faltan
-                {{ getFifoPlan(c.containerTypeId)?.shortfall }} unidades.
-              </p>
+                color="warning"
+                variant="subtle"
+                :title="`Stock insuficiente en planta: faltan ${getFifoPlan(c.containerTypeId)?.shortfall} unidades.`"
+              />
             </template>
-          </div>
-        </div>
-      </div>
+          </UPageList>
+        </UPageList>
+      </UPageCard>
 
       <!-- 4. EFECTIVO (opcional) -->
-      <div class="space-y-4 rounded-lg border border-default bg-elevated/40 p-4">
-        <div>
-          <h4 class="font-semibold text-highlighted">4. Efectivo</h4>
-          <p class="text-xs text-muted">
-            Monto de dinero que el chofer entrega en la planta. Puede entregar parcial para
-            conservar vuelto.
-          </p>
-        </div>
+      <UPageCard
+        title="4. Efectivo"
+        description="Monto de dinero que el chofer entrega en la planta. Puede entregar parcial para conservar vuelto."
+        variant="outline"
+      >
+        <UPageGrid>
+          <UPageCard
+            title="Cobrado en ruta"
+            :description="formatSoles(preview?.cash.cashCollected ?? '0.00')"
+            variant="soft"
+          />
+          <UPageCard
+            title="Entregado en paradas previas"
+            :description="formatSoles(preview?.cash.cashDeliveredInPreviousPits ?? '0.00')"
+            variant="soft"
+          />
+          <UPageCard
+            title="Efectivo esperado"
+            :description="formatSoles(preview?.cash.cashExpected ?? '0.00')"
+            variant="soft"
+            highlight
+          />
+        </UPageGrid>
 
-        <dl class="grid gap-3 text-sm sm:grid-cols-3">
-          <div class="rounded-md bg-default p-3">
-            <dt class="text-xs text-muted">Cobrado en ruta</dt>
-            <dd class="font-medium text-highlighted">
-              {{ formatSoles(preview?.cash.cashCollected ?? "0.00") }}
-            </dd>
-          </div>
-          <div class="rounded-md bg-default p-3">
-            <dt class="text-xs text-muted">Entregado en paradas previas</dt>
-            <dd class="font-medium text-highlighted">
-              {{ formatSoles(preview?.cash.cashDeliveredInPreviousPits ?? "0.00") }}
-            </dd>
-          </div>
-          <div class="rounded-md bg-default p-3">
-            <dt class="text-xs text-muted">Efectivo esperado</dt>
-            <dd class="font-semibold text-primary">
-              {{ formatSoles(preview?.cash.cashExpected ?? "0.00") }}
-            </dd>
-          </div>
-        </dl>
-
-        <div class="grid gap-3 sm:grid-cols-2">
+        <UPageGrid>
           <UFormField label="Efectivo entregado">
             <UInput
               v-model="cashDelivered"
@@ -546,16 +516,20 @@ async function submit(): Promise<void> {
               class="w-full"
             />
           </UFormField>
-          <div v-if="cashPreserved !== null" class="flex flex-col justify-center">
-            <span class="text-xs text-muted">Conserva el chofer:</span>
-            <span class="font-medium text-highlighted">{{ formatSoles(cashPreserved) }}</span>
-          </div>
-        </div>
+          <UPageCard
+            v-if="cashPreserved !== null"
+            title="Conserva el chofer:"
+            :description="formatSoles(cashPreserved)"
+            variant="naked"
+          />
+        </UPageGrid>
 
-        <div v-if="cashDeliveredExceedsExpected" class="space-y-2 rounded-md bg-warning/10 p-3">
-          <p class="text-xs font-medium text-warning">
-            El chofer entrega más del efectivo esperado según el libro.
-          </p>
+        <template v-if="cashDeliveredExceedsExpected">
+          <UAlert
+            color="warning"
+            variant="subtle"
+            title="El chofer entrega más del efectivo esperado según el libro."
+          />
           <UFormField label="Motivo por entregar más de lo esperado" required>
             <UInput
               v-model="cashReason"
@@ -564,19 +538,15 @@ async function submit(): Promise<void> {
               class="w-full"
             />
           </UFormField>
-        </div>
-      </div>
+        </template>
+      </UPageCard>
 
       <!-- CAMBIO DE VEHÍCULO (OPCIONAL) -->
-      <div class="space-y-3 rounded-lg border border-default bg-elevated/40 p-4">
-        <div class="space-y-1">
-          <h4 class="font-semibold text-highlighted">Cambio de vehículo (opcional)</h4>
-          <p class="text-xs text-muted">
-            El cuadre de esta parada corresponde al vehículo que se deja. Si la ruta cambia de
-            vehículo en este pit, el nuevo vehículo pasará a ser el actual.
-          </p>
-        </div>
-
+      <UPageCard
+        title="Cambio de vehículo (opcional)"
+        description="El cuadre de esta parada corresponde al vehículo que se deja. Si la ruta cambia de vehículo en este pit, el nuevo vehículo pasará a ser el actual."
+        variant="outline"
+      >
         <UFormField label="Cambia a vehículo">
           <USelect
             v-model="selectedVehicleId"
@@ -585,7 +555,7 @@ async function submit(): Promise<void> {
               ...vehicles.map((v) => ({ label: `${v.plate} (${v.name})`, value: v.id })),
             ]"
             :disabled="submitting"
-            class="w-full sm:w-1/2"
+            class="w-full"
           />
         </UFormField>
 
@@ -600,7 +570,7 @@ async function submit(): Promise<void> {
             class="w-full"
           />
         </UFormField>
-      </div>
+      </UPageCard>
 
       <!-- NOTAS -->
       <UFormField label="Observaciones (opcional)">
@@ -621,7 +591,7 @@ async function submit(): Promise<void> {
       />
       <UAlert v-if="submitError" role="alert" color="error" variant="subtle" :title="submitError" />
 
-      <div class="flex items-center justify-end gap-3 border-t border-default pt-4">
+      <div class="flex justify-end gap-2">
         <UButton
           color="neutral"
           variant="outline"
@@ -635,6 +605,6 @@ async function submit(): Promise<void> {
           :label="submitting ? 'Registrando…' : 'Registrar parada en planta'"
         />
       </div>
-    </form>
-  </div>
+    </UForm>
+  </UPageList>
 </template>

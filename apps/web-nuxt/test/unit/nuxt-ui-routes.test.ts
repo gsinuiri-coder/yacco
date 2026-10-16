@@ -11,6 +11,11 @@ const ROUTE_TEMPLATES = [
   "../../app/components/RouteBatchStopsForm.vue",
   "../../app/components/RouteVehiclesSection.vue",
   "../../app/components/RouteLoadsSection.vue",
+  "../../app/components/RouteStopsSection.vue",
+  "../../app/components/RouteStopMarkForm.vue",
+  "../../app/components/RoutePitStopsSection.vue",
+  "../../app/components/RoutePitStopForm.vue",
+  "../../app/pages/my-route.vue",
 ];
 
 /**
@@ -23,6 +28,13 @@ const ALLOWED_CLASSES: Record<string, string> = {
   "flex justify-end gap-2": "botones de cancelar y confirmar separados y a la derecha",
   "flex flex-wrap items-center gap-2": "texto y badges en una línea, separados",
   "flex flex-wrap items-center justify-end gap-2": "confirmación en la fila, a la derecha",
+  "flex flex-wrap items-center justify-between gap-2":
+    "«Agregar producto» a la izquierda y el total de la venta a la derecha, en la misma fila",
+  "flex flex-wrap items-end gap-2":
+    "tipo de envase, cantidad y quitar en una fila, alineados por la base del campo con etiqueta",
+  "font-semibold text-highlighted":
+    "el h3 del panel de registro va junto a la dirección en el #body de UPageCard, que no le da estilo de título",
+  "mx-auto w-full max-w-xl": "«Mi ruta» se usa en el celular; en escritorio conserva ese ancho",
 };
 
 function templateOf(relativePath: string): string {
