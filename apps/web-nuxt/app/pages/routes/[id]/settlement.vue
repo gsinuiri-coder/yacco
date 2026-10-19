@@ -219,96 +219,97 @@ const settledEmpties = computed(() =>
       back-label="Volver a rutas"
       @retry="load"
     >
-      <div v-if="route && view" class="max-w-5xl space-y-6">
-        <div class="flex flex-wrap items-center gap-3">
+      <template v-if="route && view">
+        <div class="flex flex-wrap items-center gap-2">
           <UBadge
             :color="ROUTE_STATUS[route.status].color"
             variant="subtle"
             size="lg"
             :label="ROUTE_STATUS[route.status].label"
           />
-          <UAlert
-            v-if="view.unresolvedStops > 0"
-            role="status"
-            color="warning"
-            variant="subtle"
-            class="flex-1"
-            :title="
-              view.unresolvedStops === 1
-                ? 'Queda 1 parada sin resolver: lo que haya pasado ahí no está en estos números.'
-                : `Quedan ${view.unresolvedStops} paradas sin resolver: lo que haya pasado ahí no está en estos números.`
-            "
-          />
-          <UAlert
-            v-if="route.status === 'IN_PROGRESS' || route.status === 'PLANNED'"
-            role="status"
-            color="info"
-            variant="subtle"
-            class="flex-1"
-            :title="
-              route.status === 'IN_PROGRESS'
-                ? 'La ruta todavía está en curso. Se puede liquidar cuando esté terminada.'
-                : 'La ruta todavía no salió. Se puede liquidar cuando esté terminada.'
-            "
-          />
         </div>
+        <UAlert
+          v-if="view.unresolvedStops > 0"
+          role="status"
+          color="warning"
+          variant="subtle"
+          :title="
+            view.unresolvedStops === 1
+              ? 'Queda 1 parada sin resolver: lo que haya pasado ahí no está en estos números.'
+              : `Quedan ${view.unresolvedStops} paradas sin resolver: lo que haya pasado ahí no está en estos números.`
+          "
+        />
+        <UAlert
+          v-if="route.status === 'IN_PROGRESS' || route.status === 'PLANNED'"
+          role="status"
+          color="info"
+          variant="subtle"
+          :title="
+            route.status === 'IN_PROGRESS'
+              ? 'La ruta todavía está en curso. Se puede liquidar cuando esté terminada.'
+              : 'La ruta todavía no salió. Se puede liquidar cuando esté terminada.'
+          "
+        />
 
+        <!-- UPageGrid como `dl`: StatTile pinta dt/dd, que sólo valen dentro de una. -->
         <SectionCard
           title="Lo que dice el libro"
           description="Sale de lo ya registrado en la ruta; nadie lo escribe a mano."
         >
-          <dl class="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <StatTile label="Llenos que salieron" :value="view.expected.fullOut" />
-            <StatTile label="Entregados en canje" :value="view.expected.fullDelivered" />
-            <StatTile
-              label="Vendidos completos"
-              :value="view.expected.fullSold"
-              note="El cliente se quedó con el bidón: no vuelve."
-            />
-            <StatTile
-              label="Deberían volver"
-              :value="expectedFullReturn(view.expected)"
-              note="Salieron menos entregados menos vendidos."
-            />
-            <StatTile label="Vacíos recogidos" :value="view.expected.emptiesPickedUp" />
-          </dl>
-          <!-- Liquidada, el dinero de referencia es el de la fila persistida (más
+          <UPageList>
+            <UPageGrid as="dl">
+              <StatTile label="Llenos que salieron" :value="view.expected.fullOut" />
+              <StatTile label="Entregados en canje" :value="view.expected.fullDelivered" />
+              <StatTile
+                label="Vendidos completos"
+                :value="view.expected.fullSold"
+                note="El cliente se quedó con el bidón: no vuelve."
+              />
+              <StatTile
+                label="Deberían volver"
+                :value="expectedFullReturn(view.expected)"
+                note="Salieron menos entregados menos vendidos."
+              />
+              <StatTile label="Vacíos recogidos" :value="view.expected.emptiesPickedUp" />
+            </UPageGrid>
+            <!-- Liquidada, el dinero de referencia es el de la fila persistida (más
                abajo): repetirlo acá sólo invita a preguntar cuál vale. -->
-          <template v-if="settlement === null">
-            <h3 class="mt-6 mb-3 font-medium text-highlighted">Dinero</h3>
-            <dl class="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
-              <StatTile label="Total vendido" :value="formatSoles(view.expected.totalSold)" />
-              <StatTile label="Cobrado" :value="formatSoles(view.expected.totalCollected)" />
-              <StatTile
-                label="En efectivo"
-                :value="formatSoles(view.expected.totalCashCollected)"
-                note="Total cobrado en efectivo."
-              />
-              <StatTile
-                label="Entregado en pits"
-                :value="formatSoles(view.expected.totalCashDeliveredInPits ?? '0.00')"
-                note="Entregado en paradas en planta."
-              />
-              <StatTile
-                label="Falta entregar"
-                :value="
-                  formatSoles(
-                    subtractAmounts(
-                      view.expected.totalCashCollected,
-                      view.expected.totalCashDeliveredInPits ?? '0.00',
-                    ),
-                  )
-                "
-                note="Lo que el chofer trae en la mano."
-              />
-              <StatTile
-                label="Por confirmar"
-                :value="formatSoles(view.expected.totalPendingConfirmation)"
-                note="Yape, Plin o transferencias sin verificar."
-              />
-              <StatTile label="Al fiado" :value="formatSoles(view.expected.totalOnCredit)" />
-            </dl>
-          </template>
+            <UPageCard v-if="settlement === null" variant="naked">
+              <template #title><h3>Dinero</h3></template>
+              <UPageGrid as="dl">
+                <StatTile label="Total vendido" :value="formatSoles(view.expected.totalSold)" />
+                <StatTile label="Cobrado" :value="formatSoles(view.expected.totalCollected)" />
+                <StatTile
+                  label="En efectivo"
+                  :value="formatSoles(view.expected.totalCashCollected)"
+                  note="Total cobrado en efectivo."
+                />
+                <StatTile
+                  label="Entregado en pits"
+                  :value="formatSoles(view.expected.totalCashDeliveredInPits ?? '0.00')"
+                  note="Entregado en paradas en planta."
+                />
+                <StatTile
+                  label="Falta entregar"
+                  :value="
+                    formatSoles(
+                      subtractAmounts(
+                        view.expected.totalCashCollected,
+                        view.expected.totalCashDeliveredInPits ?? '0.00',
+                      ),
+                    )
+                  "
+                  note="Lo que el chofer trae en la mano."
+                />
+                <StatTile
+                  label="Por confirmar"
+                  :value="formatSoles(view.expected.totalPendingConfirmation)"
+                  note="Yape, Plin o transferencias sin verificar."
+                />
+                <StatTile label="Al fiado" :value="formatSoles(view.expected.totalOnCredit)" />
+              </UPageGrid>
+            </UPageCard>
+          </UPageList>
         </SectionCard>
 
         <SectionCard
@@ -316,7 +317,14 @@ const settledEmpties = computed(() =>
           title="Lo que se contó en la puerta"
           description="Lo único que se cuenta a mano. Todo lo demás sale del libro."
         >
-          <form class="space-y-6" novalidate aria-label="Liquidar la ruta" @submit.prevent="settle">
+          <UForm
+            :state="{}"
+            :validate-on="[]"
+            :loading-auto="false"
+            novalidate
+            aria-label="Liquidar la ruta"
+            @submit="settle"
+          >
             <SettlementCountSheet
               v-if="fullRows.length > 0"
               v-model="fullsByType"
@@ -377,7 +385,7 @@ const settledEmpties = computed(() =>
                     respecto del libro).
                   </li>
                 </ul>
-                <p class="mt-1">
+                <p>
                   Se puede liquidar igual: la diferencia queda registrada, no bloquea el cierre.
                 </p>
               </template>
@@ -398,10 +406,9 @@ const settledEmpties = computed(() =>
               :title="submitError"
             />
 
-            <div class="flex items-center justify-end gap-4 border-t border-default pt-5">
-              <p v-if="!canSettle" class="text-sm text-muted">
-                Sólo se liquida una ruta terminada.
-              </p>
+            <USeparator />
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              <p v-if="!canSettle">Sólo se liquida una ruta terminada.</p>
               <UButton
                 type="submit"
                 icon="i-lucide-scale"
@@ -409,7 +416,7 @@ const settledEmpties = computed(() =>
                 :label="submitting ? 'Liquidando…' : 'Liquidar la ruta'"
               />
             </div>
-          </form>
+          </UForm>
         </SectionCard>
 
         <SectionCard
@@ -417,7 +424,7 @@ const settledEmpties = computed(() =>
           title="Liquidada"
           :description="`Cerrada el ${formatInstantInLima(settlement.settledAt)}.`"
         >
-          <div class="space-y-6">
+          <UPageList>
             <!-- Dice lo que el dato mide y nada más: se corrigió una parada después
                  del cierre. No dice que la liquidación esté mal (corregir una ruta
                  liquidada está permitido a propósito). -->
@@ -430,7 +437,7 @@ const settledEmpties = computed(() =>
               title="Se corrigió una parada después de cerrar esta liquidación."
             />
 
-            <dl class="grid gap-3 sm:grid-cols-4">
+            <UPageGrid as="dl">
               <StatTile label="Llenos que volvieron" :value="settlement.fullReturned" />
               <StatTile label="Vacíos contados" :value="settlement.emptiesCollected" />
               <StatTile
@@ -452,11 +459,11 @@ const settledEmpties = computed(() =>
                     : undefined
                 "
               />
-            </dl>
+            </UPageGrid>
 
-            <div v-if="settlement.emptiesCollectedByType.length > 0">
-              <h3 class="mb-2 font-medium text-highlighted">Vacíos descargados, por tipo</h3>
-              <ul class="space-y-1 text-sm">
+            <UPageCard v-if="settlement.emptiesCollectedByType.length > 0" variant="naked">
+              <template #title><h3>Vacíos descargados, por tipo</h3></template>
+              <ul>
                 <li v-for="line in settlement.emptiesCollectedByType" :key="line.containerTypeId">
                   {{ line.containerTypeName }}: {{ line.quantity }}
                   <span v-if="differences" class="text-warning">{{
@@ -464,14 +471,12 @@ const settledEmpties = computed(() =>
                   }}</span>
                 </li>
               </ul>
-            </div>
+            </UPageCard>
 
-            <p v-if="settlement.notes" class="text-sm">
-              <span class="font-medium text-highlighted">Nota:</span> {{ settlement.notes }}
-            </p>
+            <p v-if="settlement.notes"><strong>Nota:</strong> {{ settlement.notes }}</p>
 
-            <div>
-              <h3 class="mb-3 font-medium text-highlighted">Dinero de la ruta</h3>
+            <UPageCard variant="naked">
+              <template #title><h3>Dinero de la ruta</h3></template>
               <!-- La misma deriva tiene dos causas y sólo una se nombra con certeza:
                    sin corrección posterior, lo único que pudo mover el dinero es un
                    pago resuelto. Con corrección, atribuirlo a los pagos sería
@@ -481,14 +486,13 @@ const settledEmpties = computed(() =>
                 role="status"
                 color="warning"
                 variant="subtle"
-                class="mb-3"
                 :title="
                   view.settlementOutdated
                     ? `Estos son los montos del momento en que se liquidó. El libro hoy dice ${formatSoles(view.expected.totalCollected)} cobrado.`
                     : `Estos son los montos del momento en que se liquidó. Desde entonces se resolvió algún pago que estaba por confirmar, así que el libro hoy dice ${formatSoles(view.expected.totalCollected)} cobrado.`
                 "
               />
-              <dl class="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
+              <UPageGrid as="dl">
                 <StatTile label="Total vendido" :value="formatSoles(settlement.totalSold)" />
                 <StatTile label="Cobrado" :value="formatSoles(settlement.totalCollected)" />
                 <StatTile label="En efectivo" :value="formatSoles(settlement.totalCashCollected)" />
@@ -512,11 +516,11 @@ const settledEmpties = computed(() =>
                   :value="formatSoles(settlement.totalPendingConfirmation)"
                 />
                 <StatTile label="Al fiado" :value="formatSoles(settlement.totalOnCredit)" />
-              </dl>
-            </div>
-          </div>
+              </UPageGrid>
+            </UPageCard>
+          </UPageList>
         </SectionCard>
-      </div>
+      </template>
     </ResourceState>
   </AppPage>
 </template>

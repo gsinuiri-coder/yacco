@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TableColumn } from "@nuxt/ui";
 import type { CountSheetRow } from "../utils/settlement";
 
 /**
@@ -23,49 +24,39 @@ const counts = defineModel<Record<string, string>>({ required: true });
 function gapOf(row: CountSheetRow): number {
   return row.expected - (emptiesCountOrNull(counts.value[row.type.id] ?? "") ?? 0);
 }
+
+const columns: TableColumn<CountSheetRow>[] = [
+  { id: "type", header: "Tipo de envase" },
+  { accessorKey: "expected", header: "Según el libro", meta: RIGHT_ALIGNED },
+  { id: "counted", header: "Contados" },
+  { id: "gap", header: "Diferencia", meta: RIGHT_ALIGNED },
+];
 </script>
 
 <template>
-  <div class="space-y-2">
-    <h3 class="font-medium text-highlighted">{{ title }}</h3>
-    <p class="text-sm text-muted">{{ description }}</p>
-    <table class="w-full text-sm">
-      <caption class="sr-only">
-        {{
-          caption
-        }}
-      </caption>
-      <thead class="text-left text-xs tracking-wide text-muted uppercase">
-        <tr>
-          <th scope="col" class="py-2 font-medium">Tipo de envase</th>
-          <th scope="col" class="py-2 text-right font-medium">Según el libro</th>
-          <th scope="col" class="py-2 pl-6 font-medium">Contados</th>
-          <th scope="col" class="py-2 text-right font-medium">Diferencia</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-default">
-        <tr v-for="row in rows" :key="row.type.id">
-          <td class="py-2 font-medium text-highlighted">{{ row.type.name }}</td>
-          <td class="py-2 text-right tabular-nums">{{ row.expected }}</td>
-          <td class="py-2 pl-6">
-            <UInput
-              v-model="counts[row.type.id]"
-              type="number"
-              :min="0"
-              :step="1"
-              :aria-label="`${inputLabel} ${row.type.name}`"
-              :disabled="disabled"
-              class="w-28"
-            />
-          </td>
-          <td
-            class="py-2 text-right font-medium tabular-nums"
-            :class="gapOf(row) === 0 ? 'text-success' : 'text-warning'"
-          >
-            {{ gapOf(row) === 0 ? "Cuadra" : describeDifference(gapOf(row)) }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+  <UPageCard variant="naked" :description="description">
+    <template #title>
+      <h3>{{ title }}</h3>
+    </template>
+    <UTable :data="rows" :columns="columns" :caption="caption">
+      <template #type-cell="{ row }">{{ row.original.type.name }}</template>
+      <template #counted-cell="{ row }">
+        <UInput
+          v-model="counts[row.original.type.id]"
+          type="number"
+          :min="0"
+          :step="1"
+          :aria-label="`${inputLabel} ${row.original.type.name}`"
+          :disabled="disabled"
+        />
+      </template>
+      <template #gap-cell="{ row }">
+        <UBadge
+          :color="gapOf(row.original) === 0 ? 'success' : 'warning'"
+          variant="subtle"
+          :label="gapOf(row.original) === 0 ? 'Cuadra' : describeDifference(gapOf(row.original))"
+        />
+      </template>
+    </UTable>
+  </UPageCard>
 </template>
