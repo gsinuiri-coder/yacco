@@ -17,20 +17,22 @@ defineEmits<{ retry: [] }>();
 </script>
 
 <template>
-  <div v-if="!isAdmin" class="rounded-lg border border-default bg-default p-6">
-    <p class="font-medium text-highlighted">Este reporte es solo para administradores</p>
-    <p class="mt-1 text-muted">Lo revisa el dueño de la planta.</p>
-  </div>
-  <template v-else>
+  <UAlert
+    v-if="!isAdmin"
+    color="neutral"
+    variant="outline"
+    title="Este reporte es solo para administradores"
+    description="Lo revisa el dueño de la planta."
+  />
+  <UPageBody v-else>
     <UAlert
       v-if="slow && loading"
       role="status"
       color="neutral"
       variant="subtle"
       :title="SLOW_REQUEST_MESSAGE"
-      class="mb-4"
     />
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
+    <UCard>
       <ListStatus
         v-if="loading || errorMessage || empty"
         :error-message="errorMessage"
@@ -44,5 +46,5 @@ defineEmits<{ retry: [] }>();
       />
       <slot v-else />
     </UCard>
-  </template>
+  </UPageBody>
 </template>
