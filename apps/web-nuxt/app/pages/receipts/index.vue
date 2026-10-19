@@ -59,11 +59,7 @@ const columns: TableColumn<ReceiptRow>[] = [
   { accessorKey: "customer", header: "Cliente" },
   { accessorKey: "medium", header: "Medio" },
   { accessorKey: "issuedOn", header: "Emisión" },
-  {
-    accessorKey: "total",
-    header: "Total",
-    meta: { class: { th: "text-right", td: "text-right" } },
-  },
+  { accessorKey: "total", header: "Total", meta: RIGHT_ALIGNED },
   { accessorKey: "status", header: "Estado" },
 ];
 
@@ -80,32 +76,34 @@ const summary = computed(() => {
       <UButton to="/receipts/new" icon="i-lucide-plus" label="Registrar comprobante" />
     </template>
 
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
-        <UFormField label="Tipo" class="w-40">
-          <USelect v-model="type" :items="typeItems" class="w-full" />
-        </UFormField>
-        <UFormField label="Medio" class="w-40">
-          <USelect v-model="medium" :items="mediumItems" class="w-full" />
-        </UFormField>
-        <UFormField label="Estado" class="w-40">
-          <USelect v-model="status" :items="statusItems" class="w-full" />
-        </UFormField>
-        <UFormField label="Emitido desde">
-          <UInput v-model="issuedFrom" type="date" />
-        </UFormField>
-        <UFormField label="Emitido hasta">
-          <UInput v-model="issuedTo" type="date" />
-        </UFormField>
-        <UButton
-          v-if="hasFilters"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-x"
-          label="Limpiar filtros"
-          @click="clearFilters"
-        />
-      </div>
+    <UCard>
+      <template #header>
+        <UPageGrid>
+          <UFormField label="Tipo">
+            <USelect v-model="type" :items="typeItems" />
+          </UFormField>
+          <UFormField label="Medio">
+            <USelect v-model="medium" :items="mediumItems" />
+          </UFormField>
+          <UFormField label="Estado">
+            <USelect v-model="status" :items="statusItems" />
+          </UFormField>
+          <UFormField label="Emitido desde">
+            <UInput v-model="issuedFrom" type="date" />
+          </UFormField>
+          <UFormField label="Emitido hasta">
+            <UInput v-model="issuedTo" type="date" />
+          </UFormField>
+          <UButton
+            v-if="hasFilters"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-x"
+            label="Limpiar filtros"
+            @click="clearFilters"
+          />
+        </UPageGrid>
+      </template>
 
       <ListStatus
         v-if="list.errorMessage.value || list.firstLoad.value || list.items.value.length === 0"
@@ -144,51 +142,39 @@ const summary = computed(() => {
       </ListStatus>
 
       <template v-else>
-        <div class="overflow-x-auto">
-          <UTable
-            :data="list.items.value"
-            :columns="columns"
-            caption="Comprobantes registrados"
-            :ui="{ caption: 'sr-only' }"
-          >
-            <template #number-cell="{ row }">
-              <ULink
-                :to="`/receipts/${row.original.id}`"
-                class="font-medium text-primary hover:underline"
-              >
-                {{ receiptNumber(row.original.series, row.original.number) }}
-              </ULink>
-              <p class="mt-1">
-                <UBadge
-                  :color="RECEIPT_TYPE[row.original.type].color"
-                  variant="subtle"
-                  :label="RECEIPT_TYPE[row.original.type].label"
-                />
-              </p>
-            </template>
-            <template #customer-cell="{ row }">
-              <span class="font-medium text-highlighted">{{ row.original.customer.name }}</span>
-            </template>
-            <template #medium-cell="{ row }">
-              {{ RECEIPT_MEDIUM[row.original.medium].label }}
-            </template>
-            <template #issuedOn-cell="{ row }">
-              <span class="tabular-nums">{{ formatCalendarDay(row.original.issuedOn) }}</span>
-            </template>
-            <template #total-cell="{ row }">
-              <span class="font-medium text-highlighted tabular-nums">
-                {{ formatSoles(row.original.total) }}
-              </span>
-            </template>
-            <template #status-cell="{ row }">
-              <UBadge
-                :color="RECEIPT_STATUS[row.original.status].color"
-                variant="subtle"
-                :label="RECEIPT_STATUS[row.original.status].label"
-              />
-            </template>
-          </UTable>
-        </div>
+        <UTable :data="list.items.value" :columns="columns" caption="Comprobantes registrados">
+          <template #number-cell="{ row }">
+            <UButton
+              :to="`/receipts/${row.original.id}`"
+              variant="link"
+              :label="receiptNumber(row.original.series, row.original.number)"
+            />
+            <UBadge
+              :color="RECEIPT_TYPE[row.original.type].color"
+              variant="subtle"
+              :label="RECEIPT_TYPE[row.original.type].label"
+            />
+          </template>
+          <template #customer-cell="{ row }">
+            {{ row.original.customer.name }}
+          </template>
+          <template #medium-cell="{ row }">
+            {{ RECEIPT_MEDIUM[row.original.medium].label }}
+          </template>
+          <template #issuedOn-cell="{ row }">
+            {{ formatCalendarDay(row.original.issuedOn) }}
+          </template>
+          <template #total-cell="{ row }">
+            {{ formatSoles(row.original.total) }}
+          </template>
+          <template #status-cell="{ row }">
+            <UBadge
+              :color="RECEIPT_STATUS[row.original.status].color"
+              variant="subtle"
+              :label="RECEIPT_STATUS[row.original.status].label"
+            />
+          </template>
+        </UTable>
 
         <ListPagination
           :shown-page="list.shownPage.value"

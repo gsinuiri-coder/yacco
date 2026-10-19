@@ -73,14 +73,10 @@ function fileKind(contentType: string): string {
 }
 
 const saleColumns: TableColumn<ReceiptSaleStatusRow>[] = [
-  { id: "select", meta: { class: { td: "w-0" } } },
+  { id: "select", header: hiddenHeader("Elegir"), meta: SHRINK_TO_CONTENT },
   { accessorKey: "soldAt", header: "Venta" },
   { accessorKey: "location", header: "Local" },
-  {
-    accessorKey: "total",
-    header: "Total",
-    meta: { class: { th: "text-right", td: "text-right" } },
-  },
+  { accessorKey: "total", header: "Total", meta: RIGHT_ALIGNED },
 ];
 
 const typeItems = [
@@ -366,115 +362,104 @@ async function retryFiles(): Promise<void> {
         icon="i-lucide-arrow-left"
         label="Volver a comprobantes"
         aria-label="Volver a comprobantes"
-        :ui="{ label: 'hidden sm:inline' }"
       />
     </template>
 
-    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
-      <div class="space-y-6">
-        <UCard>
-          <template #header>
-            <div>
-              <h2 class="text-lg font-semibold text-highlighted">Cliente y ventas</h2>
-              <p class="text-sm text-muted">Solo se muestran ventas que todavía están libres.</p>
-            </div>
-          </template>
+    <UPageBody>
+      <SectionCard
+        title="Cliente y ventas"
+        description="Solo se muestran ventas que todavía están libres."
+      >
+        <UPageBody>
+          <UAlert
+            v-if="restoreSource"
+            color="info"
+            variant="subtle"
+            icon="i-lucide-rotate-ccw"
+            :title="`Volver a registrar ${RECEIPT_TYPE[restoreSource.type].label} ${receiptNumber(restoreSource.series, restoreSource.number)}`"
+            description="Se registra como un comprobante nuevo; el anulado sigue a la vista."
+          />
+          <UAlert
+            v-if="restoreSalesTaken"
+            role="alert"
+            color="error"
+            variant="subtle"
+            title="Una o más ventas del original ya tienen otro comprobante."
+            description="Anula ese comprobante antes de volver a registrar el original."
+          />
+          <CustomerPicker
+            v-model="customer"
+            label="Cliente"
+            :disabled="customerLoading || saving || createdReceiptId !== null"
+          />
+          <UAlert
+            v-if="customer"
+            color="neutral"
+            variant="soft"
+            icon="i-lucide-user-round"
+            :title="customer.name"
+            :description="customer.phone"
+          />
+          <UAlert
+            v-if="salesError"
+            role="alert"
+            color="error"
+            variant="subtle"
+            :title="salesError"
+          />
+          <UAlert
+            v-else-if="salesLoading"
+            role="status"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-loader-circle"
+            title="Cargando ventas sin comprobante…"
+          />
+          <UAlert
+            v-else-if="customer && sales.length === 0"
+            color="neutral"
+            variant="soft"
+            title="Este cliente no tiene ventas sin comprobante"
+          />
+          <UTable
+            v-else-if="sales.length > 0"
+            :data="sales"
+            :columns="saleColumns"
+            caption="Ventas sin comprobante"
+          >
+            <template #select-cell="{ row }">
+              <UCheckbox
+                :model-value="selectedSaleIds.includes(row.original.id)"
+                :aria-label="`${formatInstantInLima(row.original.soldAt)} · ${row.original.location.name} · ${formatSoles(row.original.total)}`"
+                :disabled="saving || createdReceiptId !== null"
+                @update:model-value="
+                  (checked: boolean | 'indeterminate') =>
+                    toggleSale(row.original.id, checked === true)
+                "
+              />
+            </template>
+            <template #soldAt-cell="{ row }">
+              {{ formatInstantInLima(row.original.soldAt) }}
+            </template>
+            <template #location-cell="{ row }">
+              {{ row.original.location.name }}
+              <UBadge
+                v-if="row.original.status === 'EXEMPT'"
+                color="warning"
+                variant="subtle"
+                label="Marcada «No lleva comprobante»: se libera al registrar"
+              />
+            </template>
+            <template #total-cell="{ row }">
+              {{ formatSoles(row.original.total) }}
+            </template>
+          </UTable>
+        </UPageBody>
+      </SectionCard>
 
-          <div class="space-y-4">
-            <UAlert
-              v-if="restoreSource"
-              color="info"
-              variant="subtle"
-              icon="i-lucide-rotate-ccw"
-              :title="`Volver a registrar ${RECEIPT_TYPE[restoreSource.type].label} ${receiptNumber(restoreSource.series, restoreSource.number)}`"
-              description="Se registra como un comprobante nuevo; el anulado sigue a la vista."
-            />
-            <UAlert
-              v-if="restoreSalesTaken"
-              role="alert"
-              color="error"
-              variant="subtle"
-              title="Una o más ventas del original ya tienen otro comprobante."
-              description="Anula ese comprobante antes de volver a registrar el original."
-            />
-            <CustomerPicker
-              v-model="customer"
-              label="Cliente"
-              :disabled="customerLoading || saving || createdReceiptId !== null"
-            />
-            <UAlert
-              v-if="customer"
-              color="neutral"
-              variant="soft"
-              icon="i-lucide-user-round"
-              :title="customer.name"
-              :description="customer.phone"
-            />
-            <UAlert
-              v-if="salesError"
-              role="alert"
-              color="error"
-              variant="subtle"
-              :title="salesError"
-            />
-            <div v-else-if="salesLoading" role="status" class="flex items-center gap-2 text-muted">
-              <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
-              Cargando ventas sin comprobante…
-            </div>
-            <UAlert
-              v-else-if="customer && sales.length === 0"
-              color="neutral"
-              variant="soft"
-              title="Este cliente no tiene ventas sin comprobante"
-            />
-            <UTable
-              v-else-if="sales.length > 0"
-              :data="sales"
-              :columns="saleColumns"
-              caption="Ventas sin comprobante"
-              :ui="{ caption: 'sr-only' }"
-            >
-              <template #select-header>
-                <span class="sr-only">Elegir</span>
-              </template>
-              <template #select-cell="{ row }">
-                <UCheckbox
-                  :model-value="selectedSaleIds.includes(row.original.id)"
-                  :aria-label="`${formatInstantInLima(row.original.soldAt)} · ${row.original.location.name} · ${formatSoles(row.original.total)}`"
-                  :disabled="saving || createdReceiptId !== null"
-                  @update:model-value="
-                    (checked: boolean | 'indeterminate') =>
-                      toggleSale(row.original.id, checked === true)
-                  "
-                />
-              </template>
-              <template #soldAt-cell="{ row }">
-                <span class="tabular-nums">{{ formatInstantInLima(row.original.soldAt) }}</span>
-              </template>
-              <template #location-cell="{ row }">
-                <span class="font-medium text-highlighted">{{ row.original.location.name }}</span>
-                <UBadge
-                  v-if="row.original.status === 'EXEMPT'"
-                  class="ml-2"
-                  color="warning"
-                  variant="subtle"
-                  label="Marcada «No lleva comprobante»: se libera al registrar"
-                />
-              </template>
-              <template #total-cell="{ row }">
-                <span class="font-medium text-highlighted tabular-nums">
-                  {{ formatSoles(row.original.total) }}
-                </span>
-              </template>
-            </UTable>
-          </div>
-        </UCard>
-
-        <UCard>
-          <template #header>
-            <h2 class="text-lg font-semibold text-highlighted">Datos del comprobante</h2>
-          </template>
-          <div class="grid gap-4 sm:grid-cols-2">
+      <SectionCard title="Datos del comprobante">
+        <UPageBody>
+          <UPageGrid>
             <UFormField label="Tipo" required>
               <USelect
                 v-model="type"
@@ -525,37 +510,28 @@ async function retryFiles(): Promise<void> {
                 @change="chooseFiles"
               />
             </UFormField>
-          </div>
-          <ul v-if="files.length > 0" class="mt-2 space-y-1 text-sm text-highlighted">
+          </UPageGrid>
+          <ul v-if="files.length > 0">
             <li v-for="file in files" :key="`${file.name}-${file.size}`">{{ file.name }}</li>
           </ul>
           <UCheckbox
             v-if="reusableFiles.length > 0"
             v-model="reuseFiles"
-            class="mt-4"
             :label="reuseLabel"
             :disabled="saving || createdReceiptId !== null"
           />
           <UAlert
             v-if="unusualSeries"
-            class="mt-4"
             color="warning"
             variant="subtle"
             title="La serie no tiene el formato habitual"
             description="Revísala contra el talonario o el portal. Este aviso no impide registrarla."
           />
-        </UCard>
-      </div>
+        </UPageBody>
+      </SectionCard>
 
-      <UCard>
-        <template #header>
-          <div>
-            <h2 class="text-lg font-semibold text-highlighted">Montos</h2>
-            <p class="text-sm text-muted">Los calcula la API con la versión fiscal vigente.</p>
-          </div>
-        </template>
-
-        <div class="space-y-4">
+      <SectionCard title="Montos" description="Los calcula la API con la versión fiscal vigente.">
+        <UPageBody>
           <UAlert
             v-if="previewError"
             role="alert"
@@ -579,33 +555,14 @@ async function retryFiles(): Promise<void> {
             @click="calculatePreview"
           />
 
-          <section v-if="preview" aria-label="Vista previa de montos" class="space-y-4">
-            <dl class="space-y-3 text-sm">
-              <div class="flex items-center justify-between gap-4">
-                <dt class="text-muted">Base imponible</dt>
-                <dd class="font-medium text-highlighted tabular-nums">
-                  {{ formatSoles(preview.taxableAmount) }}
-                </dd>
-              </div>
-              <div class="flex items-center justify-between gap-4">
-                <dt class="text-muted">IGV</dt>
-                <dd class="font-medium text-highlighted tabular-nums">
-                  {{ formatSoles(preview.taxAmount) }}
-                </dd>
-              </div>
-              <div class="flex items-center justify-between gap-4">
-                <dt class="text-muted">Tasa</dt>
-                <dd class="font-medium text-highlighted tabular-nums">
-                  IGV {{ preview.taxRate }} %
-                </dd>
-              </div>
-              <div class="flex items-center justify-between gap-4 border-t border-default pt-3">
-                <dt class="font-medium text-highlighted">Total</dt>
-                <dd class="font-display text-xl font-semibold text-highlighted tabular-nums">
-                  {{ formatSoles(preview.total) }}
-                </dd>
-              </div>
-            </dl>
+          <UPageBody v-if="preview" as="section" aria-label="Vista previa de montos">
+            <!-- UPageGrid como `dl`: StatTile pinta dt/dd, que sólo valen dentro de una. -->
+            <UPageGrid as="dl">
+              <StatTile label="Base imponible" :value="formatSoles(preview.taxableAmount)" />
+              <StatTile label="IGV" :value="formatSoles(preview.taxAmount)" />
+              <StatTile label="Tasa" :value="`IGV ${preview.taxRate} %`" />
+              <StatTile label="Total" :value="formatSoles(preview.total)" />
+            </UPageGrid>
             <UButton
               block
               :label="confirmUnusualSeries ? 'Registrar de todas formas' : 'Registrar comprobante'"
@@ -613,9 +570,9 @@ async function retryFiles(): Promise<void> {
               :disabled="saving"
               @click="submit"
             />
-          </section>
+          </UPageBody>
 
-          <div v-if="createdReceiptId !== null && saveError" class="space-y-2">
+          <UPageBody v-if="createdReceiptId !== null && saveError">
             <UButton block label="Reintentar adjuntos" :loading="saving" @click="retryFiles" />
             <UButton
               block
@@ -624,9 +581,9 @@ async function retryFiles(): Promise<void> {
               :to="`/receipts/${createdReceiptId}`"
               label="Ver comprobante registrado"
             />
-          </div>
-        </div>
-      </UCard>
-    </div>
+          </UPageBody>
+        </UPageBody>
+      </SectionCard>
+    </UPageBody>
   </AppPage>
 </template>
