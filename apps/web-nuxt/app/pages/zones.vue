@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Weekday, Zone, ZoneCustomerCounts } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 /**
  * El catálogo por el que el padrón y los reportes agrupan clientes. Mismos
@@ -184,6 +185,16 @@ async function setActive(id: string, active: boolean): Promise<void> {
     savingAction.value = false;
   }
 }
+
+const columns = computed<TableColumn<Zone>[]>(() => [
+  { accessorKey: "name", header: "Zona" },
+  { id: "deliveryDays", header: "Días de reparto" },
+  { id: "activeCustomers", header: "Clientes activos", meta: RIGHT_ALIGNED },
+  { id: "status", header: "Estado" },
+  ...(isAdmin.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
 </script>
 
 <template>
@@ -198,9 +209,16 @@ async function setActive(id: string, active: boolean): Promise<void> {
       />
     </template>
 
-    <div class="space-y-6">
+    <UPageBody>
       <UCard v-if="adding">
-        <div class="space-y-4">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          aria-label="Nueva zona"
+          @submit="create"
+        >
           <UAlert
             v-if="createError"
             role="alert"
@@ -208,49 +226,43 @@ async function setActive(id: string, active: boolean): Promise<void> {
             variant="subtle"
             :title="createError"
           />
-          <form class="space-y-4" novalidate aria-label="Nueva zona" @submit.prevent="create">
-            <UFormField label="Nombre">
-              <UInput
-                v-model="newName"
-                placeholder="Norte"
-                :maxlength="80"
-                :disabled="creating"
-                class="w-full"
-              />
-            </UFormField>
-            <DeliveryDaysField
-              id-prefix="newZone"
-              label="Días de reparto (opcional)"
-              :model-value="newDeliveryDays"
+          <UFormField label="Nombre">
+            <UInput
+              v-model="newName"
+              placeholder="Norte"
+              :maxlength="80"
               :disabled="creating"
-              @update:model-value="(days: Weekday[]) => (newDeliveryDays = days)"
+              class="w-full"
             />
-            <div class="flex justify-end gap-2 border-t border-default pt-4">
-              <UButton
-                color="neutral"
-                variant="outline"
-                label="Cancelar"
-                :disabled="creating"
-                @click="adding = false"
-              />
-              <UButton
-                type="submit"
-                :label="creating ? 'Guardando…' : 'Guardar'"
-                :disabled="creating"
-              />
-            </div>
-          </form>
-        </div>
+          </UFormField>
+          <DeliveryDaysField
+            id-prefix="newZone"
+            label="Días de reparto (opcional)"
+            :model-value="newDeliveryDays"
+            :disabled="creating"
+            @update:model-value="(days: Weekday[]) => (newDeliveryDays = days)"
+          />
+          <div class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancelar"
+              :disabled="creating"
+              @click="adding = false"
+            />
+            <UButton
+              type="submit"
+              :label="creating ? 'Guardando…' : 'Guardar'"
+              :disabled="creating"
+            />
+          </div>
+        </UForm>
       </UCard>
 
       <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
 
-      <p v-if="withoutZoneLabel" class="text-sm font-medium text-highlighted">
-        {{ withoutZoneLabel }}
-      </p>
-      <p v-else-if="countsFailed" role="status" class="text-sm text-muted">
-        No se pudo contar los clientes por zona.
-      </p>
+      <p v-if="withoutZoneLabel">{{ withoutZoneLabel }}</p>
+      <p v-else-if="countsFailed" role="status">No se pudo contar los clientes por zona.</p>
 
       <UAlert
         v-if="slow && loading"
@@ -272,116 +284,102 @@ async function setActive(id: string, active: boolean): Promise<void> {
         @retry="loadZones"
       />
 
-      <UCard v-else :ui="{ body: 'p-0 sm:p-0' }">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              Zonas con sus días de reparto, sus clientes activos y estado
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-4 py-2 font-medium">Zona</th>
-                <th scope="col" class="px-4 py-2 font-medium">Días de reparto</th>
-                <th scope="col" class="px-4 py-2 text-right font-medium">Clientes activos</th>
-                <th scope="col" class="px-4 py-2 font-medium">Estado</th>
-                <th v-if="isAdmin" scope="col" class="px-4 py-2">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="zone in zones" :key="zone.id">
-                <td class="px-4 py-3">
-                  <UInput
-                    v-if="editingId === zone.id"
-                    :model-value="editName"
-                    :aria-label="`Nuevo nombre de ${zone.name}`"
-                    :maxlength="80"
-                    :disabled="savingAction"
-                    class="w-full"
-                    @update:model-value="(value: string | number) => (editName = String(value))"
-                  />
-                  <span v-else class="font-medium text-highlighted">{{ zone.name }}</span>
-                </td>
-                <td class="px-4 py-3">
-                  <DeliveryDaysField
-                    v-if="editingId === zone.id"
-                    :id-prefix="`editZone-${zone.id}`"
-                    :label="`Días de reparto de ${zone.name}`"
-                    hide-label
-                    :model-value="editDeliveryDays"
-                    :disabled="savingAction"
-                    @update:model-value="(days: Weekday[]) => (editDeliveryDays = days)"
-                  />
-                  <span v-else class="text-muted">{{ formatDeliveryDays(zone.deliveryDays) }}</span>
-                </td>
-                <td class="px-4 py-3 text-right tabular-nums">{{ activeCustomersOf(zone.id) }}</td>
-                <td class="px-4 py-3">
-                  <UBadge
-                    :color="zone.active ? 'success' : 'neutral'"
-                    variant="subtle"
-                    :label="zone.active ? 'En uso' : 'Retirada'"
-                  />
-                </td>
-                <td v-if="isAdmin" class="px-4 py-3">
-                  <WithdrawConfirm
-                    v-if="withdrawingId === zone.id"
-                    :item-label="zone.name"
-                    :explanation="WITHDRAW_EXPLANATION"
-                    :saving="savingAction"
-                    @cancel="withdrawingId = null"
-                    @confirm="setActive(zone.id, false)"
-                  />
-                  <div v-else-if="editingId === zone.id" class="flex justify-end gap-2">
-                    <UButton
-                      color="neutral"
-                      variant="outline"
-                      size="sm"
-                      label="Cancelar"
-                      :disabled="savingAction"
-                      @click="editingId = null"
-                    />
-                    <UButton
-                      size="sm"
-                      :label="savingAction ? 'Guardando…' : 'Guardar'"
-                      :disabled="savingAction"
-                      @click="saveEdit(zone.id)"
-                    />
-                  </div>
-                  <div v-else class="flex justify-end gap-2">
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Editar"
-                      :disabled="savingAction"
-                      @click="startEdit(zone)"
-                    />
-                    <UButton
-                      v-if="zone.active"
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Retirar"
-                      :disabled="savingAction"
-                      @click="startWithdraw(zone.id)"
-                    />
-                    <UButton
-                      v-else
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      :label="savingAction ? 'Reactivando…' : 'Reactivar'"
-                      :disabled="savingAction"
-                      @click="setActive(zone.id, true)"
-                    />
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <UCard v-else>
+        <UTable
+          :data="zones"
+          :columns="columns"
+          caption="Zonas con sus días de reparto, sus clientes activos y estado"
+        >
+          <template #name-cell="{ row }">
+            <UInput
+              v-if="editingId === row.original.id"
+              :model-value="editName"
+              :aria-label="`Nuevo nombre de ${row.original.name}`"
+              :maxlength="80"
+              :disabled="savingAction"
+              class="w-full"
+              @update:model-value="(value: string | number) => (editName = String(value))"
+            />
+            <template v-else>{{ row.original.name }}</template>
+          </template>
+          <template #deliveryDays-cell="{ row }">
+            <DeliveryDaysField
+              v-if="editingId === row.original.id"
+              :id-prefix="`editZone-${row.original.id}`"
+              :label="`Días de reparto de ${row.original.name}`"
+              hide-label
+              :model-value="editDeliveryDays"
+              :disabled="savingAction"
+              @update:model-value="(days: Weekday[]) => (editDeliveryDays = days)"
+            />
+            <template v-else>{{ formatDeliveryDays(row.original.deliveryDays) }}</template>
+          </template>
+          <template #activeCustomers-cell="{ row }">
+            {{ activeCustomersOf(row.original.id) }}
+          </template>
+          <template #status-cell="{ row }">
+            <UBadge
+              :color="row.original.active ? 'success' : 'neutral'"
+              variant="subtle"
+              :label="row.original.active ? 'En uso' : 'Retirada'"
+            />
+          </template>
+          <template #actions-cell="{ row }">
+            <WithdrawConfirm
+              v-if="withdrawingId === row.original.id"
+              :item-label="row.original.name"
+              :explanation="WITHDRAW_EXPLANATION"
+              :saving="savingAction"
+              @cancel="withdrawingId = null"
+              @confirm="setActive(row.original.id, false)"
+            />
+            <div v-else-if="editingId === row.original.id" class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                label="Cancelar"
+                :disabled="savingAction"
+                @click="editingId = null"
+              />
+              <UButton
+                size="sm"
+                :label="savingAction ? 'Guardando…' : 'Guardar'"
+                :disabled="savingAction"
+                @click="saveEdit(row.original.id)"
+              />
+            </div>
+            <div v-else class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Editar"
+                :disabled="savingAction"
+                @click="startEdit(row.original)"
+              />
+              <UButton
+                v-if="row.original.active"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Retirar"
+                :disabled="savingAction"
+                @click="startWithdraw(row.original.id)"
+              />
+              <UButton
+                v-else
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                :label="savingAction ? 'Reactivando…' : 'Reactivar'"
+                :disabled="savingAction"
+                @click="setActive(row.original.id, true)"
+              />
+            </div>
+          </template>
+        </UTable>
       </UCard>
-    </div>
+    </UPageBody>
   </AppPage>
 </template>
