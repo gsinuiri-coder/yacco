@@ -38,7 +38,12 @@ const columns: TableColumn<CountSheetRow>[] = [
     <template #title>
       <h3>{{ title }}</h3>
     </template>
-    <UTable :data="rows" :columns="columns" :caption="caption">
+    <UTable
+      :data="rows"
+      :columns="columns"
+      :caption="caption"
+      empty="No hay tipos de envase para contar."
+    >
       <template #type-cell="{ row }">{{ row.original.type.name }}</template>
       <template #counted-cell="{ row }">
         <UInput
