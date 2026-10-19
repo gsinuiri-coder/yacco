@@ -502,7 +502,7 @@ const reviewHistoryColumns = computed<TableColumn<VehicleReview>[]>(() => [
           @retry="loadVehicles"
         />
 
-        <UTable v-else :data="vehicles" :columns="vehicleColumns" caption="Vehículos de reparto">
+        <UTable v-else :data="vehicles" :columns="vehicleColumns">
           <template #brandModel-cell="{ row }">
             {{ row.original.brand }} {{ row.original.model }}
           </template>
@@ -562,12 +562,7 @@ const reviewHistoryColumns = computed<TableColumn<VehicleReview>[]>(() => [
           @retry="loadReviewTypes"
         />
 
-        <UTable
-          v-else
-          :data="reviewTypes"
-          :columns="reviewTypeColumns"
-          caption="Tipos de revisión vehicular"
-        >
+        <UTable v-else :data="reviewTypes" :columns="reviewTypeColumns">
           <template #status-cell="{ row }">
             <UBadge
               :color="row.original.active ? 'success' : 'neutral'"
@@ -965,12 +960,7 @@ const reviewHistoryColumns = computed<TableColumn<VehicleReview>[]>(() => [
             No hay revisiones registradas para este vehículo.
           </p>
 
-          <UTable
-            v-else
-            :data="vehicleReviewsHistory"
-            :columns="reviewHistoryColumns"
-            caption="Historial de revisiones"
-          >
+          <UTable v-else :data="vehicleReviewsHistory" :columns="reviewHistoryColumns">
             <template #type-cell="{ row }">{{ row.original.reviewType.name }}</template>
             <template #validity-cell="{ row }">
               {{ formatCalendarDay(row.original.startsOn) }} al
