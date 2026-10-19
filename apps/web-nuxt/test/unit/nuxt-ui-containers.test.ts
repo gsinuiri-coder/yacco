@@ -17,6 +17,7 @@ const CONTAINER_TEMPLATES = [
 const ALLOWED_CLASSES: Record<string, string> = {
   "w-full": "UInput y USelect son inline por defecto; el campo ocupa su fila",
   "flex justify-end gap-2": "botones de cancelar y confirmar separados y a la derecha",
+  "flex flex-wrap items-center gap-2": "el desglose por tipo de envase en badges, en una línea",
   "list-disc pl-5":
     "las diferencias del conteo, con viñeta: una lista suelta no tiene estilo en Nuxt UI",
 };
