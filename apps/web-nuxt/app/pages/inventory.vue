@@ -86,11 +86,11 @@ function onCounted(count: PlantCount): void {
               Puede que falten anotar envases que entraron a la planta, o que el conteo no esté al
               día. Revisa
               <ULink to="/container-movements" class="underline">Movimientos de envases</ULink> o
-              <a href="#conteo-planta" class="underline">Conteo de la planta</a>.
+              <a href="#plant-count" class="underline">Conteo de la planta</a>.
             </template>
             <template v-else-if="state === 'FULL_AT_PLANT'">
               Puede que una salida se haya anotado dos veces. Revisa el
-              <a href="#conteo-planta" class="underline">Conteo de la planta</a>.
+              <a href="#plant-count" class="underline">Conteo de la planta</a>.
             </template>
             <template v-else>
               Puede que al liquidar o al corregir una visita se hayan contado más envases de los que
@@ -113,7 +113,7 @@ function onCounted(count: PlantCount): void {
 
         <SectionCard
           v-if="canCountPlant"
-          id="conteo-planta"
+          id="plant-count"
           title="Conteo de la planta"
           description="Cuenta en el galpón los vacíos o los llenos de un tipo de envase: el inventario pasa a decir lo contado."
         >
