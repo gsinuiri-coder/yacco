@@ -141,6 +141,9 @@ describe("Reportes", () => {
       expect(within(central).getByText("S/ 50.50")).toBeTruthy();
       expect(within(await rowOf("Farmacia San Judas")).getByText("Sin zona")).toBeTruthy();
       expect(within(await rowOf("Total por cobrar")).getByText("S/ 62.50")).toBeTruthy();
+      // El total se lee como el valor de la fila «Total por cobrar», no como otra cabecera.
+      const totalRow = screen.getByRole("rowheader", { name: "Total por cobrar" }).closest("tr")!;
+      expect(within(totalRow).getByRole("cell", { name: "S/ 62.50" })).toBeTruthy();
     });
 
     it("cuando la deuda la abrió el saldo inicial, «Debe desde» dice «Saldo inicial» y la fecha no pasa por venta", async () => {

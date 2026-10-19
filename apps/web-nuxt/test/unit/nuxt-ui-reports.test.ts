@@ -17,6 +17,9 @@ const REPORT_TEMPLATES = [
  */
 const ALLOWED_CLASSES: Record<string, string> = {
   "w-full": "UInput y USelect son inline por defecto; el campo ocupa su fila",
+  "p-4 text-left":
+    "fila del total de deuda, fuera de las columnas de UTable: su relleno y alineación",
+  "p-4 text-right": "monto de la fila del total, con el relleno y alineación de la columna Deuda",
 };
 
 describe("reportes con Nuxt UI nativo", () => {

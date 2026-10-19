@@ -15,18 +15,12 @@ useHead({ title: "Deuda por cliente · Yacco" });
 
 const report = useReport<CustomerDebtsReport>("/reports/debt");
 
-// El total va en el pie de la tabla, en la fila de «Total por cobrar».
-const debtColumns = computed<TableColumn<CustomerDebtsReport["rows"][number]>[]>(() => [
-  { id: "customer", header: "Cliente", footer: "Total por cobrar" },
+const debtColumns: TableColumn<CustomerDebtsReport["rows"][number]>[] = [
+  { id: "customer", header: "Cliente" },
   { id: "zone", header: "Zona" },
   { id: "oldestChargeDate", header: "Debe desde" },
-  {
-    id: "debt",
-    header: "Deuda",
-    footer: formatSoles(report.data.value?.total ?? "0.00"),
-    meta: RIGHT_ALIGNED,
-  },
-]);
+  { id: "debt", header: "Deuda", meta: RIGHT_ALIGNED },
+];
 </script>
 
 <template>
@@ -64,6 +58,14 @@ const debtColumns = computed<TableColumn<CustomerDebtsReport["rows"][number]>[]>
           <template v-else>{{ formatCalendarDay(row.original.oldestChargeDate) }}</template>
         </template>
         <template #debt-cell="{ row }">{{ formatSoles(row.original.debt) }}</template>
+        <!-- No con `footer` de columna: UTable pinta el pie solo con <th>, y el
+             total dejaría de leerse como el valor de «Total por cobrar». -->
+        <template #body-bottom>
+          <tr>
+            <th scope="row" colspan="3" class="p-4 text-left">Total por cobrar</th>
+            <td class="p-4 text-right">{{ formatSoles(report.data.value.total) }}</td>
+          </tr>
+        </template>
       </UTable>
     </ReportState>
   </AppPage>
