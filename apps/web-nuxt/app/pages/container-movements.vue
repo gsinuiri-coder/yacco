@@ -12,6 +12,7 @@ import type {
   Customer,
   CustomerLocation,
 } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import type { ManualMovementType } from "../utils/container-movements";
 
 useHead({ title: "Movimientos de envases · Yacco" });
@@ -200,6 +201,14 @@ function clearHistoryFilters(): void {
   dateFrom.value = "";
   dateTo.value = "";
 }
+
+const historyColumns: TableColumn<ContainerMovement>[] = [
+  { accessorKey: "occurredAt", header: "Fecha" },
+  { id: "operation", header: "Operación" },
+  { id: "containerType", header: "Tipo de envase" },
+  { accessorKey: "quantity", header: "Cantidad", meta: RIGHT_ALIGNED },
+  { id: "transition", header: "De → a" },
+];
 </script>
 
 <template>
@@ -207,12 +216,12 @@ function clearHistoryFilters(): void {
     title="Movimientos de envases"
     description="El libro no se edita ni se borra: un error se corrige registrando el movimiento inverso, nunca cambiando este."
   >
-    <div class="space-y-6">
+    <UPageBody>
       <SectionCard
         title="Registrar movimiento"
         description="Lo que la oficina anota a mano: ingreso de envases nuevos, dañados o perdidos."
       >
-        <div class="space-y-4">
+        <UPageBody>
           <UAlert
             v-if="registered"
             role="status"
@@ -221,7 +230,7 @@ function clearHistoryFilters(): void {
             title="Movimiento registrado."
           >
             <template #description>
-              <ULink to="/inventory" class="underline">Ver inventario actualizado</ULink>
+              <ULink to="/inventory">Ver inventario actualizado</ULink>
             </template>
           </UAlert>
           <UAlert
@@ -232,13 +241,15 @@ function clearHistoryFilters(): void {
             :title="submitError"
           />
 
-          <form
-            class="space-y-4"
+          <UForm
+            :state="{}"
+            :validate-on="[]"
+            :loading-auto="false"
             novalidate
             aria-label="Registrar movimiento"
-            @submit.prevent="register"
+            @submit="register"
           >
-            <div class="grid gap-4 sm:grid-cols-3">
+            <UPageGrid>
               <UFormField label="Operación" :error="typeError">
                 <USelect
                   :model-value="type === '' ? undefined : type"
@@ -301,63 +312,62 @@ function clearHistoryFilters(): void {
                   @update:model-value="(value: ContainerState) => chooseOrigin(value)"
                 />
               </UFormField>
-              <template v-if="touchesCustomer">
-                <div class="sm:col-span-3">
-                  <CustomerPicker
-                    :model-value="customer"
-                    label="Cliente"
-                    :error="customerError"
-                    :disabled="submitting"
-                    @update:model-value="chooseCustomer"
-                  />
-                </div>
-                <div v-if="customer" class="sm:col-span-3">
-                  <UAlert
-                    v-if="locationsError"
-                    role="alert"
-                    color="error"
-                    variant="subtle"
-                    :title="locationsError"
-                  >
-                    <template #actions>
-                      <UButton
-                        color="neutral"
-                        variant="outline"
-                        size="sm"
-                        label="Reintentar"
-                        @click="loadLocations"
-                      />
-                    </template>
-                  </UAlert>
-                  <p
-                    v-else-if="locations.length === 0 && !locationsLoading"
-                    class="text-sm text-error"
-                  >
-                    Este cliente no tiene ubicaciones registradas.
-                  </p>
-                  <UFormField v-else label="Ubicación" :error="locationError">
-                    <USelect
-                      :model-value="locationId === '' ? undefined : locationId"
-                      :items="
-                        locations.map((location) => ({
-                          label: `${location.name} (${location.address})`,
-                          value: location.id,
-                        }))
-                      "
-                      :placeholder="locationsLoading ? 'Cargando…' : 'Selecciona una ubicación'"
-                      :disabled="submitting || locationsLoading"
-                      class="w-full"
-                      @update:model-value="
-                        (value: string) => {
-                          locationId = value;
-                          locationError = undefined;
-                        }
-                      "
+            </UPageGrid>
+
+            <template v-if="touchesCustomer">
+              <CustomerPicker
+                :model-value="customer"
+                label="Cliente"
+                :error="customerError"
+                :disabled="submitting"
+                @update:model-value="chooseCustomer"
+              />
+              <template v-if="customer">
+                <UAlert
+                  v-if="locationsError"
+                  role="alert"
+                  color="error"
+                  variant="subtle"
+                  :title="locationsError"
+                >
+                  <template #actions>
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      label="Reintentar"
+                      @click="loadLocations"
                     />
-                  </UFormField>
-                </div>
+                  </template>
+                </UAlert>
+                <UAlert
+                  v-else-if="locations.length === 0 && !locationsLoading"
+                  color="error"
+                  variant="subtle"
+                  title="Este cliente no tiene ubicaciones registradas."
+                />
+                <UFormField v-else label="Ubicación" :error="locationError">
+                  <USelect
+                    :model-value="locationId === '' ? undefined : locationId"
+                    :items="
+                      locations.map((location) => ({
+                        label: `${location.name} (${location.address})`,
+                        value: location.id,
+                      }))
+                    "
+                    :placeholder="locationsLoading ? 'Cargando…' : 'Selecciona una ubicación'"
+                    :disabled="submitting || locationsLoading"
+                    class="w-full"
+                    @update:model-value="
+                      (value: string) => {
+                        locationId = value;
+                        locationError = undefined;
+                      }
+                    "
+                  />
+                </UFormField>
               </template>
-            </div>
+            </template>
 
             <UAlert
               v-if="slowSubmit && submitting"
@@ -367,7 +377,7 @@ function clearHistoryFilters(): void {
               :title="SLOW_REQUEST_MESSAGE"
             />
 
-            <div class="flex justify-end border-t border-default pt-4">
+            <div class="flex justify-end gap-2">
               <UButton
                 type="submit"
                 icon="i-lucide-package-plus"
@@ -375,18 +385,14 @@ function clearHistoryFilters(): void {
                 :label="submitting ? 'Registrando…' : 'Registrar movimiento'"
               />
             </div>
-          </form>
-        </div>
+          </UForm>
+        </UPageBody>
       </SectionCard>
 
-      <section aria-label="Historial">
-        <UCard :ui="{ body: 'p-0 sm:p-0' }">
-          <div class="border-b border-default p-4">
-            <h2 class="text-lg font-semibold text-highlighted">Historial</h2>
-            <p class="text-sm text-muted">{{ summary }}</p>
-          </div>
-          <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
-            <UFormField label="Operación" class="w-52">
+      <SectionCard title="Historial" :description="summary">
+        <UPageBody>
+          <UPageGrid>
+            <UFormField label="Operación">
               <USelect
                 v-model="historyType"
                 :items="[
@@ -399,7 +405,7 @@ function clearHistoryFilters(): void {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Tipo de envase" class="w-44">
+            <UFormField label="Tipo de envase">
               <USelect
                 v-model="historyContainerTypeId"
                 :items="[
@@ -410,10 +416,10 @@ function clearHistoryFilters(): void {
               />
             </UFormField>
             <UFormField label="Desde">
-              <UInput v-model="dateFrom" type="date" />
+              <UInput v-model="dateFrom" type="date" class="w-full" />
             </UFormField>
             <UFormField label="Hasta">
-              <UInput v-model="dateTo" type="date" />
+              <UInput v-model="dateTo" type="date" class="w-full" />
             </UFormField>
             <UButton
               v-if="history.hasFilters.value"
@@ -423,14 +429,13 @@ function clearHistoryFilters(): void {
               label="Limpiar filtros"
               @click="clearHistoryFilters"
             />
-          </div>
+          </UPageGrid>
 
           <UAlert
             v-if="history.slow.value && history.loading.value"
             role="status"
             color="neutral"
             variant="subtle"
-            class="rounded-none"
             :title="SLOW_REQUEST_MESSAGE"
           />
 
@@ -459,35 +464,22 @@ function clearHistoryFilters(): void {
           />
 
           <template v-else>
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <caption class="sr-only">
-                  Libro de movimientos de envases con fecha, operación, tipo, cantidad y estados
-                </caption>
-                <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                  <tr>
-                    <th scope="col" class="px-4 py-2 font-medium">Fecha</th>
-                    <th scope="col" class="px-4 py-2 font-medium">Operación</th>
-                    <th scope="col" class="px-4 py-2 font-medium">Tipo de envase</th>
-                    <th scope="col" class="px-4 py-2 text-right font-medium">Cantidad</th>
-                    <th scope="col" class="px-4 py-2 font-medium">De → a</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <tr v-for="movement in history.items.value" :key="movement.id">
-                    <td class="px-4 py-3 whitespace-nowrap tabular-nums">
-                      {{ formatInstantInLima(movement.occurredAt) }}
-                    </td>
-                    <td class="px-4 py-3">{{ movementLabel(movement) }}</td>
-                    <td class="px-4 py-3">{{ movement.containerType.name }}</td>
-                    <td class="px-4 py-3 text-right tabular-nums">{{ movement.quantity }}</td>
-                    <td class="px-4 py-3 text-muted">
-                      {{ describeTransition(movement.fromState, movement.toState) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <UTable
+              :data="history.items.value"
+              :columns="historyColumns"
+              caption="Libro de movimientos de envases con fecha, operación, tipo, cantidad y estados"
+            >
+              <template #occurredAt-cell="{ row }">
+                {{ formatInstantInLima(row.original.occurredAt) }}
+              </template>
+              <template #operation-cell="{ row }">{{ movementLabel(row.original) }}</template>
+              <template #containerType-cell="{ row }">
+                {{ row.original.containerType.name }}
+              </template>
+              <template #transition-cell="{ row }">
+                {{ describeTransition(row.original.fromState, row.original.toState) }}
+              </template>
+            </UTable>
             <ListPagination
               :shown-page="history.shownPage.value"
               :page="history.page.value"
@@ -496,8 +488,8 @@ function clearHistoryFilters(): void {
               @next="history.next"
             />
           </template>
-        </UCard>
-      </section>
-    </div>
+        </UPageBody>
+      </SectionCard>
+    </UPageBody>
   </AppPage>
 </template>
