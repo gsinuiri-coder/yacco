@@ -265,17 +265,19 @@ const expandedPaymentIds = computed<Record<string, boolean>>(() =>
               {{ formatSoles(row.original.amount) }}
             </template>
             <template #status-cell="{ row }">
-              <UBadge
-                :color="PAYMENT_STATUS[row.original.status].color"
-                variant="subtle"
-                :label="PAYMENT_STATUS[row.original.status].label"
-              />
-              <UBadge
-                v-if="row.original.voidedAt !== null"
-                color="error"
-                variant="solid"
-                label="Anulado"
-              />
+              <UFieldGroup>
+                <UBadge
+                  :color="PAYMENT_STATUS[row.original.status].color"
+                  variant="subtle"
+                  :label="PAYMENT_STATUS[row.original.status].label"
+                />
+                <UBadge
+                  v-if="row.original.voidedAt !== null"
+                  color="error"
+                  variant="solid"
+                  label="Anulado"
+                />
+              </UFieldGroup>
               <!-- Cada motivo se nombra: un cobro puede estar rechazado Y anulado. -->
               <p v-if="row.original.status === 'REJECTED' && row.original.rejectionReason">
                 Motivo del rechazo: {{ row.original.rejectionReason }}

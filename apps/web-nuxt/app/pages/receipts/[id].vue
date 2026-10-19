@@ -376,19 +376,20 @@ async function createCreditNote(): Promise<void> {
               Anulado por {{ receipt.voidedBy.username }} el
               {{ formatInstantInLima(receipt.voidedAt) }}.
             </p>
-            <UButton
-              v-if="receipt.type === 'CREDIT_NOTE' && receipt.affectedReceiptId"
-              :to="`/receipts/${receipt.affectedReceiptId}`"
-              variant="link"
-              label="Ver el comprobante original"
-            />
-            <UButton
-              v-for="note in receipt.creditNotes"
-              :key="note.id"
-              :to="`/receipts/${note.id}`"
-              variant="link"
-              :label="`Nota de crédito ${receiptNumber(note.series, note.number)} (${note.status === 'ACTIVE' ? 'vigente' : 'anulada'})`"
-            />
+            <p v-if="receipt.type === 'CREDIT_NOTE' && receipt.affectedReceiptId">
+              <UButton
+                :to="`/receipts/${receipt.affectedReceiptId}`"
+                variant="link"
+                label="Ver el comprobante original"
+              />
+            </p>
+            <p v-for="note in receipt.creditNotes" :key="note.id">
+              <UButton
+                :to="`/receipts/${note.id}`"
+                variant="link"
+                :label="`Nota de crédito ${receiptNumber(note.series, note.number)} (${note.status === 'ACTIVE' ? 'vigente' : 'anulada'})`"
+              />
+            </p>
           </UPageBody>
         </SectionCard>
       </UPageBody>

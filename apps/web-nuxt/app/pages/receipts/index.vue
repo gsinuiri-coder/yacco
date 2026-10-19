@@ -144,16 +144,20 @@ const summary = computed(() => {
       <template v-else>
         <UTable :data="list.items.value" :columns="columns" caption="Comprobantes registrados">
           <template #number-cell="{ row }">
-            <UButton
-              :to="`/receipts/${row.original.id}`"
-              variant="link"
-              :label="receiptNumber(row.original.series, row.original.number)"
-            />
-            <UBadge
-              :color="RECEIPT_TYPE[row.original.type].color"
-              variant="subtle"
-              :label="RECEIPT_TYPE[row.original.type].label"
-            />
+            <p>
+              <UButton
+                :to="`/receipts/${row.original.id}`"
+                variant="link"
+                :label="receiptNumber(row.original.series, row.original.number)"
+              />
+            </p>
+            <p>
+              <UBadge
+                :color="RECEIPT_TYPE[row.original.type].color"
+                variant="subtle"
+                :label="RECEIPT_TYPE[row.original.type].label"
+              />
+            </p>
           </template>
           <template #customer-cell="{ row }">
             {{ row.original.customer.name }}
