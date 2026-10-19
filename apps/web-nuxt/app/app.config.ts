@@ -19,6 +19,33 @@ export default defineAppConfig({
         footer: "border-t border-default justify-between",
       },
     },
+    // Los títulos llevan la familia de títulos del tema (`--font-display` en
+    // main.css): el de cada pantalla, el de cada tarjeta y el de cada diálogo.
+    dashboardNavbar: {
+      slots: {
+        title: "font-display",
+      },
+    },
+    card: {
+      slots: {
+        title: "font-display",
+      },
+    },
+    modal: {
+      slots: {
+        title: "font-display",
+      },
+    },
+    pageCard: {
+      slots: {
+        // Una columna que no crece con su contenido: sin esto, en pantallas
+        // anchas una tabla larga dentro de la tarjeta la ensancha en vez de
+        // desplazarse. La horizontal sigue con sus dos columnas (su variante
+        // pisa esta clase).
+        container: "lg:grid-cols-1",
+        title: "font-display",
+      },
+    },
     form: {
       base: "space-y-6",
     },

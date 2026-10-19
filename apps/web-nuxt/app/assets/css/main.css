@@ -12,16 +12,21 @@
  * - ochre: el acento cálido, tierra seca de la costa. Se usa poco y a propósito:
  *   lo que merece que el ojo se detenga (lo que se debe, lo pendiente).
  *
- * Tipografía: Public Sans para todo lo que se lee y se compara (tiene cifras
- * tabulares, que alinean montos y cantidades en columna) y Bricolage Grotesque
- * sólo para los títulos, que es donde la interfaz puede tener carácter sin
- * costarle legibilidad a nadie.
+ * Tipografía: Public Sans para todo lo que se lee y se compara, con cifras
+ * tabulares (`tnum`, que Tailwind aplica al documento) para que montos y
+ * cantidades alineen en columna, y Bricolage Grotesque sólo para los títulos,
+ * que es donde la interfaz puede tener carácter sin costarle legibilidad a
+ * nadie (qué títulos: `app.config.ts`).
+ *
+ * Acá van solo los imports y el tema: ninguna regla con selector propio
+ * (`test/unit/main-css.test.ts`).
  */
 @import "tailwindcss";
 @import "@nuxt/ui";
 
 @theme static {
   --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans--font-feature-settings: "tnum";
   --font-display: "Bricolage Grotesque", "Public Sans", ui-sans-serif, sans-serif;
 
   --color-lagoon-50: oklch(0.975 0.014 222);
@@ -64,33 +69,4 @@
 :root {
   --ui-radius: 0.5rem;
   --ui-bg: var(--color-basalt-50);
-}
-
-body {
-  font-variant-numeric: tabular-nums;
-}
-
-h1,
-h2,
-h3 {
-  font-family: var(--font-display);
-  letter-spacing: -0.01em;
-}
-
-/*
- * Un desplegable abierto no deja el resto de la página muerta.
- *
- * Reka UI (debajo de Nuxt UI) abre `USelect` y los diálogos como capas modales
- * y, mientras están abiertas, escribe `pointer-events: none` en línea sobre el
- * `body`. El clic que el usuario hace sobre OTRO control para cerrar el
- * desplegable solo lo cerraba y se perdía: había que repetirlo (medido con
- * Playwright, 10 de 10; `e2e/first-click.test.ts`). Un `!important` de hoja de
- * estilos gana sobre un estilo en línea sin él, así que esto lo anula para
- * todos los desplegables, incluidos los que se agreguen después.
- *
- * Los diálogos no pierden nada: su fondo oscuro es un elemento propio que
- * cubre la página y recibe ese clic, así que nada de atrás se activa igual.
- */
-body {
-  pointer-events: auto !important;
 }
