@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatInstantInLima, formatSoles, isAboveZero, isMoneyInput } from "@yacco/shared";
 import type { ContainerType, Product, ProductPriceChange } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 /**
  * El catálogo de productos y su precio de lista: el que paga un cliente que
@@ -233,6 +234,23 @@ async function createMaquilaService(): Promise<void> {
     creatingMaquila.value = false;
   }
 }
+
+const columns = computed<TableColumn<Product>[]>(() => [
+  { accessorKey: "name", header: "Producto" },
+  { id: "type", header: "Tipo" },
+  { id: "containerType", header: "Envase" },
+  { id: "listPrice", header: "Precio de lista", meta: RIGHT_ALIGNED },
+  ...(isAdmin.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
+// El historial de precios y el error de una acción se abren debajo de su fila.
+const expandedProductIds = computed<Record<string, boolean>>(() => {
+  const ids = [historyProductId.value, rowError.value?.productId].filter(
+    (id): id is string => typeof id === "string",
+  );
+  return Object.fromEntries(ids.map((id) => [id, true]));
+});
 </script>
 
 <template>
@@ -245,7 +263,7 @@ async function createMaquilaService(): Promise<void> {
         @click="openNewMaquilaModal"
       />
     </template>
-    <div class="space-y-6">
+    <UPageBody>
       <UAlert
         v-if="isAdmin"
         color="neutral"
@@ -274,113 +292,110 @@ async function createMaquilaService(): Promise<void> {
         @retry="loadProducts"
       />
 
-      <UCard v-else :ui="{ body: 'p-0 sm:p-0' }">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              Productos y precios de lista
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-4 py-2 font-medium">Producto</th>
-                <th scope="col" class="px-4 py-2 font-medium">Tipo</th>
-                <th scope="col" class="px-4 py-2 font-medium">Envase</th>
-                <th scope="col" class="px-4 py-2 text-right font-medium">Precio de lista</th>
-                <th v-if="isAdmin" scope="col" class="px-4 py-2">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <template v-for="product in products" :key="product.id">
-                <tr>
-                  <td class="px-4 py-3 font-medium text-highlighted">{{ product.name }}</td>
-                  <td class="px-4 py-3">{{ TYPE_LABELS[product.type] }}</td>
-                  <td class="px-4 py-3">{{ product.containerType?.name ?? "—" }}</td>
-                  <td class="px-4 py-3 text-right">
-                    <UInput
-                      v-if="editingId === product.id"
-                      :model-value="priceValue"
-                      :aria-label="`Precio de lista de ${product.name}`"
-                      inputmode="decimal"
-                      :disabled="saving"
-                      class="w-28"
-                      @update:model-value="(value: string | number) => (priceValue = String(value))"
-                    />
-                    <MoneyAmount v-else :value="product.listPrice" />
-                  </td>
-                  <td v-if="isAdmin" class="px-4 py-3">
-                    <div v-if="editingId === product.id" class="flex justify-end gap-2">
-                      <UButton
-                        color="neutral"
-                        variant="outline"
-                        size="sm"
-                        label="Cancelar"
-                        :disabled="saving"
-                        @click="editingId = null"
-                      />
-                      <UButton
-                        size="sm"
-                        :label="saving ? 'Guardando…' : 'Guardar'"
-                        :disabled="saving"
-                        @click="savePrice(product.id)"
-                      />
-                    </div>
-                    <div v-else class="flex justify-end gap-2">
-                      <UButton
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Cambios de precio"
-                        :disabled="saving"
-                        @click="togglePriceChanges(product.id)"
-                      />
-                      <UButton
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Cambiar precio"
-                        :disabled="saving"
-                        @click="startEdit(product)"
-                      />
-                    </div>
-                  </td>
-                </tr>
-                <tr v-if="historyProductId === product.id">
-                  <td :colspan="5" class="bg-elevated px-4 py-3">
-                    <h2 class="mb-2 font-medium text-highlighted">Cambios de precio</h2>
-                    <p v-if="loadingPriceChanges" role="status">Cargando cambios…</p>
-                    <p v-else-if="priceChanges.length === 0" class="text-muted">
-                      Todavía no hay cambios de precio registrados.
-                    </p>
-                    <ul v-else class="space-y-1">
-                      <li v-for="change in priceChanges" :key="change.id" class="tabular-nums">
-                        {{ formatInstantInLima(change.changedAt) }} · {{ change.changedBy.name }}:
-                        {{
-                          change.previousPrice === null
-                            ? "sin precio anterior"
-                            : formatSoles(change.previousPrice)
-                        }}
-                        a {{ formatSoles(change.newPrice) }}
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-                <tr v-if="rowError?.productId === product.id">
-                  <td :colspan="isAdmin ? 5 : 4" class="px-4 pb-3">
-                    <p role="alert" class="text-sm text-error">{{ rowError.message }}</p>
-                  </td>
-                </tr>
+      <UCard v-else>
+        <UTable
+          :data="products"
+          :columns="columns"
+          :get-row-id="(product: Product) => product.id"
+          :expanded="expandedProductIds"
+          caption="Productos y precios de lista"
+        >
+          <template #type-cell="{ row }">{{ TYPE_LABELS[row.original.type] }}</template>
+          <template #containerType-cell="{ row }">
+            {{ row.original.containerType?.name ?? "—" }}
+          </template>
+          <template #listPrice-cell="{ row }">
+            <UInput
+              v-if="editingId === row.original.id"
+              :model-value="priceValue"
+              :aria-label="`Precio de lista de ${row.original.name}`"
+              inputmode="decimal"
+              :disabled="saving"
+              class="w-full"
+              @update:model-value="(value: string | number) => (priceValue = String(value))"
+            />
+            <MoneyAmount v-else :value="row.original.listPrice" />
+          </template>
+          <template #actions-cell="{ row }">
+            <div v-if="editingId === row.original.id" class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                label="Cancelar"
+                :disabled="saving"
+                @click="editingId = null"
+              />
+              <UButton
+                size="sm"
+                :label="saving ? 'Guardando…' : 'Guardar'"
+                :disabled="saving"
+                @click="savePrice(row.original.id)"
+              />
+            </div>
+            <div v-else class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Cambios de precio"
+                :disabled="saving"
+                @click="togglePriceChanges(row.original.id)"
+              />
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Cambiar precio"
+                :disabled="saving"
+                @click="startEdit(row.original)"
+              />
+            </div>
+          </template>
+          <!-- Debajo de su fila: el historial de precios y el error de una acción. -->
+          <template #expanded="{ row }">
+            <UPageBody>
+              <template v-if="historyProductId === row.original.id">
+                <h2>Cambios de precio</h2>
+                <p v-if="loadingPriceChanges" role="status">Cargando cambios…</p>
+                <p v-else-if="priceChanges.length === 0">
+                  Todavía no hay cambios de precio registrados.
+                </p>
+                <ul v-else>
+                  <li v-for="change in priceChanges" :key="change.id">
+                    {{ formatInstantInLima(change.changedAt) }} · {{ change.changedBy.name }}:
+                    {{
+                      change.previousPrice === null
+                        ? "sin precio anterior"
+                        : formatSoles(change.previousPrice)
+                    }}
+                    a {{ formatSoles(change.newPrice) }}
+                  </li>
+                </ul>
               </template>
-            </tbody>
-          </table>
-        </div>
+              <UAlert
+                v-if="rowError?.productId === row.original.id"
+                role="alert"
+                color="error"
+                variant="subtle"
+                :title="rowError.message"
+              />
+            </UPageBody>
+          </template>
+        </UTable>
       </UCard>
-    </div>
+    </UPageBody>
 
     <UModal v-model:open="newAccessoryOpen" title="Nuevo accesorio">
       <template #body>
-        <form class="space-y-4" @submit.prevent="createAccessory">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          aria-label="Nuevo accesorio"
+          @submit="createAccessory"
+        >
           <UAlert
             v-if="newAccessoryError"
             role="alert"
@@ -410,11 +425,11 @@ async function createMaquilaService(): Promise<void> {
               :disabled="creatingAccessory"
               class="w-full"
             >
-              <template #leading><span class="text-sm text-muted">S/</span></template>
+              <template #leading>S/</template>
             </UInput>
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -424,13 +439,20 @@ async function createMaquilaService(): Promise<void> {
             />
             <UButton type="submit" label="Guardar accesorio" :loading="creatingAccessory" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
     <UModal v-model:open="newMaquilaOpen" title="Nuevo servicio de maquila">
       <template #body>
-        <form class="space-y-4" @submit.prevent="createMaquilaService">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          aria-label="Nuevo servicio de maquila"
+          @submit="createMaquilaService"
+        >
           <UAlert
             v-if="newMaquilaError"
             role="alert"
@@ -470,11 +492,11 @@ async function createMaquilaService(): Promise<void> {
               :disabled="creatingMaquila"
               class="w-full"
             >
-              <template #leading><span class="text-sm text-muted">S/</span></template>
+              <template #leading>S/</template>
             </UInput>
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -484,7 +506,7 @@ async function createMaquilaService(): Promise<void> {
             />
             <UButton type="submit" label="Guardar servicio" :loading="creatingMaquila" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </AppPage>
