@@ -10,6 +10,7 @@ import type {
   RouteStop,
   User,
 } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import type {
   ReturnLineDraft,
   SaleLineDraft,
@@ -161,6 +162,14 @@ const authorizerItems = computed(() =>
   authorizers.items.value.map((user) => ({ label: user.name, value: user.id })),
 );
 
+const itemColumns = computed<TableColumn<SaleLineDraft>[]>(() => [
+  { id: "product", header: "Producto" },
+  { id: "quantity", header: "Cantidad" },
+  { id: "price", header: props.canChangePrice ? "Precio cobrado" : "Precio pactado" },
+  { id: "subtotal", header: "Subtotal", meta: RIGHT_ALIGNED },
+  { id: "remove", header: hiddenHeader("Quitar"), meta: RIGHT_ALIGNED },
+]);
+
 const paymentModel = computed({
   get: () => (draft.paymentMethodId === "" ? NOT_PAID : draft.paymentMethodId),
   set: (value: string) => {
@@ -227,15 +236,17 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <form
-    class="space-y-6"
+  <UForm
+    :state="{}"
+    :validate-on="[]"
+    :loading-auto="false"
     novalidate
     :aria-label="
       correction
         ? `Corregir la parada de ${stop.location.customer.name}`
         : `Registrar la parada de ${stop.location.customer.name}`
     "
-    @submit.prevent="submit"
+    @submit="submit"
   >
     <SegmentedFilter
       v-model="draft.outcome"
@@ -243,10 +254,13 @@ async function submit(): Promise<void> {
       :options="OUTCOMES"
     />
 
-    <p v-if="captureLocation && !correction" class="text-sm text-muted">
-      Al registrar, el celular pedirá tu ubicación una vez. Si no está disponible, la parada se
-      guarda igual.
-    </p>
+    <UAlert
+      v-if="captureLocation && !correction"
+      color="neutral"
+      variant="subtle"
+      icon="i-lucide-map-pin"
+      title="Al registrar, el celular pedirá tu ubicación una vez. Si no está disponible, la parada se guarda igual."
+    />
 
     <UFormField
       v-if="draft.outcome === 'FAILED'"
@@ -262,84 +276,72 @@ async function submit(): Promise<void> {
     </UFormField>
 
     <template v-else>
-      <section class="space-y-3">
-        <h4 class="font-medium text-highlighted">Lo que se entregó</h4>
-        <div class="overflow-x-auto rounded-md border border-default">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              Productos entregados en la parada, con su cantidad y su precio
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-3 py-2 font-medium">Producto</th>
-                <th scope="col" class="w-24 px-3 py-2 font-medium">Cantidad</th>
-                <th scope="col" class="w-52 px-3 py-2 font-medium">
-                  {{ canChangePrice ? "Precio cobrado" : "Precio pactado" }}
-                </th>
-                <th scope="col" class="w-28 px-3 py-2 text-right font-medium">Subtotal</th>
-                <th scope="col" class="w-12 px-3 py-2"><span class="sr-only">Quitar</span></th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="(line, index) in draft.items" :key="line.key">
-                <td class="px-3 py-2">
-                  <USelect
-                    v-model="line.productId"
-                    :items="productItems"
-                    placeholder="Elige un producto"
-                    :aria-label="`Producto ${index + 1}`"
-                    :disabled="submitting"
-                    class="w-full"
-                  />
-                </td>
-                <td class="px-3 py-2">
-                  <UInput
-                    v-model="line.quantity"
-                    type="number"
-                    :min="1"
-                    :step="1"
-                    :aria-label="`Cantidad del producto ${index + 1}`"
-                    :disabled="submitting"
-                  />
-                </td>
-                <td class="px-3 py-2">
-                  <UInput
-                    v-if="canChangePrice"
-                    v-model="line.unitPrice"
-                    inputmode="decimal"
-                    :placeholder="agreedOf(line) ?? 'Precio pactado'"
-                    :aria-label="`Precio cobrado del producto ${index + 1}`"
-                    :disabled="submitting"
-                    class="w-28"
-                  />
-                  <p v-if="agreedOf(line) !== null" class="mt-1 text-xs text-muted">
-                    Pactado: {{ formatSoles(agreedOf(line)!) }}
-                  </p>
-                  <UBadge
-                    v-if="isPriceOverride(line, effective.items.value)"
-                    color="warning"
-                    variant="subtle"
-                    size="sm"
-                    label="Distinto del pactado"
-                    class="mt-1"
-                  />
-                </td>
-                <td class="px-3 py-2 text-right tabular-nums">{{ subtotalOf(line) }}</td>
-                <td class="px-3 py-2 text-right">
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    icon="i-lucide-x"
-                    :aria-label="`Quitar el producto ${index + 1}`"
-                    :disabled="submitting || draft.items.length <= 1"
-                    @click="draft.items.splice(index, 1)"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="flex items-center justify-between gap-4">
+      <UPageCard variant="outline">
+        <template #title><h4>Lo que se entregó</h4></template>
+        <UTable
+          :data="draft.items"
+          :columns="itemColumns"
+          :get-row-id="(line) => String(line.key)"
+          caption="Productos entregados en la parada, con su cantidad y su precio"
+        >
+          <template #product-cell="{ row }">
+            <USelect
+              v-model="row.original.productId"
+              :items="productItems"
+              placeholder="Elige un producto"
+              :aria-label="`Producto ${row.index + 1}`"
+              :disabled="submitting"
+              class="w-full"
+            />
+          </template>
+          <template #quantity-cell="{ row }">
+            <UInput
+              v-model="row.original.quantity"
+              type="number"
+              :min="1"
+              :step="1"
+              :aria-label="`Cantidad del producto ${row.index + 1}`"
+              :disabled="submitting"
+            />
+          </template>
+          <template #price-cell="{ row }">
+            <UFormField
+              :help="
+                agreedOf(row.original) !== null
+                  ? `Pactado: ${formatSoles(agreedOf(row.original)!)}`
+                  : undefined
+              "
+            >
+              <UInput
+                v-if="canChangePrice"
+                v-model="row.original.unitPrice"
+                inputmode="decimal"
+                :placeholder="agreedOf(row.original) ?? 'Precio pactado'"
+                :aria-label="`Precio cobrado del producto ${row.index + 1}`"
+                :disabled="submitting"
+              />
+            </UFormField>
+            <UBadge
+              v-if="isPriceOverride(row.original, effective.items.value)"
+              color="warning"
+              variant="subtle"
+              size="sm"
+              label="Distinto del pactado"
+            />
+          </template>
+          <template #subtotal-cell="{ row }">{{ subtotalOf(row.original) }}</template>
+          <template #remove-cell="{ row }">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-x"
+              :aria-label="`Quitar el producto ${row.index + 1}`"
+              :disabled="submitting || draft.items.length <= 1"
+              @click="draft.items.splice(row.index, 1)"
+            />
+          </template>
+        </UTable>
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <UButton
             color="neutral"
             variant="outline"
@@ -348,33 +350,29 @@ async function submit(): Promise<void> {
             :disabled="submitting"
             @click="addItem"
           />
-          <p aria-live="polite">
-            <span class="text-sm text-muted">Total de la venta</span>
-            <span class="ml-3 text-lg font-semibold text-highlighted tabular-nums">{{
-              formatSoles(total)
-            }}</span>
-          </p>
+          <div aria-live="polite" class="flex flex-wrap items-center gap-2">
+            <span>Total de la venta</span>
+            <UBadge color="neutral" variant="subtle" size="xl" :label="formatSoles(total)" />
+          </div>
         </div>
-      </section>
+      </UPageCard>
 
-      <section class="space-y-3">
-        <h4 class="font-medium text-highlighted">Envases vacíos que devolvió</h4>
-        <p class="text-sm text-muted">
-          Si devuelve tantos vacíos como llenos recibe, su saldo de envases no se mueve. Si devuelve
-          menos, la diferencia le queda debida, salvo que se le venda el envase.
-        </p>
+      <UPageCard
+        description="Si devuelve tantos vacíos como llenos recibe, su saldo de envases no se mueve. Si devuelve menos, la diferencia le queda debida, salvo que se le venda el envase."
+        variant="outline"
+      >
+        <template #title><h4>Envases vacíos que devolvió</h4></template>
         <div
           v-for="(row, index) in draft.returns"
           :key="row.key"
-          class="flex flex-wrap items-end gap-3"
+          class="flex flex-wrap items-end gap-2"
         >
-          <UFormField :label="`Tipo de envase ${index + 1}`" class="min-w-52">
+          <UFormField :label="`Tipo de envase ${index + 1}`">
             <USelect
               v-model="row.containerTypeId"
               :items="containerTypeItems"
               placeholder="Elige un tipo de envase"
               :disabled="submitting"
-              class="w-full"
             />
           </UFormField>
           <UInput
@@ -384,7 +382,6 @@ async function submit(): Promise<void> {
             :step="1"
             :aria-label="`Vacíos devueltos ${index + 1}`"
             :disabled="submitting"
-            class="w-24"
           />
           <UButton
             color="neutral"
@@ -395,19 +392,21 @@ async function submit(): Promise<void> {
             @click="draft.returns.splice(index, 1)"
           />
         </div>
-        <UButton
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-plus"
-          label="Agregar envases devueltos"
-          :disabled="submitting"
-          @click="addReturn"
-        />
-      </section>
+        <div class="flex flex-wrap items-center gap-2">
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-plus"
+            label="Agregar envases devueltos"
+            :disabled="submitting"
+            @click="addReturn"
+          />
+        </div>
+      </UPageCard>
 
-      <section class="space-y-3">
-        <h4 class="font-medium text-highlighted">Cobro</h4>
-        <div class="grid gap-4 sm:grid-cols-2">
+      <UPageCard variant="outline">
+        <template #title><h4>Cobro</h4></template>
+        <UPageGrid>
           <UFormField label="Método de pago">
             <USelect
               v-model="paymentModel"
@@ -428,17 +427,17 @@ async function submit(): Promise<void> {
               class="w-full"
             />
           </UFormField>
-        </div>
-        <UFormField v-if="hasOverride && !correction" label="¿Quién autorizó el precio distinto?">
-          <USelect
-            v-model="draft.authorizerId"
-            :items="authorizerItems"
-            placeholder="Elige quién lo autorizó"
-            :disabled="submitting"
-            class="w-full sm:w-1/2"
-          />
-        </UFormField>
-      </section>
+          <UFormField v-if="hasOverride && !correction" label="¿Quién autorizó el precio distinto?">
+            <USelect
+              v-model="draft.authorizerId"
+              :items="authorizerItems"
+              placeholder="Elige quién lo autorizó"
+              :disabled="submitting"
+              class="w-full"
+            />
+          </UFormField>
+        </UPageGrid>
+      </UPageCard>
     </template>
 
     <UFormField
@@ -463,7 +462,7 @@ async function submit(): Promise<void> {
     />
     <UAlert v-if="submitError" role="alert" color="error" variant="subtle" :title="submitError" />
 
-    <div class="flex justify-end gap-3 border-t border-default pt-4">
+    <div class="flex justify-end gap-2">
       <UButton
         color="neutral"
         variant="outline"
@@ -485,5 +484,5 @@ async function submit(): Promise<void> {
         "
       />
     </div>
-  </form>
+  </UForm>
 </template>
