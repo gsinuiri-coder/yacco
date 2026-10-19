@@ -20,6 +20,9 @@ function declarationsOf(body: string): string[] {
     .filter(Boolean);
 }
 
+/** Otro `@import` traería reglas propias desde un archivo aparte. */
+const ALLOWED_IMPORTS = ['@import "tailwindcss"', '@import "@nuxt/ui"'];
+
 /**
  * Lo único que `main.css` puede tener: lo que Nuxt UI y Tailwind necesitan
  * para arrancar (sus imports) y el tema (`@theme` de Tailwind y las variables
@@ -28,7 +31,7 @@ function declarationsOf(body: string): string[] {
  * o `app.config.ts`.
  */
 function isThemeOrImport({ prelude, body }: { prelude: string; body?: string }): boolean {
-  if (body === undefined) return /^@import\s/.test(prelude);
+  if (body === undefined) return ALLOWED_IMPORTS.includes(prelude);
   const declarations = declarationsOf(body);
   if (/^@theme(\s+static)?$/.test(prelude)) {
     return declarations.every((declaration) => /^--[\w-]+\s*:/.test(declaration));
@@ -44,7 +47,7 @@ describe("main.css", () => {
     const statements = statementsOf(readFileSync(MAIN_CSS, "utf8"));
 
     expect(statements.map((statement) => statement.prelude)).toEqual(
-      expect.arrayContaining(['@import "tailwindcss"', '@import "@nuxt/ui"']),
+      expect.arrayContaining(ALLOWED_IMPORTS),
     );
     expect(statements.filter((statement) => !isThemeOrImport(statement))).toEqual([]);
   });
