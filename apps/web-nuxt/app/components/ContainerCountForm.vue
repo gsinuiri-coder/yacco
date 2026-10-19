@@ -123,16 +123,13 @@ function handleSubmit(): void {
 </script>
 
 <template>
-  <div
+  <UPageBody
     v-if="review !== null"
     role="group"
     :aria-label="`Revisar conteo de ${row.location.name}`"
-    class="space-y-3"
   >
-    <p class="text-sm text-muted">
-      Hay diferencias con lo que dice el sistema. Revisa antes de confirmar:
-    </p>
-    <ul class="list-disc space-y-1 pl-5 text-sm">
+    <p>Hay diferencias con lo que dice el sistema. Revisa antes de confirmar:</p>
+    <ul class="list-disc pl-5">
       <li v-for="line in review" :key="line.containerType.id">
         {{ line.containerType.name }}: según el sistema {{ line.expectedQuantity }}, contado
         {{ line.countedQuantity }}
@@ -156,20 +153,22 @@ function handleSubmit(): void {
         @click="register(review)"
       />
     </div>
-  </div>
+  </UPageBody>
 
-  <form
+  <UForm
     v-else
-    class="space-y-4"
+    :state="{}"
+    :validate-on="[]"
+    :loading-auto="false"
     novalidate
     :aria-label="`Contar envases de ${row.location.name}`"
-    @submit.prevent="handleSubmit"
+    @submit="handleSubmit"
   >
-    <p v-if="lines.length === 0" class="text-sm text-muted">
+    <p v-if="lines.length === 0">
       El sistema no tiene envases de ningún tipo en esta ubicación. Agrega el tipo que encontraste,
       o registra 0 si no hay ninguno.
     </p>
-    <div class="grid gap-4 sm:grid-cols-3">
+    <UPageGrid>
       <UFormField
         v-for="line in lines"
         :key="line.containerType.id"
@@ -191,7 +190,7 @@ function handleSubmit(): void {
         />
       </UFormField>
       <UFormField v-if="availableExtraTypes.length > 0" label="Otro tipo de envase encontrado">
-        <div class="flex gap-2">
+        <UFieldGroup>
           <USelect
             v-model="extraTypeId"
             :items="availableExtraTypes.map((type) => ({ label: type.name, value: type.id }))"
@@ -206,9 +205,9 @@ function handleSubmit(): void {
             :disabled="submitting || extraTypeId === ''"
             @click="addExtraType"
           />
-        </div>
+        </UFieldGroup>
       </UFormField>
-    </div>
+    </UPageGrid>
 
     <UAlert
       v-if="validationError"
@@ -219,7 +218,7 @@ function handleSubmit(): void {
     />
     <UAlert v-if="submitError" role="alert" color="error" variant="subtle" :title="submitError" />
 
-    <div class="flex justify-end gap-2 border-t border-default pt-4">
+    <div class="flex justify-end gap-2">
       <UButton
         color="neutral"
         variant="outline"
@@ -233,5 +232,5 @@ function handleSubmit(): void {
         :disabled="submitting"
       />
     </div>
-  </form>
+  </UForm>
 </template>
