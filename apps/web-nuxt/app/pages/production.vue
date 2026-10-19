@@ -174,7 +174,7 @@ function fillingAudit(item: ProductionBatch["items"][number]): string | null {
       title="Registrar llenada"
       description="Cada registro queda separado dentro del lote de su fecha."
     >
-      <UPageList>
+      <UPageBody>
         <UAlert
           v-if="registered"
           role="status"
@@ -265,7 +265,7 @@ function fillingAudit(item: ProductionBatch["items"][number]): string | null {
             empty-description=""
             @retry="catalog.reload"
           />
-          <UPageList v-else>
+          <UPageBody v-else>
             <!-- El error es del renglón: puede ser el tipo o la cantidad. -->
             <UFormField v-for="(line, index) in lines" :key="line.key" :error="lineErrors[index]">
               <template v-if="lineErrors[index]" #error="{ error }">
@@ -321,7 +321,7 @@ function fillingAudit(item: ProductionBatch["items"][number]): string | null {
                 @click="lines = [...lines, blankBatchLine(nextKey++)]"
               />
             </div>
-          </UPageList>
+          </UPageBody>
 
           <UAlert
             v-if="slowSubmit && submitting"
@@ -340,7 +340,7 @@ function fillingAudit(item: ProductionBatch["items"][number]): string | null {
             />
           </div>
         </UForm>
-      </UPageList>
+      </UPageBody>
     </SectionCard>
 
     <ProductionMaquilaSection />
@@ -441,10 +441,11 @@ function fillingAudit(item: ProductionBatch["items"][number]): string | null {
               :description="`Total: ${producedSummary(row.original)}`"
             >
               <template #title><h3>Registro de llenadas</h3></template>
-              <UPageList divide>
+              <UPageList as="ul" divide>
                 <UPageCard
                   v-for="item in row.original.items"
                   :key="item.id"
+                  as="li"
                   variant="naked"
                   orientation="horizontal"
                   :title="`${item.producedQty}× ${item.containerType.name}`"

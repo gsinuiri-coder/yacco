@@ -72,7 +72,7 @@ function handleSubmit(): void {
 </script>
 
 <template>
-  <UPageList v-if="reviewing !== null" role="group" aria-label="Revisar conteo de la planta">
+  <UPageBody v-if="reviewing !== null" role="group" aria-label="Revisar conteo de la planta">
     <p>
       {{ row?.containerTypeName }}, {{ stateLabel }}: según el sistema {{ expected }}, contado
       {{ reviewing }} (diferencia {{ formatCountDifference(reviewing, expected) }}).
@@ -95,7 +95,7 @@ function handleSubmit(): void {
         @click="register(reviewing)"
       />
     </div>
-  </UPageList>
+  </UPageBody>
 
   <UForm
     v-else
