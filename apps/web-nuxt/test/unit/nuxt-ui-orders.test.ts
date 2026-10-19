@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { expectPageListsAreLists } from "../support/nuxt-ui-guard";
 
 const ORDER_TEMPLATES = [
   "../../app/pages/orders/index.vue",
@@ -25,6 +26,7 @@ describe("pedidos con Nuxt UI nativo", () => {
       expect(template).not.toMatch(/<table\b/);
       expect(template).not.toMatch(/<form\b/);
       expect(template).not.toMatch(/:ui=/);
+      expectPageListsAreLists(new URL(path, import.meta.url));
     },
   );
 

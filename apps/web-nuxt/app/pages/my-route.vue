@@ -84,7 +84,7 @@ async function marked(): Promise<void> {
 <template>
   <AppPage title="Mi ruta" :description="formatCalendarDay(today)">
     <!-- Mi ruta se usa en el celular: en escritorio conserva el ancho de columna. -->
-    <UPageList class="mx-auto w-full max-w-xl">
+    <UPageBody class="mx-auto w-full max-w-xl">
       <ListStatus
         v-if="loading || loadError || routes.length === 0"
         :error-message="loadError"
@@ -100,7 +100,7 @@ async function marked(): Promise<void> {
 
       <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
 
-      <UPageList
+      <UPageBody
         v-for="route in routes"
         :key="route.id"
         as="section"
@@ -237,7 +237,7 @@ async function marked(): Promise<void> {
           "
           @click="changeStatus(route, 'finish')"
         />
-      </UPageList>
-    </UPageList>
+      </UPageBody>
+    </UPageBody>
   </AppPage>
 </template>

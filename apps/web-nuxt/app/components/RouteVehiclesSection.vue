@@ -112,7 +112,7 @@ async function submitChangeVehicle(): Promise<void> {
       />
     </template>
 
-    <UPageList>
+    <UPageBody>
       <UPageCard v-if="route.vehicle" variant="soft" :description="vehicleDetail">
         <template #title>
           <span>{{ route.vehicle.plate }}</span> <span>— {{ route.vehicle.name }}</span>
@@ -164,7 +164,7 @@ async function submitChangeVehicle(): Promise<void> {
           </template>
         </UTable>
       </UPageCard>
-    </UPageList>
+    </UPageBody>
 
     <!-- Modal cambiar vehículo -->
     <UModal
