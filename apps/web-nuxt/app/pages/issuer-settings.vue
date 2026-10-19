@@ -130,14 +130,13 @@ async function save(): Promise<void> {
       description="El administrador conserva el historial fiscal con cada nueva versión."
     />
 
-    <div v-else class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-      <UCard role="region" aria-label="Versión vigente">
-        <template #header>
-          <div>
-            <h2 class="text-lg font-semibold text-highlighted">Versión vigente</h2>
-            <p class="text-sm text-muted">La que usarán los próximos comprobantes.</p>
-          </div>
-        </template>
+    <UPageBody v-else>
+      <UPageCard
+        role="region"
+        aria-label="Versión vigente"
+        description="La que usarán los próximos comprobantes."
+      >
+        <template #title><h2>Versión vigente</h2></template>
 
         <UAlert
           v-if="loadError"
@@ -147,10 +146,17 @@ async function save(): Promise<void> {
           :title="loadError"
           :actions="[{ label: 'Reintentar', onClick: load }]"
         />
-        <div v-else-if="loading" class="flex items-center gap-3" role="status">
-          <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin text-muted" />
-          <span class="text-muted">Cargando datos de facturación…</span>
-        </div>
+        <UAlert
+          v-else-if="loading"
+          role="status"
+          color="neutral"
+          variant="subtle"
+          title="Cargando datos de facturación…"
+        >
+          <template #leading>
+            <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" aria-hidden="true" />
+          </template>
+        </UAlert>
         <UAlert
           v-else-if="current === null"
           color="neutral"
@@ -158,46 +164,36 @@ async function save(): Promise<void> {
           title="Todavía no hay datos de facturación"
           description="Completa el formulario para guardar la primera versión."
         />
-        <dl v-else class="space-y-4 text-sm">
-          <div>
-            <dt class="text-muted">Empresa</dt>
-            <dd class="font-medium text-highlighted">{{ current.legalName }}</dd>
-            <dd class="tabular-nums text-muted">RUC {{ current.taxId }}</dd>
-          </div>
-          <div>
-            <dt class="text-muted">Dirección fiscal</dt>
-            <dd class="font-medium text-highlighted">{{ current.fiscalAddress }}</dd>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <dt class="text-muted">IGV</dt>
-              <dd class="font-medium text-highlighted tabular-nums">{{ current.taxRate }} %</dd>
-            </div>
-            <div>
-              <dt class="text-muted">Documento en boleta desde</dt>
-              <dd class="font-medium text-highlighted tabular-nums">
-                {{ formatSoles(current.receiptDocumentThreshold) }}
-              </dd>
-            </div>
-          </div>
-          <div class="border-t border-default pt-4 text-muted">
+        <template v-else>
+          <UPageGrid>
+            <UPageCard title="Empresa" :description="current.legalName" variant="soft">
+              <p>RUC {{ current.taxId }}</p>
+            </UPageCard>
+            <UPageCard
+              title="Dirección fiscal"
+              :description="current.fiscalAddress"
+              variant="soft"
+            />
+            <UPageCard title="IGV" :description="`${current.taxRate} %`" variant="soft" />
+            <UPageCard
+              title="Documento en boleta desde"
+              :description="formatSoles(current.receiptDocumentThreshold)"
+              variant="soft"
+            />
+          </UPageGrid>
+          <p>
             Versión guardada por {{ current.createdBy.username }} ·
             {{ formatInstantInLima(current.createdAt) }}
-          </div>
-        </dl>
-      </UCard>
-
-      <UCard>
-        <template #header>
-          <div>
-            <h2 class="text-lg font-semibold text-highlighted">Guardar una versión nueva</h2>
-            <p class="text-sm text-muted">
-              La versión anterior queda en el historial de los comprobantes ya registrados.
-            </p>
-          </div>
+          </p>
         </template>
+      </UPageCard>
 
-        <form class="space-y-4" novalidate @submit.prevent="save">
+      <UPageCard
+        description="La versión anterior queda en el historial de los comprobantes ya registrados."
+      >
+        <template #title><h2>Guardar una versión nueva</h2></template>
+
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" novalidate @submit="save">
           <UAlert v-if="notice" role="status" color="success" variant="subtle" :title="notice" />
           <UAlert v-if="formError" role="alert" color="error" variant="subtle" :title="formError" />
 
@@ -228,7 +224,7 @@ async function save(): Promise<void> {
               class="w-full"
             />
           </UFormField>
-          <div class="grid gap-4 sm:grid-cols-2">
+          <UPageGrid>
             <UFormField label="Tasa de IGV" help="Porcentaje; por ejemplo, 18.00" required>
               <UInput
                 v-model="form.taxRate"
@@ -236,7 +232,7 @@ async function save(): Promise<void> {
                 :disabled="saving || loading"
                 class="w-full"
               >
-                <template #trailing><span class="text-sm text-muted">%</span></template>
+                <template #trailing>%</template>
               </UInput>
             </UFormField>
             <UFormField
@@ -250,12 +246,12 @@ async function save(): Promise<void> {
                 :disabled="saving || loading"
                 class="w-full"
               >
-                <template #leading><span class="text-sm text-muted">S/</span></template>
+                <template #leading>S/</template>
               </UInput>
             </UFormField>
-          </div>
+          </UPageGrid>
 
-          <div class="flex justify-end border-t border-default pt-4">
+          <div class="flex justify-end gap-2">
             <UButton
               type="submit"
               icon="i-lucide-save"
@@ -264,8 +260,8 @@ async function save(): Promise<void> {
               :disabled="saving || loading"
             />
           </div>
-        </form>
-      </UCard>
-    </div>
+        </UForm>
+      </UPageCard>
+    </UPageBody>
   </AppPage>
 </template>
