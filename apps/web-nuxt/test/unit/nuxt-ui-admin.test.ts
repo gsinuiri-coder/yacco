@@ -16,6 +16,8 @@ const ALLOWED_CLASSES: Record<string, string> = {
   "w-full": "UInput y USelect son inline por defecto; el campo ocupa su fila",
   "flex justify-end gap-2": "botones de cancelar y confirmar separados y a la derecha",
   "flex flex-wrap gap-2": "botones hermanos separados, sin fundirse como UFieldGroup",
+  "flex flex-wrap items-center justify-end gap-2":
+    "acciones y confirmación en la fila, a la derecha, junto a su texto",
   "size-5 animate-spin": "ícono de carga girando; UAlert no anima su ícono",
 };
 
