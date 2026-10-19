@@ -37,3 +37,26 @@ AssertionError: UPageList que no es lista en …/PlantCountForm.vue: expected '<
  Test Files  66 passed (66)
       Tests  712 passed (712)
 ```
+
+## Las llenadas como elementos de lista
+
+La guarda mira sólo la etiqueta de `UPageList`, no sus hijos. Para el
+`as="li"` de cada llenada, `test/nuxt/production.test.ts` pide tres
+`listitem` dentro de «Llenadas del lote …». Sin `as="li"`:
+
+```
+ FAIL  |nuxt| test/nuxt/production.test.ts > Producción > lista código, fecha, responsable, lo producido y lo que queda sin cargar (o «Todo cargado»)
+TestingLibraryElementError: Unable to find an accessible element with the role "listitem"
+      Tests  1 failed | 16 passed (17)
+```
+
+Con `as="li"`: `Tests  22 passed (22)` (ese archivo más la guarda).
+
+## Fuera de este PR
+
+El mismo uso de `UPageList` como contenedor sigue en rutas, liquidación,
+pedidos no entregados y «Mi ruta» (`RoutePitStopForm`, `RoutePitStopsSection`,
+`RouteMarkOutcome`, `RouteLoadsSection`, `RouteVehiclesSection`,
+`RouteStopsSection`, `routes/[id]/settlement.vue`, `orders/undelivered.vue`,
+`my-route.vue`). Sus guardas no usan `expectNativeNuxtUi`; quedan para un PR
+aparte.

@@ -518,6 +518,8 @@ describe("Producción", () => {
     const details = screen.getByRole("region", {
       name: "Llenadas del lote LOTE-2026-08-22-01",
     });
+    // Las llenadas se anuncian como lista con sus elementos, no como lista vacía.
+    expect(within(details).getAllByRole("listitem")).toHaveLength(3);
     expect(within(details).getByText("Rosa Mamani")).toBeTruthy();
     expect(within(details).getByText("22/08/2026 09:15")).toBeTruthy();
     expect(within(details).getByText("Turno mañana")).toBeTruthy();
