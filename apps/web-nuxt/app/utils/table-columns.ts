@@ -9,6 +9,9 @@ import { h } from "vue";
 /** Montos, cantidades y acciones alineados a la derecha, cabecera incluida. */
 export const RIGHT_ALIGNED = { class: { th: "text-right", td: "text-right" } };
 
+/** Texto libre (un motivo, un local) que parte en líneas en vez de estirar la tabla. */
+export const WRAPPING_TEXT = { class: { td: "whitespace-normal" } };
+
 /** Columna que solo ocupa lo que mide su contenido (una casilla). */
 export const SHRINK_TO_CONTENT = { class: { td: "w-0" } };
 

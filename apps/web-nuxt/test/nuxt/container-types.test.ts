@@ -55,8 +55,8 @@ describe("Tipos de envase", () => {
     expect(await screen.findByText("Bidón 20L (R)")).toBeTruthy();
     const names = screen
       .getAllByRole("row")
-      .slice(1)
-      .map((row) => within(row).getAllByRole("cell")[0]?.textContent);
+      .map((row) => within(row).queryAllByRole("cell")[0]?.textContent)
+      .filter((name) => name !== undefined);
     expect(names).toEqual(["Bidón 20L (R)", "Bidón 20L (V)"]);
     expect(screen.getByText("2 en uso")).toBeTruthy();
   });

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ContainerType } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 /**
  * El catálogo del que depende todo el cuadre de envases: un tipo que aparece
@@ -157,6 +158,18 @@ async function setActive(id: string, active: boolean): Promise<void> {
     savingAction.value = false;
   }
 }
+
+const columns = computed<TableColumn<ContainerType>[]>(() => [
+  { accessorKey: "name", header: "Tipo de envase" },
+  { id: "status", header: "Estado" },
+  ...(isAdmin.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
+// El error de una acción se abre debajo de su fila.
+const expandedTypeIds = computed<Record<string, boolean>>(() =>
+  actionError.value === null ? {} : { [actionError.value.typeId]: true },
+);
 </script>
 
 <template>
@@ -171,9 +184,16 @@ async function setActive(id: string, active: boolean): Promise<void> {
       />
     </template>
 
-    <div class="space-y-6">
+    <UPageBody>
       <UCard v-if="adding">
-        <div class="space-y-4">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          aria-label="Nuevo tipo de envase"
+          @submit="create"
+        >
           <UAlert
             v-if="createError"
             role="alert"
@@ -181,40 +201,33 @@ async function setActive(id: string, active: boolean): Promise<void> {
             variant="subtle"
             :title="createError"
           />
-          <form
-            class="space-y-4"
-            novalidate
-            aria-label="Nuevo tipo de envase"
-            @submit.prevent="create"
+          <UFormField
+            label="Nombre"
+            help="Si la planta distingue el mismo bidón por etiqueta, cada etiqueta es un tipo aparte."
           >
-            <UFormField
-              label="Nombre"
-              help="Si la planta distingue el mismo bidón por etiqueta, cada etiqueta es un tipo aparte."
-            >
-              <UInput
-                v-model="newName"
-                placeholder="Bidón 20L (V)"
-                :maxlength="80"
-                :disabled="creating"
-                class="w-full"
-              />
-            </UFormField>
-            <div class="flex justify-end gap-2 border-t border-default pt-4">
-              <UButton
-                color="neutral"
-                variant="outline"
-                label="Cancelar"
-                :disabled="creating"
-                @click="adding = false"
-              />
-              <UButton
-                type="submit"
-                :label="creating ? 'Guardando…' : 'Guardar'"
-                :disabled="creating"
-              />
-            </div>
-          </form>
-        </div>
+            <UInput
+              v-model="newName"
+              placeholder="Bidón 20L (V)"
+              :maxlength="80"
+              :disabled="creating"
+              class="w-full"
+            />
+          </UFormField>
+          <div class="flex justify-end gap-2">
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancelar"
+              :disabled="creating"
+              @click="adding = false"
+            />
+            <UButton
+              type="submit"
+              :label="creating ? 'Guardando…' : 'Guardar'"
+              :disabled="creating"
+            />
+          </div>
+        </UForm>
       </UCard>
 
       <UAlert
@@ -237,112 +250,100 @@ async function setActive(id: string, active: boolean): Promise<void> {
         @retry="loadTypes"
       />
 
-      <UCard v-else :ui="{ body: 'p-0 sm:p-0' }">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              Tipos de envase de la planta
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-4 py-2 font-medium">Tipo de envase</th>
-                <th scope="col" class="px-4 py-2 font-medium">Estado</th>
-                <th v-if="isAdmin" scope="col" class="px-4 py-2">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <template v-for="type in types" :key="type.id">
-                <tr>
-                  <td class="px-4 py-3">
-                    <UInput
-                      v-if="renamingId === type.id"
-                      :model-value="renameValue"
-                      :aria-label="`Nuevo nombre de ${type.name}`"
-                      :maxlength="80"
-                      :disabled="savingAction"
-                      class="w-full"
-                      @update:model-value="
-                        (value: string | number) => (renameValue = String(value))
-                      "
-                    />
-                    <span v-else class="font-medium text-highlighted">{{ type.name }}</span>
-                  </td>
-                  <td class="px-4 py-3">
-                    <UBadge
-                      :color="type.active ? 'success' : 'neutral'"
-                      variant="subtle"
-                      :label="type.active ? 'En uso' : 'Retirado'"
-                    />
-                  </td>
-                  <td v-if="isAdmin" class="px-4 py-3">
-                    <WithdrawConfirm
-                      v-if="withdrawingId === type.id"
-                      :item-label="type.name"
-                      :explanation="WITHDRAW_EXPLANATION"
-                      :saving="savingAction"
-                      @cancel="withdrawingId = null"
-                      @confirm="setActive(type.id, false)"
-                    />
-                    <div v-else-if="renamingId === type.id" class="flex justify-end gap-2">
-                      <UButton
-                        color="neutral"
-                        variant="outline"
-                        size="sm"
-                        label="Cancelar"
-                        :disabled="savingAction"
-                        @click="renamingId = null"
-                      />
-                      <UButton
-                        size="sm"
-                        :label="savingAction ? 'Guardando…' : 'Guardar'"
-                        :disabled="savingAction"
-                        @click="saveRename(type.id)"
-                      />
-                    </div>
-                    <div v-else class="flex justify-end gap-2">
-                      <UButton
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Renombrar"
-                        :disabled="savingAction"
-                        @click="startRename(type)"
-                      />
-                      <UButton
-                        v-if="type.active"
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Retirar"
-                        :disabled="savingAction"
-                        @click="startWithdraw(type.id)"
-                      />
-                      <UButton
-                        v-else
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        :label="savingAction ? 'Reactivando…' : 'Reactivar'"
-                        :disabled="savingAction"
-                        @click="setActive(type.id, true)"
-                      />
-                    </div>
-                  </td>
-                </tr>
-                <!-- Fila aparte, no dentro de la celda de acciones: esa columna
-                  es angosta y el mensaje desbordaría la tabla. -->
-                <tr v-if="actionError?.typeId === type.id">
-                  <td :colspan="isAdmin ? 3 : 2" class="px-4 pb-3">
-                    <p role="alert" class="text-sm text-error">{{ actionError.message }}</p>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
+      <UCard v-else>
+        <UTable
+          :data="types"
+          :columns="columns"
+          :get-row-id="(type: ContainerType) => type.id"
+          :expanded="expandedTypeIds"
+          caption="Tipos de envase de la planta"
+        >
+          <template #name-cell="{ row }">
+            <UInput
+              v-if="renamingId === row.original.id"
+              :model-value="renameValue"
+              :aria-label="`Nuevo nombre de ${row.original.name}`"
+              :maxlength="80"
+              :disabled="savingAction"
+              class="w-full"
+              @update:model-value="(value: string | number) => (renameValue = String(value))"
+            />
+            <template v-else>{{ row.original.name }}</template>
+          </template>
+          <template #status-cell="{ row }">
+            <UBadge
+              :color="row.original.active ? 'success' : 'neutral'"
+              variant="subtle"
+              :label="row.original.active ? 'En uso' : 'Retirado'"
+            />
+          </template>
+          <template #actions-cell="{ row }">
+            <WithdrawConfirm
+              v-if="withdrawingId === row.original.id"
+              :item-label="row.original.name"
+              :explanation="WITHDRAW_EXPLANATION"
+              :saving="savingAction"
+              @cancel="withdrawingId = null"
+              @confirm="setActive(row.original.id, false)"
+            />
+            <div v-else-if="renamingId === row.original.id" class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                label="Cancelar"
+                :disabled="savingAction"
+                @click="renamingId = null"
+              />
+              <UButton
+                size="sm"
+                :label="savingAction ? 'Guardando…' : 'Guardar'"
+                :disabled="savingAction"
+                @click="saveRename(row.original.id)"
+              />
+            </div>
+            <div v-else class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Renombrar"
+                :disabled="savingAction"
+                @click="startRename(row.original)"
+              />
+              <UButton
+                v-if="row.original.active"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Retirar"
+                :disabled="savingAction"
+                @click="startWithdraw(row.original.id)"
+              />
+              <UButton
+                v-else
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                :label="savingAction ? 'Reactivando…' : 'Reactivar'"
+                :disabled="savingAction"
+                @click="setActive(row.original.id, true)"
+              />
+            </div>
+          </template>
+          <!-- Fila aparte, no dentro de la celda de acciones: esa columna
+            es angosta y el mensaje desbordaría la tabla. -->
+          <template #expanded>
+            <UAlert
+              v-if="actionError"
+              role="alert"
+              color="error"
+              variant="subtle"
+              :title="actionError.message"
+            />
+          </template>
+        </UTable>
       </UCard>
-    </div>
+    </UPageBody>
   </AppPage>
 </template>

@@ -7,6 +7,7 @@ import type {
   AccessorySummary,
   Page,
 } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import { positiveWhole } from "../utils/quantity";
 
 useHead({ title: "Accesorios · Yacco" });
@@ -301,6 +302,42 @@ function startReconciliation(): void {
   reconciliationModalOpen.value = true;
   void loadReconciliation();
 }
+
+const accessoryColumns: TableColumn<AccessorySummary>[] = [
+  { accessorKey: "name", header: "Accesorio" },
+  { id: "listPrice", header: "Precio de lista", meta: RIGHT_ALIGNED },
+  { id: "stock", header: "En planta", meta: RIGHT_ALIGNED },
+  { accessorKey: "totalBorrowed", header: "Prestados", meta: RIGHT_ALIGNED },
+  { id: "total", header: "Total", meta: RIGHT_ALIGNED },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
+];
+const movementColumns = computed<TableColumn<AccessoryMovementItem>[]>(() => [
+  { id: "occurredAt", header: "Fecha" },
+  { id: "type", header: "Tipo" },
+  { id: "quantity", header: "Cantidad", meta: RIGHT_ALIGNED },
+  { id: "detail", header: "Detalle", meta: WRAPPING_TEXT },
+  { accessorKey: "recordedByName", header: "Registrado por" },
+  ...(isAdmin.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
+const stockDiscrepancyColumns: TableColumn<
+  AccessoryReconciliationResult["stockDiscrepancies"][number]
+>[] = [
+  { accessorKey: "productName", header: "Accesorio" },
+  { accessorKey: "materializedStock", header: "Saldo actual", meta: RIGHT_ALIGNED },
+  { accessorKey: "ledgerStock", header: "Según libro", meta: RIGHT_ALIGNED },
+  { id: "difference", header: "Diferencia", meta: RIGHT_ALIGNED },
+];
+const balanceDiscrepancyColumns: TableColumn<
+  AccessoryReconciliationResult["customerBalanceDiscrepancies"][number]
+>[] = [
+  { accessorKey: "locationName", header: "Local" },
+  { accessorKey: "productName", header: "Accesorio" },
+  { accessorKey: "materializedBalance", header: "Saldo actual", meta: RIGHT_ALIGNED },
+  { accessorKey: "ledgerBalance", header: "Según libro", meta: RIGHT_ALIGNED },
+  { id: "difference", header: "Diferencia", meta: RIGHT_ALIGNED },
+];
 </script>
 
 <template>
@@ -315,7 +352,7 @@ function startReconciliation(): void {
       />
     </template>
 
-    <div class="space-y-6">
+    <UPageBody>
       <UAlert
         v-if="slow && loading"
         role="status"
@@ -336,89 +373,68 @@ function startReconciliation(): void {
         @retry="loadAccessories"
       />
 
-      <UCard v-else :ui="{ body: 'p-0 sm:p-0' }">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              Inventario de accesorios en planta y prestados
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-4 py-3 font-medium">Accesorio</th>
-                <th scope="col" class="px-4 py-3 text-right font-medium">Precio de lista</th>
-                <th scope="col" class="px-4 py-3 text-right font-medium">En planta</th>
-                <th scope="col" class="px-4 py-3 text-right font-medium">Prestados</th>
-                <th scope="col" class="px-4 py-3 text-right font-medium">Total</th>
-                <th scope="col" class="px-4 py-3 text-right font-medium">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="item in accessories" :key="item.id">
-                <td class="px-4 py-3 font-medium text-highlighted">
-                  {{ item.name }}
-                </td>
-                <td class="px-4 py-3 text-right tabular-nums">
-                  {{ formatSoles(item.listPrice) }}
-                </td>
-                <td
-                  class="px-4 py-3 text-right font-medium tabular-nums"
-                  :class="item.stock < 0 ? 'text-error' : 'text-highlighted'"
-                >
-                  {{ item.stock }}
-                </td>
-                <td class="px-4 py-3 text-right tabular-nums">
-                  {{ item.totalBorrowed }}
-                </td>
-                <td class="px-4 py-3 text-right font-semibold tabular-nums">
-                  {{ item.stock + item.totalBorrowed }}
-                </td>
-                <td class="px-4 py-3 text-right">
-                  <div class="flex justify-end gap-1">
-                    <template v-if="isAdmin">
-                      <UButton
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Ingreso"
-                        @click="startEntry(item)"
-                      />
-                      <UButton
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Baja"
-                        @click="startWriteOff(item)"
-                      />
-                      <UButton
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Contar"
-                        @click="startCount(item)"
-                      />
-                    </template>
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Movimientos"
-                      @click="startMovements(item)"
-                    />
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <UCard v-else>
+        <UTable
+          :data="accessories"
+          :columns="accessoryColumns"
+          caption="Inventario de accesorios en planta y prestados"
+        >
+          <template #listPrice-cell="{ row }">{{ formatSoles(row.original.listPrice) }}</template>
+          <template #stock-cell="{ row }">
+            <!-- En negativo, el sistema entregó más de lo que entró a planta. -->
+            <UBadge
+              v-if="row.original.stock < 0"
+              color="error"
+              variant="subtle"
+              :label="String(row.original.stock)"
+            />
+            <template v-else>{{ row.original.stock }}</template>
+          </template>
+          <template #total-cell="{ row }">
+            {{ row.original.stock + row.original.totalBorrowed }}
+          </template>
+          <template #actions-cell="{ row }">
+            <div class="flex justify-end gap-2">
+              <template v-if="isAdmin">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Ingreso"
+                  @click="startEntry(row.original)"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Baja"
+                  @click="startWriteOff(row.original)"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Contar"
+                  @click="startCount(row.original)"
+                />
+              </template>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Movimientos"
+                @click="startMovements(row.original)"
+              />
+            </div>
+          </template>
+        </UTable>
       </UCard>
-    </div>
+    </UPageBody>
 
     <!-- Modal Ingreso -->
     <UModal v-model:open="entryModalOpen" :title="`Ingreso a planta: ${entryTarget?.name}`">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitEntry">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitEntry">
           <UAlert
             v-if="entryError"
             role="alert"
@@ -439,7 +455,7 @@ function startReconciliation(): void {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -449,14 +465,14 @@ function startReconciliation(): void {
             />
             <UButton type="submit" label="Registrar ingreso" :loading="entrySubmitting" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
     <!-- Modal Baja -->
     <UModal v-model:open="writeOffModalOpen" :title="`Baja en planta: ${writeOffTarget?.name}`">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitWriteOff">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitWriteOff">
           <UAlert
             v-if="writeOffError"
             role="alert"
@@ -490,7 +506,7 @@ function startReconciliation(): void {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -500,14 +516,14 @@ function startReconciliation(): void {
             />
             <UButton type="submit" label="Registrar baja" :loading="writeOffSubmitting" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
     <!-- Modal Conteo -->
     <UModal v-model:open="countModalOpen" :title="`Conteo en planta: ${countTarget?.name}`">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitCount">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitCount">
           <UAlert
             v-if="countError"
             role="alert"
@@ -516,10 +532,7 @@ function startReconciliation(): void {
             :title="countError"
           />
 
-          <p class="text-sm text-muted">
-            Stock según el sistema:
-            <span class="font-medium text-highlighted tabular-nums">{{ countTarget?.stock }}</span>
-          </p>
+          <p>Stock según el sistema: {{ countTarget?.stock }}</p>
 
           <UFormField label="Cantidad contada físicamente" required>
             <UInput
@@ -555,7 +568,7 @@ function startReconciliation(): void {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -569,18 +582,14 @@ function startReconciliation(): void {
               :loading="countSubmitting"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
     <!-- Modal Movimientos -->
-    <UModal
-      v-model:open="movementsModalOpen"
-      :title="`Movimientos: ${movementsTarget?.name}`"
-      :ui="{ content: 'sm:max-w-4xl' }"
-    >
+    <UModal v-model:open="movementsModalOpen" :title="`Movimientos: ${movementsTarget?.name}`">
       <template #body>
-        <div class="space-y-4">
+        <UPageBody>
           <ListStatus
             v-if="movementsError || movementsLoading || movements.length === 0"
             :error-message="movementsError"
@@ -594,74 +603,58 @@ function startReconciliation(): void {
           />
 
           <template v-else>
-            <div class="overflow-x-auto rounded-md border border-default">
-              <table class="w-full text-sm">
-                <caption class="sr-only">
-                  Movimientos del accesorio
-                </caption>
-                <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                  <tr>
-                    <th scope="col" class="px-3 py-2 font-medium">Fecha</th>
-                    <th scope="col" class="px-3 py-2 font-medium">Tipo</th>
-                    <th scope="col" class="px-3 py-2 text-right font-medium">Cantidad</th>
-                    <th scope="col" class="px-3 py-2 font-medium">Detalle</th>
-                    <th scope="col" class="px-3 py-2 font-medium">Registrado por</th>
-                    <th v-if="isAdmin" scope="col" class="px-3 py-2 text-right font-medium">
-                      <span class="sr-only">Acciones</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <tr v-for="m in movements" :key="m.id">
-                    <td class="px-3 py-2 text-muted tabular-nums whitespace-nowrap">
-                      {{ formatInstantInLima(m.occurredAt) }}
-                    </td>
-                    <td class="px-3 py-2 font-medium">
-                      {{ MOVEMENT_LABELS[m.type] ?? m.type }}
-                    </td>
-                    <td
-                      class="px-3 py-2 text-right font-semibold tabular-nums"
-                      :class="m.quantity < 0 ? 'text-error' : 'text-highlighted'"
-                    >
-                      {{ m.quantity > 0 ? `+${m.quantity}` : m.quantity }}
-                    </td>
-                    <td class="px-3 py-2 text-muted text-xs">
-                      <div v-if="m.locationName">
-                        {{
-                          m.customerName ? `${m.customerName} · ${m.locationName}` : m.locationName
-                        }}
-                      </div>
-                      <div v-if="m.reason">
-                        {{ m.reason }}
-                      </div>
-                      <div v-if="m.saleId" class="tabular-nums">
-                        Venta #{{ m.saleId.slice(0, 8) }}
-                      </div>
-                      <UBadge
-                        v-if="m.reversesMovementId"
-                        color="warning"
-                        variant="subtle"
-                        size="xs"
-                        label="Anulación"
-                      />
-                    </td>
-                    <td class="px-3 py-2 text-muted">
-                      {{ m.recordedByName }}
-                    </td>
-                    <td v-if="isAdmin" class="px-3 py-2 text-right">
-                      <UButton
-                        v-if="m.type === 'LOAN_CHARGE' && !m.reversesMovementId"
-                        color="error"
-                        variant="ghost"
-                        size="xs"
-                        label="Anular cobro"
-                        @click="startVoidCharge(m)"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <UTable
+              :data="movements"
+              :columns="movementColumns"
+              caption="Movimientos del accesorio"
+            >
+              <template #occurredAt-cell="{ row }">
+                {{ formatInstantInLima(row.original.occurredAt) }}
+              </template>
+              <template #type-cell="{ row }">
+                {{ MOVEMENT_LABELS[row.original.type] ?? row.original.type }}
+              </template>
+              <template #quantity-cell="{ row }">
+                <!-- Lo que sale de planta va en negativo. -->
+                <UBadge
+                  v-if="row.original.quantity < 0"
+                  color="error"
+                  variant="subtle"
+                  :label="String(row.original.quantity)"
+                />
+                <template v-else>
+                  {{ row.original.quantity > 0 ? `+${row.original.quantity}` : 0 }}
+                </template>
+              </template>
+              <template #detail-cell="{ row }">
+                <p v-if="row.original.locationName">
+                  {{
+                    row.original.customerName
+                      ? `${row.original.customerName} · ${row.original.locationName}`
+                      : row.original.locationName
+                  }}
+                </p>
+                <p v-if="row.original.reason">{{ row.original.reason }}</p>
+                <p v-if="row.original.saleId">Venta #{{ row.original.saleId.slice(0, 8) }}</p>
+                <UBadge
+                  v-if="row.original.reversesMovementId"
+                  color="warning"
+                  variant="subtle"
+                  size="xs"
+                  label="Anulación"
+                />
+              </template>
+              <template #actions-cell="{ row }">
+                <UButton
+                  v-if="row.original.type === 'LOAN_CHARGE' && !row.original.reversesMovementId"
+                  color="error"
+                  variant="ghost"
+                  size="xs"
+                  label="Anular cobro"
+                  @click="startVoidCharge(row.original)"
+                />
+              </template>
+            </UTable>
 
             <ListPagination
               :shown-page="movementsPage"
@@ -671,17 +664,17 @@ function startReconciliation(): void {
               @next="onMovementsNext"
             />
           </template>
-        </div>
+        </UPageBody>
       </template>
     </UModal>
 
     <!-- Modal Anular Cobro -->
     <UModal v-model:open="voidModalOpen" title="Anular cobro de accesorio">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitVoidCharge">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitVoidCharge">
           <UAlert v-if="voidError" role="alert" color="error" variant="subtle" :title="voidError" />
 
-          <p class="text-sm text-muted">
+          <p>
             Anular este cobro devolverá el accesorio al saldo de prestados del cliente y cancelará
             la venta asociada.
           </p>
@@ -695,7 +688,7 @@ function startReconciliation(): void {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -705,18 +698,14 @@ function startReconciliation(): void {
             />
             <UButton type="submit" color="error" label="Anular cobro" :loading="voidSubmitting" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
     <!-- Modal Cuadre / Reconciliación -->
-    <UModal
-      v-model:open="reconciliationModalOpen"
-      title="Cuadre de accesorios"
-      :ui="{ content: 'sm:max-w-3xl' }"
-    >
+    <UModal v-model:open="reconciliationModalOpen" title="Cuadre de accesorios">
       <template #body>
-        <div class="space-y-4">
+        <UPageBody>
           <ListStatus
             v-if="reconciliationError || reconciliationLoading"
             :error-message="reconciliationError"
@@ -747,68 +736,33 @@ function startReconciliation(): void {
               title="Hay diferencias entre el libro de movimientos y los saldos materializados."
             />
 
-            <!-- Discrepancias en stock de planta -->
-            <div v-if="reconciliation.stockDiscrepancies.length > 0" class="space-y-2">
-              <h3 class="font-medium text-sm text-highlighted">Diferencias en stock de planta</h3>
-              <div class="overflow-x-auto rounded-md border border-default">
-                <table class="w-full text-sm">
-                  <thead class="bg-elevated text-left text-xs uppercase text-muted">
-                    <tr>
-                      <th class="px-3 py-2">Accesorio</th>
-                      <th class="px-3 py-2 text-right">Saldo actual</th>
-                      <th class="px-3 py-2 text-right">Según libro</th>
-                      <th class="px-3 py-2 text-right">Diferencia</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-default">
-                    <tr v-for="d in reconciliation.stockDiscrepancies" :key="d.productId">
-                      <td class="px-3 py-2 font-medium">{{ d.productName }}</td>
-                      <td class="px-3 py-2 text-right tabular-nums">{{ d.materializedStock }}</td>
-                      <td class="px-3 py-2 text-right tabular-nums">{{ d.ledgerStock }}</td>
-                      <td class="px-3 py-2 text-right tabular-nums font-semibold text-error">
-                        {{ d.difference }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <template v-if="reconciliation.stockDiscrepancies.length > 0">
+              <h3>Diferencias en stock de planta</h3>
+              <UTable
+                :data="reconciliation.stockDiscrepancies"
+                :columns="stockDiscrepancyColumns"
+                caption="Diferencias en stock de planta"
+              >
+                <template #difference-cell="{ row }">
+                  <UBadge color="error" variant="subtle" :label="String(row.original.difference)" />
+                </template>
+              </UTable>
+            </template>
 
-            <!-- Discrepancias en saldos de clientes -->
-            <div v-if="reconciliation.customerBalanceDiscrepancies.length > 0" class="space-y-2">
-              <h3 class="font-medium text-sm text-highlighted">
-                Diferencias en prestados a clientes
-              </h3>
-              <div class="overflow-x-auto rounded-md border border-default">
-                <table class="w-full text-sm">
-                  <thead class="bg-elevated text-left text-xs uppercase text-muted">
-                    <tr>
-                      <th class="px-3 py-2">Local</th>
-                      <th class="px-3 py-2">Accesorio</th>
-                      <th class="px-3 py-2 text-right">Saldo actual</th>
-                      <th class="px-3 py-2 text-right">Según libro</th>
-                      <th class="px-3 py-2 text-right">Diferencia</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-default">
-                    <tr
-                      v-for="d in reconciliation.customerBalanceDiscrepancies"
-                      :key="`${d.locationId}-${d.productId}`"
-                    >
-                      <td class="px-3 py-2 font-medium">{{ d.locationName }}</td>
-                      <td class="px-3 py-2">{{ d.productName }}</td>
-                      <td class="px-3 py-2 text-right tabular-nums">{{ d.materializedBalance }}</td>
-                      <td class="px-3 py-2 text-right tabular-nums">{{ d.ledgerBalance }}</td>
-                      <td class="px-3 py-2 text-right tabular-nums font-semibold text-error">
-                        {{ d.difference }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <template v-if="reconciliation.customerBalanceDiscrepancies.length > 0">
+              <h3>Diferencias en prestados a clientes</h3>
+              <UTable
+                :data="reconciliation.customerBalanceDiscrepancies"
+                :columns="balanceDiscrepancyColumns"
+                caption="Diferencias en prestados a clientes"
+              >
+                <template #difference-cell="{ row }">
+                  <UBadge color="error" variant="subtle" :label="String(row.original.difference)" />
+                </template>
+              </UTable>
+            </template>
           </template>
-        </div>
+        </UPageBody>
       </template>
     </UModal>
   </AppPage>
