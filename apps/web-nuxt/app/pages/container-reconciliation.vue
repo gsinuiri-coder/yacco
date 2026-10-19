@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatInstantInLima } from "@yacco/shared";
 import type { ContainerReconciliation, ContainerReconciliationDiscrepancy } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 /**
  * El cuadre de envases: dos cuentas INDEPENDIENTES del mismo hecho, hechas
@@ -55,11 +56,19 @@ const subtitle = computed(() =>
 
 function describeDifference(discrepancy: ContainerReconciliationDiscrepancy): string {
   const gap = Math.abs(discrepancy.difference);
-  const unidades = gap === 1 ? "envase" : "envases";
+  const unitsLabel = gap === 1 ? "envase" : "envases";
   return discrepancy.difference > 0
-    ? `Al saldo le ${gap === 1 ? "falta" : "faltan"} ${gap} ${unidades}`
-    : `El saldo tiene ${gap} ${unidades} de más`;
+    ? `Al saldo le ${gap === 1 ? "falta" : "faltan"} ${gap} ${unitsLabel}`
+    : `El saldo tiene ${gap} ${unitsLabel} de más`;
 }
+
+const columns: TableColumn<ContainerReconciliationDiscrepancy>[] = [
+  { id: "location", header: "Ubicación" },
+  { id: "containerType", header: "Tipo de envase" },
+  { accessorKey: "ledgerQuantity", header: "Según el libro", meta: RIGHT_ALIGNED },
+  { accessorKey: "materializedQuantity", header: "Según el saldo", meta: RIGHT_ALIGNED },
+  { id: "difference", header: "Diferencia" },
+];
 </script>
 
 <template>
@@ -76,22 +85,22 @@ function describeDifference(discrepancy: ContainerReconciliationDiscrepancy): st
       />
     </template>
 
-    <div v-if="!isAdmin" class="rounded-lg border border-default bg-default p-6">
-      <p class="font-medium text-highlighted">Este cuadre es solo para administradores</p>
-      <p class="mt-1 text-muted">
-        Revisa todos los envases de la planta y sirve para decidir si un saldo es confiable, así que
-        lo corre el dueño de la planta.
-      </p>
-    </div>
+    <UAlert
+      v-if="!isAdmin"
+      color="neutral"
+      variant="outline"
+      title="Este cuadre es solo para administradores"
+      description="Revisa todos los envases de la planta y sirve para decidir si un saldo es confiable, así que lo corre el dueño de la planta."
+    />
 
-    <div v-else class="space-y-6">
+    <UPageBody v-else>
       <SectionCard title="Qué se compara">
-        <div class="space-y-4">
-          <p class="text-muted">
-            Dos cuentas <strong class="text-highlighted">independientes</strong> del mismo hecho,
-            hechas por caminos distintos a propósito:
+        <UPageBody>
+          <p>
+            Dos cuentas <strong>independientes</strong> del mismo hecho, hechas por caminos
+            distintos a propósito:
           </p>
-          <div class="grid gap-4 sm:grid-cols-2">
+          <UPageGrid>
             <StatTile
               label="Según el libro"
               value="Lo que pasó"
@@ -102,60 +111,52 @@ function describeDifference(discrepancy: ContainerReconciliationDiscrepancy): st
               value="Lo que el sistema muestra"
               note="El número que ven las pantallas de envases y el estado de cuenta."
             />
-          </div>
-          <p class="text-muted">
+          </UPageGrid>
+          <p>
             Si las dos coinciden, el saldo es confiable. Si no, acá se ve exactamente dónde. Este
-            cuadre <strong class="text-highlighted">informa y no corrige</strong>: reparar en
-            silencio borraría el rastro de lo que salió mal.
+            cuadre <strong>informa y no corrige</strong>: reparar en silencio borraría el rastro de
+            lo que salió mal.
           </p>
-          <p class="text-sm text-dimmed">
+          <p>
             Un saldo negativo en el que las dos cuentas coinciden no aparece acá: no es un descuadre
             sino una entrega que nunca se registró, y se ve en el saldo de envases del cliente.
           </p>
-        </div>
+        </UPageBody>
       </SectionCard>
 
-      <UCard :ui="{ body: 'p-0 sm:p-0' }">
+      <UCard>
         <UAlert
           v-if="slow && loading"
           role="status"
           color="neutral"
           variant="subtle"
-          class="rounded-none"
           :title="SLOW_REQUEST_MESSAGE"
         />
 
-        <div v-if="errorMessage" class="flex flex-col items-start gap-3 p-6">
-          <p class="font-medium text-highlighted">No se pudo correr el cuadre de envases</p>
-          <p role="alert" class="text-muted">{{ errorMessage }}</p>
-          <UButton
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-rotate-cw"
-            label="Reintentar"
-            @click="check"
-          />
-        </div>
-        <p v-else-if="loading" role="status" class="p-6 text-muted">
-          Revisando los envases de la planta…
-        </p>
-        <div
+        <ListStatus
+          v-if="errorMessage || loading"
+          :error-message="errorMessage"
+          :loading="loading"
+          :empty="false"
+          loading-label="Revisando los envases de la planta…"
+          error-title="No se pudo correr el cuadre de envases"
+          empty-title=""
+          empty-description=""
+          @retry="check"
+        />
+        <UAlert
           v-else-if="result && result.discrepancies.length === 0"
-          class="flex flex-col items-center gap-3 px-6 py-14 text-center"
-        >
-          <UIcon name="i-lucide-badge-check" class="size-8 text-success" aria-hidden="true" />
-          <p class="font-medium text-highlighted">Las dos cuentas coinciden</p>
-          <p class="max-w-md text-muted">
-            Ninguna ubicación tiene un saldo de envases distinto del que se desprende de sus
-            movimientos. El saldo que muestran las pantallas es confiable.
-          </p>
-        </div>
-        <template v-else-if="result">
+          color="success"
+          variant="subtle"
+          icon="i-lucide-badge-check"
+          title="Las dos cuentas coinciden"
+          description="Ninguna ubicación tiene un saldo de envases distinto del que se desprende de sus movimientos. El saldo que muestran las pantallas es confiable."
+        />
+        <UPageBody v-else-if="result">
           <UAlert
             role="status"
             color="warning"
             variant="subtle"
-            class="rounded-none"
             :title="
               result.discrepancyCount === 1
                 ? 'Hay 1 saldo que no coincide con sus movimientos.'
@@ -163,62 +164,37 @@ function describeDifference(discrepancy: ContainerReconciliationDiscrepancy): st
             "
             description="Nada se corrigió: esto es lo que hay que revisar."
           />
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <caption class="sr-only">
-                Saldos de envases que no coinciden con el libro de movimientos
-              </caption>
-              <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                <tr>
-                  <th scope="col" class="px-4 py-2 font-medium">Ubicación</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Tipo de envase</th>
-                  <th scope="col" class="px-4 py-2 text-right font-medium">Según el libro</th>
-                  <th scope="col" class="px-4 py-2 text-right font-medium">Según el saldo</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Diferencia</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-default">
-                <tr
-                  v-for="discrepancy in result.discrepancies"
-                  :key="`${discrepancy.locationId ?? 'sin-ubicacion'}-${discrepancy.containerTypeId}`"
-                >
-                  <td class="px-4 py-3">
-                    <template v-if="discrepancy.locationName === null">
-                      <p class="font-medium text-highlighted">Ubicación desconocida</p>
-                      <!-- El nombre nulo ES el hallazgo: se muestra el id crudo porque es lo único que hay para rastrearlo. -->
-                      <p class="text-muted">
-                        {{ discrepancy.locationId ?? "el movimiento no indica ubicación" }}
-                      </p>
-                    </template>
-                    <p v-else class="font-medium text-highlighted">
-                      {{ discrepancy.locationName }}
-                    </p>
-                  </td>
-                  <td class="px-4 py-3">
-                    <template v-if="discrepancy.containerTypeName === null">
-                      <p class="font-medium text-highlighted">Tipo de envase desconocido</p>
-                      <p class="text-muted">{{ discrepancy.containerTypeId }}</p>
-                    </template>
-                    <span v-else>{{ discrepancy.containerTypeName }}</span>
-                  </td>
-                  <td class="px-4 py-3 text-right tabular-nums">
-                    {{ discrepancy.ledgerQuantity }}
-                  </td>
-                  <td class="px-4 py-3 text-right tabular-nums">
-                    {{ discrepancy.materializedQuantity }}
-                  </td>
-                  <td class="px-4 py-3">
-                    <p class="font-semibold tabular-nums text-highlighted">
-                      {{ formatDifference(discrepancy.difference) }}
-                    </p>
-                    <p class="text-muted">{{ describeDifference(discrepancy) }}</p>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </template>
+          <UTable
+            :data="result.discrepancies"
+            :columns="columns"
+            caption="Saldos de envases que no coinciden con el libro de movimientos"
+          >
+            <template #location-cell="{ row }">
+              <!-- El nombre nulo ES el hallazgo: se muestra el id crudo porque es lo único que hay para rastrearlo. -->
+              <UUser
+                v-if="row.original.locationName === null"
+                name="Ubicación desconocida"
+                :description="row.original.locationId ?? 'el movimiento no indica ubicación'"
+              />
+              <UUser v-else :name="row.original.locationName" />
+            </template>
+            <template #containerType-cell="{ row }">
+              <UUser
+                v-if="row.original.containerTypeName === null"
+                name="Tipo de envase desconocido"
+                :description="row.original.containerTypeId"
+              />
+              <template v-else>{{ row.original.containerTypeName }}</template>
+            </template>
+            <template #difference-cell="{ row }">
+              <UUser
+                :name="formatDifference(row.original.difference)"
+                :description="describeDifference(row.original)"
+              />
+            </template>
+          </UTable>
+        </UPageBody>
       </UCard>
-    </div>
+    </UPageBody>
   </AppPage>
 </template>

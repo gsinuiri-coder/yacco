@@ -7,6 +7,7 @@ import type {
   MaquilaReconciliationResult,
   PaginatedMaquilaMovements,
 } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 useHead({ title: "Maquila · Yacco" });
 
@@ -112,6 +113,30 @@ function canVoid(mov: MaquilaMovementItem): boolean {
   if (mov.type === "RECEIVED" || mov.type === "RETURNED") return isAdmin.value;
   return false;
 }
+
+const customerColumns: TableColumn<MaquilaCustomerSummary>[] = [
+  { id: "customer", header: "Cliente" },
+  { id: "emptyAtPlant", header: "Vacíos en planta", meta: RIGHT_ALIGNED },
+  { id: "fullToReturn", header: "Llenos por devolver", meta: RIGHT_ALIGNED },
+  { id: "balances", header: "Desglose por tipo" },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
+];
+const movementColumns: TableColumn<MaquilaMovementItem>[] = [
+  { id: "occurredAt", header: "Fecha" },
+  { id: "customer", header: "Cliente" },
+  { id: "type", header: "Tipo" },
+  { accessorKey: "containerTypeName", header: "Envase" },
+  { accessorKey: "quantity", header: "Cant.", meta: RIGHT_ALIGNED },
+  { id: "saleTotal", header: "Cargo S/", meta: RIGHT_ALIGNED },
+  { accessorKey: "recordedByName", header: "Registrado por" },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
+];
+const discrepancyColumns: TableColumn<MaquilaReconciliationResult["discrepancies"][number]>[] = [
+  { accessorKey: "customerName", header: "Cliente" },
+  { accessorKey: "containerTypeName", header: "Envase" },
+  { id: "emptyCounts", header: "Vacíos Saldo / Libro", meta: RIGHT_ALIGNED },
+  { id: "fullCounts", header: "Llenos Saldo / Libro", meta: RIGHT_ALIGNED },
+];
 </script>
 
 <template>
@@ -135,7 +160,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
       />
     </template>
 
-    <div class="space-y-6">
+    <UPageBody>
       <UAlert
         v-if="slow && loading"
         role="status"
@@ -158,7 +183,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
 
       <template v-else>
         <!-- Resumen numérico -->
-        <div class="grid gap-4 sm:grid-cols-3">
+        <UPageGrid>
           <StatTile
             label="Clientes con bidones"
             :value="customers.length"
@@ -174,88 +199,64 @@ function canVoid(mov: MaquilaMovementItem): boolean {
             :value="totalFullToReturn"
             note="Listos para que el cliente se los lleve"
           />
-        </div>
+        </UPageGrid>
 
         <!-- Tabla de clientes -->
         <SectionCard
           title="Clientes con bidones en planta"
           description="Detalle por cliente de envases vacíos y llenos disponibles."
         >
-          <div class="space-y-4">
-            <div class="max-w-xs">
-              <UInput
-                v-model="customerFilter"
-                placeholder="Buscar cliente…"
-                icon="i-lucide-search"
-                class="w-full"
-              />
-            </div>
+          <UPageBody>
+            <UInput v-model="customerFilter" placeholder="Buscar cliente…" icon="i-lucide-search" />
 
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-sm">
-                <thead class="bg-elevated text-xs tracking-wide text-muted uppercase">
-                  <tr>
-                    <th scope="col" class="px-4 py-3 font-medium">Cliente</th>
-                    <th scope="col" class="px-4 py-3 text-right font-medium">Vacíos en planta</th>
-                    <th scope="col" class="px-4 py-3 text-right font-medium">
-                      Llenos por devolver
-                    </th>
-                    <th scope="col" class="px-4 py-3 font-medium">Desglose por tipo</th>
-                    <th scope="col" class="px-4 py-3 text-right">
-                      <span class="sr-only">Acciones</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <tr v-for="c in filteredCustomers" :key="c.customerId">
-                    <td class="px-4 py-3 font-medium text-highlighted">
-                      <NuxtLink
-                        :to="`/customers/${c.customerId}`"
-                        class="hover:underline focus:outline-hidden"
-                      >
-                        {{ c.customerName }}
-                      </NuxtLink>
-                    </td>
-                    <td class="px-4 py-3 text-right tabular-nums">
-                      <UBadge
-                        :color="c.emptyAtPlantTotal > 0 ? 'info' : 'neutral'"
-                        variant="subtle"
-                        :label="String(c.emptyAtPlantTotal)"
-                      />
-                    </td>
-                    <td class="px-4 py-3 text-right tabular-nums">
-                      <UBadge
-                        :color="c.fullToReturnTotal > 0 ? 'success' : 'neutral'"
-                        variant="subtle"
-                        :label="String(c.fullToReturnTotal)"
-                      />
-                    </td>
-                    <td class="px-4 py-3">
-                      <div class="flex flex-wrap gap-2 text-xs">
-                        <span
-                          v-for="b in c.balances"
-                          :key="b.containerTypeId"
-                          class="rounded bg-elevated px-2 py-0.5"
-                        >
-                          {{ b.containerTypeName }}: {{ b.emptyAtPlant }} vacíos,
-                          {{ b.fullToReturn }} llenos
-                        </span>
-                      </div>
-                    </td>
-                    <td class="px-4 py-3 text-right">
-                      <UButton
-                        :to="`/customers/${c.customerId}`"
-                        size="xs"
-                        color="neutral"
-                        variant="outline"
-                        label="Ver ficha"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+            <!-- Sin filas, UTable pone su propio texto de vacío; antes la tabla quedaba sin filas, sin texto. -->
+            <UTable
+              v-if="filteredCustomers.length > 0"
+              :data="filteredCustomers"
+              :columns="customerColumns"
+              caption="Clientes con bidones en planta, con vacíos y llenos por tipo de envase"
+            >
+              <template #customer-cell="{ row }">
+                <ULink :to="`/customers/${row.original.customerId}`">
+                  {{ row.original.customerName }}
+                </ULink>
+              </template>
+              <template #emptyAtPlant-cell="{ row }">
+                <UBadge
+                  :color="row.original.emptyAtPlantTotal > 0 ? 'info' : 'neutral'"
+                  variant="subtle"
+                  :label="String(row.original.emptyAtPlantTotal)"
+                />
+              </template>
+              <template #fullToReturn-cell="{ row }">
+                <UBadge
+                  :color="row.original.fullToReturnTotal > 0 ? 'success' : 'neutral'"
+                  variant="subtle"
+                  :label="String(row.original.fullToReturnTotal)"
+                />
+              </template>
+              <template #balances-cell="{ row }">
+                <div class="flex flex-wrap items-center gap-2">
+                  <UBadge
+                    v-for="b in row.original.balances"
+                    :key="b.containerTypeId"
+                    color="neutral"
+                    variant="soft"
+                    :label="`${b.containerTypeName}: ${b.emptyAtPlant} vacíos, ${b.fullToReturn} llenos`"
+                  />
+                </div>
+              </template>
+              <template #actions-cell="{ row }">
+                <UButton
+                  :to="`/customers/${row.original.customerId}`"
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  label="Ver ficha"
+                />
+              </template>
+            </UTable>
+          </UPageBody>
         </SectionCard>
 
         <!-- Movimientos recientes -->
@@ -263,73 +264,53 @@ function canVoid(mov: MaquilaMovementItem): boolean {
           title="Movimientos recientes de maquila"
           description="Auditoría inmutable de recepciones, llenados y devoluciones."
         >
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
-              <thead class="bg-elevated text-muted uppercase">
-                <tr>
-                  <th scope="col" class="px-3 py-2 font-medium">Fecha</th>
-                  <th scope="col" class="px-3 py-2 font-medium">Cliente</th>
-                  <th scope="col" class="px-3 py-2 font-medium">Tipo</th>
-                  <th scope="col" class="px-3 py-2 font-medium">Envase</th>
-                  <th scope="col" class="px-3 py-2 text-right font-medium">Cant.</th>
-                  <th scope="col" class="px-3 py-2 text-right font-medium">Cargo S/</th>
-                  <th scope="col" class="px-3 py-2 font-medium">Registrado por</th>
-                  <th scope="col" class="px-3 py-2 text-right">
-                    <span class="sr-only">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-default">
-                <tr v-for="m in movements" :key="m.id">
-                  <td class="px-3 py-2 whitespace-nowrap text-muted">
-                    {{ formatInstantInLima(m.occurredAt) }}
-                  </td>
-                  <td class="px-3 py-2 font-medium text-highlighted">
-                    <NuxtLink :to="`/customers/${m.customerId}`" class="hover:underline">
-                      {{ m.customerName }}
-                    </NuxtLink>
-                  </td>
-                  <td class="px-3 py-2">
-                    <UBadge
-                      :color="TYPE_CONFIG[m.type].color"
-                      variant="subtle"
-                      size="xs"
-                      :label="TYPE_CONFIG[m.type].label"
-                    />
-                    <p v-if="m.reason" class="mt-0.5 text-[10px] text-muted italic">
-                      Motivo: {{ m.reason }}
-                    </p>
-                  </td>
-                  <td class="px-3 py-2">{{ m.containerTypeName }}</td>
-                  <td class="px-3 py-2 text-right font-medium tabular-nums">{{ m.quantity }}</td>
-                  <td class="px-3 py-2 text-right tabular-nums">
-                    {{ m.saleTotal ? formatSoles(m.saleTotal) : "—" }}
-                  </td>
-                  <td class="px-3 py-2 text-muted">{{ m.recordedByName }}</td>
-                  <td class="px-3 py-2 text-right">
-                    <UButton
-                      v-if="canVoid(m)"
-                      color="neutral"
-                      variant="ghost"
-                      size="xs"
-                      icon="i-lucide-ban"
-                      label="Anular"
-                      @click="openVoidModal(m)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <UTable
+            v-if="movements.length > 0"
+            :data="movements"
+            :columns="movementColumns"
+            caption="Movimientos recientes de maquila"
+          >
+            <template #occurredAt-cell="{ row }">
+              {{ formatInstantInLima(row.original.occurredAt) }}
+            </template>
+            <template #customer-cell="{ row }">
+              <ULink :to="`/customers/${row.original.customerId}`">
+                {{ row.original.customerName }}
+              </ULink>
+            </template>
+            <template #type-cell="{ row }">
+              <UBadge
+                :color="TYPE_CONFIG[row.original.type].color"
+                variant="subtle"
+                size="xs"
+                :label="TYPE_CONFIG[row.original.type].label"
+              />
+              <p v-if="row.original.reason">Motivo: {{ row.original.reason }}</p>
+            </template>
+            <template #saleTotal-cell="{ row }">
+              {{ row.original.saleTotal ? formatSoles(row.original.saleTotal) : "—" }}
+            </template>
+            <template #actions-cell="{ row }">
+              <UButton
+                v-if="canVoid(row.original)"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                icon="i-lucide-ban"
+                label="Anular"
+                @click="openVoidModal(row.original)"
+              />
+            </template>
+          </UTable>
         </SectionCard>
       </template>
-    </div>
+    </UPageBody>
 
     <!-- Modal Cuadre de Maquila -->
     <UModal v-model:open="reconciliationModalOpen" title="Cuadre de maquila">
       <template #body>
-        <div class="space-y-4">
-          <p v-if="reconciling" class="text-sm text-muted">Corriendo cuadre contra el libro…</p>
+        <UPageBody>
+          <p v-if="reconciling">Corriendo cuadre contra el libro…</p>
           <UAlert
             v-else-if="reconciliationError"
             role="alert"
@@ -337,7 +318,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
             variant="subtle"
             :title="reconciliationError"
           />
-          <div v-else-if="reconciliationResult">
+          <template v-else-if="reconciliationResult">
             <UAlert
               v-if="reconciliationResult.isBalanced"
               color="success"
@@ -346,7 +327,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               title="Cuadre exacto"
               description="Los saldos materializados coinciden exactamente con la reconstrucción del libro inmutable de maquila."
             />
-            <div v-else class="space-y-3">
+            <template v-else>
               <UAlert
                 color="error"
                 variant="subtle"
@@ -354,36 +335,21 @@ function canVoid(mov: MaquilaMovementItem): boolean {
                 title="Descuadre detectado"
                 description="Se encontraron diferencias entre los saldos materializados y el libro de movimientos."
               />
-              <div class="overflow-x-auto">
-                <table class="w-full text-xs">
-                  <thead class="bg-elevated text-muted uppercase">
-                    <tr>
-                      <th class="px-2 py-1 text-left">Cliente</th>
-                      <th class="px-2 py-1 text-left">Envase</th>
-                      <th class="px-2 py-1 text-right">Vacíos Saldo / Libro</th>
-                      <th class="px-2 py-1 text-right">Llenos Saldo / Libro</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-default">
-                    <tr
-                      v-for="d in reconciliationResult.discrepancies"
-                      :key="d.customerId + d.containerTypeId"
-                    >
-                      <td class="px-2 py-1">{{ d.customerName }}</td>
-                      <td class="px-2 py-1">{{ d.containerTypeName }}</td>
-                      <td class="px-2 py-1 text-right tabular-nums">
-                        {{ d.bookEmpty }} / {{ d.ledgerEmpty }}
-                      </td>
-                      <td class="px-2 py-1 text-right tabular-nums">
-                        {{ d.bookFull }} / {{ d.ledgerFull }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          <div class="flex justify-end pt-2">
+              <UTable
+                :data="reconciliationResult.discrepancies"
+                :columns="discrepancyColumns"
+                caption="Saldos de maquila que no coinciden con el libro de movimientos"
+              >
+                <template #emptyCounts-cell="{ row }">
+                  {{ row.original.bookEmpty }} / {{ row.original.ledgerEmpty }}
+                </template>
+                <template #fullCounts-cell="{ row }">
+                  {{ row.original.bookFull }} / {{ row.original.ledgerFull }}
+                </template>
+              </UTable>
+            </template>
+          </template>
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -391,17 +357,17 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               @click="reconciliationModalOpen = false"
             />
           </div>
-        </div>
+        </UPageBody>
       </template>
     </UModal>
 
     <!-- Modal Anular Movimiento -->
     <UModal v-model:open="voidModalOpen" title="Anular movimiento de maquila">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitVoid">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitVoid">
           <UAlert v-if="voidError" role="alert" color="error" variant="subtle" :title="voidError" />
 
-          <p class="text-sm text-muted">
+          <p>
             La anulación emite un movimiento inverso en el libro. Si anulas una devolución, se
             anulará también la venta y el cobro asociado.
           </p>
@@ -415,7 +381,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -430,7 +396,7 @@ function canVoid(mov: MaquilaMovementItem): boolean {
               :loading="voidSubmitting"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </AppPage>

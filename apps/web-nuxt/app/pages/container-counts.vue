@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CONTAINER_BALANCES_PAGE_SIZE, formatInstantInLima, limaDayStart } from "@yacco/shared";
 import type { ContainerBalanceRow, ContainerType, Page } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 /**
  * La lista de trabajo del cuadre de envases: ~750 envases en ~500
@@ -121,57 +122,68 @@ function registered(row: ContainerBalanceRow): void {
   list.retry();
   void loadProgress();
 }
+
+const columns: TableColumn<ContainerBalanceRow>[] = [
+  { id: "customer", header: "Cliente" },
+  { id: "location", header: "Ubicación" },
+  { id: "zone", header: "Zona" },
+  { id: "containers", header: "Envases", meta: RIGHT_ALIGNED },
+  { id: "lastCountedAt", header: "Última vez que se contó" },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
+];
+// La planilla de conteo se abre debajo de su fila, de a una.
+const expandedLocationIds = computed<Record<string, boolean>>(() =>
+  countingLocationId.value === null ? {} : { [countingLocationId.value]: true },
+);
 </script>
 
 <template>
   <AppPage title="Envases en poder de clientes">
-    <p role="status" class="-mt-2 text-muted">{{ progressText }}</p>
+    <UPageBody>
+      <p role="status">{{ progressText }}</p>
 
-    <div class="mt-6 space-y-6">
-      <UCard :ui="{ body: 'p-0 sm:p-0' }">
-        <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
-          <UFormField label="Buscar" class="min-w-56 flex-1">
-            <UInput
-              v-model="searchInput"
-              type="search"
-              icon="i-lucide-search"
-              placeholder="Nombre o teléfono"
-              class="w-full"
-            />
-          </UFormField>
-          <UFormField label="Zona">
-            <USelect v-model="zoneFilter" :items="zoneItems" class="w-48" />
-          </UFormField>
-          <UCheckbox v-model="uncountedOnly" label="Solo sin contar" />
-          <UCheckbox v-model="withDiscrepancies" label="Solo con entregas sin registrar" />
-          <UFormField label="Contadas antes del">
-            <UInput v-model="countedBeforeDay" type="date" />
-          </UFormField>
-          <UButton
-            v-if="list.hasFilters.value"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-x"
-            label="Limpiar filtros"
-            @click="clearFilters"
-          />
-        </div>
-
-        <div class="space-y-2 p-4 pb-0">
-          <div v-if="customerFilter" class="flex flex-wrap items-center gap-2 text-sm">
-            <span class="font-medium text-highlighted"
-              >Solo las ubicaciones de {{ filteredCustomerName ?? "un cliente" }}, abierto desde su
-              ficha.</span
-            >
+      <UCard>
+        <template #header>
+          <UPageGrid>
+            <UFormField label="Buscar">
+              <UInput
+                v-model="searchInput"
+                type="search"
+                icon="i-lucide-search"
+                placeholder="Nombre o teléfono"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Zona">
+              <USelect v-model="zoneFilter" :items="zoneItems" class="w-full" />
+            </UFormField>
+            <UCheckbox v-model="uncountedOnly" label="Solo sin contar" />
+            <UCheckbox v-model="withDiscrepancies" label="Solo con entregas sin registrar" />
+            <UFormField label="Contadas antes del">
+              <UInput v-model="countedBeforeDay" type="date" class="w-full" />
+            </UFormField>
             <UButton
+              v-if="list.hasFilters.value"
               color="neutral"
-              variant="link"
-              size="sm"
-              label="Ver todas"
-              @click="showEveryone"
+              variant="ghost"
+              icon="i-lucide-x"
+              label="Limpiar filtros"
+              @click="clearFilters"
             />
-          </div>
-          <p class="text-sm text-muted">{{ summary }}</p>
+          </UPageGrid>
+        </template>
+
+        <UPageBody>
+          <UAlert
+            v-if="customerFilter"
+            color="neutral"
+            variant="subtle"
+            :title="`Solo las ubicaciones de ${filteredCustomerName ?? 'un cliente'}, abierto desde su ficha.`"
+            :actions="[
+              { label: 'Ver todas', color: 'neutral', variant: 'link', onClick: showEveryone },
+            ]"
+          />
+          <p>{{ summary }}</p>
           <UAlert
             v-if="lastRegisteredLocation"
             role="status"
@@ -179,16 +191,15 @@ function registered(row: ContainerBalanceRow): void {
             variant="subtle"
             :title="`Conteo registrado: ${lastRegisteredLocation}.`"
           />
-        </div>
 
-        <UAlert
-          v-if="list.slow.value && list.loading.value"
-          role="status"
-          color="neutral"
-          variant="subtle"
-          class="rounded-none"
-          :title="SLOW_REQUEST_MESSAGE"
-        />
+          <UAlert
+            v-if="list.slow.value && list.loading.value"
+            role="status"
+            color="neutral"
+            variant="subtle"
+            :title="SLOW_REQUEST_MESSAGE"
+          />
+        </UPageBody>
 
         <ListStatus
           v-if="list.errorMessage.value || list.firstLoad.value || list.items.value.length === 0"
@@ -211,124 +222,101 @@ function registered(row: ContainerBalanceRow): void {
         />
 
         <template v-else>
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <caption class="sr-only">
-                Envases en poder de cada ubicación de cliente y última vez que se contaron
-              </caption>
-              <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                <tr>
-                  <th scope="col" class="px-4 py-2 font-medium">Cliente</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Ubicación</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Zona</th>
-                  <th scope="col" class="px-4 py-2 text-right font-medium">Envases</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Última vez que se contó</th>
-                  <th scope="col" class="px-4 py-2">
-                    <span class="sr-only">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-default">
-                <template v-for="row in list.items.value" :key="row.location.id">
-                  <tr>
-                    <td class="px-4 py-3">
-                      <p class="font-medium text-highlighted">{{ row.customer.name }}</p>
-                      <UBadge
-                        v-if="!row.customer.active"
-                        color="warning"
-                        variant="subtle"
-                        label="Cliente de baja"
-                      />
-                    </td>
-                    <td class="px-4 py-3">
-                      <p>{{ row.location.name }}</p>
-                      <UBadge
-                        v-if="!row.location.active"
-                        color="warning"
-                        variant="subtle"
-                        label="Ubicación retirada"
-                      />
-                    </td>
-                    <td class="px-4 py-3">
-                      <UBadge
-                        v-if="row.zone"
-                        color="neutral"
-                        variant="subtle"
-                        :label="row.zone.name"
-                      />
-                      <span v-else class="text-muted">Sin zona</span>
-                    </td>
-                    <td class="px-4 py-3 text-right">
-                      <p class="font-semibold tabular-nums text-highlighted">
-                        {{ row.totalQuantity }}
-                      </p>
-                      <p v-if="row.containers.length > 0" class="text-muted">
-                        <template
-                          v-for="(container, index) in row.containers"
-                          :key="container.containerType.id"
-                        >
-                          <span v-if="index > 0"> · </span>
-                          <span
-                            v-if="container.quantity < 0"
-                            :aria-label="`${container.quantity} ${container.containerType.name}: el cliente devolvió más envases de los que se le registraron, falta registrar una entrega`"
-                            class="text-error"
-                          >
-                            {{ container.quantity }} {{ container.containerType.name }}
-                          </span>
-                          <span v-else
-                            >{{ container.quantity }} {{ container.containerType.name }}</span
-                          >
-                        </template>
-                      </p>
-                      <UBadge
-                        v-if="row.containers.some((c) => c.quantity < 0)"
-                        color="error"
-                        variant="subtle"
-                        label="Entrega sin registrar"
-                      />
-                    </td>
-                    <td class="px-4 py-3">
-                      <UBadge
-                        v-if="row.lastCountedAt === null"
-                        color="info"
-                        variant="subtle"
-                        label="Sin contar"
-                      />
-                      <template v-else>
-                        <p class="tabular-nums">{{ formatInstantInLima(row.lastCountedAt) }}</p>
-                        <UBadge
-                          v-if="daysSince(row.lastCountedAt, Date.now()) > OLD_COUNT_DAYS"
-                          color="warning"
-                          variant="subtle"
-                          :label="`Hace más de ${OLD_COUNT_DAYS} días`"
-                        />
-                      </template>
-                    </td>
-                    <td class="px-4 py-3 text-right">
-                      <UButton
-                        v-if="countingLocationId !== row.location.id"
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Contar"
-                        @click="startCount(row)"
-                      />
-                    </td>
-                  </tr>
-                  <tr v-if="countingLocationId === row.location.id">
-                    <td colspan="6" class="px-4 pb-4">
-                      <ContainerCountForm
-                        :row="row"
-                        :container-types="catalog.items.value"
-                        @cancel="countingLocationId = null"
-                        @registered="registered(row)"
-                      />
-                    </td>
-                  </tr>
+          <UTable
+            :data="list.items.value"
+            :columns="columns"
+            :get-row-id="(row: ContainerBalanceRow) => row.location.id"
+            :expanded="expandedLocationIds"
+            caption="Envases en poder de cada ubicación de cliente y última vez que se contaron"
+          >
+            <template #customer-cell="{ row }">
+              <p>{{ row.original.customer.name }}</p>
+              <UBadge
+                v-if="!row.original.customer.active"
+                color="warning"
+                variant="subtle"
+                label="Cliente de baja"
+              />
+            </template>
+            <template #location-cell="{ row }">
+              <p>{{ row.original.location.name }}</p>
+              <UBadge
+                v-if="!row.original.location.active"
+                color="warning"
+                variant="subtle"
+                label="Ubicación retirada"
+              />
+            </template>
+            <template #zone-cell="{ row }">
+              <UBadge
+                v-if="row.original.zone"
+                color="neutral"
+                variant="subtle"
+                :label="row.original.zone.name"
+              />
+              <template v-else>Sin zona</template>
+            </template>
+            <template #containers-cell="{ row }">
+              <p>{{ row.original.totalQuantity }}</p>
+              <p v-if="row.original.containers.length > 0">
+                <template
+                  v-for="(container, index) in row.original.containers"
+                  :key="container.containerType.id"
+                >
+                  <span v-if="index > 0"> · </span>
+                  <UBadge
+                    v-if="container.quantity < 0"
+                    color="error"
+                    variant="subtle"
+                    :aria-label="`${container.quantity} ${container.containerType.name}: el cliente devolvió más envases de los que se le registraron, falta registrar una entrega`"
+                    :label="`${container.quantity} ${container.containerType.name}`"
+                  />
+                  <span v-else>{{ container.quantity }} {{ container.containerType.name }}</span>
                 </template>
-              </tbody>
-            </table>
-          </div>
+              </p>
+              <UBadge
+                v-if="row.original.containers.some((c) => c.quantity < 0)"
+                color="error"
+                variant="subtle"
+                label="Entrega sin registrar"
+              />
+            </template>
+            <template #lastCountedAt-cell="{ row }">
+              <UBadge
+                v-if="row.original.lastCountedAt === null"
+                color="info"
+                variant="subtle"
+                label="Sin contar"
+              />
+              <template v-else>
+                <p>{{ formatInstantInLima(row.original.lastCountedAt) }}</p>
+                <UBadge
+                  v-if="daysSince(row.original.lastCountedAt, Date.now()) > OLD_COUNT_DAYS"
+                  color="warning"
+                  variant="subtle"
+                  :label="`Hace más de ${OLD_COUNT_DAYS} días`"
+                />
+              </template>
+            </template>
+            <template #actions-cell="{ row }">
+              <UButton
+                v-if="countingLocationId !== row.original.location.id"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="Contar"
+                @click="startCount(row.original)"
+              />
+            </template>
+            <template #expanded="{ row }">
+              <ContainerCountForm
+                :row="row.original"
+                :container-types="catalog.items.value"
+                @cancel="countingLocationId = null"
+                @registered="registered(row.original)"
+              />
+            </template>
+          </UTable>
           <ListPagination
             :shown-page="list.shownPage.value"
             :page="list.page.value"
@@ -338,6 +326,6 @@ function registered(row: ContainerBalanceRow): void {
           />
         </template>
       </UCard>
-    </div>
+    </UPageBody>
   </AppPage>
 </template>
