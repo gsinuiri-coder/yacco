@@ -72,17 +72,12 @@ function handleSubmit(): void {
 </script>
 
 <template>
-  <div
-    v-if="reviewing !== null"
-    role="group"
-    aria-label="Revisar conteo de la planta"
-    class="space-y-3"
-  >
-    <p class="text-sm">
+  <UPageList v-if="reviewing !== null" role="group" aria-label="Revisar conteo de la planta">
+    <p>
       {{ row?.containerTypeName }}, {{ stateLabel }}: según el sistema {{ expected }}, contado
       {{ reviewing }} (diferencia {{ formatCountDifference(reviewing, expected) }}).
     </p>
-    <p v-if="state === 'FULL_AT_PLANT'" class="text-sm text-muted">
+    <p v-if="state === 'FULL_AT_PLANT'">
       Los llenos que faltan se descuentan de los lotes, empezando por el más viejo.
     </p>
     <UAlert v-if="submitError" role="alert" color="error" variant="subtle" :title="submitError" />
@@ -100,16 +95,18 @@ function handleSubmit(): void {
         @click="register(reviewing)"
       />
     </div>
-  </div>
+  </UPageList>
 
-  <form
+  <UForm
     v-else
-    class="space-y-4"
+    :state="{}"
+    :validate-on="[]"
+    :loading-auto="false"
     novalidate
     aria-label="Contar la planta"
-    @submit.prevent="handleSubmit"
+    @submit="handleSubmit"
   >
-    <div class="grid gap-4 sm:grid-cols-3">
+    <UPageGrid>
       <UFormField label="Tipo de envase">
         <USelect
           v-model="containerTypeId"
@@ -140,7 +137,7 @@ function handleSubmit(): void {
           "
         />
       </UFormField>
-    </div>
+    </UPageGrid>
 
     <UAlert
       v-if="validationError"
@@ -151,7 +148,7 @@ function handleSubmit(): void {
     />
     <UAlert v-if="submitError" role="alert" color="error" variant="subtle" :title="submitError" />
 
-    <div class="flex justify-end gap-2 border-t border-default pt-4">
+    <div class="flex justify-end gap-2">
       <UButton
         color="neutral"
         variant="outline"
@@ -165,5 +162,5 @@ function handleSubmit(): void {
         :disabled="submitting"
       />
     </div>
-  </form>
+  </UForm>
 </template>

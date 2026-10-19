@@ -33,11 +33,12 @@ async function renderInventory() {
   await screen.findByRole("heading", { name: "Inventario de envases", level: 1 });
 }
 
-/** La fila de un tipo, como lista de celdas en el orden de las columnas. */
+/** Las cantidades de la fila de un tipo, en el orden de las columnas (sin el nombre). */
 async function rowCells(type: string): Promise<string[]> {
-  const header = await screen.findByRole("rowheader", { name: type });
-  return within(header.closest("tr") as HTMLElement)
+  const typeCell = await screen.findByRole("cell", { name: type });
+  return within(typeCell.closest("tr") as HTMLElement)
     .getAllByRole("cell")
+    .slice(1)
     .map((td) => td.textContent?.trim() ?? "");
 }
 
@@ -156,7 +157,7 @@ describe("Inventario de envases", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Base de datos no disponible");
     await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar" }));
 
-    expect(await screen.findByRole("rowheader", { name: "Bidón 20L" })).toBeTruthy();
+    expect(await screen.findByRole("cell", { name: "Bidón 20L" })).toBeTruthy();
   });
 
   describe("Conteo de la planta", () => {
@@ -188,7 +189,7 @@ describe("Inventario de envases", () => {
 
       await renderInventory();
 
-      await screen.findByRole("rowheader", { name: "Bidón 20L" });
+      await screen.findByRole("cell", { name: "Bidón 20L" });
       expect(screen.queryByRole("region", { name: "Conteo de la planta" })).toBeNull();
     });
 
