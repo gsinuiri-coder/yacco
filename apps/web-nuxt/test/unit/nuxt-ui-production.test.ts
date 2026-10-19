@@ -4,6 +4,9 @@ import { expectNativeNuxtUi } from "../support/nuxt-ui-guard";
 const PRODUCTION_TEMPLATES = [
   "../../app/pages/production.vue",
   "../../app/components/ProductionMaquilaSection.vue",
+  "../../app/pages/inventory.vue",
+  "../../app/components/PlantCountForm.vue",
+  "../../app/components/InventoryQuantity.vue",
 ];
 
 /**
@@ -20,6 +23,10 @@ const ALLOWED_CLASSES: Record<string, string> = {
     "tipo de envase, cantidad y quitar en una fila, alineados por la base del campo con etiqueta",
   "list-disc pl-5":
     "los tipos sobreproducidos dentro del UAlert, con viñeta; el alerta no le da estilo a una lista",
+  underline:
+    "enlaces en medio del texto de un UAlert: sin subrayado no se distinguen del resto de la frase",
+  "sr-only":
+    "«en negativo» lo dice el ícono a la vista; el lector de pantalla necesita oírlo como texto",
 };
 
 describe("producción con Nuxt UI nativo", () => {

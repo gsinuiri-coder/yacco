@@ -5,9 +5,8 @@ defineProps<{ value: number }>();
 
 <template>
   <span v-if="value >= 0">{{ value }}</span>
-  <span v-else class="inline-flex items-center gap-1 font-semibold text-error">
-    <UIcon name="i-lucide-triangle-alert" class="size-3.5" aria-hidden="true" />
+  <UBadge v-else color="error" variant="subtle" icon="i-lucide-triangle-alert">
     <span aria-hidden="true">{{ value }}</span>
     <span class="sr-only">{{ value }}: en negativo</span>
-  </span>
+  </UBadge>
 </template>
