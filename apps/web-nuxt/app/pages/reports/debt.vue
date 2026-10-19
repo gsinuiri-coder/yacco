@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatCalendarDay, formatSoles } from "@yacco/shared";
 import type { CustomerDebtsReport } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 /**
  * HU-19: a quién cobrarle primero. La deuda de cada cliente y desde cuándo
@@ -13,6 +14,13 @@ import type { CustomerDebtsReport } from "@yacco/shared";
 useHead({ title: "Deuda por cliente · Yacco" });
 
 const report = useReport<CustomerDebtsReport>("/reports/debt");
+
+const debtColumns: TableColumn<CustomerDebtsReport["rows"][number]>[] = [
+  { id: "customer", header: "Cliente" },
+  { id: "zone", header: "Zona" },
+  { id: "oldestChargeDate", header: "Debe desde" },
+  { id: "debt", header: "Deuda", meta: RIGHT_ALIGNED },
+];
 </script>
 
 <template>
@@ -30,48 +38,35 @@ const report = useReport<CustomerDebtsReport>("/reports/debt");
       empty-description="Todos los clientes están al día."
       @retry="report.load"
     >
-      <table v-if="report.data.value" class="w-full text-sm">
-        <caption class="sr-only">
-          Deuda de cada cliente, con la fecha del cargo más antiguo, o del saldo inicial si la deuda
-          viene de antes del sistema
-        </caption>
-        <thead class="text-left text-xs tracking-wide text-muted uppercase">
+      <UTable
+        v-if="report.data.value"
+        :data="report.data.value.rows"
+        :columns="debtColumns"
+        caption="Deuda de cada cliente, con la fecha del cargo más antiguo, o del saldo inicial si la deuda viene de antes del sistema"
+      >
+        <template #customer-cell="{ row }">
+          <ULink :to="`/customers/${row.original.customer.id}`">
+            {{ row.original.customer.name }}
+          </ULink>
+        </template>
+        <template #zone-cell="{ row }">{{ row.original.zone?.name ?? "Sin zona" }}</template>
+        <template #oldestChargeDate-cell="{ row }">
+          <template v-if="row.original.openedByOpeningBalance">
+            <p>Saldo inicial</p>
+            <p>al {{ formatCalendarDay(row.original.oldestChargeDate) }}</p>
+          </template>
+          <template v-else>{{ formatCalendarDay(row.original.oldestChargeDate) }}</template>
+        </template>
+        <template #debt-cell="{ row }">{{ formatSoles(row.original.debt) }}</template>
+        <!-- No con `footer` de columna: UTable pinta el pie solo con <th>, y el
+             total dejaría de leerse como el valor de «Total por cobrar». -->
+        <template #body-bottom>
           <tr>
-            <th scope="col" class="px-4 py-2 font-medium">Cliente</th>
-            <th scope="col" class="px-4 py-2 font-medium">Zona</th>
-            <th scope="col" class="px-4 py-2 font-medium">Debe desde</th>
-            <th scope="col" class="px-4 py-2 text-right font-medium">Deuda</th>
+            <th scope="row" colspan="3" class="p-4 text-left">Total por cobrar</th>
+            <td class="p-4 text-right">{{ formatSoles(report.data.value.total) }}</td>
           </tr>
-        </thead>
-        <tbody class="divide-y divide-default">
-          <tr v-for="row in report.data.value.rows" :key="row.customer.id">
-            <td class="px-4 py-3 font-medium text-highlighted">
-              <NuxtLink :to="`/customers/${row.customer.id}`" class="hover:underline">
-                {{ row.customer.name }}
-              </NuxtLink>
-            </td>
-            <td class="px-4 py-3">{{ row.zone?.name ?? "Sin zona" }}</td>
-            <td v-if="row.openedByOpeningBalance" class="px-4 py-3">
-              <span class="block">Saldo inicial</span>
-              <span class="block text-xs text-muted tabular-nums">
-                al {{ formatCalendarDay(row.oldestChargeDate) }}
-              </span>
-            </td>
-            <td v-else class="px-4 py-3 tabular-nums">
-              {{ formatCalendarDay(row.oldestChargeDate) }}
-            </td>
-            <td class="px-4 py-3 text-right tabular-nums">{{ formatSoles(row.debt) }}</td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr class="border-t border-default font-medium text-highlighted">
-            <th scope="row" colspan="3" class="px-4 py-3 text-left">Total por cobrar</th>
-            <td class="px-4 py-3 text-right tabular-nums">
-              {{ formatSoles(report.data.value.total) }}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+        </template>
+      </UTable>
     </ReportState>
   </AppPage>
 </template>

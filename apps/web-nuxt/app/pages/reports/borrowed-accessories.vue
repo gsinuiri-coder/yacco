@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatInstantInLima } from "@yacco/shared";
 import type { BorrowedAccessoryItem } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 useHead({ title: "Accesorios prestados · Yacco" });
 
@@ -57,11 +58,19 @@ const summary = computed(() => {
   if (loading.value) return "Cargando…";
   return `${totalQuantity.value} ${totalQuantity.value === 1 ? "accesorio prestado" : "accesorios prestados"} en ${uniqueCustomersCount.value} ${uniqueCustomersCount.value === 1 ? "cliente" : "clientes"}`;
 });
+
+const borrowedColumns: TableColumn<BorrowedAccessoryItem>[] = [
+  { id: "customer", header: "Cliente" },
+  { accessorKey: "locationName", header: "Local" },
+  { accessorKey: "productName", header: "Accesorio" },
+  { accessorKey: "quantity", header: "Prestados", meta: RIGHT_ALIGNED },
+  { id: "lastMovementAt", header: "Último movimiento", meta: RIGHT_ALIGNED },
+];
 </script>
 
 <template>
   <AppPage title="Accesorios prestados" :description="summary">
-    <div class="space-y-6">
+    <UPageBody>
       <UAlert
         v-if="slow && loading"
         role="status"
@@ -82,9 +91,9 @@ const summary = computed(() => {
         @retry="load"
       />
 
-      <div v-else class="space-y-6">
-        <!-- Totales destacados -->
-        <dl class="grid gap-3 p-4 bg-elevated rounded-lg sm:grid-cols-3">
+      <template v-else>
+        <!-- Totales destacados. UPageGrid como `dl`: StatTile pinta dt/dd. -->
+        <UPageGrid as="dl">
           <StatTile label="Total prestado" :value="totalQuantity" />
           <StatTile
             v-for="item in byAccessory"
@@ -92,63 +101,39 @@ const summary = computed(() => {
             :label="item.name"
             :value="item.quantity"
           />
-        </dl>
+        </UPageGrid>
 
-        <UCard :ui="{ body: 'p-0 sm:p-0' }">
-          <div class="flex items-center gap-4 border-b border-default p-4">
-            <UFormField label="Buscar" class="w-full sm:w-72">
-              <UInput
-                v-model="searchInput"
-                type="search"
-                icon="i-lucide-search"
-                placeholder="Cliente, local o accesorio"
-                class="w-full"
-              />
-            </UFormField>
-          </div>
+        <UCard>
+          <template #header>
+            <UPageGrid>
+              <UFormField label="Buscar">
+                <UInput
+                  v-model="searchInput"
+                  type="search"
+                  icon="i-lucide-search"
+                  placeholder="Cliente, local o accesorio"
+                  class="w-full"
+                />
+              </UFormField>
+            </UPageGrid>
+          </template>
 
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <caption class="sr-only">
-                Accesorios prestados por cliente y local
-              </caption>
-              <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                <tr>
-                  <th scope="col" class="px-4 py-3 font-medium">Cliente</th>
-                  <th scope="col" class="px-4 py-3 font-medium">Local</th>
-                  <th scope="col" class="px-4 py-3 font-medium">Accesorio</th>
-                  <th scope="col" class="px-4 py-3 text-right font-medium">Prestados</th>
-                  <th scope="col" class="px-4 py-3 text-right font-medium">Último movimiento</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-default">
-                <tr v-for="row in filteredRows" :key="`${row.locationId}:${row.productId}`">
-                  <td class="px-4 py-3 font-medium text-highlighted">
-                    <NuxtLink
-                      :to="`/customers/${row.customerId}`"
-                      class="hover:text-primary underline"
-                    >
-                      {{ row.customerName }}
-                    </NuxtLink>
-                  </td>
-                  <td class="px-4 py-3 text-muted">
-                    {{ row.locationName }}
-                  </td>
-                  <td class="px-4 py-3 font-medium text-highlighted">
-                    {{ row.productName }}
-                  </td>
-                  <td class="px-4 py-3 text-right font-semibold tabular-nums text-highlighted">
-                    {{ row.quantity }}
-                  </td>
-                  <td class="px-4 py-3 text-right text-muted tabular-nums whitespace-nowrap">
-                    {{ formatInstantInLima(row.lastMovementAt) }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <UTable
+            :data="filteredRows"
+            :columns="borrowedColumns"
+            caption="Accesorios prestados por cliente y local"
+          >
+            <template #customer-cell="{ row }">
+              <ULink :to="`/customers/${row.original.customerId}`">
+                {{ row.original.customerName }}
+              </ULink>
+            </template>
+            <template #lastMovementAt-cell="{ row }">
+              {{ formatInstantInLima(row.original.lastMovementAt) }}
+            </template>
+          </UTable>
         </UCard>
-      </div>
-    </div>
+      </template>
+    </UPageBody>
   </AppPage>
 </template>

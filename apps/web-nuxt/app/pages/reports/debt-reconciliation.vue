@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatSoles, isAboveZero } from "@yacco/shared";
 import type { DebtReconciliation, DebtReconciliationDiscrepancy } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 /**
  * El cuadre de la deuda: la deuda que muestran las pantallas contra la que
@@ -19,6 +20,13 @@ function describeDifference(discrepancy: DebtReconciliationDiscrepancy): string 
     ? `A la deuda guardada le faltan ${gap}`
     : `La deuda guardada tiene ${gap} de más`;
 }
+
+const discrepancyColumns: TableColumn<DebtReconciliationDiscrepancy>[] = [
+  { id: "customer", header: "Cliente" },
+  { id: "ledgerBalance", header: "Según ventas y cobros", meta: RIGHT_ALIGNED },
+  { id: "materializedBalance", header: "Deuda guardada", meta: RIGHT_ALIGNED },
+  { id: "difference", header: "Diferencia" },
+];
 </script>
 
 <template>
@@ -36,12 +44,11 @@ function describeDifference(discrepancy: DebtReconciliationDiscrepancy): string 
       empty-description="La deuda de cada cliente es la que dicen sus ventas y cobros: la que muestran las pantallas es confiable."
       @retry="report.load"
     >
-      <div v-if="report.data.value" class="space-y-4">
+      <UPageBody v-if="report.data.value">
         <UAlert
           role="status"
           color="warning"
           variant="subtle"
-          class="rounded-none"
           :title="
             report.data.value.discrepancyCount === 1
               ? 'Hay 1 cliente cuya deuda no coincide con sus ventas y cobros.'
@@ -49,37 +56,23 @@ function describeDifference(discrepancy: DebtReconciliationDiscrepancy): string 
           "
           description="Nada se corrigió: esto es lo que hay que revisar."
         />
-        <table class="w-full text-sm">
-          <caption class="sr-only">
-            Clientes cuya deuda no coincide con sus ventas y cobros
-          </caption>
-          <thead class="text-left text-xs tracking-wide text-muted uppercase">
-            <tr>
-              <th scope="col" class="px-4 py-2 font-medium">Cliente</th>
-              <th scope="col" class="px-4 py-2 text-right font-medium">Según ventas y cobros</th>
-              <th scope="col" class="px-4 py-2 text-right font-medium">Deuda guardada</th>
-              <th scope="col" class="px-4 py-2 font-medium">Diferencia</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-default">
-            <tr
-              v-for="discrepancy in report.data.value.discrepancies"
-              :key="discrepancy.customerId ?? 'sin-cliente'"
-            >
-              <td class="px-4 py-3 font-medium text-highlighted">
-                {{ discrepancy.customerName ?? "Cliente desconocido" }}
-              </td>
-              <td class="px-4 py-3 text-right">
-                <MoneyAmount :value="discrepancy.ledgerBalance" debt />
-              </td>
-              <td class="px-4 py-3 text-right">
-                <MoneyAmount :value="discrepancy.materializedBalance" debt />
-              </td>
-              <td class="px-4 py-3">{{ describeDifference(discrepancy) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <UTable
+          :data="report.data.value.discrepancies"
+          :columns="discrepancyColumns"
+          caption="Clientes cuya deuda no coincide con sus ventas y cobros"
+        >
+          <template #customer-cell="{ row }">
+            {{ row.original.customerName ?? "Cliente desconocido" }}
+          </template>
+          <template #ledgerBalance-cell="{ row }">
+            <MoneyAmount :value="row.original.ledgerBalance" debt />
+          </template>
+          <template #materializedBalance-cell="{ row }">
+            <MoneyAmount :value="row.original.materializedBalance" debt />
+          </template>
+          <template #difference-cell="{ row }">{{ describeDifference(row.original) }}</template>
+        </UTable>
+      </UPageBody>
     </ReportState>
   </AppPage>
 </template>
