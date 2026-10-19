@@ -157,11 +157,11 @@ const expandedLocationIds = computed<Record<string, boolean>>(() =>
             <UFormField label="Zona">
               <USelect v-model="zoneFilter" :items="zoneItems" class="w-full" />
             </UFormField>
+            <UCheckbox v-model="uncountedOnly" label="Solo sin contar" />
+            <UCheckbox v-model="withDiscrepancies" label="Solo con entregas sin registrar" />
             <UFormField label="Contadas antes del">
               <UInput v-model="countedBeforeDay" type="date" class="w-full" />
             </UFormField>
-            <UCheckbox v-model="uncountedOnly" label="Solo sin contar" />
-            <UCheckbox v-model="withDiscrepancies" label="Solo con entregas sin registrar" />
             <UButton
               v-if="list.hasFilters.value"
               color="neutral"

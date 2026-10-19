@@ -56,10 +56,10 @@ const subtitle = computed(() =>
 
 function describeDifference(discrepancy: ContainerReconciliationDiscrepancy): string {
   const gap = Math.abs(discrepancy.difference);
-  const unidades = gap === 1 ? "envase" : "envases";
+  const unitsLabel = gap === 1 ? "envase" : "envases";
   return discrepancy.difference > 0
-    ? `Al saldo le ${gap === 1 ? "falta" : "faltan"} ${gap} ${unidades}`
-    : `El saldo tiene ${gap} ${unidades} de más`;
+    ? `Al saldo le ${gap === 1 ? "falta" : "faltan"} ${gap} ${unitsLabel}`
+    : `El saldo tiene ${gap} ${unitsLabel} de más`;
 }
 
 const columns: TableColumn<ContainerReconciliationDiscrepancy>[] = [
@@ -85,9 +85,10 @@ const columns: TableColumn<ContainerReconciliationDiscrepancy>[] = [
       />
     </template>
 
-    <UEmpty
+    <UAlert
       v-if="!isAdmin"
-      icon="i-lucide-lock"
+      color="neutral"
+      variant="outline"
       title="Este cuadre es solo para administradores"
       description="Revisa todos los envases de la planta y sirve para decidir si un saldo es confiable, así que lo corre el dueño de la planta."
     />
@@ -143,8 +144,10 @@ const columns: TableColumn<ContainerReconciliationDiscrepancy>[] = [
           empty-description=""
           @retry="check"
         />
-        <UEmpty
+        <UAlert
           v-else-if="result && result.discrepancies.length === 0"
+          color="success"
+          variant="subtle"
           icon="i-lucide-badge-check"
           title="Las dos cuentas coinciden"
           description="Ninguna ubicación tiene un saldo de envases distinto del que se desprende de sus movimientos. El saldo que muestran las pantallas es confiable."

@@ -134,8 +134,8 @@ const movementColumns: TableColumn<MaquilaMovementItem>[] = [
 const discrepancyColumns: TableColumn<MaquilaReconciliationResult["discrepancies"][number]>[] = [
   { accessorKey: "customerName", header: "Cliente" },
   { accessorKey: "containerTypeName", header: "Envase" },
-  { id: "empty", header: "Vacíos Saldo / Libro", meta: RIGHT_ALIGNED },
-  { id: "full", header: "Llenos Saldo / Libro", meta: RIGHT_ALIGNED },
+  { id: "emptyCounts", header: "Vacíos Saldo / Libro", meta: RIGHT_ALIGNED },
+  { id: "fullCounts", header: "Llenos Saldo / Libro", meta: RIGHT_ALIGNED },
 ];
 </script>
 
@@ -209,7 +209,9 @@ const discrepancyColumns: TableColumn<MaquilaReconciliationResult["discrepancies
           <UPageBody>
             <UInput v-model="customerFilter" placeholder="Buscar cliente…" icon="i-lucide-search" />
 
+            <!-- Sin filas, UTable pone su propio texto de vacío; antes la tabla quedaba sin filas, sin texto. -->
             <UTable
+              v-if="filteredCustomers.length > 0"
               :data="filteredCustomers"
               :columns="customerColumns"
               caption="Clientes con bidones en planta, con vacíos y llenos por tipo de envase"
@@ -263,6 +265,7 @@ const discrepancyColumns: TableColumn<MaquilaReconciliationResult["discrepancies
           description="Auditoría inmutable de recepciones, llenados y devoluciones."
         >
           <UTable
+            v-if="movements.length > 0"
             :data="movements"
             :columns="movementColumns"
             caption="Movimientos recientes de maquila"
@@ -337,10 +340,10 @@ const discrepancyColumns: TableColumn<MaquilaReconciliationResult["discrepancies
                 :columns="discrepancyColumns"
                 caption="Saldos de maquila que no coinciden con el libro de movimientos"
               >
-                <template #empty-cell="{ row }">
+                <template #emptyCounts-cell="{ row }">
                   {{ row.original.bookEmpty }} / {{ row.original.ledgerEmpty }}
                 </template>
-                <template #full-cell="{ row }">
+                <template #fullCounts-cell="{ row }">
                   {{ row.original.bookFull }} / {{ row.original.ledgerFull }}
                 </template>
               </UTable>
