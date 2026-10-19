@@ -11,6 +11,7 @@ import type {
   VehicleReviewType,
   VehicleReviewTypeStatus,
 } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 useHead({ title: "Vehículos · Yacco" });
 
@@ -405,6 +406,32 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
     reviewTypeError.value = describeApiFailure(error);
   }
 }
+
+const vehicleColumns: TableColumn<Vehicle>[] = [
+  { accessorKey: "plate", header: "Placa" },
+  { accessorKey: "name", header: "Nombre / Alias" },
+  { id: "brandModel", header: "Marca y Modelo" },
+  { id: "capacity", header: "Capacidad", meta: RIGHT_ALIGNED },
+  { id: "status", header: "Estado" },
+  { id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED },
+];
+const reviewTypeColumns = computed<TableColumn<VehicleReviewType>[]>(() => [
+  { accessorKey: "name", header: "Tipo de revisión" },
+  { id: "status", header: "Estado" },
+  ...(isAdmin.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
+const reviewHistoryColumns = computed<TableColumn<VehicleReview>[]>(() => [
+  { id: "type", header: "Tipo" },
+  { id: "validity", header: "Vigencia" },
+  { id: "notes", header: "Notas", meta: WRAPPING_TEXT },
+  { id: "recorded", header: "Registrado" },
+  { id: "status", header: "Estado" },
+  ...(isAdmin.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
 </script>
 
 <template>
@@ -427,9 +454,9 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
       />
     </template>
 
-    <div class="space-y-6">
+    <UPageBody>
       <!-- Pestañas de sección -->
-      <div class="flex gap-2 border-b border-default pb-3">
+      <div class="flex flex-wrap gap-2">
         <UButton
           :color="activeTab === 'vehicles' ? 'primary' : 'neutral'"
           :variant="activeTab === 'vehicles' ? 'solid' : 'ghost'"
@@ -447,19 +474,21 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
       </div>
 
       <!-- SECCIÓN 1: VEHÍCULOS -->
-      <div v-if="activeTab === 'vehicles'" class="space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <UFormField label="Estado" class="w-44">
-            <USelect
-              v-model="vehicleFilter"
-              :items="[
-                { label: 'En uso', value: 'active' },
-                { label: 'Todos', value: 'all' },
-              ]"
-              class="w-full"
-            />
-          </UFormField>
-        </div>
+      <UCard v-if="activeTab === 'vehicles'">
+        <template #header>
+          <UPageGrid>
+            <UFormField label="Estado">
+              <USelect
+                v-model="vehicleFilter"
+                :items="[
+                  { label: 'En uso', value: 'active' },
+                  { label: 'Todos', value: 'all' },
+                ]"
+                class="w-full"
+              />
+            </UFormField>
+          </UPageGrid>
+        </template>
 
         <ListStatus
           v-if="vehicleError || loadingVehicles || vehicles.length === 0"
@@ -473,78 +502,54 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
           @retry="loadVehicles"
         />
 
-        <UCard v-else :ui="{ body: 'p-0 sm:p-0' }">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                <tr>
-                  <th scope="col" class="px-4 py-2 font-medium">Placa</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Nombre / Alias</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Marca y Modelo</th>
-                  <th scope="col" class="px-4 py-2 font-medium text-right">Capacidad</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Estado</th>
-                  <th scope="col" class="px-4 py-2 text-right">
-                    <span class="sr-only">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-default">
-                <tr v-for="v in vehicles" :key="v.id">
-                  <td class="px-4 py-3 font-mono font-bold text-highlighted">
-                    {{ v.plate }}
-                  </td>
-                  <td class="px-4 py-3 font-medium text-highlighted">
-                    {{ v.name }}
-                  </td>
-                  <td class="px-4 py-3 text-muted">{{ v.brand }} {{ v.model }}</td>
-                  <td class="px-4 py-3 text-right tabular-nums text-muted">
-                    {{ v.capacityUnits ? `${v.capacityUnits} bidones` : "—" }}
-                  </td>
-                  <td class="px-4 py-3">
-                    <UBadge
-                      :color="v.active ? 'success' : 'neutral'"
-                      variant="subtle"
-                      :label="v.active ? 'En uso' : 'Desactivado'"
-                    />
-                  </td>
-                  <td class="px-4 py-3 text-right">
-                    <div class="flex justify-end gap-1">
-                      <UButton
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        icon="i-lucide-shield-alert"
-                        label="Revisiones"
-                        @click="openReviewsModal(v)"
-                      />
-                      <template v-if="isAdmin">
-                        <UButton
-                          color="neutral"
-                          variant="ghost"
-                          size="sm"
-                          icon="i-lucide-pencil"
-                          label="Editar"
-                          @click="startEditVehicle(v)"
-                        />
-                        <UButton
-                          color="neutral"
-                          variant="ghost"
-                          size="sm"
-                          :label="v.active ? 'Desactivar' : 'Reactivar'"
-                          @click="toggleVehicleActive(v)"
-                        />
-                      </template>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </UCard>
-      </div>
+        <UTable v-else :data="vehicles" :columns="vehicleColumns">
+          <template #brandModel-cell="{ row }">
+            {{ row.original.brand }} {{ row.original.model }}
+          </template>
+          <template #capacity-cell="{ row }">
+            {{ row.original.capacityUnits ? `${row.original.capacityUnits} bidones` : "—" }}
+          </template>
+          <template #status-cell="{ row }">
+            <UBadge
+              :color="row.original.active ? 'success' : 'neutral'"
+              variant="subtle"
+              :label="row.original.active ? 'En uso' : 'Desactivado'"
+            />
+          </template>
+          <template #actions-cell="{ row }">
+            <div class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                icon="i-lucide-shield-alert"
+                label="Revisiones"
+                @click="openReviewsModal(row.original)"
+              />
+              <template v-if="isAdmin">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  icon="i-lucide-pencil"
+                  label="Editar"
+                  @click="startEditVehicle(row.original)"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  :label="row.original.active ? 'Desactivar' : 'Reactivar'"
+                  @click="toggleVehicleActive(row.original)"
+                />
+              </template>
+            </div>
+          </template>
+        </UTable>
+      </UCard>
 
       <!-- SECCIÓN 2: TIPOS DE REVISIÓN -->
-      <div v-if="activeTab === 'reviewTypes'" class="space-y-4">
+      <UCard v-if="activeTab === 'reviewTypes'">
         <ListStatus
           v-if="reviewTypeError || loadingReviewTypes || reviewTypes.length === 0"
           :error-message="reviewTypeError"
@@ -557,46 +562,26 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
           @retry="loadReviewTypes"
         />
 
-        <UCard v-else :ui="{ body: 'p-0 sm:p-0' }">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-                <tr>
-                  <th scope="col" class="px-4 py-2 font-medium">Tipo de revisión</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Estado</th>
-                  <th v-if="isAdmin" scope="col" class="px-4 py-2 text-right">
-                    <span class="sr-only">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-default">
-                <tr v-for="rt in reviewTypes" :key="rt.id">
-                  <td class="px-4 py-3 font-medium text-highlighted">
-                    {{ rt.name }}
-                  </td>
-                  <td class="px-4 py-3">
-                    <UBadge
-                      :color="rt.active ? 'success' : 'neutral'"
-                      variant="subtle"
-                      :label="rt.active ? 'En uso' : 'Desactivado'"
-                    />
-                  </td>
-                  <td v-if="isAdmin" class="px-4 py-3 text-right">
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      :label="rt.active ? 'Desactivar' : 'Reactivar'"
-                      @click="toggleReviewTypeActive(rt)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </UCard>
-      </div>
-    </div>
+        <UTable v-else :data="reviewTypes" :columns="reviewTypeColumns">
+          <template #status-cell="{ row }">
+            <UBadge
+              :color="row.original.active ? 'success' : 'neutral'"
+              variant="subtle"
+              :label="row.original.active ? 'En uso' : 'Desactivado'"
+            />
+          </template>
+          <template #actions-cell="{ row }">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              :label="row.original.active ? 'Desactivar' : 'Reactivar'"
+              @click="toggleReviewTypeActive(row.original)"
+            />
+          </template>
+        </UTable>
+      </UCard>
+    </UPageBody>
 
     <!-- MODAL ALTA VEHÍCULO -->
     <UModal
@@ -605,14 +590,14 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
       description="Registra un vehículo para la flota de reparto."
     >
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitCreateVehicle">
-          <div class="grid gap-4 sm:grid-cols-2">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitCreateVehicle">
+          <UPageGrid>
             <UFormField label="Placa" required help="Mayúsculas sin guiones. Ej: ABC123">
               <UInput
                 v-model="newPlate"
                 placeholder="ABC123"
                 :disabled="savingVehicle"
-                class="w-full font-mono uppercase"
+                class="w-full"
               />
             </UFormField>
             <UFormField label="Nombre / Alias" required help="Ej: Camión 1">
@@ -657,11 +642,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                 class="w-full"
               />
             </UFormField>
-            <UFormField
-              label="Tarjeta de circulación / Habilitación"
-              help="Opcional"
-              class="sm:col-span-2"
-            >
+            <UFormField label="Tarjeta de circulación / Habilitación" help="Opcional">
               <UInput
                 v-model="newCirculationCardNumber"
                 placeholder="TUC-12345678"
@@ -669,7 +650,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                 class="w-full"
               />
             </UFormField>
-          </div>
+          </UPageGrid>
 
           <UAlert
             v-if="addVehicleError"
@@ -679,7 +660,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
             :title="addVehicleError"
           />
 
-          <div class="flex justify-end gap-2 pt-3">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -693,7 +674,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
               :disabled="savingVehicle"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
@@ -704,14 +685,14 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
       description="Modifica los datos del vehículo. La placa no puede cambiarse si ya estuvo en una ruta."
     >
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitEditVehicle">
-          <div class="grid gap-4 sm:grid-cols-2">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitEditVehicle">
+          <UPageGrid>
             <UFormField label="Placa" required help="Inmutable tras usarse en una ruta">
               <UInput
                 v-model="editPlate"
                 placeholder="ABC123"
                 :disabled="savingVehicle"
-                class="w-full font-mono uppercase"
+                class="w-full"
               />
             </UFormField>
             <UFormField label="Nombre / Alias" required>
@@ -756,7 +737,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Tarjeta de circulación / Habilitación" class="sm:col-span-2">
+            <UFormField label="Tarjeta de circulación / Habilitación">
               <UInput
                 v-model="editCirculationCardNumber"
                 placeholder="TUC-12345678"
@@ -764,7 +745,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                 class="w-full"
               />
             </UFormField>
-          </div>
+          </UPageGrid>
 
           <UAlert
             v-if="editVehicleError"
@@ -774,7 +755,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
             :title="editVehicleError"
           />
 
-          <div class="flex justify-end gap-2 pt-3">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -788,7 +769,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
               :disabled="savingVehicle"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
@@ -801,10 +782,9 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
           : 'Revisiones'
       "
       description="Control de vencimiento de SOAT, revisión técnica y extintores."
-      :ui="{ content: 'max-w-3xl' }"
     >
       <template #body>
-        <div class="space-y-6">
+        <UPageBody>
           <UAlert
             v-if="reviewsError"
             role="alert"
@@ -814,11 +794,9 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
           />
 
           <!-- Estado por cada tipo de revisión -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold uppercase tracking-wider text-muted">
-                Estado actual de revisiones
-              </h3>
+          <UPageCard variant="naked" orientation="horizontal">
+            <template #title><h3>Estado actual de revisiones</h3></template>
+            <div class="flex justify-end gap-2">
               <UButton
                 v-if="canManageReviews && !addingReview"
                 color="primary"
@@ -829,49 +807,44 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                 @click="startAddReview"
               />
             </div>
+          </UPageCard>
 
-            <div class="grid gap-3 sm:grid-cols-3">
-              <div
-                v-for="st in vehicleReviewsStatus"
-                :key="st.reviewTypeId"
-                class="rounded-lg border border-default bg-elevated/40 p-3 space-y-1"
-              >
-                <div class="flex items-center justify-between">
-                  <span class="font-medium text-highlighted text-xs">{{ st.reviewTypeName }}</span>
-                  <UBadge
-                    :color="REVIEW_STATUS_CONFIG[st.status].color"
-                    variant="subtle"
-                    size="sm"
-                    :label="REVIEW_STATUS_CONFIG[st.status].label"
-                  />
-                </div>
-                <div class="text-xs text-muted">
-                  <template v-if="st.latestReview">
-                    <span>Vence: {{ formatCalendarDay(st.latestReview.endsOn) }}</span>
-                    <span v-if="st.daysRemaining !== null" class="block text-dimmed">
-                      {{
-                        st.daysRemaining < 0
-                          ? `Vencida hace ${Math.abs(st.daysRemaining)} días`
-                          : st.daysRemaining === 0
-                            ? "Vence hoy"
-                            : `Faltan ${st.daysRemaining} días`
-                      }}
-                    </span>
-                  </template>
-                  <span v-else class="text-dimmed italic">Sin revisión registrada</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <UPageGrid>
+            <UPageCard
+              v-for="st in vehicleReviewsStatus"
+              :key="st.reviewTypeId"
+              :title="st.reviewTypeName"
+              variant="soft"
+            >
+              <UFieldGroup>
+                <UBadge
+                  :color="REVIEW_STATUS_CONFIG[st.status].color"
+                  variant="subtle"
+                  size="sm"
+                  :label="REVIEW_STATUS_CONFIG[st.status].label"
+                />
+              </UFieldGroup>
+              <template v-if="st.latestReview">
+                <p>Vence: {{ formatCalendarDay(st.latestReview.endsOn) }}</p>
+                <p v-if="st.daysRemaining !== null">
+                  {{
+                    st.daysRemaining < 0
+                      ? `Vencida hace ${Math.abs(st.daysRemaining)} días`
+                      : st.daysRemaining === 0
+                        ? "Vence hoy"
+                        : `Faltan ${st.daysRemaining} días`
+                  }}
+                </p>
+              </template>
+              <p v-else>Sin revisión registrada</p>
+            </UPageCard>
+          </UPageGrid>
 
           <!-- Formulario registrar nueva revisión -->
-          <div
-            v-if="addingReview"
-            class="rounded-lg border border-default bg-elevated/60 p-4 space-y-3"
-          >
-            <h4 class="text-sm font-semibold text-highlighted">Registrar nueva revisión</h4>
-            <form class="space-y-3" @submit.prevent="submitCreateReview">
-              <div class="grid gap-3 sm:grid-cols-3">
+          <UPageCard v-if="addingReview" variant="soft">
+            <template #title><h4>Registrar nueva revisión</h4></template>
+            <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitCreateReview">
+              <UPageGrid>
                 <UFormField label="Tipo de revisión" required>
                   <USelect
                     v-model="newReviewTypeId"
@@ -896,7 +869,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                     :disabled="savingReview"
                   />
                 </UFormField>
-              </div>
+              </UPageGrid>
               <UFormField label="Notas / Observaciones (opcional)">
                 <UInput
                   v-model="newReviewNotes"
@@ -914,7 +887,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                 :title="addReviewError"
               />
 
-              <div class="flex justify-end gap-2 pt-2">
+              <div class="flex justify-end gap-2">
                 <UButton
                   color="neutral"
                   variant="outline"
@@ -930,22 +903,19 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                   :disabled="savingReview"
                 />
               </div>
-            </form>
-          </div>
+            </UForm>
+          </UPageCard>
 
           <!-- Diálogo anular revisión -->
-          <div
+          <UPageCard
             v-if="voidingReview"
-            class="rounded-lg border border-error/30 bg-error/5 p-4 space-y-3"
+            variant="soft"
+            description="Solo se debe anular si fue un error de registro. La revisión quedará marcada como anulada con el motivo indicado."
           >
-            <h4 class="text-sm font-semibold text-error">
-              Anular revisión de {{ voidingReview.reviewType.name }}
-            </h4>
-            <p class="text-xs text-muted">
-              Solo se debe anular si fue un error de registro. La revisión quedará marcada como
-              anulada con el motivo indicado.
-            </p>
-            <form class="space-y-3" @submit.prevent="submitVoidReview">
+            <template #title>
+              <h4>Anular revisión de {{ voidingReview.reviewType.name }}</h4>
+            </template>
+            <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitVoidReview">
               <UFormField label="Motivo de la anulación" required>
                 <UInput
                   v-model="voidReason"
@@ -980,77 +950,46 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
                   :disabled="savingVoid || !voidReason.trim()"
                 />
               </div>
-            </form>
-          </div>
+            </UForm>
+          </UPageCard>
 
           <!-- Historial de revisiones -->
-          <div class="space-y-2">
-            <h3 class="text-sm font-semibold uppercase tracking-wider text-muted">
-              Historial de revisiones
-            </h3>
+          <h3>Historial de revisiones</h3>
 
-            <div v-if="vehicleReviewsHistory.length === 0" class="text-xs text-dimmed italic">
-              No hay revisiones registradas para este vehículo.
-            </div>
+          <p v-if="vehicleReviewsHistory.length === 0">
+            No hay revisiones registradas para este vehículo.
+          </p>
 
-            <div v-else class="overflow-x-auto rounded-lg border border-default">
-              <table class="w-full text-left text-xs">
-                <thead class="bg-elevated text-muted uppercase">
-                  <tr>
-                    <th scope="col" class="px-3 py-2 font-medium">Tipo</th>
-                    <th scope="col" class="px-3 py-2 font-medium">Vigencia</th>
-                    <th scope="col" class="px-3 py-2 font-medium">Notas</th>
-                    <th scope="col" class="px-3 py-2 font-medium">Registrado</th>
-                    <th scope="col" class="px-3 py-2 font-medium">Estado</th>
-                    <th v-if="isAdmin" scope="col" class="px-3 py-2 text-right">
-                      <span class="sr-only">Acciones</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-default">
-                  <tr
-                    v-for="r in vehicleReviewsHistory"
-                    :key="r.id"
-                    :class="{ 'opacity-60 bg-error/5': r.voidedAt }"
-                  >
-                    <td class="px-3 py-2 font-medium text-highlighted">
-                      {{ r.reviewType.name }}
-                    </td>
-                    <td class="px-3 py-2 whitespace-nowrap tabular-nums text-muted">
-                      {{ formatCalendarDay(r.startsOn) }} al {{ formatCalendarDay(r.endsOn) }}
-                    </td>
-                    <td class="px-3 py-2 text-muted max-w-xs truncate">
-                      {{ r.notes || "—" }}
-                    </td>
-                    <td class="px-3 py-2 text-muted tabular-nums">
-                      {{ r.recordedBy.name }} ({{ formatInstantInLima(r.createdAt) }})
-                    </td>
-                    <td class="px-3 py-2">
-                      <div v-if="r.voidedAt" class="space-y-0.5">
-                        <UBadge color="error" variant="subtle" size="xs" label="Anulada" />
-                        <span class="block text-[10px] text-muted">
-                          {{ r.voidReason }} ({{ r.voidedBy?.name }})
-                        </span>
-                      </div>
-                      <span v-else class="text-success font-medium">Válida</span>
-                    </td>
-                    <td v-if="isAdmin" class="px-3 py-2 text-right">
-                      <UButton
-                        v-if="!r.voidedAt && voidingReview?.id !== r.id"
-                        color="error"
-                        variant="ghost"
-                        size="xs"
-                        label="Anular"
-                        @click="startVoidReview(r)"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UTable v-else :data="vehicleReviewsHistory" :columns="reviewHistoryColumns">
+            <template #type-cell="{ row }">{{ row.original.reviewType.name }}</template>
+            <template #validity-cell="{ row }">
+              {{ formatCalendarDay(row.original.startsOn) }} al
+              {{ formatCalendarDay(row.original.endsOn) }}
+            </template>
+            <template #notes-cell="{ row }">{{ row.original.notes || "—" }}</template>
+            <template #recorded-cell="{ row }">
+              {{ row.original.recordedBy.name }} ({{ formatInstantInLima(row.original.createdAt) }})
+            </template>
+            <template #status-cell="{ row }">
+              <template v-if="row.original.voidedAt">
+                <UBadge color="error" variant="subtle" size="xs" label="Anulada" />
+                <p>{{ row.original.voidReason }} ({{ row.original.voidedBy?.name }})</p>
+              </template>
+              <UBadge v-else color="success" variant="subtle" size="xs" label="Válida" />
+            </template>
+            <template #actions-cell="{ row }">
+              <UButton
+                v-if="!row.original.voidedAt && voidingReview?.id !== row.original.id"
+                color="error"
+                variant="ghost"
+                size="xs"
+                label="Anular"
+                @click="startVoidReview(row.original)"
+              />
+            </template>
+          </UTable>
 
-          <div class="flex justify-end pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -1058,7 +997,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
               @click="reviewsModal = false"
             />
           </div>
-        </div>
+        </UPageBody>
       </template>
     </UModal>
 
@@ -1069,7 +1008,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
       description="Agrega un requisito de revisión vehicular (SOAT, Revisión técnica, Extintor, etc.)."
     >
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitCreateReviewType">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" @submit="submitCreateReviewType">
           <UFormField label="Nombre" required help="Ej: Extintor">
             <UInput
               v-model="newReviewTypeName"
@@ -1087,7 +1026,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
             :title="addReviewTypeError"
           />
 
-          <div class="flex justify-end gap-2 pt-3">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -1101,7 +1040,7 @@ async function toggleReviewTypeActive(rt: VehicleReviewType): Promise<void> {
               :disabled="savingReviewType"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </AppPage>

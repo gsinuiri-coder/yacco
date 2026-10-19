@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MIN_PASSWORD_LENGTH } from "@yacco/shared";
 import type { Page, Route, User, UserRole } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import type { AssignableRole } from "~/utils/user";
 
 /**
@@ -411,6 +412,16 @@ async function submitDriver(): Promise<void> {
     savingDriver.value = false;
   }
 }
+
+const userColumns = computed<TableColumn<User>[]>(() => [
+  { id: "name", header: "Nombre" },
+  { accessorKey: "username", header: "Usuario" },
+  { id: "roles", header: "Roles" },
+  { id: "status", header: "Estado" },
+  ...(isAdmin.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
 </script>
 
 <template>
@@ -427,9 +438,9 @@ async function submitDriver(): Promise<void> {
       />
     </template>
 
-    <div class="space-y-6">
+    <UPageBody>
       <UCard v-if="adding">
-        <div class="space-y-4">
+        <UPageBody>
           <UAlert
             v-if="createError"
             role="alert"
@@ -437,13 +448,15 @@ async function submitDriver(): Promise<void> {
             variant="subtle"
             :title="createError"
           />
-          <form
-            class="space-y-4"
+          <UForm
+            :state="{}"
+            :validate-on="[]"
+            :loading-auto="false"
             novalidate
             aria-label="Nuevo usuario"
-            @submit.prevent="submitCreate"
+            @submit="submitCreate"
           >
-            <div class="grid gap-4 sm:grid-cols-3">
+            <UPageGrid>
               <UFormField label="Nombre">
                 <UInput
                   v-model="newName"
@@ -473,36 +486,30 @@ async function submitDriver(): Promise<void> {
                   class="w-full"
                 />
               </UFormField>
+            </UPageGrid>
+            <p>Roles</p>
+            <div class="flex flex-wrap gap-2">
+              <UCheckbox
+                v-for="role in ROLE_ORDER"
+                :key="role"
+                :model-value="newRoles.includes(role)"
+                :label="ROLE_LABEL[role]"
+                :disabled="creating"
+                @update:model-value="
+                  () => {
+                    newRoles = toggleRole(newRoles, role);
+                    createError = null;
+                  }
+                "
+              />
             </div>
-            <div>
-              <span class="text-sm font-medium text-default">Roles</span>
-              <div class="mt-1.5 flex flex-wrap gap-x-4 gap-y-2">
-                <UCheckbox
-                  v-for="role in ROLE_ORDER"
-                  :key="role"
-                  :model-value="newRoles.includes(role)"
-                  :label="ROLE_LABEL[role]"
-                  :disabled="creating"
-                  @update:model-value="
-                    () => {
-                      newRoles = toggleRole(newRoles, role);
-                      createError = null;
-                    }
-                  "
-                />
-              </div>
-              <p class="mt-1 text-xs text-muted">
-                Puede tener más de uno: alguien que vende y además reparte.
-              </p>
-            </div>
-            <div
+            <p>Puede tener más de uno: alguien que vende y además reparte.</p>
+            <UPageCard
               v-if="newRoles.includes('DRIVER')"
-              class="space-y-3 rounded-lg border border-default bg-elevated/40 p-4"
+              variant="soft"
+              title="Datos del chofer (para guías de remisión)"
             >
-              <span class="text-xs font-semibold uppercase tracking-wider text-muted">
-                Datos del chofer (para guías de remisión)
-              </span>
-              <div class="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+              <UPageGrid>
                 <UFormField label="Tipo de documento">
                   <UInput
                     v-model="newDocumentType"
@@ -543,9 +550,9 @@ async function submitDriver(): Promise<void> {
                     class="w-full"
                   />
                 </UFormField>
-              </div>
-            </div>
-            <div class="flex justify-end gap-2 border-t border-default pt-4">
+              </UPageGrid>
+            </UPageCard>
+            <div class="flex justify-end gap-2">
               <UButton
                 color="neutral"
                 variant="outline"
@@ -559,20 +566,20 @@ async function submitDriver(): Promise<void> {
                 :disabled="creating"
               />
             </div>
-          </form>
-        </div>
+          </UForm>
+        </UPageBody>
       </UCard>
 
       <UCard v-if="resetTarget">
-        <form
-          class="space-y-4"
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
           novalidate
           :aria-label="`Cambiar la contraseña de ${resetTarget.name}`"
-          @submit.prevent="submitReset"
+          @submit="submitReset"
         >
-          <h2 class="text-lg font-semibold text-highlighted">
-            Cambiar la contraseña de {{ resetTarget.name }}
-          </h2>
+          <h2>Cambiar la contraseña de {{ resetTarget.name }}</h2>
           <UAlert
             role="status"
             color="neutral"
@@ -588,7 +595,7 @@ async function submitDriver(): Promise<void> {
               type="password"
               autocomplete="new-password"
               :disabled="resetting"
-              class="w-full sm:w-80"
+              class="w-full"
               @update:model-value="resetError = null"
             />
           </UFormField>
@@ -599,7 +606,7 @@ async function submitDriver(): Promise<void> {
             variant="subtle"
             :title="resetError"
           />
-          <div class="flex justify-end gap-2 border-t border-default pt-4">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -613,46 +620,41 @@ async function submitDriver(): Promise<void> {
               :disabled="resetting"
             />
           </div>
-        </form>
+        </UForm>
       </UCard>
 
       <UCard v-if="rolesTarget">
-        <form
-          class="space-y-4"
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
           novalidate
           :aria-label="`Corregir los roles de ${rolesTarget.name}`"
-          @submit.prevent="submitRoles"
+          @submit="submitRoles"
         >
-          <h2 class="text-lg font-semibold text-highlighted">
-            Corregir los roles de {{ rolesTarget.name }}
-          </h2>
-          <div class="space-y-3">
-            <span class="text-sm font-medium text-default">Roles</span>
-            <div v-for="role in ROLE_ORDER" :key="role" class="flex items-start gap-2">
-              <UCheckbox
-                :model-value="rolesDraft.includes(role)"
-                :disabled="
-                  savingRoles ||
-                  checkingRoutes ||
-                  (rolesTarget.id === session.user.value?.id && role === 'ADMIN')
-                "
-                @update:model-value="toggleRoleDraft(role)"
-              >
-                <template #label>
-                  <span>
-                    {{ ROLE_LABEL[role] }}
-                    <span class="text-muted"> — {{ ROLE_EXPLANATION[role] }}</span>
-                    <span
-                      v-if="rolesTarget.id === session.user.value?.id && role === 'ADMIN'"
-                      class="text-muted"
-                    >
-                      No puedes quitarte a ti mismo la administración.
-                    </span>
-                  </span>
-                </template>
-              </UCheckbox>
-            </div>
-          </div>
+          <h2>Corregir los roles de {{ rolesTarget.name }}</h2>
+          <p>Roles</p>
+          <UCheckbox
+            v-for="role in ROLE_ORDER"
+            :key="role"
+            :model-value="rolesDraft.includes(role)"
+            :disabled="
+              savingRoles ||
+              checkingRoutes ||
+              (rolesTarget.id === session.user.value?.id && role === 'ADMIN')
+            "
+            @update:model-value="toggleRoleDraft(role)"
+          >
+            <template #label>
+              <span>
+                {{ ROLE_LABEL[role] }}
+                <span> — {{ ROLE_EXPLANATION[role] }}</span>
+                <span v-if="rolesTarget.id === session.user.value?.id && role === 'ADMIN'">
+                  No puedes quitarte a ti mismo la administración.
+                </span>
+              </span>
+            </template>
+          </UCheckbox>
 
           <UAlert
             v-if="routesAtRisk"
@@ -675,7 +677,7 @@ async function submitDriver(): Promise<void> {
             :title="rolesError"
           />
 
-          <div class="flex justify-end gap-2 border-t border-default pt-4">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -689,23 +691,21 @@ async function submitDriver(): Promise<void> {
               :disabled="savingRoles || checkingRoutes"
             />
           </div>
-        </form>
+        </UForm>
       </UCard>
 
       <UCard v-if="driverTarget">
-        <form
-          class="space-y-4"
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
           novalidate
           :aria-label="`Datos de chofer de ${driverTarget.name}`"
-          @submit.prevent="submitDriver"
+          @submit="submitDriver"
         >
-          <h2 class="text-lg font-semibold text-highlighted">
-            Datos de chofer de {{ driverTarget.name }}
-          </h2>
-          <p class="text-xs text-muted">
-            Datos de brevete y documento de identidad necesarios para las guías de remisión.
-          </p>
-          <div class="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+          <h2>Datos de chofer de {{ driverTarget.name }}</h2>
+          <p>Datos de brevete y documento de identidad necesarios para las guías de remisión.</p>
+          <UPageGrid>
             <UFormField label="Tipo de documento">
               <UInput
                 v-model="driverDocumentType"
@@ -746,7 +746,7 @@ async function submitDriver(): Promise<void> {
                 class="w-full"
               />
             </UFormField>
-          </div>
+          </UPageGrid>
           <UAlert
             v-if="driverError"
             role="alert"
@@ -754,7 +754,7 @@ async function submitDriver(): Promise<void> {
             variant="subtle"
             :title="driverError"
           />
-          <div class="flex justify-end gap-2 border-t border-default pt-4">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -768,34 +768,36 @@ async function submitDriver(): Promise<void> {
               :disabled="savingDriver"
             />
           </div>
-        </form>
+        </UForm>
       </UCard>
 
-      <UCard :ui="{ body: 'p-0 sm:p-0' }">
-        <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
-          <UFormField label="Rol" class="w-44">
-            <USelect
-              v-model="roleFilter"
-              :items="[
-                { label: 'Todos', value: ALL },
-                ...ROLE_ORDER.map((role) => ({ label: ROLE_LABEL[role], value: role })),
-              ]"
-              class="w-full"
-            />
-          </UFormField>
-          <UFormField label="Estado" class="w-40">
-            <USelect
-              v-model="statusFilter"
-              :items="[
-                { label: 'En uso', value: 'active' },
-                { label: 'Desactivados', value: 'inactive' },
-              ]"
-              class="w-full"
-            />
-          </UFormField>
-        </div>
+      <UCard>
+        <template #header>
+          <UPageGrid>
+            <UFormField label="Rol">
+              <USelect
+                v-model="roleFilter"
+                :items="[
+                  { label: 'Todos', value: ALL },
+                  ...ROLE_ORDER.map((role) => ({ label: ROLE_LABEL[role], value: role })),
+                ]"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="Estado">
+              <USelect
+                v-model="statusFilter"
+                :items="[
+                  { label: 'En uso', value: 'active' },
+                  { label: 'Desactivados', value: 'inactive' },
+                ]"
+                class="w-full"
+              />
+            </UFormField>
+          </UPageGrid>
+        </template>
 
-        <div v-if="resetDone || actionError" class="space-y-2 p-4 pb-0">
+        <UPageBody>
           <UAlert
             v-if="resetDone"
             role="status"
@@ -810,199 +812,180 @@ async function submitDriver(): Promise<void> {
             variant="subtle"
             :title="actionError"
           />
-        </div>
 
-        <UAlert
-          v-if="slow && loading"
-          role="status"
-          color="neutral"
-          variant="subtle"
-          class="rounded-none"
-          :title="SLOW_REQUEST_MESSAGE"
-        />
+          <UAlert
+            v-if="slow && loading"
+            role="status"
+            color="neutral"
+            variant="subtle"
+            :title="SLOW_REQUEST_MESSAGE"
+          />
 
-        <ListStatus
-          v-if="loadError || loading || users.length === 0"
-          :error-message="loadError"
-          :loading="loading"
-          :empty="users.length === 0"
-          loading-label="Cargando usuarios…"
-          empty-icon="i-lucide-users"
-          :empty-title="
-            statusFilter === 'active'
-              ? 'No hay usuarios con ese rol'
-              : 'No hay usuarios desactivados'
-          "
-          :empty-description="
-            statusFilter === 'active'
-              ? 'Prueba con otro rol, o da de alta a la persona.'
-              : 'Todos los usuarios de ese rol están en uso.'
-          "
-          @retry="loadUsers"
-        />
+          <ListStatus
+            v-if="loadError || loading || users.length === 0"
+            :error-message="loadError"
+            :loading="loading"
+            :empty="users.length === 0"
+            loading-label="Cargando usuarios…"
+            empty-icon="i-lucide-users"
+            :empty-title="
+              statusFilter === 'active'
+                ? 'No hay usuarios con ese rol'
+                : 'No hay usuarios desactivados'
+            "
+            :empty-description="
+              statusFilter === 'active'
+                ? 'Prueba con otro rol, o da de alta a la persona.'
+                : 'Todos los usuarios de ese rol están en uso.'
+            "
+            @retry="loadUsers"
+          />
 
-        <div v-else class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              Usuarios con su nombre, usuario de entrada, roles y estado
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-4 py-2 font-medium">Nombre</th>
-                <th scope="col" class="px-4 py-2 font-medium">Usuario</th>
-                <th scope="col" class="px-4 py-2 font-medium">Roles</th>
-                <th scope="col" class="px-4 py-2 font-medium">Estado</th>
-                <th v-if="isAdmin" scope="col" class="px-4 py-2">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="row in users" :key="row.id">
-                <td class="px-4 py-3">
-                  <UInput
-                    v-if="editingId === row.id"
-                    :model-value="editName"
-                    :aria-label="`Nuevo nombre de ${row.name}`"
-                    :disabled="savingAction"
-                    class="w-full"
-                    @update:model-value="(value: string | number) => (editName = String(value))"
-                  />
-                  <div v-else>
-                    <div class="font-medium text-highlighted">{{ row.name }}</div>
-                    <div v-if="row.roles.includes('DRIVER')" class="mt-0.5 text-xs text-muted">
-                      <span v-if="row.licenseNumber">
-                        Licencia {{ row.licenseNumber }}
-                        <span v-if="row.licenseCategory">({{ row.licenseCategory }})</span>
-                        <span v-if="row.licenseExpiresOn"> · Vence {{ row.licenseExpiresOn }}</span>
-                      </span>
-                      <span v-else class="italic text-dimmed">Sin brevete registrado</span>
-                    </div>
-                  </div>
-                </td>
-                <td class="px-4 py-3 text-muted">{{ row.username }}</td>
-                <td class="px-4 py-3">{{ describeRoles(row.roles) }}</td>
-                <td class="px-4 py-3">
-                  <UBadge
-                    :color="row.active ? 'success' : 'neutral'"
-                    variant="subtle"
-                    :label="row.active ? 'En uso' : 'Desactivado'"
-                  />
-                </td>
-                <td v-if="isAdmin" class="px-4 py-3">
-                  <div v-if="editingId === row.id" class="flex justify-end gap-2">
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Cancelar"
-                      :disabled="savingAction"
-                      @click="editingId = null"
-                    />
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Guardar"
-                      :disabled="savingAction"
-                      @click="submitEdit(row.id)"
-                    />
-                  </div>
-                  <div
-                    v-else-if="deactivatingId === row.id"
-                    role="group"
-                    :aria-label="`Confirmar desactivar a ${row.name}`"
-                    class="flex flex-wrap items-center justify-end gap-2"
-                  >
-                    <span class="text-muted">¿Desactivar? No podrá entrar.</span>
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="No"
-                      :disabled="savingAction"
-                      @click="deactivatingId = null"
-                    />
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Sí, desactivar"
-                      :disabled="savingAction"
-                      @click="setActive(row.id, false)"
-                    />
-                  </div>
-                  <!-- La cuenta del smoke del deploy: su contraseña vive en Secret
+          <UTable
+            v-else
+            :data="users"
+            :columns="userColumns"
+            caption="Usuarios con su nombre, usuario de entrada, roles y estado"
+          >
+            <template #name-cell="{ row: { original: row } }">
+              <UInput
+                v-if="editingId === row.id"
+                :model-value="editName"
+                :aria-label="`Nuevo nombre de ${row.name}`"
+                :disabled="savingAction"
+                class="w-full"
+                @update:model-value="(value: string | number) => (editName = String(value))"
+              />
+              <template v-else>
+                <p>{{ row.name }}</p>
+                <p v-if="row.roles.includes('DRIVER')">
+                  <span v-if="row.licenseNumber">
+                    Licencia {{ row.licenseNumber }}
+                    <span v-if="row.licenseCategory">({{ row.licenseCategory }})</span>
+                    <span v-if="row.licenseExpiresOn"> · Vence {{ row.licenseExpiresOn }}</span>
+                  </span>
+                  <span v-else>Sin brevete registrado</span>
+                </p>
+              </template>
+            </template>
+            <template #roles-cell="{ row }">{{ describeRoles(row.original.roles) }}</template>
+            <template #status-cell="{ row }">
+              <UBadge
+                :color="row.original.active ? 'success' : 'neutral'"
+                variant="subtle"
+                :label="row.original.active ? 'En uso' : 'Desactivado'"
+              />
+            </template>
+            <template #actions-cell="{ row: { original: row } }">
+              <div v-if="editingId === row.id" class="flex justify-end gap-2">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Cancelar"
+                  :disabled="savingAction"
+                  @click="editingId = null"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Guardar"
+                  :disabled="savingAction"
+                  @click="submitEdit(row.id)"
+                />
+              </div>
+              <div
+                v-else-if="deactivatingId === row.id"
+                role="group"
+                :aria-label="`Confirmar desactivar a ${row.name}`"
+                class="flex flex-wrap items-center justify-end gap-2"
+              >
+                <span>¿Desactivar? No podrá entrar.</span>
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="No"
+                  :disabled="savingAction"
+                  @click="deactivatingId = null"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Sí, desactivar"
+                  :disabled="savingAction"
+                  @click="setActive(row.id, false)"
+                />
+              </div>
+              <!-- La cuenta del smoke del deploy: su contraseña vive en Secret
                        Manager y el deploy la lee. Cambiarla, sus roles o
                        desactivarla desde acá rompe la verificación. -->
-                  <p v-else-if="row.roles.includes('VIEWER')" class="text-right text-muted">
-                    La usa el sistema: no se cambia desde acá
-                  </p>
-                  <div v-else class="flex flex-wrap justify-end gap-1">
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Editar"
-                      :disabled="savingAction || resetting"
-                      @click="startEdit(row)"
-                    />
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Cambiar contraseña"
-                      :disabled="savingAction || resetting"
-                      @click="startReset(row)"
-                    />
-                    <UButton
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Roles"
-                      :disabled="savingAction || resetting"
-                      @click="startRoles(row)"
-                    />
-                    <UButton
-                      v-if="row.roles.includes('DRIVER')"
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Datos de chofer"
-                      :disabled="savingAction || resetting"
-                      @click="startDriver(row)"
-                    />
-                    <template v-if="row.active">
-                      <!-- Desactivarse a uno mismo es cerrarse la puerta desde adentro. -->
-                      <span v-if="row.id === session.user.value?.id" class="text-muted"
-                        >Tu propio usuario</span
-                      >
-                      <UButton
-                        v-else
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        label="Desactivar"
-                        :disabled="savingAction || resetting"
-                        @click="startDeactivate(row)"
-                      />
-                    </template>
-                    <UButton
-                      v-else
-                      color="neutral"
-                      variant="ghost"
-                      size="sm"
-                      label="Reactivar"
-                      :disabled="savingAction || resetting"
-                      @click="setActive(row.id, true)"
-                    />
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              <p v-else-if="row.roles.includes('VIEWER')">
+                La usa el sistema: no se cambia desde acá
+              </p>
+              <div v-else class="flex flex-wrap items-center justify-end gap-2">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Editar"
+                  :disabled="savingAction || resetting"
+                  @click="startEdit(row)"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Cambiar contraseña"
+                  :disabled="savingAction || resetting"
+                  @click="startReset(row)"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Roles"
+                  :disabled="savingAction || resetting"
+                  @click="startRoles(row)"
+                />
+                <UButton
+                  v-if="row.roles.includes('DRIVER')"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Datos de chofer"
+                  :disabled="savingAction || resetting"
+                  @click="startDriver(row)"
+                />
+                <template v-if="row.active">
+                  <!-- Desactivarse a uno mismo es cerrarse la puerta desde adentro. -->
+                  <span v-if="row.id === session.user.value?.id">Tu propio usuario</span>
+                  <UButton
+                    v-else
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    label="Desactivar"
+                    :disabled="savingAction || resetting"
+                    @click="startDeactivate(row)"
+                  />
+                </template>
+                <UButton
+                  v-else
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  label="Reactivar"
+                  :disabled="savingAction || resetting"
+                  @click="setActive(row.id, true)"
+                />
+              </div>
+            </template>
+          </UTable>
+        </UPageBody>
       </UCard>
-    </div>
+    </UPageBody>
   </AppPage>
 </template>
