@@ -71,7 +71,7 @@ function onCounted(count: PlantCount): void {
         description="El inventario aparecerá aquí en cuanto se registre producción o entradas de envases."
       />
 
-      <UPageList v-else>
+      <UPageBody v-else>
         <UAlert
           v-for="{ state, containerTypeNames } in negativesByState"
           :key="state"
@@ -147,7 +147,7 @@ function onCounted(count: PlantCount): void {
             Los que sobren se anotan como lote en Producción.
           </p>
         </SectionCard>
-      </UPageList>
+      </UPageBody>
     </ResourceState>
   </AppPage>
 </template>

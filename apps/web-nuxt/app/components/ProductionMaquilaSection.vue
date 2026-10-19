@@ -174,7 +174,7 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
       @retry="load"
     />
 
-    <UPageList v-else>
+    <UPageBody v-else>
       <!-- Clientes con vacíos en espera -->
       <UPageCard variant="naked">
         <template #title><h3>Vacíos de clientes en planta</h3></template>
@@ -251,7 +251,7 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
           </template>
         </UTable>
       </UPageCard>
-    </UPageList>
+    </UPageBody>
 
     <!-- Modal Llenar Maquila -->
     <UModal v-model:open="fillModalOpen" title="Llenar bidones de maquila">

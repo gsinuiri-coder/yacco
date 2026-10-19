@@ -21,6 +21,13 @@ export function expectNativeNuxtUi(fileUrl: URL, allowedClasses: Record<string, 
   expect(template).not.toMatch(/:ui=/);
   expect(template).not.toMatch(/(:|v-bind:)class=/);
 
+  // UPageList pone siempre role="list": sin `as="ul"`/`as="ol"` es un
+  // contenedor que el lector anuncia como lista vacía. Para apilar, UPageBody.
+  const pageLists = [...template.matchAll(/<UPageList\b[^>]*>/g)].map((match) => match[0]);
+  for (const tag of pageLists) {
+    expect(tag, `UPageList que no es lista en ${fileUrl.pathname}`).toMatch(/\sas="(ul|ol)"/);
+  }
+
   const classes = [...template.matchAll(/\sclass="([^"]*)"/g)].map((match) => match[1]);
   for (const value of classes) {
     expect(allowedClasses, `clase sin razón en ${fileUrl.pathname}`).toHaveProperty([value!]);
