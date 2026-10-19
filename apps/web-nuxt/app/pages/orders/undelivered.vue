@@ -236,7 +236,7 @@ const columns: TableColumn<Order>[] = [
     <!-- Modal / Confirmación individual -->
     <UModal v-model:open="singleModalOpen" title="Reprogramar pedido">
       <template #body>
-        <UPageList>
+        <UPageBody>
           <p v-if="singleOrder">
             Cliente: <strong>{{ singleOrder.customer.name }}</strong>
             <span v-if="singleOrder.location"> — {{ singleOrder.location.name }}</span>
@@ -252,7 +252,7 @@ const columns: TableColumn<Order>[] = [
             variant="subtle"
             :title="SLOW_REQUEST_MESSAGE"
           />
-        </UPageList>
+        </UPageBody>
       </template>
       <template #footer>
         <UFieldGroup>
@@ -276,7 +276,7 @@ const columns: TableColumn<Order>[] = [
     <!-- Modal / Confirmación por fecha -->
     <UModal v-model:open="batchModalOpen" title="Reprogramar todos los pedidos de la fecha">
       <template #body>
-        <UPageList>
+        <UPageBody>
           <p>
             Fecha original:
             <strong>{{ formatCalendarDay(deliveryDate) }}</strong>
@@ -295,7 +295,7 @@ const columns: TableColumn<Order>[] = [
             variant="subtle"
             :title="SLOW_REQUEST_MESSAGE"
           />
-        </UPageList>
+        </UPageBody>
       </template>
       <template #footer>
         <UFieldGroup>

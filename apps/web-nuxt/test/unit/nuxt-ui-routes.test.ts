@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
+import { expectNativeNuxtUi } from "../support/nuxt-ui-guard";
 
 const ROUTE_TEMPLATES = [
   "../../app/pages/routes/index.vue",
@@ -43,27 +42,11 @@ const ALLOWED_CLASSES: Record<string, string> = {
     "la diferencia por tipo junto a la cantidad descargada, en amarillo como antes; es texto en la línea, no un aviso aparte",
 };
 
-function templateOf(relativePath: string): string {
-  const source = readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
-  return source.slice(source.indexOf("<template>"));
-}
-
 describe("rutas con Nuxt UI nativo", () => {
   it.each(ROUTE_TEMPLATES)(
     "%s no maqueta con elementos HTML sustituidos por Nuxt UI ni clases sin razón",
     (path) => {
-      const template = templateOf(path);
-
-      expect(template).not.toMatch(/<table\b/);
-      expect(template).not.toMatch(/<form\b/);
-      expect(template).not.toMatch(/<dl\b/);
-      expect(template).not.toMatch(/:ui=/);
-      expect(template).not.toMatch(/(:|v-bind:)class=/);
-
-      const classes = [...template.matchAll(/\sclass="([^"]*)"/g)].map((match) => match[1]);
-      for (const value of classes) {
-        expect(ALLOWED_CLASSES, `clase sin razón en ${path}`).toHaveProperty([value!]);
-      }
+      expectNativeNuxtUi(new URL(path, import.meta.url), ALLOWED_CLASSES);
     },
   );
 });

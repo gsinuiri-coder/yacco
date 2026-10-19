@@ -269,7 +269,7 @@ function markDone(result: RouteStop): void {
       </div>
     </template>
 
-    <UPageList>
+    <UPageBody>
       <UPageCard v-if="batching" variant="soft">
         <RouteBatchStopsForm
           :route="route"
@@ -606,6 +606,6 @@ function markDone(result: RouteStop): void {
           </div>
         </template>
       </UTable>
-    </UPageList>
+    </UPageBody>
   </SectionCard>
 </template>

@@ -310,7 +310,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <UPageList>
+  <UPageBody>
     <UPageCard
       variant="naked"
       orientation="horizontal"
@@ -346,7 +346,7 @@ async function submit(): Promise<void> {
         variant="outline"
       >
         <template #title><h4>1. Cuadre</h4></template>
-        <UPageList>
+        <UPageBody>
           <UPageCard
             v-for="c in preview?.containers"
             :key="c.containerTypeId"
@@ -400,7 +400,7 @@ async function submit(): Promise<void> {
               </UFormField>
             </template>
           </UPageCard>
-        </UPageList>
+        </UPageBody>
       </UPageCard>
 
       <!-- 2. BAJA (opcional) -->
@@ -409,7 +409,7 @@ async function submit(): Promise<void> {
         variant="outline"
       >
         <template #title><h4>2. Baja (descarga)</h4></template>
-        <UPageList>
+        <UPageBody>
           <UPageGrid v-for="c in preview?.containers" :key="c.containerTypeId">
             <UFormField :label="`Vacíos que bajan de ${c.containerTypeName}`">
               <UInput
@@ -432,7 +432,7 @@ async function submit(): Promise<void> {
               />
             </UFormField>
           </UPageGrid>
-        </UPageList>
+        </UPageBody>
       </UPageCard>
 
       <!-- 3. SUBE (opcional) -->
@@ -441,8 +441,8 @@ async function submit(): Promise<void> {
         variant="outline"
       >
         <template #title><h4>3. Sube (carga FIFO)</h4></template>
-        <UPageList>
-          <UPageList v-for="c in preview?.containers" :key="c.containerTypeId">
+        <UPageBody>
+          <UPageBody v-for="c in preview?.containers" :key="c.containerTypeId">
             <UFormField :label="`Llenos que suben de ${c.containerTypeName}`">
               <UInput
                 v-model="loadsState[c.containerTypeId]"
@@ -478,8 +478,8 @@ async function submit(): Promise<void> {
                 :title="`Stock insuficiente en planta: faltan ${getFifoPlan(c.containerTypeId)?.shortfall} unidades.`"
               />
             </template>
-          </UPageList>
-        </UPageList>
+          </UPageBody>
+        </UPageBody>
       </UPageCard>
 
       <!-- 4. EFECTIVO (opcional) -->
@@ -606,5 +606,5 @@ async function submit(): Promise<void> {
         />
       </div>
     </UForm>
-  </UPageList>
+  </UPageBody>
 </template>

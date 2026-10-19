@@ -256,7 +256,7 @@ const settledEmpties = computed(() =>
           title="Lo que dice el libro"
           description="Sale de lo ya registrado en la ruta; nadie lo escribe a mano."
         >
-          <UPageList>
+          <UPageBody>
             <UPageGrid as="dl">
               <StatTile label="Llenos que salieron" :value="view.expected.fullOut" />
               <StatTile label="Entregados en canje" :value="view.expected.fullDelivered" />
@@ -309,7 +309,7 @@ const settledEmpties = computed(() =>
                 <StatTile label="Al fiado" :value="formatSoles(view.expected.totalOnCredit)" />
               </UPageGrid>
             </UPageCard>
-          </UPageList>
+          </UPageBody>
         </SectionCard>
 
         <SectionCard
@@ -424,7 +424,7 @@ const settledEmpties = computed(() =>
           title="Liquidada"
           :description="`Cerrada el ${formatInstantInLima(settlement.settledAt)}.`"
         >
-          <UPageList>
+          <UPageBody>
             <!-- Dice lo que el dato mide y nada más: se corrigió una parada después
                  del cierre. No dice que la liquidación esté mal (corregir una ruta
                  liquidada está permitido a propósito). -->
@@ -518,7 +518,7 @@ const settledEmpties = computed(() =>
                 <StatTile label="Al fiado" :value="formatSoles(settlement.totalOnCredit)" />
               </UPageGrid>
             </UPageCard>
-          </UPageList>
+          </UPageBody>
         </SectionCard>
       </template>
     </ResourceState>

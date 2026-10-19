@@ -113,7 +113,7 @@ async function confirmVoid(pitId: string): Promise<void> {
       />
     </template>
 
-    <UPageList>
+    <UPageBody>
       <UPageCard v-if="creating" variant="subtle">
         <RoutePitStopForm :route="route" @cancel="creating = false" @created="onPitCreated" />
       </UPageCard>
@@ -326,6 +326,6 @@ async function confirmVoid(pitId: string): Promise<void> {
           </UPageGrid>
         </UPageCard>
       </template>
-    </UPageList>
+    </UPageBody>
   </SectionCard>
 </template>

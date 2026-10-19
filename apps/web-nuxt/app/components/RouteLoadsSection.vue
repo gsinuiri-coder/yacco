@@ -191,7 +191,7 @@ async function remove(load: RouteLoad): Promise<void> {
 
 <template>
   <SectionCard title="Carga del camión" :description="sectionDescription">
-    <UPageList>
+    <UPageBody>
       <div
         v-if="loadedByType.length > 0"
         role="group"
@@ -352,6 +352,6 @@ async function remove(load: RouteLoad): Promise<void> {
           title="Con la ruta ya iniciada, una carga mal ingresada no se borra: la diferencia se registra al liquidar."
         />
       </template>
-    </UPageList>
+    </UPageBody>
   </SectionCard>
 </template>
