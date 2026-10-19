@@ -315,7 +315,7 @@ const movementColumns = computed<TableColumn<AccessoryMovementItem>[]>(() => [
   { id: "occurredAt", header: "Fecha" },
   { id: "type", header: "Tipo" },
   { id: "quantity", header: "Cantidad", meta: RIGHT_ALIGNED },
-  { id: "detail", header: "Detalle" },
+  { id: "detail", header: "Detalle", meta: WRAPPING_TEXT },
   { accessorKey: "recordedByName", header: "Registrado por" },
   ...(isAdmin.value
     ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
