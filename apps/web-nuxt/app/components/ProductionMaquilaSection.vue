@@ -6,6 +6,7 @@ import type {
   MaquilaMovementItem,
   PaginatedMaquilaMovements,
 } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 import { positiveWhole } from "../utils/quantity";
 
 const session = useSession();
@@ -126,6 +127,17 @@ async function submitFill(): Promise<void> {
 const { openVoidModal, submitVoid, voidError, voidModalOpen, voidReason, voidSubmitting } =
   useMaquilaVoid(load);
 
+const fillingColumns = computed<TableColumn<MaquilaMovementItem>[]>(() => [
+  { accessorKey: "occurredAt", header: "Fecha" },
+  { accessorKey: "customerName", header: "Cliente" },
+  { accessorKey: "containerTypeName", header: "Tipo de envase" },
+  { accessorKey: "quantity", header: "Cantidad", meta: RIGHT_ALIGNED },
+  { accessorKey: "recordedByName", header: "Registrado por" },
+  ...(canVoid.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
+
 function canVoidItem(mov: MaquilaMovementItem): boolean {
   if (!canVoid.value) return false;
   if (mov.reversesMovementId !== null) return false;
@@ -162,42 +174,33 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
       @retry="load"
     />
 
-    <div v-else class="space-y-6">
+    <UPageList v-else>
       <!-- Clientes con vacíos en espera -->
-      <div>
-        <h3 class="mb-2 text-xs font-medium tracking-wide text-muted uppercase">
-          Vacíos de clientes en planta
-        </h3>
-        <p v-if="customersWithEmpties.length === 0" class="text-sm text-muted">
+      <UPageCard variant="naked">
+        <template #title><h3>Vacíos de clientes en planta</h3></template>
+        <p v-if="customersWithEmpties.length === 0">
           No hay bidones vacíos de clientes pendientes de llenado en planta.
         </p>
-        <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div
+        <UPageGrid v-else>
+          <UPageCard
             v-for="c in customersWithEmpties"
             :key="c.customerId"
-            class="rounded-md border border-default p-3 space-y-2"
+            :title="c.customerName"
+            variant="subtle"
           >
-            <div class="flex items-center justify-between">
-              <span class="font-medium text-highlighted">{{ c.customerName }}</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge color="info" variant="subtle" :label="`${c.emptyAtPlantTotal} vacíos`" />
               <UBadge
-                color="info"
-                variant="subtle"
-                size="xs"
-                :label="`${c.emptyAtPlantTotal} vacíos`"
-              />
-            </div>
-            <div class="flex flex-wrap gap-1 text-xs text-muted">
-              <span
                 v-for="b in c.balances.filter((x) => x.emptyAtPlant > 0)"
                 :key="b.containerTypeId"
-                class="rounded bg-elevated px-1.5 py-0.5"
-              >
-                {{ b.containerTypeName }}: {{ b.emptyAtPlant }}
-              </span>
+                color="neutral"
+                variant="soft"
+                :label="`${b.containerTypeName}: ${b.emptyAtPlant}`"
+              />
             </div>
-          </div>
-        </div>
-      </div>
+          </UPageCard>
+        </UPageGrid>
+      </UPageCard>
 
       <section v-if="canViewReturns" aria-label="Llenos de maquila por devolver">
         <h3>Llenos de clientes por devolver</h3>
@@ -223,58 +226,44 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
       </section>
 
       <!-- Llenados recientes -->
-      <div>
-        <h3 class="mb-2 text-xs font-medium tracking-wide text-muted uppercase">
-          Llenados registrados
-        </h3>
-        <p v-if="fillings.length === 0" class="text-sm text-muted">
-          Todavía no hay llenados de maquila registrados.
-        </p>
-        <div v-else class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-elevated text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-3 py-2 font-medium">Fecha</th>
-                <th scope="col" class="px-3 py-2 font-medium">Cliente</th>
-                <th scope="col" class="px-3 py-2 font-medium">Tipo de envase</th>
-                <th scope="col" class="px-3 py-2 text-right font-medium">Cantidad</th>
-                <th scope="col" class="px-3 py-2 font-medium">Registrado por</th>
-                <th v-if="canVoid" scope="col" class="px-3 py-2 text-right">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <tr v-for="m in fillings" :key="m.id">
-                <td class="px-3 py-2 whitespace-nowrap text-muted">
-                  {{ formatInstantInLima(m.occurredAt) }}
-                </td>
-                <td class="px-3 py-2 font-medium text-highlighted">{{ m.customerName }}</td>
-                <td class="px-3 py-2">{{ m.containerTypeName }}</td>
-                <td class="px-3 py-2 text-right font-medium tabular-nums">{{ m.quantity }}</td>
-                <td class="px-3 py-2 text-muted">{{ m.recordedByName }}</td>
-                <td v-if="canVoid" class="px-3 py-2 text-right">
-                  <UButton
-                    v-if="canVoidItem(m)"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    icon="i-lucide-ban"
-                    label="Anular"
-                    @click="openVoidModal(m)"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      <UPageCard variant="naked">
+        <template #title><h3>Llenados registrados</h3></template>
+        <p v-if="fillings.length === 0">Todavía no hay llenados de maquila registrados.</p>
+        <UTable
+          v-else
+          :data="fillings"
+          :columns="fillingColumns"
+          caption="Llenados de maquila con fecha, cliente, tipo de envase, cantidad y quién los registró"
+        >
+          <template #occurredAt-cell="{ row }">
+            {{ formatInstantInLima(row.original.occurredAt) }}
+          </template>
+          <template #actions-cell="{ row }">
+            <UButton
+              v-if="canVoidItem(row.original)"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              icon="i-lucide-ban"
+              label="Anular"
+              @click="openVoidModal(row.original)"
+            />
+          </template>
+        </UTable>
+      </UPageCard>
+    </UPageList>
 
     <!-- Modal Llenar Maquila -->
     <UModal v-model:open="fillModalOpen" title="Llenar bidones de maquila">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitFill">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          aria-label="Llenar bidones de maquila"
+          @submit="submitFill"
+        >
           <UAlert v-if="fillError" role="alert" color="error" variant="subtle" :title="fillError" />
 
           <UAlert
@@ -333,7 +322,7 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
             </UFormField>
           </template>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -348,17 +337,24 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
               :disabled="customersWithEmpties.length === 0 || !selectedBalance"
             />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
 
     <!-- Modal Anular Llenado -->
     <UModal v-model:open="voidModalOpen" title="Anular llenado de maquila">
       <template #body>
-        <form class="space-y-4" @submit.prevent="submitVoid">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          aria-label="Anular llenado de maquila"
+          @submit="submitVoid"
+        >
           <UAlert v-if="voidError" role="alert" color="error" variant="subtle" :title="voidError" />
 
-          <p class="text-sm text-muted">
+          <p>
             La anulación emite un movimiento inverso de llenado, restaurando los vacíos en planta
             del cliente.
           </p>
@@ -372,7 +368,7 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -382,7 +378,7 @@ function canVoidItem(mov: MaquilaMovementItem): boolean {
             />
             <UButton type="submit" color="error" label="Anular llenado" :loading="voidSubmitting" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </SectionCard>
