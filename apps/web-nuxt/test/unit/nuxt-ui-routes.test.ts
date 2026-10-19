@@ -16,6 +16,8 @@ const ROUTE_TEMPLATES = [
   "../../app/components/RoutePitStopsSection.vue",
   "../../app/components/RoutePitStopForm.vue",
   "../../app/pages/my-route.vue",
+  "../../app/pages/routes/[id]/settlement.vue",
+  "../../app/components/SettlementCountSheet.vue",
 ];
 
 /**
@@ -35,6 +37,10 @@ const ALLOWED_CLASSES: Record<string, string> = {
   "font-semibold text-highlighted":
     "el h3 del panel de registro va junto a la dirección en el #body de UPageCard, que no le da estilo de título",
   "mx-auto w-full max-w-xl": "«Mi ruta» se usa en el celular; en escritorio conserva ese ancho",
+  "list-disc pl-5":
+    "las diferencias de llenos y vacíos dentro del UAlert, con viñeta; el alerta no le da estilo a una lista",
+  "text-warning":
+    "la diferencia por tipo junto a la cantidad descargada, en amarillo como antes; es texto en la línea, no un aviso aparte",
 };
 
 function templateOf(relativePath: string): string {
