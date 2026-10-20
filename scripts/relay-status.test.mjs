@@ -200,6 +200,42 @@ describe("relay:status", () => {
     });
   }
 
+  test("con 60 de ancho tampoco se pasa con bloqueo, agente largo, patrón largo y una palabra enorme", () => {
+    writeRelay({ lastStep: `${"x".repeat(200)} fin` });
+    writeFileSync(
+      join(relayDir, "log.jsonl"),
+      JSON.stringify({
+        agent: "agente-con-un-nombre-largo",
+        start: "2026-10-10T14:55:00.000Z",
+        end: "2026-10-10T14:55:09.000Z",
+        result: "limit",
+        pattern: LONG_STEP,
+      }),
+    );
+    const state = readStatusState(root, { isAlive: () => false });
+    state.relay.status = "blocked";
+    state.relay["blocked-reason"] = LONG_STEP;
+    for (const useColor of [false, true]) {
+      const text = renderStatus(state, NOW, useColor, 60);
+      for (const lineWidth of visibleWidths(text)) assert.ok(lineWidth <= 60, `${lineWidth}`);
+      assert.equal(valueOf(text, "Motivo del bloqueo").length, 2);
+      assert.ok(valueOf(text, "Último paso")[0].startsWith("xxxx"));
+      const run = rows(text).find((cells) => cells[0].startsWith("agente-con"));
+      assert.ok(run[0].endsWith("…"));
+      assert.ok(run[3].startsWith("límite · pal") && run[3].endsWith("…"), run[3]);
+    }
+  });
+
+  test("una fecha ilegible en log.jsonl no tumba el tablero", () => {
+    writeRelay();
+    writeFileSync(
+      join(relayDir, "log.jsonl"),
+      JSON.stringify({ agent: "claude", start: "ayer", end: "hoy", result: "ok", pattern: null }),
+    );
+    const text = renderStatus(readStatusState(root, { isAlive: () => false }), NOW, false);
+    assert.deepEqual(rowOf(text, "claude"), ["claude", "?", "?", "ok"]);
+  });
+
   test("un ancho menor que 60 se dibuja con 60", () => {
     const text = renderStatus(fullState(), NOW, false, 30);
     assert.equal(Math.max(...visibleWidths(text)), 60);
@@ -228,7 +264,10 @@ describe("relay:status", () => {
 
     const tiny = renderStatus(state, NOW, false, 100, 5);
     assert.equal(tiny.split("\n").length, 5);
-    assert.ok(tiny.endsWith("…"));
+    assert.deepEqual(tiny.split("\n").slice(-2), ["…", "Hora: 10:05:00"]);
+
+    assert.deepEqual(renderStatus(state, NOW, false, 100, 2).split("\n"), ["…", "Hora: 10:05:00"]);
+    assert.equal(renderStatus(state, NOW, false, 100, 1), "…");
   });
 
   test("un lock muerto no presenta current.json como una corrida viva", () => {

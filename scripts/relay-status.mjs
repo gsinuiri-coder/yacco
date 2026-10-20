@@ -255,12 +255,12 @@ function summaryRows(state, now) {
     add("Estado", color === null ? plain(state.relay.status) : colored(state.relay.status, color));
     add("Ítem", plain(state.relay.item ?? "(sin item)"));
     add("Rama", plain(state.relay.branch ?? "(sin branch)"));
-    addWrapped("Último paso", state.relay["last-step"] ?? "(sin last-step)");
-    addWrapped("Siguiente paso", state.relay["next-step"] ?? "(sin next-step)");
+    add("Actualizado", plain(state.relay.updated ?? "(sin updated)"));
     if (state.relay.status === "blocked") {
       addWrapped("Motivo del bloqueo", state.relay["blocked-reason"] || "(sin motivo)");
     }
-    add("Actualizado", plain(state.relay.updated ?? "(sin updated)"));
+    addWrapped("Último paso", state.relay["last-step"] ?? "(sin last-step)");
+    addWrapped("Siguiente paso", state.relay["next-step"] ?? "(sin next-step)");
   }
 
   add("Parada solicitada", plain(state.stop ? "sí" : "no"));
@@ -300,10 +300,13 @@ function runsTable(state, useColor, width, maxRows) {
   }
   const runs = state.runs.slice(-maxRows).map((run) => {
     const label = RESULT_LABELS[run.result] ?? run.result;
+    const start = new Date(run.start).getTime();
+    const end = new Date(run.end).getTime();
     return {
-      agent: run.agent,
-      start: LIMA_MINUTES.format(new Date(run.start)),
-      duration: formatDuration(new Date(run.end).getTime() - new Date(run.start).getTime()),
+      agent: String(run.agent),
+      // Una fecha ilegible en log.jsonl no tumba el tablero.
+      start: Number.isNaN(start) ? "?" : LIMA_MINUTES.format(start),
+      duration: Number.isNaN(start) || Number.isNaN(end) ? "?" : formatDuration(end - start),
       result: [
         ...colored(label, resultColor(run.result)),
         ...plain(run.pattern ? ` · ${run.pattern}` : ""),
@@ -369,15 +372,18 @@ export function renderStatus(
   const runs = roomForRuns >= 1 ? [...runsTable(state, useColor, width, roomForRuns), ""] : [];
   const lines = [...top, ...runs, footer];
   if (lines.length <= height) return lines.join("\n");
-  return [...lines.slice(0, height - 1), ELLIPSIS].join("\n");
+  // Lo que no entra se corta con «…», pero el pie (la hora) se queda.
+  if (height === 1) return ELLIPSIS;
+  return [...lines.slice(0, height - 2), ELLIPSIS, footer].join("\n");
 }
 
 function terminalSize(interactive) {
+  const { columns, rows } = process.stdout;
   return {
-    columns: process.stdout.columns ?? DEFAULT_WIDTH,
-    rows: interactive
-      ? (process.stdout.rows ?? Number.POSITIVE_INFINITY)
-      : Number.POSITIVE_INFINITY,
+    // En la pantalla interactiva una columna menos: una línea que llega a la
+    // última columna deja el cursor encima, y el \x1b[K borraría su borde.
+    columns: interactive && columns > 0 ? columns - 1 : (columns ?? DEFAULT_WIDTH),
+    rows: interactive && rows > 0 ? rows : Number.POSITIVE_INFINITY,
   };
 }
 
@@ -410,8 +416,16 @@ async function main(argv) {
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => process.exit(0));
   // Cada línea borra lo que quedó a su derecha y el final borra lo de abajo:
   // nada se acumula en el historial de la terminal.
+  // Un error al leer se muestra en la pantalla en vez de perderse al salir de ella.
+  const safeRender = () => {
+    try {
+      return render();
+    } catch (error) {
+      return `Tablero del relevo FALLÓ: ${error instanceof Error ? error.message : error}`;
+    }
+  };
   const draw = () => {
-    const screen = render().split("\n").join(`${ANSI.clearLineEnd}\n`);
+    const screen = safeRender().split("\n").join(`${ANSI.clearLineEnd}\n`);
     process.stdout.write(`${ANSI.home}${screen}${ANSI.clearLineEnd}${ANSI.clearBelow}`);
   };
   draw();

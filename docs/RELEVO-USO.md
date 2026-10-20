@@ -196,7 +196,9 @@ redibuja en el mismo lugar y al salir deja la terminal como estaba, sin nada
 acumulado en el historial. Todo se corta al ancho y al alto de la ventana
 (mínimo 60 columnas); el último y el siguiente paso ocupan a lo sumo dos
 líneas y lo que no entra termina en «…». Para leerlos enteros, `.relay/RELEVO.md`.
-Sin terminal (redirigido a un archivo), `--watch` imprime una sola vez.
+Sin terminal (redirigido a un archivo), `--watch` imprime una sola vez. Al pie
+va la hora de Lima; con `--watch` en una terminal, además, «Actualiza cada 5 s
+· Ctrl+C para salir».
 
 ```
 pnpm relay --dry-run   # qué correría y con qué banderas, sin correr nada
