@@ -252,16 +252,17 @@ async function confirmReject(): Promise<void> {
                     icon="i-lucide-map-pin"
                     label="Ver propuesta en Maps"
                   />
-                  <UButton
-                    v-if="req.previousLatitude && req.previousLongitude"
-                    :to="`https://www.google.com/maps?q=${req.previousLatitude},${req.previousLongitude}`"
-                    target="_blank"
-                    color="neutral"
-                    variant="link"
-                    size="xs"
-                    icon="i-lucide-map"
-                    label="Ver actual en Maps"
-                  />
+                  <template v-if="req.previousLatitude && req.previousLongitude">
+                    <UButton
+                      :to="`https://www.google.com/maps?q=${req.previousLatitude},${req.previousLongitude}`"
+                      target="_blank"
+                      color="neutral"
+                      variant="link"
+                      size="xs"
+                      icon="i-lucide-map"
+                      label="Ver actual en Maps"
+                    />
+                  </template>
                 </div>
                 <p>
                   Propuesto por: {{ req.requestedBy?.name ?? "Chofer" }} ·
