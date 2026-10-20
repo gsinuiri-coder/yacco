@@ -69,13 +69,13 @@ const items = computed(() => {
       class="w-full"
     >
       <template #empty>
-        <span class="text-muted">{{
+        {{
           settled === ""
             ? "Escribe un nombre o un teléfono."
             : searching
               ? "Buscando…"
               : "Sin resultados"
-        }}</span>
+        }}
       </template>
     </UInputMenu>
   </UFormField>

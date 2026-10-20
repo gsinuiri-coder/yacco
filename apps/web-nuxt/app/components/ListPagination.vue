@@ -13,8 +13,8 @@ defineEmits<{ previous: []; next: [] }>();
     aria-label="Paginación"
     class="flex items-center justify-between gap-4 border-t border-default px-4 py-3"
   >
-    <span class="text-sm text-muted tabular-nums">Página {{ shownPage }} de {{ totalPages }}</span>
-    <div class="flex gap-2">
+    <span class="text-sm text-muted">Página {{ shownPage }} de {{ totalPages }}</span>
+    <UFieldGroup>
       <UButton
         color="neutral"
         variant="outline"
@@ -31,6 +31,6 @@ defineEmits<{ previous: []; next: [] }>();
         :disabled="page >= totalPages"
         @click="$emit('next')"
       />
-    </div>
+    </UFieldGroup>
   </nav>
 </template>

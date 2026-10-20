@@ -12,13 +12,14 @@ const segments = computed(() => splitLinks(props.text));
 <template>
   <span
     ><template v-for="(segment, index) in segments" :key="index"
-      ><a
+      ><ULink
         v-if="segment.kind === 'link'"
-        :href="segment.href"
+        :to="segment.href"
+        external
         target="_blank"
         rel="noopener noreferrer"
-        class="break-all text-primary underline"
-        >{{ segment.href }}</a
+        class="break-all underline"
+        >{{ segment.href }}</ULink
       ><template v-else>{{ segment.text }}</template></template
     ></span
   >
