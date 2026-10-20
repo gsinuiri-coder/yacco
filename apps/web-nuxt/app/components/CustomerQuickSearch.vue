@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { ButtonProps } from "@nuxt/ui";
 import type { Customer, Page } from "@yacco/shared";
 
 /**
@@ -59,9 +58,7 @@ watch(settledTerm, (text) => {
 function retry(): void {
   void search(settledTerm.value);
 }
-const errorActions: ButtonProps[] = [
-  { color: "neutral", variant: "outline", label: "Reintentar", onClick: retry },
-];
+const errorActions = [retryAction(retry)];
 
 async function pick(customer: Customer | undefined): Promise<void> {
   if (customer) await navigateTo(`/customers/${customer.id}`);

@@ -1,6 +1,6 @@
 import type { ButtonProps } from "@nuxt/ui";
 
-/** El botón «Reintentar» de un estado de error, el mismo en listas y fichas. */
+/** El botón «Reintentar» de un estado de error, el mismo en listas, fichas y búsquedas. */
 export function retryAction(onClick: () => void): ButtonProps {
   return {
     color: "neutral",
