@@ -75,6 +75,14 @@ async function changeStatus(route: Route, action: "start" | "finish"): Promise<v
   }
 }
 
+// Solo el chofer manda su ubicación, y solo de la ruta que está en curso.
+const routeInProgressId = computed(() =>
+  session.hasRole("DRIVER")
+    ? (routes.value.find((route) => route.status === "IN_PROGRESS")?.id ?? null)
+    : null,
+);
+const { sharing: sharingLocation } = useLocationReporter(routeInProgressId);
+
 async function marked(): Promise<void> {
   markingStopId.value = null;
   await load();
@@ -99,6 +107,15 @@ async function marked(): Promise<void> {
       />
 
       <UAlert v-if="actionError" role="alert" color="error" variant="subtle" :title="actionError" />
+
+      <UAlert
+        v-if="sharingLocation"
+        role="status"
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-map-pin"
+        title="La planta ve dónde estás mientras la ruta está en curso."
+      />
 
       <UPageBody
         v-for="route in routes"

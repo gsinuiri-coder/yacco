@@ -21,6 +21,7 @@ export * from "./products.js";
 export * from "./reports.js";
 export * from "./receipts.js";
 export * from "./route-pit-stops.js";
+export * from "./route-locations.js";
 export * from "./route-settlement.js";
 export * from "./routes.js";
 export * from "./sales.js";

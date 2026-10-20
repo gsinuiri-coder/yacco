@@ -89,24 +89,15 @@ function readMarkedLocation(): Promise<MarkedLocationBody> {
     try {
       navigator.geolocation.getCurrentPosition(
         ({ coords }) => {
-          if (
-            !Number.isFinite(coords.latitude) ||
-            !Number.isFinite(coords.longitude) ||
-            !Number.isFinite(coords.accuracy) ||
-            coords.latitude < -90 ||
-            coords.latitude > 90 ||
-            coords.longitude < -180 ||
-            coords.longitude > 180 ||
-            coords.accuracy < 0 ||
-            coords.accuracy > 99_999_999.99
-          ) {
+          const position = positionStrings(coords);
+          if (position === null) {
             unavailable();
             return;
           }
           resolve({
-            markedLatitude: coords.latitude.toFixed(6),
-            markedLongitude: coords.longitude.toFixed(6),
-            markedAccuracyM: coords.accuracy.toFixed(2),
+            markedLatitude: position.latitude,
+            markedLongitude: position.longitude,
+            markedAccuracyM: position.accuracyM,
           });
         },
         unavailable,
