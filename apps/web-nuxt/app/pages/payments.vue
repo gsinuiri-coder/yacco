@@ -15,6 +15,7 @@ import type {
   PaymentStatus,
   PaymentTotals,
 } from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
 /**
  * Bandeja de confirmación de pagos (HU-19). Lo que el dueño viene a hacer es
@@ -148,41 +149,67 @@ function rejectStale(message: string): void {
   actionError.value = message;
   list.retry();
 }
+
+// El tachado refuerza, nunca reemplaza: lo que dice que se anuló es el badge.
+const columns = computed<TableColumn<PaymentRow>[]>(() => [
+  { accessorKey: "customer", header: "Cliente" },
+  { accessorKey: "paymentMethod", header: "Método" },
+  {
+    accessorKey: "amount",
+    header: "Monto",
+    meta: {
+      class: {
+        th: "text-right",
+        td: (cell) =>
+          cell.row.original.voidedAt === null
+            ? "text-right font-medium text-highlighted"
+            : "text-right text-muted line-through",
+      },
+    },
+  },
+  { accessorKey: "status", header: "Estado", meta: WRAPPING_TEXT },
+  { accessorKey: "paidAt", header: "Cobrado" },
+  { accessorKey: "recordedBy", header: "Registrado por" },
+  ...(isAdmin.value
+    ? [{ id: "actions", header: hiddenHeader("Acciones"), meta: RIGHT_ALIGNED }]
+    : []),
+]);
+// El rechazo pide motivo en un formulario debajo de la fila del pago.
+const expandedPaymentIds = computed<Record<string, boolean>>(() =>
+  rejectingId.value === null ? {} : { [rejectingId.value]: true },
+);
 </script>
 
 <template>
   <AppPage title="Pagos" :description="summary">
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <div class="flex flex-wrap items-end gap-4 border-b border-default p-4">
-        <UFormField label="Estado" class="w-40">
-          <USelect v-model="status" :items="statusItems" class="w-full" />
-        </UFormField>
-        <UFormField label="Método de pago" class="w-44">
-          <USelect v-model="methodId" :items="methodItems" class="w-full" />
-        </UFormField>
-        <UFormField label="Cobrado desde">
-          <UInput v-model="paidFromDay" type="date" />
-        </UFormField>
-        <UFormField label="Cobrado hasta">
-          <UInput v-model="paidToDay" type="date" />
-        </UFormField>
-        <div class="min-w-56 flex-1">
+    <UCard>
+      <template #header>
+        <UPageGrid>
+          <UFormField label="Estado">
+            <USelect v-model="status" :items="statusItems" />
+          </UFormField>
+          <UFormField label="Método de pago">
+            <USelect v-model="methodId" :items="methodItems" />
+          </UFormField>
+          <UFormField label="Cobrado desde">
+            <UInput v-model="paidFromDay" type="date" />
+          </UFormField>
+          <UFormField label="Cobrado hasta">
+            <UInput v-model="paidToDay" type="date" />
+          </UFormField>
           <CustomerPicker v-model="customer" label="Cliente" />
-        </div>
-        <UButton
-          v-if="hasFilters"
-          color="neutral"
-          variant="ghost"
-          icon="i-lucide-x"
-          label="Limpiar filtros"
-          @click="clearFilters"
-        />
-      </div>
+          <UButton
+            v-if="hasFilters"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-x"
+            label="Limpiar filtros"
+            @click="clearFilters"
+          />
+        </UPageGrid>
+      </template>
 
-      <div
-        v-if="notice || actionError || (list.slow.value && list.loading.value)"
-        class="space-y-2 p-4 pb-0"
-      >
+      <UPageBody>
         <UAlert v-if="notice" role="status" color="success" variant="subtle" :title="notice" />
         <UAlert
           v-if="actionError"
@@ -198,140 +225,112 @@ function rejectStale(message: string): void {
           variant="subtle"
           :title="SLOW_REQUEST_MESSAGE"
         />
-      </div>
 
-      <ListStatus
-        v-if="list.errorMessage.value || list.firstLoad.value || list.items.value.length === 0"
-        :error-message="list.errorMessage.value"
-        :loading="list.firstLoad.value"
-        :empty="list.items.value.length === 0"
-        loading-label="Cargando pagos…"
-        empty-icon="i-lucide-wallet"
-        :empty-title="
-          hasFilters ? 'Ningún pago coincide con el filtro' : 'No hay pagos por confirmar'
-        "
-        :empty-description="
-          hasFilters
-            ? 'Prueba con otro estado, método de pago, cliente o rango de fechas.'
-            : 'Los cobros de oficina y de ruta que queden por confirmar aparecerán aquí.'
-        "
-        @retry="list.retry"
-      />
-
-      <template v-else>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              Pagos con cliente, método, monto, estado y quién los registró
-            </caption>
-            <thead class="bg-elevated text-left text-xs tracking-wide text-muted uppercase">
-              <tr>
-                <th scope="col" class="px-4 py-2 font-medium">Cliente</th>
-                <th scope="col" class="px-4 py-2 font-medium">Método</th>
-                <th scope="col" class="px-4 py-2 text-right font-medium">Monto</th>
-                <th scope="col" class="px-4 py-2 font-medium">Estado</th>
-                <th scope="col" class="px-4 py-2 font-medium">Cobrado</th>
-                <th scope="col" class="px-4 py-2 font-medium">Registrado por</th>
-                <th v-if="isAdmin" scope="col" class="px-4 py-2">
-                  <span class="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-default">
-              <template v-for="payment in list.items.value" :key="payment.id">
-                <tr class="align-top">
-                  <td class="px-4 py-3">
-                    <p class="font-medium text-highlighted">{{ payment.customer.name }}</p>
-                    <p v-if="payment.location" class="text-muted">{{ payment.location.name }}</p>
-                  </td>
-                  <td class="px-4 py-3">{{ payment.paymentMethod.name }}</td>
-                  <!-- El tachado refuerza, nunca reemplaza: lo que dice que se anuló es el badge. -->
-                  <td
-                    class="px-4 py-3 text-right tabular-nums"
-                    :class="
-                      payment.voidedAt === null
-                        ? 'font-medium text-highlighted'
-                        : 'text-muted line-through'
-                    "
-                  >
-                    {{ formatSoles(payment.amount) }}
-                  </td>
-                  <td class="space-y-1 px-4 py-3">
-                    <div class="flex flex-wrap gap-1.5">
-                      <UBadge
-                        :color="PAYMENT_STATUS[payment.status].color"
-                        variant="subtle"
-                        :label="PAYMENT_STATUS[payment.status].label"
-                      />
-                      <UBadge
-                        v-if="payment.voidedAt !== null"
-                        color="error"
-                        variant="solid"
-                        label="Anulado"
-                      />
-                    </div>
-                    <!-- Cada motivo se nombra: un cobro puede estar rechazado Y anulado. -->
-                    <p
-                      v-if="payment.status === 'REJECTED' && payment.rejectionReason"
-                      class="text-muted"
-                    >
-                      Motivo del rechazo: {{ payment.rejectionReason }}
-                    </p>
-                    <p v-if="payment.voidedAt !== null && payment.voidReason" class="text-muted">
-                      Motivo de la anulación: {{ payment.voidReason }}
-                    </p>
-                  </td>
-                  <td class="px-4 py-3 whitespace-nowrap tabular-nums">
-                    {{ formatInstantInLima(payment.paidAt) }}
-                  </td>
-                  <td class="px-4 py-3 text-muted">{{ payment.recordedBy.username }}</td>
-                  <td v-if="isAdmin" class="px-4 py-3 text-right">
-                    <div
-                      v-if="canResolve(payment) && rejectingId !== payment.id"
-                      class="flex justify-end gap-1"
-                    >
-                      <UButton
-                        size="sm"
-                        color="success"
-                        variant="soft"
-                        :disabled="actingId !== null"
-                        :label="actingId === payment.id ? 'Confirmando…' : 'Confirmar'"
-                        @click="confirm(payment)"
-                      />
-                      <UButton
-                        size="sm"
-                        color="error"
-                        variant="ghost"
-                        label="Rechazar"
-                        :disabled="actingId !== null"
-                        @click="startReject(payment)"
-                      />
-                    </div>
-                  </td>
-                </tr>
-                <tr v-if="rejectingId === payment.id">
-                  <td :colspan="isAdmin ? 7 : 6" class="px-4 pb-4">
-                    <PaymentRejectForm
-                      :payment="payment"
-                      @cancel="rejectingId = null"
-                      @rejected="(result) => rejected(payment, result)"
-                      @stale="rejectStale"
-                    />
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-
-        <ListPagination
-          :shown-page="list.shownPage.value"
-          :page="list.page.value"
-          :total-pages="list.totalPages.value"
-          @previous="list.previous"
-          @next="list.next"
+        <ListStatus
+          v-if="list.errorMessage.value || list.firstLoad.value || list.items.value.length === 0"
+          :error-message="list.errorMessage.value"
+          :loading="list.firstLoad.value"
+          :empty="list.items.value.length === 0"
+          loading-label="Cargando pagos…"
+          empty-icon="i-lucide-wallet"
+          :empty-title="
+            hasFilters ? 'Ningún pago coincide con el filtro' : 'No hay pagos por confirmar'
+          "
+          :empty-description="
+            hasFilters
+              ? 'Prueba con otro estado, método de pago, cliente o rango de fechas.'
+              : 'Los cobros de oficina y de ruta que queden por confirmar aparecerán aquí.'
+          "
+          @retry="list.retry"
         />
-      </template>
+
+        <template v-else>
+          <UTable
+            :data="list.items.value"
+            :columns="columns"
+            :get-row-id="(payment: PaymentRow) => payment.id"
+            :expanded="expandedPaymentIds"
+            caption="Pagos con cliente, método, monto, estado y quién los registró"
+          >
+            <template #customer-cell="{ row }">
+              <UUser
+                :name="row.original.customer.name"
+                :description="row.original.location?.name"
+              />
+            </template>
+            <template #paymentMethod-cell="{ row }">
+              {{ row.original.paymentMethod.name }}
+            </template>
+            <template #amount-cell="{ row }">
+              {{ formatSoles(row.original.amount) }}
+            </template>
+            <template #status-cell="{ row }">
+              <UFieldGroup>
+                <UBadge
+                  :color="PAYMENT_STATUS[row.original.status].color"
+                  variant="subtle"
+                  :label="PAYMENT_STATUS[row.original.status].label"
+                />
+                <UBadge
+                  v-if="row.original.voidedAt !== null"
+                  color="error"
+                  variant="solid"
+                  label="Anulado"
+                />
+              </UFieldGroup>
+              <!-- Cada motivo se nombra: un cobro puede estar rechazado Y anulado. -->
+              <p v-if="row.original.status === 'REJECTED' && row.original.rejectionReason">
+                Motivo del rechazo: {{ row.original.rejectionReason }}
+              </p>
+              <p v-if="row.original.voidedAt !== null && row.original.voidReason">
+                Motivo de la anulación: {{ row.original.voidReason }}
+              </p>
+            </template>
+            <template #paidAt-cell="{ row }">
+              {{ formatInstantInLima(row.original.paidAt) }}
+            </template>
+            <template #recordedBy-cell="{ row }">
+              {{ row.original.recordedBy.username }}
+            </template>
+            <template #actions-cell="{ row }">
+              <UFieldGroup v-if="canResolve(row.original) && rejectingId !== row.original.id">
+                <UButton
+                  size="sm"
+                  color="success"
+                  variant="soft"
+                  :disabled="actingId !== null"
+                  :label="actingId === row.original.id ? 'Confirmando…' : 'Confirmar'"
+                  @click="confirm(row.original)"
+                />
+                <UButton
+                  size="sm"
+                  color="error"
+                  variant="ghost"
+                  label="Rechazar"
+                  :disabled="actingId !== null"
+                  @click="startReject(row.original)"
+                />
+              </UFieldGroup>
+            </template>
+            <template #expanded="{ row }">
+              <PaymentRejectForm
+                :payment="row.original"
+                @cancel="rejectingId = null"
+                @rejected="(result) => rejected(row.original, result)"
+                @stale="rejectStale"
+              />
+            </template>
+          </UTable>
+
+          <ListPagination
+            :shown-page="list.shownPage.value"
+            :page="list.page.value"
+            :total-pages="list.totalPages.value"
+            @previous="list.previous"
+            @next="list.next"
+          />
+        </template>
+      </UPageBody>
     </UCard>
   </AppPage>
 </template>

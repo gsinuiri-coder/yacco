@@ -51,11 +51,13 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <form
-    class="space-y-3 rounded-md bg-elevated p-4"
+  <UForm
+    :state="{}"
+    :validate-on="[]"
+    :loading-auto="false"
     novalidate
     :aria-label="`Rechazar pago de ${payment.customer.name}`"
-    @submit.prevent="submit"
+    @submit="submit"
   >
     <UFormField label="Motivo del rechazo">
       <UTextarea
@@ -68,7 +70,7 @@ async function submit(): Promise<void> {
       />
     </UFormField>
     <UAlert v-if="error" role="alert" color="error" variant="subtle" :title="error" />
-    <div class="flex justify-end gap-2">
+    <UFieldGroup>
       <UButton
         color="neutral"
         variant="outline"
@@ -82,6 +84,6 @@ async function submit(): Promise<void> {
         :disabled="submitting"
         :label="submitting ? 'Rechazando…' : 'Confirmar rechazo'"
       />
-    </div>
-  </form>
+    </UFieldGroup>
+  </UForm>
 </template>

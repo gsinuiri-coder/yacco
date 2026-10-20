@@ -15,7 +15,6 @@ const text = computed(() =>
 </script>
 
 <template>
-  <span class="tabular-nums" :class="owes ? 'font-semibold text-error' : undefined">{{
-    text
-  }}</span>
+  <span v-if="owes" class="font-semibold text-error">{{ text }}</span>
+  <span v-else>{{ text }}</span>
 </template>

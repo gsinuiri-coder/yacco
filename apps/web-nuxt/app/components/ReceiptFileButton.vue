@@ -28,7 +28,7 @@ async function openFile(): Promise<void> {
 </script>
 
 <template>
-  <div>
+  <UPageBody>
     <UButton
       color="neutral"
       variant="outline"
@@ -37,6 +37,6 @@ async function openFile(): Promise<void> {
       :loading="opening"
       @click="openFile"
     />
-    <p v-if="error" role="alert" class="mt-1 text-sm text-error">{{ error }}</p>
-  </div>
+    <UAlert v-if="error" role="alert" color="error" variant="subtle" :title="error" />
+  </UPageBody>
 </template>
