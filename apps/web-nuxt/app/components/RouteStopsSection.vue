@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { formatInstantInLima } from "@yacco/shared";
-import type { PlantLocation, Route, RouteStop } from "@yacco/shared";
+import type { PlantLocation, Route, RoutePitStop, RouteStop } from "@yacco/shared";
 import type { TableColumn } from "@nuxt/ui";
 import { googleMapsLocationUrl } from "~/utils/customer-location";
-import { buildGoogleMapsRouteLegs, proposeNearbyStopIds } from "~/utils/route-planning";
+import {
+  buildGoogleMapsRouteLegs,
+  proposeNearbyStopIds,
+  proposePendingFromPlantStopIds,
+} from "~/utils/route-planning";
 
 const props = defineProps<{ route: Route }>();
 const emit = defineEmits<{
@@ -60,20 +64,53 @@ const plantLocationFailure = ref<string | null>(null);
 const plantLocationLoading = ref(false);
 const routeToolsError = ref<string | null>(null);
 const proposedStopIds = ref<string[] | null>(null);
+/** «all»: la hoja entera desde la planta. «pending»: después de un pit, solo lo que falta. */
+const proposalScope = ref<"all" | "pending">("all");
 const ordering = ref(false);
 let plantLocationRequest: Promise<void> | null = null;
 
+const pendingStops = computed(() => stops.value.filter((stop) => stop.status === "PENDING"));
 const proposedStops = computed(() => {
   if (proposedStopIds.value === null) return [];
   const byId = new Map(stops.value.map((stop) => [stop.id, stop]));
   return proposedStopIds.value.flatMap((id) => {
     const stop = byId.get(id);
-    return stop === undefined ? [] : [stop];
+    if (stop === undefined) return [];
+    return proposalScope.value === "pending" && stop.status !== "PENDING" ? [] : [stop];
   });
 });
 const stopsWithoutLocation = computed(() =>
   stops.value.filter((stop) => stop.location.latitude === null || stop.location.longitude === null),
 );
+const proposedWithoutLocation = computed(() =>
+  proposedStops.value.filter(
+    (stop) => stop.location.latitude === null || stop.location.longitude === null,
+  ),
+);
+
+/**
+ * Fase 3, fila 10 (C.2): después de un pit el vehículo sale otra vez de la
+ * planta. Solo cuenta un pit vigente: uno anulado no volvió a la planta.
+ */
+const activePits = ref(0);
+const canProposeFromPlant = computed(
+  () =>
+    canReorder.value &&
+    props.route.status === "IN_PROGRESS" &&
+    activePits.value > 0 &&
+    pendingStops.value.length > 1,
+);
+async function loadPits(): Promise<void> {
+  if (!isOffice.value || props.route.status !== "IN_PROGRESS") return;
+  try {
+    const pits = await api.request<RoutePitStop[]>(`/routes/${props.route.id}/pit-stops`);
+    activePits.value = pits.filter((pit) => pit.voidedAt === null).length;
+  } catch {
+    // Sin la lista de pits no se ofrece la propuesta; el resto de la hoja sigue igual.
+    activePits.value = 0;
+  }
+}
+watch(() => props.route, loadPits);
 const mapLegs = computed(() => {
   if (plantLocation.value?.latitude === null || plantLocation.value?.longitude === null) return [];
   if (plantLocation.value === null) return [];
@@ -107,9 +144,10 @@ async function loadPlantLocation(): Promise<void> {
 
 onMounted(() => {
   if (isOffice.value) void loadPlantLocation();
+  void loadPits();
 });
 
-async function proposeNearbyOrder(): Promise<void> {
+async function proposeNearbyOrder(scope: "all" | "pending" = "all"): Promise<void> {
   routeToolsError.value = null;
   if (plantLocationFailure.value !== null) {
     plantLocationLoaded.value = false;
@@ -126,14 +164,17 @@ async function proposeNearbyOrder(): Promise<void> {
       "Falta configurar la ubicación de la planta para ordenar las paradas por cercanía.";
     return;
   }
-  proposedStopIds.value = proposeNearbyStopIds(
-    origin,
-    stops.value.map((stop) => ({
-      id: stop.id,
-      latitude: stop.location.latitude,
-      longitude: stop.location.longitude,
-    })),
-  );
+  const located = stops.value.map((stop) => ({
+    id: stop.id,
+    status: stop.status,
+    latitude: stop.location.latitude,
+    longitude: stop.location.longitude,
+  }));
+  proposalScope.value = scope;
+  proposedStopIds.value =
+    scope === "pending"
+      ? proposePendingFromPlantStopIds(origin, located)
+      : proposeNearbyStopIds(origin, located);
 }
 
 async function retryPlantLocation(): Promise<void> {
@@ -245,7 +286,17 @@ function markDone(result: RouteStop): void {
           label="Ordenar por cercanía"
           :loading="ordering"
           :disabled="busyId !== null"
-          @click="proposeNearbyOrder"
+          @click="proposeNearbyOrder()"
+        />
+        <UButton
+          v-if="canProposeFromPlant"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-warehouse"
+          label="Proponer orden desde la planta"
+          :loading="ordering"
+          :disabled="busyId !== null"
+          @click="proposeNearbyOrder('pending')"
         />
         <UButton
           v-if="canBatch"
@@ -340,9 +391,17 @@ function markDone(result: RouteStop): void {
       <UPageCard
         v-if="proposedStopIds !== null"
         role="group"
-        aria-label="Confirmar orden por cercanía"
+        :aria-label="
+          proposalScope === 'pending'
+            ? 'Confirmar orden desde la planta'
+            : 'Confirmar orden por cercanía'
+        "
         variant="soft"
-        description="Revísalo antes de cambiar la hoja de ruta. La propuesta empieza en la planta."
+        :description="
+          proposalScope === 'pending'
+            ? 'Las paradas que faltan, empezando en la planta. Las ya registradas no se mueven.'
+            : 'Revísalo antes de cambiar la hoja de ruta. La propuesta empieza en la planta.'
+        "
       >
         <template #title><h3>Orden sugerido</h3></template>
         <UPageList as="ol">
@@ -356,10 +415,10 @@ function markDone(result: RouteStop): void {
           />
         </UPageList>
         <UAlert
-          v-if="stopsWithoutLocation.length > 0"
+          v-if="proposedWithoutLocation.length > 0"
           color="warning"
           variant="subtle"
-          :title="`${stopsWithoutLocation.length} ${stopsWithoutLocation.length === 1 ? 'parada sin ubicación queda' : 'paradas sin ubicación quedan'} al final, en el orden actual.`"
+          :title="`${proposedWithoutLocation.length} ${proposedWithoutLocation.length === 1 ? 'parada sin ubicación queda' : 'paradas sin ubicación quedan'} al final, en el orden actual.`"
         />
         <div class="flex flex-wrap items-center gap-2">
           <UButton label="Usar este orden" :loading="ordering" @click="applyProposedOrder" />
