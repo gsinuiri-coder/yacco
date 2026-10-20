@@ -25,7 +25,7 @@ const SHARED_TEMPLATES = [
  * decisión que se anota en el PR, no un atajo.
  */
 const ALLOWED_CLASSES: Record<string, string> = {
-  "w-full": "UInputMenu es inline por defecto; el campo ocupa su fila",
+  "w-full": "UInputMenu y UInput son inline por defecto; el campo ocupa su fila",
   "size-8 animate-spin":
     "el ícono de carga gira; la prop loading de UEmpty pone aria-busy, que calla el role=status",
   "flex items-center justify-between gap-4 border-t border-default px-4 py-3":
@@ -53,7 +53,7 @@ const ALLOWED_CLASSES: Record<string, string> = {
     "quién subió la foto y cuándo, a un lado, y «Ocultar foto» al otro",
   "font-medium text-highlighted": "el nombre de quien subió la foto resalta sobre su rótulo",
   "flex justify-end gap-2": "botones de cancelar y confirmar separados y a la derecha",
-  "relative flex items-center justify-center overflow-hidden bg-elevated":
+  "flex items-center justify-center overflow-hidden bg-elevated":
     "el cuadro de la foto, con fondo mientras carga o si no está",
   "flex size-full items-center justify-center text-xs text-muted":
     "«Cargando…» centrado en el cuadro de la foto; UEmpty no entra en una miniatura de 80 px",

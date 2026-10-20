@@ -4,7 +4,9 @@ import { expect } from "vitest";
 /** La plantilla de un .vue, desde `<template>`: el script no cuenta. */
 export function templateOf(fileUrl: URL): string {
   const source = readFileSync(fileUrl, "utf8");
-  return source.slice(source.indexOf("<template>"));
+  const start = source.indexOf("<template>");
+  expect(start, `sin <template> en ${fileUrl.pathname}`).toBeGreaterThanOrEqual(0);
+  return source.slice(start);
 }
 
 /**
@@ -30,7 +32,7 @@ export function expectNoSubstitutedMarkup(fileUrl: URL): void {
   expect(template, fileUrl.pathname).not.toMatch(/<table\b/);
   expect(template, fileUrl.pathname).not.toMatch(/<form\b/);
   expect(template, fileUrl.pathname).not.toMatch(/<dl\b/);
-  expect(template, fileUrl.pathname).not.toMatch(/:ui=/);
+  expect(template, fileUrl.pathname).not.toMatch(/(:|v-bind:)ui=/);
   expect(template, fileUrl.pathname).not.toMatch(/(:|v-bind:)class=/);
 
   expectPageListsAreLists(fileUrl);

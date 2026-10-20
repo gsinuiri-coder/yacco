@@ -53,7 +53,7 @@ watch(
 </script>
 
 <template>
-  <div class="relative flex items-center justify-center overflow-hidden bg-elevated">
+  <div class="flex items-center justify-center overflow-hidden bg-elevated">
     <div v-if="loading" class="flex size-full items-center justify-center text-xs text-muted">
       Cargando…
     </div>
