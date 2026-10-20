@@ -14,10 +14,10 @@ defineEmits<{ "update:modelValue": [Weekday[]] }>();
 
 <template>
   <div>
-    <span
-      :id="`${props.idPrefix}-label`"
-      :class="props.hideLabel ? 'sr-only' : 'text-sm font-medium text-default'"
-    >
+    <span v-if="props.hideLabel" :id="`${props.idPrefix}-label`" class="sr-only">
+      {{ props.label }}
+    </span>
+    <span v-else :id="`${props.idPrefix}-label`" class="text-sm font-medium text-default">
       {{ props.label }}
     </span>
     <div

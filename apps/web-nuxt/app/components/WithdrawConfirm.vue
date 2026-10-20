@@ -10,9 +10,14 @@ defineEmits<{ cancel: []; confirm: [] }>();
 </script>
 
 <template>
-  <div role="group" :aria-label="`Confirmar retiro de ${itemLabel}`" class="space-y-2">
-    <p class="text-sm text-muted">¿Retirar «{{ itemLabel }}»? {{ explanation }}</p>
-    <div class="flex justify-end gap-2">
+  <UAlert
+    role="group"
+    :aria-label="`Confirmar retiro de ${itemLabel}`"
+    color="neutral"
+    variant="subtle"
+    :description="`¿Retirar «${itemLabel}»? ${explanation}`"
+  >
+    <template #actions>
       <UButton
         color="neutral"
         variant="outline"
@@ -28,6 +33,6 @@ defineEmits<{ cancel: []; confirm: [] }>();
         :disabled="saving"
         @click="$emit('confirm')"
       />
-    </div>
-  </div>
+    </template>
+  </UAlert>
 </template>

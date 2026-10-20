@@ -14,30 +14,40 @@ defineProps<{
   emptyDescription: string;
   emptyIcon?: string;
 }>();
-defineEmits<{ retry: [] }>();
+const emit = defineEmits<{ retry: [] }>();
+const errorActions = [retryAction(() => emit("retry"))];
 </script>
 
 <template>
-  <div v-if="errorMessage" class="flex flex-col items-center gap-3 px-6 py-14 text-center">
-    <UIcon name="i-lucide-cloud-off" class="size-8 text-error" aria-hidden="true" />
-    <p class="font-medium text-highlighted">{{ errorTitle ?? "No se pudo cargar la lista" }}</p>
-    <p role="alert" class="max-w-md text-muted">{{ errorMessage }}</p>
-    <UButton
-      color="neutral"
-      variant="outline"
-      icon="i-lucide-rotate-cw"
-      label="Reintentar"
-      @click="$emit('retry')"
-    />
-  </div>
-  <div v-else-if="loading" class="flex items-center justify-center gap-2 px-6 py-14 text-muted">
-    <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" aria-hidden="true" />
-    <p role="status">{{ loadingLabel }}</p>
-  </div>
-  <div v-else-if="empty" class="flex flex-col items-center gap-3 px-6 py-14 text-center">
-    <UIcon :name="emptyIcon ?? 'i-lucide-inbox'" class="size-8 text-dimmed" aria-hidden="true" />
-    <p class="font-medium text-highlighted">{{ emptyTitle }}</p>
-    <p class="max-w-md text-muted">{{ emptyDescription }}</p>
-    <slot name="empty-actions" />
-  </div>
+  <UEmpty
+    v-if="errorMessage"
+    variant="naked"
+    icon="i-lucide-cloud-off"
+    :title="errorTitle ?? 'No se pudo cargar la lista'"
+    :actions="errorActions"
+  >
+    <template #description>
+      <p role="alert">{{ errorMessage }}</p>
+    </template>
+  </UEmpty>
+  <!-- Sin la prop `loading`: pone aria-busy, y eso calla el role="status". -->
+  <UEmpty v-else-if="loading" variant="naked">
+    <template #leading>
+      <UIcon name="i-lucide-loader-circle" class="size-8 animate-spin" aria-hidden="true" />
+    </template>
+    <template #description>
+      <p role="status">{{ loadingLabel }}</p>
+    </template>
+  </UEmpty>
+  <UEmpty
+    v-else-if="empty"
+    variant="naked"
+    :icon="emptyIcon ?? 'i-lucide-inbox'"
+    :title="emptyTitle"
+    :description="emptyDescription"
+  >
+    <template v-if="$slots['empty-actions']" #actions>
+      <slot name="empty-actions" />
+    </template>
+  </UEmpty>
 </template>

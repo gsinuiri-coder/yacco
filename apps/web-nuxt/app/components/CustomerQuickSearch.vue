@@ -58,6 +58,7 @@ watch(settledTerm, (text) => {
 function retry(): void {
   void search(settledTerm.value);
 }
+const errorActions = [retryAction(retry)];
 
 async function pick(customer: Customer | undefined): Promise<void> {
   if (customer) await navigateTo(`/customers/${customer.id}`);
@@ -65,40 +66,42 @@ async function pick(customer: Customer | undefined): Promise<void> {
 </script>
 
 <template>
-  <UFormField label="Buscar cliente" :ui="{ label: 'sr-only' }">
-    <UInputMenu
-      v-model:search-term="term"
-      v-model:open="open"
-      :items="results"
-      label-key="name"
-      description-key="phone"
-      ignore-filter
-      :reset-search-term-on-blur="false"
-      :loading="searching"
-      placeholder="Nombre o teléfono del cliente"
-      icon="i-lucide-search"
-      trailing-icon=""
-      size="xl"
-      autofocus
-      class="w-full"
-      @update:model-value="pick"
-    >
-      <template #item-label="{ item }">
-        <span class="flex items-center gap-2">
-          <span class="font-medium text-highlighted">{{ item.name }}</span>
-          <UBadge v-if="!item.active" color="neutral" variant="subtle" size="sm" label="Inactivo" />
-        </span>
-      </template>
+  <!-- Sin UFormField: su etiqueta no se oculta sin pisar el tema; el nombre va en aria-label. -->
+  <UInputMenu
+    v-model:search-term="term"
+    v-model:open="open"
+    aria-label="Buscar cliente"
+    :items="results"
+    label-key="name"
+    description-key="phone"
+    ignore-filter
+    :reset-search-term-on-blur="false"
+    :loading="searching"
+    placeholder="Nombre o teléfono del cliente"
+    icon="i-lucide-search"
+    trailing-icon=""
+    size="xl"
+    autofocus
+    class="w-full"
+    @update:model-value="pick"
+  >
+    <template #item-label="{ item }">
+      {{ item.name }}
+      <UBadge v-if="!item.active" color="neutral" variant="subtle" size="sm" label="Inactivo" />
+    </template>
 
-      <template #empty>
-        <p v-if="settledTerm === ''" class="text-muted">Escribe un nombre o un teléfono.</p>
-        <p v-else-if="searching" class="text-muted">Buscando…</p>
-        <div v-else-if="errorMessage" role="alert" class="flex flex-col items-center gap-2">
-          <p class="text-error">{{ errorMessage }}</p>
-          <UButton color="neutral" variant="outline" label="Reintentar" @click="retry" />
-        </div>
-        <p v-else class="text-muted">Sin resultados</p>
-      </template>
-    </UInputMenu>
-  </UFormField>
+    <template #empty>
+      <p v-if="settledTerm === ''">Escribe un nombre o un teléfono.</p>
+      <p v-else-if="searching">Buscando…</p>
+      <UAlert
+        v-else-if="errorMessage"
+        role="alert"
+        color="error"
+        variant="subtle"
+        :description="errorMessage"
+        :actions="errorActions"
+      />
+      <p v-else>Sin resultados</p>
+    </template>
+  </UInputMenu>
 </template>
