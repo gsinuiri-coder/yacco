@@ -26,6 +26,34 @@ const rejectError = ref<string | null>(null);
 // Procesando aprobación
 const reviewingId = ref<string | null>(null);
 
+interface MapsLink {
+  label: string;
+  icon: string;
+  color: "primary" | "neutral";
+  to: string;
+}
+
+// La propuesta siempre; la ubicación actual solo si el local ya tenía una.
+function mapsLinks(req: CustomerLocationCoordinateRequest): MapsLink[] {
+  const links: MapsLink[] = [
+    {
+      label: "Ver propuesta en Maps",
+      icon: "i-lucide-map-pin",
+      color: "primary",
+      to: `https://www.google.com/maps?q=${req.latitude},${req.longitude}`,
+    },
+  ];
+  if (req.previousLatitude && req.previousLongitude) {
+    links.push({
+      label: "Ver actual en Maps",
+      icon: "i-lucide-map",
+      color: "neutral",
+      to: `https://www.google.com/maps?q=${req.previousLatitude},${req.previousLongitude}`,
+    });
+  }
+  return links;
+}
+
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
@@ -245,24 +273,16 @@ async function confirmReject(): Promise<void> {
                 <p v-else>Sin coordenadas previas</p>
                 <div class="flex flex-wrap gap-2">
                   <UButton
-                    :to="`https://www.google.com/maps?q=${req.latitude},${req.longitude}`"
+                    v-for="link in mapsLinks(req)"
+                    :key="link.label"
+                    :to="link.to"
                     target="_blank"
+                    :color="link.color"
                     variant="link"
                     size="xs"
-                    icon="i-lucide-map-pin"
-                    label="Ver propuesta en Maps"
+                    :icon="link.icon"
+                    :label="link.label"
                   />
-                  <template v-if="req.previousLatitude && req.previousLongitude">
-                    <UButton
-                      :to="`https://www.google.com/maps?q=${req.previousLatitude},${req.previousLongitude}`"
-                      target="_blank"
-                      color="neutral"
-                      variant="link"
-                      size="xs"
-                      icon="i-lucide-map"
-                      label="Ver actual en Maps"
-                    />
-                  </template>
                 </div>
                 <p>
                   Propuesto por: {{ req.requestedBy?.name ?? "Chofer" }} ·
