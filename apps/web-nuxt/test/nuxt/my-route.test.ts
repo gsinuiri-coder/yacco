@@ -255,7 +255,7 @@ describe("Mi ruta", () => {
     expect(await screen.findByRole("button", { name: "Registrar la parada 1" })).toBeTruthy();
   });
 
-  describe("ubicación cada cierto tiempo con la ruta en curso", () => {
+  describe("HU-27 E1: ubicación cada cierto tiempo con la ruta en curso", () => {
     function stubInterval(intervalSeconds: number) {
       cleanups.push(
         registerEndpoint("/api/v1/settings/location-tracking", () => ({ intervalSeconds })),

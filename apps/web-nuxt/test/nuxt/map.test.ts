@@ -108,7 +108,7 @@ describe("Mapa", () => {
     for (const cleanup of cleanups.splice(0)) cleanup();
   });
 
-  it("muestra cada ruta en curso con chofer, placa y hace cuánto, y marca sin señal solo la vieja", async () => {
+  it("HU-27 E4: muestra cada ruta en curso con chofer, placa y hace cuánto, y marca sin señal solo la vieja", async () => {
     stubMap(live);
 
     await renderMap();
@@ -124,7 +124,7 @@ describe("Mapa", () => {
     expect(within(stale).getByText("Sin señal · último punto hace 20 minutos")).toBeTruthy();
   });
 
-  it("al elegir una ruta muestra sus paradas por estado y sus paradas en planta, también la anulada", async () => {
+  it("HU-27 E5: al elegir una ruta muestra sus paradas por estado y sus paradas en planta, también la anulada", async () => {
     stubMap(live);
     cleanups.push(
       registerEndpoint("/api/v1/routes/r-1", () =>
@@ -208,7 +208,7 @@ describe("Mapa — se actualiza solo", () => {
     for (const cleanup of cleanups.splice(0)) cleanup();
   });
 
-  it("vuelve a pedir las ubicaciones cada minuto", async () => {
+  it("HU-27 E4: vuelve a pedir las ubicaciones cada minuto", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval"] });
     try {
       const { latestCalls } = stubMap(live);

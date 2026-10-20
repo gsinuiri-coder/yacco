@@ -956,7 +956,7 @@ describe("Detalle de ruta", () => {
         );
       }
 
-      it("propone solo las pendientes empezando por la planta, sin mover la ya entregada", async () => {
+      it("HU-27 E6: propone solo las pendientes empezando por la planta, sin mover la ya entregada", async () => {
         stubWithPits([pit(null)]);
         const bodies = stubWrite(cleanups, `${ROUTE}/stops/reorder`, "PATCH", () =>
           buildRoute({ status: "IN_PROGRESS", stops: [delivered, nearPending, farPending] }),

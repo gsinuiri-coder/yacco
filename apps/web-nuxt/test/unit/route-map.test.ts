@@ -1,5 +1,6 @@
+import type { LiveRouteLocation } from "@yacco/shared";
 import { describe, expect, it } from "vitest";
-import { mapPoint, minutesAgoText } from "../../app/utils/route-map";
+import { liveMarkers, mapPoint, minutesAgoText } from "../../app/utils/route-map";
 
 const NOW = new Date("2026-10-19T15:00:00.000Z");
 
@@ -30,5 +31,48 @@ describe("mapPoint", () => {
     expect(mapPoint(null, "-77.042793")).toBeNull();
     expect(mapPoint("-12.046374", null)).toBeNull();
     expect(mapPoint("abc", "-77.042793")).toBeNull();
+  });
+});
+
+function liveRoute(overrides: Partial<LiveRouteLocation>): LiveRouteLocation {
+  return {
+    routeId: "route-1",
+    date: "2026-10-19",
+    driverName: "Juan Pérez",
+    vehiclePlate: "ABC-123",
+    zoneName: "Norte",
+    lastPoint: {
+      latitude: "-12.046374",
+      longitude: "-77.042793",
+      accuracyM: null,
+      recordedAt: minutesBefore(3),
+      receivedAt: minutesBefore(3),
+      vehiclePlate: "ABC-123",
+    },
+    noSignal: false,
+    ...overrides,
+  };
+}
+
+describe("liveMarkers", () => {
+  it("HU-27 E4: el marcador dice chofer, placa, ruta y hace cuánto, y «Sin señal» solo en el viejo", () => {
+    const old = liveRoute({
+      routeId: "route-2",
+      driverName: "Ana Ríos",
+      vehiclePlate: null,
+      noSignal: true,
+      lastPoint: { ...liveRoute({}).lastPoint!, recordedAt: minutesBefore(20) },
+    });
+
+    const markers = liveMarkers([liveRoute({}), old], NOW);
+
+    expect(markers.map((marker) => marker.label)).toEqual([
+      "Juan Pérez · ABC-123 · Norte · hace 3 minutos",
+      "Ana Ríos · sin vehículo · Norte · Sin señal · último punto hace 20 minutos",
+    ]);
+  });
+
+  it("una ruta que todavía no mandó su ubicación no tiene marcador", () => {
+    expect(liveMarkers([liveRoute({ lastPoint: null, noSignal: true })], NOW)).toEqual([]);
   });
 });

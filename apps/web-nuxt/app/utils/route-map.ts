@@ -1,4 +1,4 @@
-import type { StopStatus } from "@yacco/shared";
+import type { LiveRouteLocation, StopStatus } from "@yacco/shared";
 
 /** The plant map refreshes itself this often; points arrive every 5 minutes. */
 export const MAP_REFRESH_MS = 60_000;
@@ -60,4 +60,39 @@ export function mapPoint(latitude: string | null, longitude: string | null): Map
   const lat = Number(latitude);
   const lng = Number(longitude);
   return Number.isFinite(lat) && Number.isFinite(lng) ? { latitude: lat, longitude: lng } : null;
+}
+
+/** «Chofer · placa · zona» of a route in progress. */
+export function liveRouteLabel(row: LiveRouteLocation): string {
+  return [row.driverName, row.vehiclePlate ?? "sin vehículo", row.zoneName ?? "sin zona"].join(
+    " · ",
+  );
+}
+
+/** «hace X minutos», or «Sin señal» once the last point is too old. */
+export function liveSignalText(row: LiveRouteLocation, now: Date): string {
+  if (row.lastPoint === null) return "Sin señal · todavía no mandó su ubicación";
+  const ago = minutesAgoText(row.lastPoint.recordedAt, now);
+  return row.noSignal ? `Sin señal · último punto ${ago}` : ago;
+}
+
+/**
+ * One marker per route with a last point. The label carries the same words
+ * as the list next to the map: who, which vehicle, and how long ago.
+ */
+export function liveMarkers(rows: LiveRouteLocation[], now: Date): LiveMarker[] {
+  return rows.flatMap((row) => {
+    const point =
+      row.lastPoint === null ? null : mapPoint(row.lastPoint.latitude, row.lastPoint.longitude);
+    return point === null
+      ? []
+      : [
+          {
+            routeId: row.routeId,
+            label: `${liveRouteLabel(row)} · ${liveSignalText(row, now)}`,
+            point,
+            noSignal: row.noSignal,
+          },
+        ];
+  });
 }

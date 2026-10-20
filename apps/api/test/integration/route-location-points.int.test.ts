@@ -135,7 +135,7 @@ describe("Route location points (integration)", () => {
     expect(response.body).toEqual({ intervalSeconds: 300 });
   });
 
-  it("stores a batch of three with one repeated as two points", async () => {
+  it("HU-27 E2: stores a batch of three with one repeated as two points", async () => {
     const routeId = await createRoute(driverId);
     await startRoute(routeId);
     const repeated = point(new Date(), randomUUID());
@@ -154,7 +154,7 @@ describe("Route location points (integration)", () => {
     expect(await prisma.routeLocationPoint.count({ where: { routeId } })).toBe(2);
   });
 
-  it("rejects points for a planned route and for a finished one", async () => {
+  it("HU-27 E3: rejects points for a planned route and for a finished one", async () => {
     const plannedRouteId = await createRoute(driverId);
     await sendPoints(plannedRouteId, driverToken, [point(new Date())]).expect(409);
 
@@ -170,7 +170,7 @@ describe("Route location points (integration)", () => {
     ).toBe(0);
   });
 
-  it("rejects a driver sending points for another driver's route, and the office too", async () => {
+  it("HU-27 E3: rejects a driver sending points for another driver's route, and the office too", async () => {
     const routeId = await createRoute(otherDriverId);
     await startRoute(routeId);
 
@@ -180,7 +180,7 @@ describe("Route location points (integration)", () => {
     expect(await prisma.routeLocationPoint.count({ where: { routeId } })).toBe(0);
   });
 
-  it("records the route's current vehicle, also after a change in a pit", async () => {
+  it("HU-27 E2: records the route's current vehicle, also after a change in a pit", async () => {
     const routeId = await createRoute(driverId);
     await startRoute(routeId);
     const before = point(new Date(Date.now() - 10 * MINUTE_MS));
@@ -217,7 +217,7 @@ describe("Route location points (integration)", () => {
     ]);
   });
 
-  it("returns the last point of each route in progress and marks only the stale one", async () => {
+  it("HU-27 E4: returns the last point of each route in progress and marks only the stale one", async () => {
     const freshRouteId = await createRoute(driverId);
     await startRoute(freshRouteId);
     const staleRouteId = await createRoute(otherDriverId);

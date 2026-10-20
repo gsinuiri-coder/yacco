@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { formatInstantInLima } from "@yacco/shared";
 import type {
-  LiveRouteLocation,
   LiveRouteLocations,
   PlantLocation,
   Route,
@@ -97,27 +96,7 @@ async function choose(routeId: string): Promise<void> {
 
 const rows = computed(() => live.value?.routes ?? []);
 
-function routeLabel(row: LiveRouteLocation): string {
-  return [row.driverName, row.vehiclePlate ?? "sin vehículo", row.zoneName ?? "sin zona"].join(
-    " · ",
-  );
-}
-
-function signalText(row: LiveRouteLocation): string {
-  if (row.lastPoint === null) return "Sin señal · todavía no mandó su ubicación";
-  const ago = minutesAgoText(row.lastPoint.recordedAt, now.value);
-  return row.noSignal ? `Sin señal · último punto ${ago}` : ago;
-}
-
-const liveMarkers = computed<LiveMarker[]>(() =>
-  rows.value.flatMap((row) => {
-    const point =
-      row.lastPoint === null ? null : mapPoint(row.lastPoint.latitude, row.lastPoint.longitude);
-    return point === null
-      ? []
-      : [{ routeId: row.routeId, label: routeLabel(row), point, noSignal: row.noSignal }];
-  }),
-);
+const markers = computed<LiveMarker[]>(() => liveMarkers(rows.value, now.value));
 
 function stopsOf(route: Route): RouteStop[] {
   return [...route.stops].sort((a, b) => a.position - b.position);
@@ -180,7 +159,7 @@ const selectedRow = computed(
 
       <PlantMap
         :plant="plantPoint"
-        :live="liveMarkers"
+        :live="markers"
         :track="trackPoints"
         :stops="stopMarkers"
         :selected-route-id="selectedRouteId"
@@ -194,7 +173,7 @@ const selectedRow = computed(
           as="article"
           :variant="row.routeId === selectedRouteId ? 'subtle' : 'outline'"
           :aria-label="`Ruta de ${row.driverName}`"
-          :title="routeLabel(row)"
+          :title="liveRouteLabel(row)"
         >
           <template #description>
             <div class="flex flex-wrap items-center gap-2">
@@ -205,7 +184,7 @@ const selectedRow = computed(
                 icon="i-lucide-wifi-off"
                 label="Sin señal"
               />
-              <span>{{ signalText(row) }}</span>
+              <span>{{ liveSignalText(row, now) }}</span>
             </div>
           </template>
           <UButton

@@ -34,6 +34,16 @@ function circle(point: MapPoint, color: string, radius: number, dashed = false):
   });
 }
 
+/**
+ * Leaflet writes a string tooltip as HTML; names come from the roster, so
+ * they go in as text.
+ */
+function asText(label: string): HTMLElement {
+  const span = document.createElement("span");
+  span.textContent = label;
+  return span;
+}
+
 function draw(): void {
   if (map === null || layers === null || leaflet === null) return;
   layers.clearLayers();
@@ -53,7 +63,9 @@ function draw(): void {
       .addTo(layers);
   }
   for (const stop of props.stops) {
-    circle(stop.point, STOP_MARKER_COLOR[stop.status], 7).bindTooltip(stop.label).addTo(layers);
+    circle(stop.point, STOP_MARKER_COLOR[stop.status], 7)
+      .bindTooltip(asText(stop.label))
+      .addTo(layers);
     keep(stop.point);
   }
   for (const marker of props.live) {
@@ -64,7 +76,7 @@ function draw(): void {
       selected ? 12 : 9,
       marker.noSignal,
     )
-      .bindTooltip(marker.label, { permanent: selected })
+      .bindTooltip(asText(marker.label), { permanent: selected })
       .on("click", () => emit("select", marker.routeId))
       .addTo(layers);
     keep(marker.point);

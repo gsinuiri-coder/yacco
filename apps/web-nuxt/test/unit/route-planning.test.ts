@@ -34,7 +34,7 @@ describe("proposeNearbyStopIds", () => {
 });
 
 describe("proposePendingFromPlantStopIds", () => {
-  it("después de un pit ordena solo las pendientes, empezando por la planta, y las resueltas no se mueven", () => {
+  it("HU-27 E6: después de un pit ordena solo las pendientes, empezando por la planta, y las resueltas no se mueven", () => {
     // Desde la última entregada (este-4) lo más cerca sería este-3; desde la
     // planta, este-1. Si el orden no arrancara en la planta, sale al revés.
     expect(
