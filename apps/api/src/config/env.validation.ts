@@ -156,6 +156,18 @@ export class EnvironmentVariables {
   @IsLongitude({ message: "PLANT_LONGITUDE must be a longitude between -180 and 180" })
   PLANT_LONGITUDE?: string;
 
+  /**
+   * How often the driver's phone sends its location while the route is in
+   * progress. Server configuration on purpose: the phone reads it from
+   * GET /settings/location-tracking, so changing it needs no new app.
+   * Absent means 300 (every 5 minutes, Fase 3 fila 10).
+   */
+  @IsOptional()
+  @IsInt({ message: "LOCATION_INTERVAL_SECONDS must be a whole number of seconds" })
+  @Min(30, { message: "LOCATION_INTERVAL_SECONDS must be at least 30" })
+  @Max(3600, { message: "LOCATION_INTERVAL_SECONDS must be at most 3600" })
+  LOCATION_INTERVAL_SECONDS?: number;
+
   /** S3 / MinIO storage configuration for customer location photos */
   @IsOptional()
   @IsString()

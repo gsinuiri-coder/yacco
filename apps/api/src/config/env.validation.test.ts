@@ -48,6 +48,19 @@ describe("plant coordinates", () => {
   });
 });
 
+describe("location interval", () => {
+  test("coerces the configured seconds to a number", () => {
+    const result = validateEnv(validConfig({ LOCATION_INTERVAL_SECONDS: "120" }));
+    expect(result.LOCATION_INTERVAL_SECONDS).toBe(120);
+  });
+
+  test.each(["10", "7200", "abc"])("rejects %s", (value) => {
+    expect(() => validateEnv(validConfig({ LOCATION_INTERVAL_SECONDS: value }))).toThrow(
+      /LOCATION_INTERVAL_SECONDS/,
+    );
+  });
+});
+
 test.each(["DATABASE_URL", "DIRECT_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET"])(
   "rejects a missing %s",
   (key) => {

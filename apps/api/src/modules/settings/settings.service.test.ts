@@ -31,3 +31,17 @@ describe("SettingsService.plantLocation", () => {
     expect(service.plantLocation()).toEqual({ latitude: null, longitude: null });
   });
 });
+
+describe("SettingsService.locationTracking", () => {
+  it("defaults to every 5 minutes when nothing is configured", async () => {
+    const service = await buildService({});
+
+    expect(service.locationTracking()).toEqual({ intervalSeconds: 300 });
+  });
+
+  it("returns the configured interval, so changing it needs no new app", async () => {
+    const service = await buildService({ LOCATION_INTERVAL_SECONDS: "120" });
+
+    expect(service.locationTracking()).toEqual({ intervalSeconds: 120 });
+  });
+});

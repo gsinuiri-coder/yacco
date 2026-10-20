@@ -25,8 +25,8 @@ import {
 } from "../../orders/dto/create-order.dto.js";
 
 const MARKABLE_STATUSES = [StopStatus.DELIVERED, StopStatus.FAILED] as const;
-const COORDINATE_PATTERN = /^-?\d{1,3}(?:\.\d{1,6})?$/;
-const ACCURACY_PATTERN = /^\d{1,8}(?:\.\d{1,2})?$/;
+export const COORDINATE_PATTERN = /^-?\d{1,3}(?:\.\d{1,6})?$/;
+export const ACCURACY_PATTERN = /^\d{1,8}(?:\.\d{1,2})?$/;
 
 /**
  * `unitPrice` is optional on purpose (unlike CreateOrderItemDto's, which is
