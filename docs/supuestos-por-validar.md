@@ -237,7 +237,7 @@ cuándo, y tres líneas:
 ### Fase 2: la parada guarda dónde se marcó, una sola vez
 
 - **Decidido por Giancarlo (2026-10-10),** sin reunión posible con el dueño; ítem 5 de «Fase 2 en local».
-- **Asumimos:** que la oficina quiere ver dónde marcó el chofer una entrega, y que los choferes aceptan que se pida la ubicación al marcar. Si la niega o no hay señal, se guarda igual. No hay seguimiento continuo.
+- **Asumimos:** que la oficina quiere ver dónde marcó el chofer una entrega, y que los choferes aceptan que se pida la ubicación al marcar. Si la niega o no hay señal, se guarda igual. Esa lectura sigue siendo una sola por parada; el seguimiento cada 5 minutos con la ruta en curso es otra decisión (Fase 3, mapa en planta).
 - **Construido encima:** `route_stops` guarda `marked_latitude`, `marked_longitude` y `marked_accuracy_m` juntas o las tres en NULL. «Mi ruta» pide una sola lectura de ubicación al confirmar y, si el navegador no la entrega por rechazo, timeout o falta de soporte, registra igual sin esos campos. La corrección administrativa conserva el punto original y la oficina abre «Ver dónde se marcó» en Google Maps.
 - **Si resulta que no:** bajo. Se deja de pedir la ubicación; las columnas quedan en NULL.
 
@@ -262,6 +262,13 @@ cuándo, y tres líneas:
 - **Construido encima:** tipo `MAQUILA_SERVICE` en `product_type`, enum `maquila_movement_type`, tablas `maquila_container_movements` y `maquila_balances`, endpoints `/maquila/*`, pantalla «Maquila», sección en «Producción» y en la ficha del cliente.
 - **Índice autorizado (Giancarlo, 13/10/2026 08:12):** se conserva `maquila_container_movements_customer_id_occurred_at_idx` para las lecturas del libro por cliente y fecha; es la única ampliación al esquema enumerado para esta fila.
 - **Si resulta que no:** caro. Si el cobro debiera nacer en otro momento (al recibir o al llenar) cambia la venta asociada; si los envases del cliente se mezclaran con la flota propia, se rompería la auditoría de activos y el inventario FIFO.
+
+### Fase 3: mapa en planta con la ubicación del vehículo cada 5 minutos, sin servicios pagos
+
+- **Decidido por Giancarlo (2026-10-13),** en conversación con Claude; fila 10 de «Fase 3 en local». Reemplaza el «no hay seguimiento continuo» de la Fase 2.
+- **Asumimos:** que desde la planta sirve ver dónde están los vehículos en reparto aunque se actualice solo cada pocos minutos; que los choferes aceptan que, con la ruta en curso y «Mi ruta» abierta, el celular mande su ubicación cada 5 minutos (intervalo de configuración del servidor, 300 segundos por defecto, que el celular lee de un endpoint; si el navegador no da permiso, no se manda nada y «Mi ruta» funciona igual; fuera de una ruta en curso, nunca); que cada punto guarda ruta, chofer, vehículo actual de la ruta, latitud, longitud, precisión, hora del celular y hora de llegada, solo INSERT, idempotente por un identificador del celular para aceptar lotes atrasados de la futura app; que solo el chofer de la ruta manda puntos y solo con la ruta en curso; que el mapa (administrador y vendedor) con Leaflet y OpenStreetMap muestra la planta y un marcador por ruta en curso en su último punto, «sin señal» pasados 15 minutos, se refresca cada 60 segundos, y al elegir una ruta muestra su recorrido, sus paradas por estado y sus pits; y que no se contrata ruteo por calles: se mantiene el orden por cercanía en línea recta y se agrega «Proponer orden desde la planta» después de un pit, con las paradas pendientes.
+- **Construido encima:** la tabla `route_location_points` y su endpoint de lote, el intervalo en configuración, el envío desde «Mi ruta», la pantalla «Mapa» con su enlace desde el Panel, y la propuesta de orden desde la planta en el detalle de ruta. (Se completa al construirse.)
+- **Si resulta que no:** bajo. Los puntos ya guardados quedan auditados; se deja de mandar la ubicación desde «Mi ruta» o se cambia el intervalo en la configuración, sin otra versión de la app.
 
 ### En Windows, codex corre en el relevo sin sandbox
 
