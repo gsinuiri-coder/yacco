@@ -182,13 +182,21 @@ updated: 2026-10-09 18:00 por Giancarlo
 
 ### Ver cómo va
 
-En otra pestaña, el tablero de solo lectura muestra el agente actual, el relevo
-y sus últimas ocho corridas:
+En otra pestaña, el tablero de solo lectura muestra en dos tablas el agente
+actual y el estado del relevo, y sus últimas ocho corridas (con la hora de
+inicio en hora de Lima):
 
 ```sh
 pnpm relay:status           # imprime una vez
 pnpm relay:status --watch   # redibuja cada 5 segundos hasta Ctrl+C
 ```
+
+Con `--watch` el tablero usa la pantalla alternativa de la terminal: se
+redibuja en el mismo lugar y al salir deja la terminal como estaba, sin nada
+acumulado en el historial. Todo se corta al ancho y al alto de la ventana
+(mínimo 60 columnas); el último y el siguiente paso ocupan a lo sumo dos
+líneas y lo que no entra termina en «…». Para leerlos enteros, `.relay/RELEVO.md`.
+Sin terminal (redirigido a un archivo), `--watch` imprime una sola vez.
 
 ```
 pnpm relay --dry-run   # qué correría y con qué banderas, sin correr nada
