@@ -27,6 +27,14 @@ const hasSummary = computed(
         </template>
       </UPageCard>
       <CustomerQuickSearch v-if="isOffice" />
+      <UButton
+        v-if="isOffice"
+        to="/map"
+        icon="i-lucide-map-pinned"
+        color="neutral"
+        variant="outline"
+        label="Ver dónde están los vehículos"
+      />
       <RoleDashboardSummary v-if="hasSummary" />
       <PendingApprovalsCard v-if="session.hasRole('ADMIN')" />
       <UpcomingReviewsCard v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')" />

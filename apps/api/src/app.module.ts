@@ -24,6 +24,7 @@ import { PaymentMethodsModule } from "./modules/payment-methods/payment-methods.
 import { PaymentsModule } from "./modules/payments/payments.module.js";
 import { RoutesModule } from "./modules/routes/routes.module.js";
 import { RoutePitStopsModule } from "./modules/route-pit-stops/route-pit-stops.module.js";
+import { RouteLocationsModule } from "./modules/route-locations/route-locations.module.js";
 import { RouteSettlementModule } from "./modules/route-settlement/route-settlement.module.js";
 import { SalesModule } from "./modules/sales/sales.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
@@ -58,6 +59,7 @@ import { ReceiptsModule } from "./modules/receipts/receipts.module.js";
     RosterLoaderModule,
     RoutesModule,
     RoutePitStopsModule,
+    RouteLocationsModule,
     RouteSettlementModule,
     SalesModule,
     PaymentsModule,

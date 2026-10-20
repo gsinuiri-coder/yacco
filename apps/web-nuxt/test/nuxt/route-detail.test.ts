@@ -896,6 +896,102 @@ describe("Detalle de ruta", () => {
       );
     });
 
+    describe("después de un pit, orden desde la planta", () => {
+      function located(id: string, longitude: string, name: string) {
+        return {
+          ...buildStop().location,
+          id: `loc-${id}`,
+          latitude: "0.000000",
+          longitude,
+          customer: { id: `c-${id}`, name },
+        };
+      }
+      const delivered = buildStop({
+        id: "stop-done",
+        position: 1,
+        status: "DELIVERED",
+        location: located("done", "5.000000", "Ya entregada"),
+      });
+      const farPending = buildStop({
+        id: "stop-far",
+        position: 2,
+        location: located("far", "3.000000", "Lejana"),
+      });
+      const nearPending = buildStop({
+        id: "stop-near",
+        position: 3,
+        location: located("near", "1.000000", "Cercana"),
+      });
+      function pit(voidedAt: string | null) {
+        return {
+          id: "pit-1",
+          routeId: "r-1",
+          recordedById: "u-admin",
+          recordedBy: { id: "u-admin", name: "Admin" },
+          createdAt: "2026-08-28T15:00:00.000Z",
+          notes: null,
+          cashExpected: null,
+          cashDelivered: null,
+          cashReason: null,
+          voidedAt,
+          voidedById: voidedAt === null ? null : "u-admin",
+          voidedBy: voidedAt === null ? null : { id: "u-admin", name: "Admin" },
+          voidReason: voidedAt === null ? null : "Mal contado",
+          counts: [],
+          loads: [],
+          unloads: [],
+        };
+      }
+      function stubWithPits(pits: ReturnType<typeof pit>[]) {
+        stubRouteDetail(
+          cleanups,
+          buildRoute({ status: "IN_PROGRESS", stops: [delivered, farPending, nearPending] }),
+        );
+        cleanups.push(
+          registerEndpoint(`${ROUTE}/pit-stops`, { method: "GET", handler: () => pits }),
+          registerEndpoint("/api/v1/settings/plant-location", () => ({
+            latitude: "0.000000",
+            longitude: "0.000000",
+          })),
+        );
+      }
+
+      it("HU-27 E6: propone solo las pendientes empezando por la planta, sin mover la ya entregada", async () => {
+        stubWithPits([pit(null)]);
+        const bodies = stubWrite(cleanups, `${ROUTE}/stops/reorder`, "PATCH", () =>
+          buildRoute({ status: "IN_PROGRESS", stops: [delivered, nearPending, farPending] }),
+        );
+        const user = userEvent.setup();
+
+        await renderDetail();
+        await user.click(
+          await screen.findByRole("button", { name: "Proponer orden desde la planta" }),
+        );
+
+        const proposal = screen.getByRole("group", { name: "Confirmar orden desde la planta" });
+        const proposed = within(proposal).getAllByRole("listitem");
+        expect(
+          proposed.map((item) => item.textContent?.match(/Cercana|Lejana|Ya entregada/)?.[0]),
+        ).toEqual(["Cercana", "Lejana"]);
+        expect(bodies).toHaveLength(0);
+
+        await user.click(within(proposal).getByRole("button", { name: "Usar este orden" }));
+        await waitFor(() =>
+          expect(bodies).toEqual([{ stopIds: ["stop-done", "stop-near", "stop-far"] }]),
+        );
+      });
+
+      it("con el único pit anulado no lo ofrece", async () => {
+        stubWithPits([pit("2026-08-28T16:00:00.000Z")]);
+
+        await renderDetail();
+
+        await screen.findByRole("button", { name: "Ordenar por cercanía" });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(screen.queryByRole("button", { name: "Proponer orden desde la planta" })).toBeNull();
+      });
+    });
+
     it("parte el recorrido de Maps en tramos aptos para móvil y avisa qué paradas omite", async () => {
       const located = Array.from({ length: 6 }, (_, index) =>
         buildStop({

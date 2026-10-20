@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildGoogleMapsRouteLegs, proposeNearbyStopIds } from "../../app/utils/route-planning";
+import {
+  buildGoogleMapsRouteLegs,
+  proposeNearbyStopIds,
+  proposePendingFromPlantStopIds,
+} from "../../app/utils/route-planning";
 
 const plant = { latitude: "0.000000", longitude: "0.000000" };
 
@@ -26,6 +30,22 @@ describe("proposeNearbyStopIds", () => {
         stop("este", "0.000000", "1.000000"),
       ]),
     ).toEqual(["oeste", "este"]);
+  });
+});
+
+describe("proposePendingFromPlantStopIds", () => {
+  it("HU-27 E6: después de un pit ordena solo las pendientes, empezando por la planta, y las resueltas no se mueven", () => {
+    // Desde la última entregada (este-4) lo más cerca sería este-3; desde la
+    // planta, este-1. Si el orden no arrancara en la planta, sale al revés.
+    expect(
+      proposePendingFromPlantStopIds(plant, [
+        { ...stop("entregada-5", "0.000000", "5.000000"), status: "DELIVERED" },
+        { ...stop("este-3", "0.000000", "3.000000"), status: "PENDING" },
+        { ...stop("no-entregada-4", "0.000000", "4.000000"), status: "FAILED" },
+        { ...stop("sin-ubicacion", null, null), status: "PENDING" },
+        { ...stop("este-1", "0.000000", "1.000000"), status: "PENDING" },
+      ]),
+    ).toEqual(["entregada-5", "este-1", "no-entregada-4", "este-3", "sin-ubicacion"]);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { PlantLocation } from "@yacco/shared";
+import type { PlantLocation, StopStatus } from "@yacco/shared";
 
 interface CoordinateStop {
   id: string;
@@ -69,6 +69,28 @@ export function proposeNearbyStopIds(
     ...ordered.map((stop) => stop.id),
     ...stops.filter((stop) => !isLocated(stop)).map((stop) => stop.id),
   ];
+}
+
+interface StatusStop extends CoordinateStop {
+  status: StopStatus;
+}
+
+/**
+ * After a pit the vehicle starts again from the plant (Fase 3, fila 10, C.2):
+ * the PENDING stops are proposed by nearness starting at the plant, and they
+ * take the places that pending stops held. A stop already delivered or not
+ * delivered keeps its exact position — what happened is not reordered.
+ */
+export function proposePendingFromPlantStopIds(
+  plantLocation: PlantLocation,
+  stops: StatusStop[],
+): string[] {
+  const proposed = proposeNearbyStopIds(
+    plantLocation,
+    stops.filter((stop) => stop.status === "PENDING"),
+  );
+  let next = 0;
+  return stops.map((stop) => (stop.status === "PENDING" ? proposed[next++]! : stop.id));
 }
 
 function coordinate(location: PlantLocation): string {

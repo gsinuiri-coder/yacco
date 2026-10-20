@@ -6,7 +6,7 @@ import type { Route, RouteStop } from "@yacco/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "~/app.vue";
 import { DRIVER, buildRoute, buildStop, pageOf } from "../support/fixtures";
-import { stubWrite } from "../support/route-detail";
+import { failWith, stubWrite } from "../support/route-detail";
 import { resetSession, signIn } from "../support/session";
 
 // «Mi ruta» (HU-11 a HU-14 en el celular, en línea): el chofer ve SUS rutas
@@ -253,6 +253,93 @@ describe("Mi ruta", () => {
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(await screen.findByRole("button", { name: "Registrar la parada 1" })).toBeTruthy();
+  });
+
+  describe("HU-27 E1: ubicación cada cierto tiempo con la ruta en curso", () => {
+    function stubInterval(intervalSeconds: number) {
+      cleanups.push(
+        registerEndpoint("/api/v1/settings/location-tracking", () => ({ intervalSeconds })),
+      );
+    }
+
+    it("manda dónde está al abrir y otra vez cuando pasa el intervalo del servidor", async () => {
+      stubMyRoute([buildRoute({ status: "IN_PROGRESS", stops: [pending] })]);
+      stubInterval(1);
+      const bodies = stubWrite(cleanups, "/api/v1/routes/r-1/location-points", "POST", () => ({
+        received: 1,
+        stored: 1,
+      }));
+      stubGeolocation({ latitude: -12.046374, longitude: -77.042793, accuracy: 8.4 });
+
+      await renderMyRoute();
+
+      expect(
+        await screen.findByText("La planta ve dónde estás mientras la ruta está en curso."),
+      ).toBeTruthy();
+      await waitFor(() => expect(bodies).toHaveLength(2), { timeout: 3000 });
+      const [first, second] = bodies as Array<{ points: Array<Record<string, string>> }>;
+      expect(first!.points).toEqual([
+        expect.objectContaining({
+          latitude: "-12.046374",
+          longitude: "-77.042793",
+          accuracyM: "8.40",
+        }),
+      ]);
+      expect(second!.points[0]!.clientPointId).not.toBe(first!.points[0]!.clientPointId);
+    });
+
+    it("lo que no llegó por falta de señal se manda con el siguiente, con el mismo identificador", async () => {
+      stubMyRoute([buildRoute({ status: "IN_PROGRESS", stops: [pending] })]);
+      stubInterval(1);
+      let calls = 0;
+      const bodies = stubWrite(cleanups, "/api/v1/routes/r-1/location-points", "POST", (event) =>
+        calls++ === 0 ? failWith(503, "Sin servicio")(event) : { received: 2, stored: 2 },
+      );
+      stubGeolocation({ latitude: -12.046374, longitude: -77.042793, accuracy: 8.4 });
+
+      await renderMyRoute();
+
+      await waitFor(() => expect(bodies).toHaveLength(2), { timeout: 3000 });
+      const [first, second] = bodies as Array<{ points: Array<{ clientPointId: string }> }>;
+      expect(second!.points).toHaveLength(2);
+      expect(second!.points[0]!.clientPointId).toBe(first!.points[0]!.clientPointId);
+    });
+
+    it("sin permiso del navegador no manda nada y la ruta se usa igual", async () => {
+      stubMyRoute([buildRoute({ status: "IN_PROGRESS", stops: [pending] })]);
+      stubInterval(1);
+      const bodies = stubWrite(cleanups, "/api/v1/routes/r-1/location-points", "POST");
+      const getCurrentPosition = stubGeolocation({
+        error: { code: 1, message: "Permiso denegado" } as GeolocationPositionError,
+      });
+
+      await renderMyRoute();
+
+      expect(await screen.findByRole("button", { name: "Registrar la parada 1" })).toBeTruthy();
+      await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+      expect(bodies).toEqual([]);
+      expect(
+        screen.queryByText("La planta ve dónde estás mientras la ruta está en curso."),
+      ).toBeNull();
+    });
+
+    it("con la ruta todavía sin salir no pide la ubicación", async () => {
+      stubMyRoute([buildRoute({ status: "PLANNED", stops: [pending] })]);
+      stubInterval(1);
+      const getCurrentPosition = stubGeolocation({
+        latitude: -12.046374,
+        longitude: -77.042793,
+        accuracy: 8.4,
+      });
+
+      await renderMyRoute();
+
+      expect(await screen.findByRole("button", { name: "Salir a ruta" })).toBeTruthy();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+    });
   });
 
   it("sin rutas hoy lo dice", async () => {
