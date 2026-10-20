@@ -38,6 +38,7 @@ export interface LiveRouteLocation {
   date: string;
   driverName: string;
   vehiclePlate: string | null;
+  zoneName: string | null;
   lastPoint: RouteLocationPoint | null;
   noSignal: boolean;
 }

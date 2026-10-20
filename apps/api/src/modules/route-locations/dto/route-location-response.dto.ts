@@ -41,6 +41,9 @@ export class LiveRouteLocationDto {
   @ApiProperty({ type: String, nullable: true, example: "ABC123" })
   vehiclePlate!: string | null;
 
+  @ApiProperty({ type: String, nullable: true, example: "Surco" })
+  zoneName!: string | null;
+
   @ApiProperty({ type: RouteLocationPointDto, nullable: true })
   lastPoint!: RouteLocationPointDto | null;
 

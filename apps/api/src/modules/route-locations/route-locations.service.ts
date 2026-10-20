@@ -127,6 +127,7 @@ export class RouteLocationsService {
         date: true,
         driver: { select: { name: true } },
         vehicle: { select: { plate: true } },
+        zone: { select: { name: true } },
         locationPoints: {
           orderBy: [{ recordedAt: "desc" }, { receivedAt: "desc" }],
           take: 1,
@@ -144,6 +145,7 @@ export class RouteLocationsService {
           date: formatBusinessDate(route.date),
           driverName: route.driver.name,
           vehiclePlate: route.vehicle?.plate ?? null,
+          zoneName: route.zone?.name ?? null,
           lastPoint: last === null ? null : toPointDto(last),
           noSignal: isWithoutSignal(last?.recordedAt ?? null, now),
         };

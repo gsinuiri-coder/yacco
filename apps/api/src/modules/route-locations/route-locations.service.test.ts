@@ -150,6 +150,7 @@ describe("RouteLocationsService.listLive", () => {
         date: new Date("2026-10-19T00:00:00.000Z"),
         driver: { name: "Juan" },
         vehicle: { plate: "ABC123" },
+        zone: { name: "Surco" },
         locationPoints: [pointRow(minutesBefore(3))],
       },
       {
@@ -157,6 +158,7 @@ describe("RouteLocationsService.listLive", () => {
         date: new Date("2026-10-19T00:00:00.000Z"),
         driver: { name: "Pedro" },
         vehicle: null,
+        zone: null,
         locationPoints: [pointRow(minutesBefore(20))],
       },
     ]);
@@ -171,6 +173,7 @@ describe("RouteLocationsService.listLive", () => {
         date: "2026-10-19",
         driverName: "Juan",
         vehiclePlate: "ABC123",
+        zoneName: "Surco",
         noSignal: false,
         lastPoint: expect.objectContaining({
           latitude: "-12.046374",
@@ -180,6 +183,7 @@ describe("RouteLocationsService.listLive", () => {
       expect.objectContaining({
         routeId: OTHER_ROUTE_ID,
         vehiclePlate: null,
+        zoneName: null,
         noSignal: true,
         lastPoint: expect.objectContaining({ recordedAt: minutesBefore(20).toISOString() }),
       }),
@@ -197,6 +201,7 @@ describe("RouteLocationsService.listLive", () => {
         date: new Date("2026-10-19T00:00:00.000Z"),
         driver: { name: "Juan" },
         vehicle: null,
+        zone: null,
         locationPoints: [],
       },
     ]);
