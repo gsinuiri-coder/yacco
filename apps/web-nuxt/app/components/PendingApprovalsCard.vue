@@ -33,31 +33,27 @@ const totalPending = computed(() => photosCount.value + coordinatesCount.value);
     title="Por aprobar"
     description="Solicitudes enviadas por los choferes desde el reparto que requieren validación."
   >
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div class="flex flex-wrap items-center gap-2">
-        <UBadge
-          v-if="photosCount > 0"
-          color="warning"
-          variant="subtle"
-          size="md"
-          :label="`${photosCount} ${photosCount === 1 ? 'foto' : 'fotos'} por revisar`"
-        />
-        <UBadge
-          v-if="coordinatesCount > 0"
-          color="info"
-          variant="subtle"
-          size="md"
-          :label="`${coordinatesCount} ${coordinatesCount === 1 ? 'ubicación' : 'ubicaciones'} por revisar`"
-        />
-      </div>
-
-      <NuxtLink
+    <div class="flex flex-wrap items-center gap-2">
+      <UBadge
+        v-if="photosCount > 0"
+        color="warning"
+        variant="subtle"
+        size="md"
+        :label="`${photosCount} ${photosCount === 1 ? 'foto' : 'fotos'} por revisar`"
+      />
+      <UBadge
+        v-if="coordinatesCount > 0"
+        color="info"
+        variant="subtle"
+        size="md"
+        :label="`${coordinatesCount} ${coordinatesCount === 1 ? 'ubicación' : 'ubicaciones'} por revisar`"
+      />
+      <UButton
         to="/pending-approvals"
-        class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-      >
-        <span>Revisar solicitudes</span>
-        <UIcon name="i-lucide-arrow-right" class="size-4" />
-      </NuxtLink>
+        variant="link"
+        trailing-icon="i-lucide-arrow-right"
+        label="Revisar solicitudes"
+      />
     </div>
   </SectionCard>
 </template>

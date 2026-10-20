@@ -53,53 +53,24 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <div class="grid min-h-dvh lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-    <aside
-      class="relative hidden overflow-hidden bg-primary-950 p-12 text-primary-50 lg:flex lg:flex-col lg:justify-between"
+  <UMain>
+    <!-- `reverse`: el lema a la izquierda y el formulario a la derecha, como antes. -->
+    <UPageHero
+      orientation="horizontal"
+      reverse
+      headline="Yacco"
+      title="Ingresar"
+      description="Con el usuario que te dio la planta."
     >
-      <p class="font-display text-2xl font-semibold tracking-tight">Yacco</p>
-
-      <div class="relative z-10 max-w-md">
-        <p class="font-display text-4xl leading-tight font-semibold text-white">
-          Cada bidón que sale, vuelve contado.
-        </p>
-        <p class="mt-4 text-primary-200">
-          Pedidos, rutas, cobranzas y envases de la planta, en un solo lugar.
-        </p>
-      </div>
-
-      <svg
-        class="pointer-events-none absolute inset-x-0 bottom-0 h-64 w-full text-primary-700/40"
-        viewBox="0 0 600 240"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M0 120 C 100 90 200 150 300 120 S 500 90 600 120"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        />
-        <path
-          d="M0 160 C 100 130 200 190 300 160 S 500 130 600 160"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        />
-        <path
-          d="M0 200 C 100 170 200 230 300 200 S 500 170 600 200 L600 240 L0 240 Z"
-          fill="currentColor"
-        />
-      </svg>
-    </aside>
-
-    <main class="flex items-center justify-center bg-default px-4 py-12 sm:px-8">
-      <div class="w-full max-w-sm">
-        <p class="font-display text-2xl font-semibold text-highlighted lg:hidden">Yacco</p>
-        <h1 class="mt-6 text-3xl font-semibold text-highlighted lg:mt-0">Ingresar</h1>
-        <p class="mt-2 text-muted">Con el usuario que te dio la planta.</p>
-
-        <form method="post" class="mt-8 space-y-5" novalidate @submit.prevent="submit">
+      <template #body>
+        <UForm
+          method="post"
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          @submit="submit"
+        >
           <UAlert
             v-if="showExpired"
             role="status"
@@ -154,8 +125,15 @@ async function submit(): Promise<void> {
             :disabled="!ready"
             :label="submitting ? 'Ingresando…' : 'Ingresar'"
           />
-        </form>
-      </div>
-    </main>
-  </div>
+        </UForm>
+      </template>
+
+      <UPageCard
+        variant="solid"
+        title="Cada bidón que sale, vuelve contado."
+        description="Pedidos, rutas, cobranzas y envases de la planta, en un solo lugar."
+        class="hidden lg:flex"
+      />
+    </UPageHero>
+  </UMain>
 </template>

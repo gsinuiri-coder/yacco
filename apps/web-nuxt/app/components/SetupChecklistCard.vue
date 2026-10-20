@@ -18,17 +18,17 @@ const items = computed(() => (data.value === null ? [] : setupChecklistItems(dat
     title="Puesta en marcha"
     description="Lo que falta cargar antes de trabajar con los datos reales de la planta."
   >
-    <ul class="flex flex-col gap-3">
-      <li
+    <UPageList as="ul">
+      <UPageCard
         v-for="item in items"
         :key="item.text"
-        class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+        as="li"
+        variant="naked"
+        orientation="horizontal"
+        :description="item.text"
       >
-        <span>{{ item.text }}</span>
-        <NuxtLink :to="item.to" class="text-sm font-medium text-primary hover:underline">
-          {{ item.linkLabel }}
-        </NuxtLink>
-      </li>
-    </ul>
+        <UButton :to="item.to" variant="link" :label="item.linkLabel" />
+      </UPageCard>
+    </UPageList>
   </SectionCard>
 </template>

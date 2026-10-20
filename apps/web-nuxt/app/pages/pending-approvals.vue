@@ -133,18 +133,17 @@ async function confirmReject(): Promise<void> {
     title="Por aprobar"
     description="Fotos y ubicaciones propuestas por los choferes desde el reparto."
   >
-    <div v-if="!session.hasRole('ADMIN')" class="py-10 text-center">
-      <UAlert
-        color="warning"
-        variant="subtle"
-        icon="i-lucide-shield-alert"
-        title="Acceso restringido"
-        description="Esta bandeja solo está disponible para administradores."
-      />
-    </div>
+    <UAlert
+      v-if="!session.hasRole('ADMIN')"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-shield-alert"
+      title="Acceso restringido"
+      description="Esta bandeja solo está disponible para administradores."
+    />
 
-    <div v-else class="space-y-8">
-      <div v-if="loading" class="py-6 text-sm text-muted">Cargando solicitudes pendientes…</div>
+    <UPageBody v-else>
+      <p v-if="loading">Cargando solicitudes pendientes…</p>
 
       <UAlert
         v-else-if="loadError"
@@ -155,14 +154,12 @@ async function confirmReject(): Promise<void> {
         :title="loadError"
       />
 
-      <div
+      <UEmpty
         v-else-if="data.photos.length === 0 && data.coordinateRequests.length === 0"
-        class="rounded-lg border border-default bg-default p-8 text-center"
-      >
-        <UIcon name="i-lucide-check-check" class="mx-auto size-10 text-success mb-2" />
-        <h3 class="text-base font-semibold text-highlighted">Bandeja al día</h3>
-        <p class="mt-1 text-sm text-muted">No hay fotos ni ubicaciones pendientes de aprobación.</p>
-      </div>
+        icon="i-lucide-check-check"
+        title="Bandeja al día"
+        description="No hay fotos ni ubicaciones pendientes de aprobación."
+      />
 
       <template v-else>
         <!-- Fotos pendientes -->
@@ -171,35 +168,26 @@ async function confirmReject(): Promise<void> {
           :title="`Fotos por aprobar (${data.photos.length})`"
           description="Fotos tomadas por los choferes que requieren validación antes de mostrarse en la ficha."
         >
-          <ul class="flex flex-col divide-y divide-default">
-            <li
+          <UPageList as="ul" divide>
+            <UPageCard
               v-for="photo in data.photos"
               :key="photo.id"
-              class="flex flex-col gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+              as="li"
+              variant="naked"
+              orientation="horizontal"
+              :description="`Subida por: ${photo.uploadedBy?.name ?? 'Chofer'} · ${formatCalendarDay(photo.createdAt.slice(0, 10))}`"
             >
-              <div class="flex items-center gap-4">
-                <div class="size-20 shrink-0 overflow-hidden rounded-md border border-default">
-                  <LocationPhotoImg :photo-id="photo.id" class="size-full" />
-                </div>
+              <template #leading>
+                <LocationPhotoImg :photo-id="photo.id" class="size-20" />
+              </template>
+              <template #title>
+                <h3>
+                  {{ photo.location?.name ?? "Local" }}
+                  <span v-if="photo.location?.customer">({{ photo.location.customer.name }})</span>
+                </h3>
+              </template>
 
-                <div>
-                  <h4 class="font-medium text-highlighted">
-                    {{ photo.location?.name ?? "Local" }}
-                    <span v-if="photo.location?.customer" class="text-sm text-muted font-normal">
-                      ({{ photo.location.customer.name }})
-                    </span>
-                  </h4>
-                  <p class="text-xs text-muted mt-1">
-                    Subida por:
-                    <span class="font-medium text-highlighted">{{
-                      photo.uploadedBy?.name ?? "Chofer"
-                    }}</span>
-                    · {{ formatCalendarDay(photo.createdAt.slice(0, 10)) }}
-                  </p>
-                </div>
-              </div>
-
-              <div class="flex items-center gap-2 self-end sm:self-center">
+              <div class="flex justify-end gap-2">
                 <UButton
                   color="neutral"
                   variant="outline"
@@ -220,8 +208,8 @@ async function confirmReject(): Promise<void> {
                   @click="approvePhoto(photo.id)"
                 />
               </div>
-            </li>
-          </ul>
+            </UPageCard>
+          </UPageList>
         </SectionCard>
 
         <!-- Ubicaciones pendientes -->
@@ -230,73 +218,58 @@ async function confirmReject(): Promise<void> {
           :title="`Ubicaciones por aprobar (${data.coordinateRequests.length})`"
           description="Coordenadas GPS tomadas por los choferes en campo para actualizar locales."
         >
-          <ul class="flex flex-col divide-y divide-default">
-            <li
+          <UPageList as="ul" divide>
+            <UPageCard
               v-for="req in data.coordinateRequests"
               :key="req.id"
-              class="flex flex-col gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+              as="li"
+              variant="naked"
+              orientation="horizontal"
             >
-              <div class="space-y-1">
-                <h4 class="font-medium text-highlighted">
+              <template #title>
+                <h3>
                   {{ req.location?.name ?? "Local" }}
-                  <span v-if="req.location?.customer" class="text-sm text-muted font-normal">
-                    ({{ req.location.customer.name }})
-                  </span>
-                </h4>
-
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-                  <p>
-                    Propuesta:
-                    <span class="font-mono font-medium text-highlighted">
-                      {{ req.latitude }}, {{ req.longitude }}
-                    </span>
-                    <span v-if="req.accuracyM" class="text-dimmed">
-                      (precisión ±{{ req.accuracyM }} m)</span
-                    >
-                  </p>
-
-                  <p v-if="req.previousLatitude && req.previousLongitude">
-                    Actual:
-                    <span class="font-mono text-muted">
-                      {{ req.previousLatitude }}, {{ req.previousLongitude }}
-                    </span>
-                  </p>
-                  <p v-else class="text-dimmed">Sin coordenadas previas</p>
-                </div>
-
-                <div class="flex items-center gap-3 pt-1 text-xs">
-                  <a
-                    :href="`https://www.google.com/maps?q=${req.latitude},${req.longitude}`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-                  >
-                    <UIcon name="i-lucide-map-pin" class="size-3.5" />
-                    Ver propuesta en Maps
-                  </a>
-
-                  <a
-                    v-if="req.previousLatitude && req.previousLongitude"
-                    :href="`https://www.google.com/maps?q=${req.previousLatitude},${req.previousLongitude}`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex items-center gap-1 text-muted hover:underline"
-                  >
-                    <UIcon name="i-lucide-map" class="size-3.5" />
-                    Ver actual en Maps
-                  </a>
-                </div>
-
-                <p class="text-[11px] text-muted pt-1">
-                  Propuesto por:
-                  <span class="font-medium text-highlighted">{{
-                    req.requestedBy?.name ?? "Chofer"
-                  }}</span>
-                  · {{ formatCalendarDay(req.createdAt.slice(0, 10)) }}
+                  <span v-if="req.location?.customer">({{ req.location.customer.name }})</span>
+                </h3>
+              </template>
+              <template #description>
+                <p>
+                  Propuesta:
+                  <span>{{ req.latitude }}, {{ req.longitude }}</span>
+                  <span v-if="req.accuracyM"> (precisión ±{{ req.accuracyM }} m)</span>
                 </p>
-              </div>
+                <p v-if="req.previousLatitude && req.previousLongitude">
+                  Actual:
+                  <span>{{ req.previousLatitude }}, {{ req.previousLongitude }}</span>
+                </p>
+                <p v-else>Sin coordenadas previas</p>
+                <div class="flex flex-wrap gap-2">
+                  <UButton
+                    :to="`https://www.google.com/maps?q=${req.latitude},${req.longitude}`"
+                    target="_blank"
+                    variant="link"
+                    size="xs"
+                    icon="i-lucide-map-pin"
+                    label="Ver propuesta en Maps"
+                  />
+                  <UButton
+                    v-if="req.previousLatitude && req.previousLongitude"
+                    :to="`https://www.google.com/maps?q=${req.previousLatitude},${req.previousLongitude}`"
+                    target="_blank"
+                    color="neutral"
+                    variant="link"
+                    size="xs"
+                    icon="i-lucide-map"
+                    label="Ver actual en Maps"
+                  />
+                </div>
+                <p>
+                  Propuesto por: {{ req.requestedBy?.name ?? "Chofer" }} ·
+                  {{ formatCalendarDay(req.createdAt.slice(0, 10)) }}
+                </p>
+              </template>
 
-              <div class="flex items-center gap-2 self-end sm:self-center">
+              <div class="flex justify-end gap-2">
                 <UButton
                   color="neutral"
                   variant="outline"
@@ -321,17 +294,23 @@ async function confirmReject(): Promise<void> {
                   @click="approveCoordinate(req.id)"
                 />
               </div>
-            </li>
-          </ul>
+            </UPageCard>
+          </UPageList>
         </SectionCard>
       </template>
-    </div>
+    </UPageBody>
 
     <!-- Modal de rechazo con motivo obligatorio -->
     <UModal v-model:open="rejectModalOpen" title="Rechazar solicitud">
       <template #body>
-        <form class="space-y-4" novalidate @submit.prevent="confirmReject">
-          <p class="text-sm text-muted">
+        <UForm
+          :state="{}"
+          :validate-on="[]"
+          :loading-auto="false"
+          novalidate
+          @submit="confirmReject"
+        >
+          <p>
             Indica el motivo por el cual se rechaza esta propuesta ({{ rejectTarget?.title }}). El
             rechazo quedará guardado para auditoría.
           </p>
@@ -358,7 +337,7 @@ async function confirmReject(): Promise<void> {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -368,7 +347,7 @@ async function confirmReject(): Promise<void> {
             />
             <UButton type="submit" color="error" label="Rechazar solicitud" :loading="rejecting" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
   </AppPage>

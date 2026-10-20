@@ -14,21 +14,23 @@ const hasSummary = computed(
 
 <template>
   <AppPage title="Panel">
-    <section class="mx-auto flex w-full max-w-2xl flex-col gap-6 pt-10 sm:pt-20">
-      <div>
-        <p class="text-sm font-medium text-muted">{{ today }}</p>
-        <h2 class="mt-1 text-3xl font-semibold text-highlighted sm:text-4xl">
-          Hola, {{ session.user.value?.username }}
-        </h2>
-        <p v-if="isOffice" class="mt-2 text-muted">
-          Busca un cliente por nombre o teléfono para abrir su ficha.
-        </p>
-      </div>
+    <UPageBody class="mx-auto w-full max-w-2xl">
+      <UPageCard
+        variant="naked"
+        :description="
+          isOffice ? 'Busca un cliente por nombre o teléfono para abrir su ficha.' : undefined
+        "
+      >
+        <template #header>{{ today }}</template>
+        <template #title>
+          <h2>Hola, {{ session.user.value?.username }}</h2>
+        </template>
+      </UPageCard>
       <CustomerQuickSearch v-if="isOffice" />
       <RoleDashboardSummary v-if="hasSummary" />
       <PendingApprovalsCard v-if="session.hasRole('ADMIN')" />
       <UpcomingReviewsCard v-if="session.hasRole('ADMIN') || session.hasRole('SELLER')" />
       <SetupChecklistCard v-if="session.hasRole('ADMIN')" />
-    </section>
+    </UPageBody>
   </AppPage>
 </template>
