@@ -2,7 +2,8 @@
 const props = defineProps<{
   photoId: string;
   alt?: string;
-  imgClass?: string;
+  /** La foto entera, sin recortar: para verla en grande. Si no, llena su cuadro. */
+  whole?: boolean;
 }>();
 
 const session = useSession();
@@ -52,7 +53,7 @@ watch(
 </script>
 
 <template>
-  <div class="relative flex items-center justify-center overflow-hidden bg-elevated">
+  <div class="flex items-center justify-center overflow-hidden bg-elevated">
     <div v-if="loading" class="flex size-full items-center justify-center text-xs text-muted">
       Cargando…
     </div>
@@ -60,14 +61,15 @@ watch(
       v-else-if="failed"
       class="flex size-full flex-col items-center justify-center p-2 text-center text-xs text-muted"
     >
-      <UIcon name="i-lucide-image-off" class="size-6 text-muted mb-1" />
+      <UIcon name="i-lucide-image-off" class="mb-1 size-6" />
       <span>No disponible</span>
     </div>
     <img
-      v-else-if="src"
+      v-else-if="src && whole"
       :src="src"
       :alt="alt ?? 'Foto de local'"
-      :class="imgClass ?? 'size-full object-cover'"
+      class="mx-auto max-h-[60vh] w-auto rounded-lg object-contain"
     />
+    <img v-else-if="src" :src="src" :alt="alt ?? 'Foto de local'" class="size-full object-cover" />
   </div>
 </template>

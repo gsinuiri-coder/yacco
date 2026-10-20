@@ -83,7 +83,7 @@ const columns: TableColumn<SaleListItem>[] = [
       description="Las ventas anuladas se muestran para conservar el historial, pero no forman parte del total."
     />
 
-    <UCard :ui="{ body: 'p-0 sm:p-0' }">
+    <UCard>
       <UAlert
         v-if="list.slow.value && list.loading.value"
         role="status"
@@ -113,12 +113,7 @@ const columns: TableColumn<SaleListItem>[] = [
       />
 
       <template v-else>
-        <UTable
-          :data="list.items.value"
-          :columns="columns"
-          caption="Ventas registradas"
-          :ui="{ caption: 'sr-only' }"
-        >
+        <UTable :data="list.items.value" :columns="columns" caption="Ventas registradas">
           <template #soldAt-cell="{ row }">
             {{ formatInstantInLima(row.original.soldAt) }}
           </template>

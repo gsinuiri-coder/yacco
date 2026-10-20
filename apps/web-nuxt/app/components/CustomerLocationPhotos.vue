@@ -130,14 +130,16 @@ async function confirmHide(): Promise<void> {
 </script>
 
 <template>
-  <div class="mt-4 border-t border-default pt-4">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <h4 class="text-xs font-medium tracking-wide text-muted uppercase">
-          Fotos del local ({{ photos.length }}/10)
-        </h4>
-        <p class="text-xs text-muted">Fachada, puerta y referencias visuales.</p>
-      </div>
+  <UPageBody>
+    <USeparator />
+    <UPageCard
+      variant="naked"
+      orientation="horizontal"
+      description="Fachada, puerta y referencias visuales."
+    >
+      <template #title>
+        <h4>Fotos del local ({{ photos.length }}/10)</h4>
+      </template>
 
       <div v-if="canUpload && photos.length < 10">
         <label :for="`location-photo-file-${locationId}`" class="sr-only">
@@ -161,39 +163,40 @@ async function confirmHide(): Promise<void> {
           @click="triggerFileInput"
         />
       </div>
-    </div>
+    </UPageCard>
 
     <UAlert
       v-if="uploadError"
       role="alert"
       color="error"
       variant="subtle"
-      class="mt-3"
       icon="i-lucide-circle-alert"
       :title="uploadError"
     />
 
-    <div v-if="loading" class="mt-3 text-xs text-muted">Cargando fotos…</div>
+    <UEmpty v-if="loading" variant="naked" size="xs" description="Cargando fotos…" />
 
     <UAlert
       v-else-if="loadError"
       role="alert"
       color="error"
       variant="subtle"
-      class="mt-3"
       icon="i-lucide-circle-alert"
       :title="loadError"
     />
 
-    <div v-else-if="photos.length === 0" class="mt-3 text-xs text-dimmed">
-      No hay fotos registradas para este local.
-    </div>
+    <UEmpty
+      v-else-if="photos.length === 0"
+      variant="naked"
+      size="xs"
+      description="No hay fotos registradas para este local."
+    />
 
-    <div v-else class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+    <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
       <div
         v-for="photo in photos"
         :key="photo.id"
-        class="group relative aspect-square cursor-pointer overflow-hidden rounded-md border border-default transition-opacity hover:opacity-95"
+        class="group relative aspect-square cursor-pointer overflow-hidden rounded-md border border-default"
         @click="selectedPhoto = photo"
       >
         <LocationPhotoImg :photo-id="photo.id" class="size-full" />
@@ -225,13 +228,10 @@ async function confirmHide(): Promise<void> {
       "
     >
       <template #body>
+        <!-- Un div y no UPageBody/UPageCard: un componente con v-if dentro de un slot con
+             nombre hace que el typecheck de CI pierda el descarte de selectedPhoto nulo. -->
         <div v-if="selectedPhoto" class="space-y-4">
-          <div class="max-h-[60vh] overflow-hidden rounded-lg">
-            <LocationPhotoImg
-              :photo-id="selectedPhoto.id"
-              img-class="max-h-[60vh] w-auto mx-auto object-contain rounded-lg"
-            />
-          </div>
+          <LocationPhotoImg :photo-id="selectedPhoto.id" whole />
 
           <div class="flex items-center justify-between text-xs text-muted">
             <div>
@@ -261,8 +261,8 @@ async function confirmHide(): Promise<void> {
     <!-- Modal ocultar foto -->
     <UModal v-model:open="hideModalOpen" title="Ocultar foto">
       <template #body>
-        <form class="space-y-4" novalidate @submit.prevent="confirmHide">
-          <p class="text-sm text-muted">
+        <UForm :state="{}" :validate-on="[]" :loading-auto="false" novalidate @submit="confirmHide">
+          <p>
             La foto dejará de mostrarse en la ficha del local. Quedará guardada en el historial con
             el motivo y la auditoría.
           </p>
@@ -289,7 +289,7 @@ async function confirmHide(): Promise<void> {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2">
             <UButton
               color="neutral"
               variant="outline"
@@ -299,8 +299,8 @@ async function confirmHide(): Promise<void> {
             />
             <UButton type="submit" color="error" label="Ocultar foto" :loading="hiding" />
           </div>
-        </form>
+        </UForm>
       </template>
     </UModal>
-  </div>
+  </UPageBody>
 </template>
