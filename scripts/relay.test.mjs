@@ -362,6 +362,39 @@ describe("runRelay", () => {
     assert.deepEqual(clock.sleeps, [60 * 60 * 1000]);
   });
 
+  test("con la config real solo corre claude: sin cuota espera y lo reintenta, sin salir con 1", async () => {
+    // La config del repo tal cual, con claude reemplazado por el agente falso:
+    // si codex o antigravity vuelven a tener args, o claude vuelve a pedir
+    // confirmación, esto deja de ser «solo claude, sin preguntar».
+    const real = readRelayConfig(join(REPO_ROOT, "relay.config.json"));
+    // Sin model ni npmPackage: el agente falso es node, no la CLI de claude.
+    const agents = real.agents.map((entry) =>
+      entry.args === null
+        ? entry
+        : {
+            ...entry,
+            ...agent(entry.name, "limit,limit,finish"),
+            model: undefined,
+            npmPackage: undefined,
+          },
+    );
+    const clock = fakeClock();
+    const out = captureOut();
+    const code = await relay(agents, { clock, out });
+
+    assert.equal(code, EXIT.done);
+    assert.deepEqual(calls(), ["claude", "claude", "claude"]);
+    assert.deepEqual(clock.sleeps, [real.waitMinutes * 60 * 1000, real.waitMinutes * 60 * 1000]);
+    assert.match(out.text(), /Salto codex: sus banderas no están verificadas/);
+    assert.match(out.text(), /Salto antigravity: sus banderas no están verificadas/);
+    assert.match(
+      out.text(),
+      new RegExp(
+        `Todos sin cuota\\. Espero ${real.waitMinutes} min .* vuelvo a empezar por claude`,
+      ),
+    );
+  });
+
   test("la espera sale de waitMinutes", async () => {
     const clock = fakeClock();
     await relay([agent("a", "limit,finish")], { clock, overrides: { waitMinutes: 5 } });
@@ -829,8 +862,25 @@ describe("relay.config.json", () => {
     assert.match(parsed.prompt, /\.relay\/RELEVO\.md/);
     assert.deepEqual(
       parsed.agents.filter((agent) => agent.confirmBeforeRun).map((agent) => agent.name),
+      [],
+    );
+  });
+
+  test("codex y antigravity siguen en la config, desactivados con args null y el motivo", () => {
+    const entries = readRelayConfig(configPath).agents;
+    assert.deepEqual(
+      entries.filter((entry) => entry.args !== null).map((entry) => entry.name),
       ["claude"],
     );
+    for (const name of ["codex", "antigravity"]) {
+      const entry = entries.find((a) => a.name === name);
+      assert.match(
+        entry.$comment,
+        /^Desactivado por Giancarlo \(2026-10-21\): solo Claude\./,
+        name,
+      );
+      assert.ok(entry.verifiedWith, `${name} perdió verifiedWith`);
+    }
   });
 
   test("--confirm rechaza con claridad un nombre que no existe en la config", () => {
@@ -865,11 +915,13 @@ describe("relay.config.json", () => {
     ];
     const unsandboxedFlags = ["danger-full-access", "--dangerously-skip-permissions"];
     const entries = readRelayConfig(configPath).agents;
-    for (const entry of entries) {
+    // Uno desactivado (args null) no corre: conserva su declaración sin
+    // sandbox para el día que se reactive con sus args.
+    for (const entry of entries.filter((e) => e.args !== null)) {
       for (const flag of forbidden) {
-        assert.ok(!(entry.args ?? []).includes(flag), `${entry.name} usa ${flag}`);
+        assert.ok(!entry.args.includes(flag), `${entry.name} usa ${flag}`);
       }
-      if (unsandboxedFlags.some((flag) => (entry.args ?? []).includes(flag))) {
+      if (unsandboxedFlags.some((flag) => entry.args.includes(flag))) {
         assert.equal(entry.unsandboxed, true, `${entry.name} sin unsandboxed: true`);
         assert.ok(entry.unsandboxedReason, `${entry.name} sin unsandboxedReason`);
       } else {
@@ -877,10 +929,6 @@ describe("relay.config.json", () => {
       }
     }
     const byName = Object.fromEntries(entries.map((entry) => [entry.name, entry.args]));
-    // codex en Windows: sin sandbox por decisión explícita, con la política de
-    // aprobación fijada para que `exec` no espere a nadie.
-    assert.deepEqual(byName.codex.slice(1, 3), ["--sandbox", "danger-full-access"]);
-    assert.ok(byName.codex.includes('approval_policy="never"'), "codex sin approval_policy never");
     const claudeMode = byName.claude[byName.claude.indexOf("--permission-mode") + 1];
     assert.equal(claudeMode, "dontAsk");
     const denied = byName.claude[byName.claude.indexOf("--disallowedTools") + 1];
@@ -897,7 +945,7 @@ describe("relay.config.json", () => {
       antigravity: "gemini-3.1-pro-high",
       claude: "claude-opus-5-5",
     });
-    for (const entry of entries) {
+    for (const entry of entries.filter((e) => e.args !== null)) {
       const line = commandLine(entry, "PROMPT");
       assert.deepEqual(line.slice(-2), ["--model", entry.model], entry.name);
       assert.equal(line.filter((arg) => arg === "--model").length, 1, entry.name);
@@ -912,12 +960,12 @@ describe("relay.config.json", () => {
     assert.throws(() => readRelayConfig(badPath), /agente-x fija `model` pero otra-cli/);
   });
 
-  test("antigravity corre sin TTY y sin sandbox, declarado como codex y con la versión verificada", () => {
+  test("antigravity desactivado conserva su declaración sin sandbox y la versión verificada", () => {
     const entry = readRelayConfig(configPath).agents.find((a) => a.name === "antigravity");
     assert.equal(entry.command, "agy");
-    // En esta máquina su --sandbox no anda y, sin él, el modo headless
-    // deniega todo comando: la única forma de que trabaje es el bypass.
-    assert.deepEqual(entry.args, ["-p", "{prompt}", "--dangerously-skip-permissions"]);
+    // En esta máquina su --sandbox no anda: si se reactiva, es con el bypass
+    // (sus args están en docs/RELEVO-USO.md) y tiene que seguir declarado.
+    assert.equal(entry.args, null);
     assert.equal(entry.unsandboxed, true);
     assert.match(entry.unsandboxedReason, /docs\/RELEVO-USO\.md/);
     assert.match(entry.verifiedWith, /agy \d+\.\d+\.\d+/);
