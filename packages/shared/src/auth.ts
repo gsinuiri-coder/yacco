@@ -26,6 +26,17 @@ export interface RefreshResponse {
   accessToken: string;
 }
 
+/**
+ * Response of POST /auth/mobile/login: the driver's app only. The refresh
+ * token travels in the body (the phone keeps it in secure storage) and lasts
+ * 30 days; POST /auth/mobile/refresh takes `{ refreshToken }` and answers a
+ * RefreshResponse.
+ */
+export interface MobileSession {
+  accessToken: string;
+  refreshToken: string;
+}
+
 /** Payload signed into both JWTs by AuthService. */
 export interface AccessTokenPayload {
   sub: string;

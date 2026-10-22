@@ -111,6 +111,12 @@ export const NAVIGATION: NavigationSection[] = [
         to: "/pending-approvals",
         onlyFor: "ADMIN",
       },
+      {
+        label: "Operaciones en revisión",
+        icon: "i-lucide-inbox",
+        to: "/operations-in-review",
+        onlyFor: "ADMIN",
+      },
       { label: "Vehículos", icon: "i-lucide-truck", to: "/vehicles" },
       { label: "Productos", icon: "i-lucide-droplets", to: "/products" },
       { label: "Zonas", icon: "i-lucide-map-pin", to: "/zones" },

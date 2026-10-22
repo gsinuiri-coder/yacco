@@ -373,3 +373,106 @@ test("refresh guard: a token signed with the refresh secret but type=access is r
     .set("Cookie", `yacco_refresh=${forgedToken}`)
     .expect(401);
 });
+
+// Fase 3, fila 11: la app del chofer. Mismo usuario y contraseña, solo
+// choferes, 30 días sin volver a ingresar, refresh en el cuerpo y no en la
+// cookie; lo corta lo mismo que corta la web, desde «Usuarios».
+describe("sesión de la app del chofer", () => {
+  const DAY_SECONDS = 24 * 60 * 60;
+
+  function mobileLogin(username: string) {
+    return request(server())
+      .post("/api/v1/auth/mobile/login")
+      .send({ username, password: "throwaway-password" });
+  }
+
+  function mobileRefresh(refreshToken: string) {
+    return request(server()).post("/api/v1/auth/mobile/refresh").send({ refreshToken });
+  }
+
+  test("un chofer ingresa y recibe el refresh en el cuerpo, que dura 30 días y renueva el acceso", async () => {
+    await userWithOpenSession("chofer-celular");
+
+    const login = await mobileLogin("chofer-celular").expect(200);
+
+    expect(login.headers["set-cookie"]).toBeUndefined();
+    const refreshToken = login.body.refreshToken as string;
+    const decoded = jwtService.decode<{ iat: number; exp: number; client: string }>(refreshToken);
+    expect(decoded.client).toBe("mobile");
+    expect(decoded.exp - decoded.iat).toBe(30 * DAY_SECONDS);
+
+    const refreshed = await mobileRefresh(refreshToken).expect(200);
+    await request(server())
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${refreshed.body.accessToken}`)
+      .expect(200);
+  });
+
+  test("la web sigue con su cookie, y no acepta el refresh del celular como cookie ni al revés", async () => {
+    const { refreshCookie } = await userWithOpenSession("chofer-dos-mundos");
+    const login = await mobileLogin("chofer-dos-mundos").expect(200);
+
+    await refreshWith(refreshCookie).expect(200);
+    await refreshWith(`yacco_refresh=${login.body.refreshToken}`).expect(401);
+    await mobileRefresh(refreshCookie.split("=")[1]!).expect(401);
+  });
+
+  test("un chofer que también es de oficina entra a la app solo como chofer", async () => {
+    const { adminToken, userId } = await userWithOpenSession("chofer-y-oficina");
+    await request(server())
+      .patch(`/api/v1/users/${userId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ roles: ["DRIVER", "ADMIN"] })
+      .expect(200);
+
+    const login = await mobileLogin("chofer-y-oficina").expect(200);
+    const refreshed = await mobileRefresh(login.body.refreshToken).expect(200);
+
+    for (const accessToken of [login.body.accessToken, refreshed.body.accessToken]) {
+      const me = await request(server())
+        .get("/api/v1/auth/me")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .expect(200);
+      expect(me.body.roles).toEqual(["DRIVER"]);
+    }
+  });
+
+  test("quien no es chofer no entra a la app", async () => {
+    const adminLogin = await request(server())
+      .post("/api/v1/auth/mobile/login")
+      .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
+      .expect(403);
+
+    expect(adminLogin.body.refreshToken).toBeUndefined();
+    await request(server())
+      .post("/api/v1/auth/mobile/login")
+      .send({ username: ADMIN_USERNAME, password: "definitely-wrong" })
+      .expect(401);
+  });
+
+  test("cambiar la contraseña desde «Usuarios» saca al celular", async () => {
+    const { adminToken, userId } = await userWithOpenSession("chofer-cortado");
+    const login = await mobileLogin("chofer-cortado").expect(200);
+
+    await request(server())
+      .patch(`/api/v1/users/${userId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ password: "the-admin-dictated-this-one" })
+      .expect(200);
+
+    await mobileRefresh(login.body.refreshToken).expect(401);
+  });
+
+  test("si le sacan el rol de chofer, el celular deja de renovar", async () => {
+    const { adminToken, userId } = await userWithOpenSession("ex-chofer");
+    const login = await mobileLogin("ex-chofer").expect(200);
+
+    await request(server())
+      .patch(`/api/v1/users/${userId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ roles: ["SELLER"] })
+      .expect(200);
+
+    await mobileRefresh(login.body.refreshToken).expect(403);
+  });
+});

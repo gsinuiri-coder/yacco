@@ -1002,11 +1002,68 @@ export class RoutesService {
     }
 
     assertMarkPayloadMatchesStatus(dto);
+    return this.prisma.$transaction((tx) =>
+      // Explícito, no por defecto: registrar una parada es anotar lo que
+      // acaba de pasar, así que el instante es ahora.
+      this.applyStopMark(tx, routeId, stopId, dto, actor, new Date()),
+    );
+  }
+
+  /**
+   * La misma marca que `markStop`, pero dentro de una transacción ajena: la
+   * del lote que manda la app del chofer (`SyncService`), que tiene que
+   * confirmar o deshacer todas sus operaciones juntas. Mismas reglas y mismos
+   * errores; la ruta se lee con su candado, porque el lote puede llegar horas
+   * después y la oficina pudo haberla terminado mientras tanto.
+   *
+   * `occurredAt` es la hora del celular al marcar, no la de llegada: la
+   * entrega pasó cuando el chofer la anotó, aunque la señal llegara después.
+   *
+   * Solo el chofer DE ESA RUTA, sin la excepción de `assertCanAccessRoute`
+   * para la oficina: quien entra a la app es chofer, y si además tiene otro
+   * rol, desde el celular igual no toca rutas ajenas.
+   */
+  async markStopWithinTransaction(
+    tx: Prisma.TransactionClient,
+    routeId: string,
+    stopId: string,
+    dto: MarkRouteStopDto,
+    actor: RouteActor,
+    occurredAt: Date,
+  ): Promise<RouteStopResponseDto> {
+    const route = await tx.route.findUnique({
+      where: { id: routeId },
+      select: { driverId: true },
+    });
+    if (route === null) {
+      throw new NotFoundException(`La ruta "${routeId}" no existe`);
+    }
+    if (route.driverId !== actor.id) {
+      throw new ForbiddenException("Esta ruta es de otro chofer");
+    }
+    const status = await lockRouteAndReadStatus(tx, routeId);
+    if (status !== RouteStatus.IN_PROGRESS) {
+      throw new ConflictException(
+        `Solo se pueden marcar paradas de una ruta en curso; esta está ${ROUTE_STATUS_LABELS[status]}`,
+      );
+    }
+    assertMarkPayloadMatchesStatus(dto);
+    return this.applyStopMark(tx, routeId, stopId, dto, actor, occurredAt);
+  }
+
+  private applyStopMark(
+    tx: Prisma.TransactionClient,
+    routeId: string,
+    stopId: string,
+    dto: MarkRouteStopDto,
+    actor: RouteActor,
+    occurredAt: Date,
+  ): Promise<RouteStopResponseDto> {
     const markedLocation = markedLocationData(dto);
     if (dto.status === StopStatus.FAILED) {
-      return this.markStopFailed(routeId, stopId, dto.failureReason as string, markedLocation);
+      return this.markStopFailed(tx, routeId, stopId, dto.failureReason as string, markedLocation);
     }
-    return this.markStopDelivered(routeId, stopId, dto, actor, markedLocation);
+    return this.markStopDelivered(tx, routeId, stopId, dto, actor, markedLocation, occurredAt);
   }
 
   /**
@@ -1021,37 +1078,36 @@ export class RoutesService {
    * fallado tres veces se viera idéntico a uno recién tomado.
    */
   private async markStopFailed(
+    tx: Prisma.TransactionClient,
     routeId: string,
     stopId: string,
     failureReason: string,
     markedLocation: StopMarkedLocationData,
   ): Promise<RouteStopResponseDto> {
-    return this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.routeStop.updateMany({
-        where: { id: stopId, routeId, status: StopStatus.PENDING },
-        data: { status: StopStatus.FAILED, failureReason, ...markedLocation },
-      });
-      if (count === 0) {
-        await this.throwAlreadyMarkedConflict(tx, routeId, stopId);
-      }
-
-      const stop = await tx.routeStop.findUniqueOrThrow({
-        where: { id: stopId },
-        include: STOP_INCLUDE,
-      });
-
-      // El flip de arriba, guardado por `status: PENDING`, es lo que serializa
-      // dos marcas concurrentes de la misma parada: exactamente un UPDATE toca
-      // la fila, así que acá el pedido se escribe sin más guarda.
-      if (stop.orderId !== null) {
-        await tx.order.update({
-          where: { id: stop.orderId },
-          data: { status: OrderStatus.FAILED },
-        });
-      }
-
-      return toStopResponse(stop);
+    const { count } = await tx.routeStop.updateMany({
+      where: { id: stopId, routeId, status: StopStatus.PENDING },
+      data: { status: StopStatus.FAILED, failureReason, ...markedLocation },
     });
+    if (count === 0) {
+      await this.throwAlreadyMarkedConflict(tx, routeId, stopId);
+    }
+
+    const stop = await tx.routeStop.findUniqueOrThrow({
+      where: { id: stopId },
+      include: STOP_INCLUDE,
+    });
+
+    // El flip de arriba, guardado por `status: PENDING`, es lo que serializa
+    // dos marcas concurrentes de la misma parada: exactamente un UPDATE toca
+    // la fila, así que acá el pedido se escribe sin más guarda.
+    if (stop.orderId !== null) {
+      await tx.order.update({
+        where: { id: stop.orderId },
+        data: { status: OrderStatus.FAILED },
+      });
+    }
+
+    return toStopResponse(stop);
   }
 
   /**
@@ -1065,55 +1121,55 @@ export class RoutesService {
    * sale, no movement and no payment behind.
    */
   private async markStopDelivered(
+    tx: Prisma.TransactionClient,
     routeId: string,
     stopId: string,
     dto: MarkRouteStopDto,
     actor: RouteActor,
     markedLocation: StopMarkedLocationData,
+    occurredAt: Date,
   ): Promise<RouteStopResponseDto> {
-    return this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.routeStop.updateMany({
-        where: { id: stopId, routeId, status: StopStatus.PENDING },
-        data: { status: StopStatus.DELIVERED, ...markedLocation },
-      });
-      if (count === 0) {
-        await this.throwAlreadyMarkedConflict(tx, routeId, stopId);
-      }
-
-      const stop = await tx.routeStop.findUniqueOrThrow({
-        where: { id: stopId },
-        include: STOP_INCLUDE,
-      });
-
-      // El pedido sigue a su parada, en esta misma transacción: si la venta o
-      // los movimientos de envase fallan más abajo, el pedido tampoco queda
-      // entregado. Una parada de VAN_SALE no tiene pedido que mover.
-      if (stop.orderId !== null) {
-        await tx.order.update({
-          where: { id: stop.orderId },
-          data: { status: OrderStatus.DELIVERED },
-        });
-      }
-
-      const delivery = await this.salesService.registerStopDeliveryWithinTransaction(tx, {
-        routeId,
-        stopId,
-        locationId: stop.locationId,
-        items: dto.items ?? [],
-        containersReturned: dto.containersReturned ?? [],
-        recordedById: actor.id,
-        // Explícito, no por defecto: registrar una parada es anotar lo que
-        // acaba de pasar, así que el instante es ahora. Es el otro llamador
-        // —`correctStop`— el que hereda el instante de la entrega original.
-        occurredAt: new Date(),
-        ...(dto.payment !== undefined ? { payment: dto.payment } : {}),
-        ...(dto.priceOverrideAuthorizedById !== undefined
-          ? { priceOverrideAuthorizedById: dto.priceOverrideAuthorizedById }
-          : {}),
-      });
-
-      return toStopResponse(stop, delivery);
+    const { count } = await tx.routeStop.updateMany({
+      where: { id: stopId, routeId, status: StopStatus.PENDING },
+      data: { status: StopStatus.DELIVERED, ...markedLocation },
     });
+    if (count === 0) {
+      await this.throwAlreadyMarkedConflict(tx, routeId, stopId);
+    }
+
+    const stop = await tx.routeStop.findUniqueOrThrow({
+      where: { id: stopId },
+      include: STOP_INCLUDE,
+    });
+
+    // El pedido sigue a su parada, en esta misma transacción: si la venta o
+    // los movimientos de envase fallan más abajo, el pedido tampoco queda
+    // entregado. Una parada de VAN_SALE no tiene pedido que mover.
+    if (stop.orderId !== null) {
+      await tx.order.update({
+        where: { id: stop.orderId },
+        data: { status: OrderStatus.DELIVERED },
+      });
+    }
+
+    const delivery = await this.salesService.registerStopDeliveryWithinTransaction(tx, {
+      routeId,
+      stopId,
+      locationId: stop.locationId,
+      items: dto.items ?? [],
+      containersReturned: dto.containersReturned ?? [],
+      recordedById: actor.id,
+      // Lo decide quien llama: `markStop` pasa ahora, el lote del celular la
+      // hora en que el chofer marcó. `correctStop` no pasa por acá: hereda el
+      // instante de la entrega original.
+      occurredAt,
+      ...(dto.payment !== undefined ? { payment: dto.payment } : {}),
+      ...(dto.priceOverrideAuthorizedById !== undefined
+        ? { priceOverrideAuthorizedById: dto.priceOverrideAuthorizedById }
+        : {}),
+    });
+
+    return toStopResponse(stop, delivery);
   }
 
   /**

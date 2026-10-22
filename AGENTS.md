@@ -7,13 +7,10 @@ avisá en vez de seguir dos reglas distintas.
 ## Project
 
 Management system for a water purification plant in Peru (currency: soles, S/).
-pnpm monorepo. **Built today:** `apps/api` (NestJS modular monolith +
-Prisma/PostgreSQL), `apps/web-nuxt` (Nuxt 4 + Nuxt UI), `packages/shared`
-(DTO contracts) — that is the whole of `packages/`. The original `apps/web`
-(React + Vite) was retired once `apps/web-nuxt` reached feature parity; it no
-longer exists in the repo. **Out of scope:** the offline driver app
-(`apps/mobile` holds only a `.gitkeep`) and `packages/sync-engine` (no
-directory). The driver uses the web online, «Mi ruta» (supuesto 12, spec §1.3).
+pnpm monorepo: `apps/api` (NestJS modular monolith + Prisma/PostgreSQL),
+`apps/web-nuxt` (Nuxt 4 + Nuxt UI), `packages/shared` (DTO contracts) and,
+under construction (Fase 3, fila 11), `apps/mobile`: the driver's offline
+Android app (Expo). `apps/web` (React) was retired; no `packages/sync-engine`.
 The spec at `docs/yacco-documentacion.md` is the source of truth. If code and
 spec disagree, STOP and ask before proceeding.
 
@@ -91,13 +88,11 @@ spec disagree, STOP and ask before proceeding.
   PENDING on a FINISHED route strands its order in ON_ROUTE with no exit.
 - Once an operational record is written, a mistake in it is NEVER corrected by
   editing or deleting that row, whatever its origin: loaded from the office,
-  written in the field, or arriving through a sync when that exists. The
-  correction is an inverse movement, or —for a stop— the void-and-re-register
-  of `PATCH /api/v1/routes/:id/stops/:stopId/correction`, ADMIN only, always
-  with a reason. La regla no lleva calificativo a propósito: no existe hoy
-  ninguna fila "sincronizada", así que decir "nunca editando registros
-  sincronizados" no seleccionaría nada y dejaría editable todo lo demás, que
-  es todo lo que hay.
+  written in the field, or arriving through a sync. The correction is an
+  inverse movement, or —for a stop— the void-and-re-register of
+  `PATCH /api/v1/routes/:id/stops/:stopId/correction`, ADMIN only, always
+  with a reason. La regla no lleva calificativo a propósito: "nunca editando
+  registros sincronizados" dejaría editable todo lo cargado desde la oficina.
 - Lo anulado NO desaparece: la fila queda con su monto y sus columnas de
   anulación (`voided_at`/`voided_by`/`void_reason`, las tres juntas o
   ninguna, por un CHECK escrito a mano), todo lo que suma dinero deja de
@@ -106,28 +101,24 @@ spec disagree, STOP and ask before proceeding.
   `orders.delivery_date`) are calendar `date` in America/Lima; convert at the
   edges, never store local time in a timestamp.
 
-## Sync protocol — design kept, OUT OF SCOPE
+## Sync protocol (driver app) — invariants since 2026-10-22
 
-Not invariants: they govern no code. There is no sync module (only the
-`sync_operations` table, modelled ahead of time). The owner approved the
-driver using the web online (supuesto 12, 25/09/2026); on that basis
-Giancarlo took the offline app and sync out of scope (2026-09-26). Design kept in
-`.agents/skills/sync-protocol/SKILL.md` and applies only if that is reopened.
+Giancarlo reopened the offline driver app (Fase 3, fila 11). Design in
+`.agents/skills/sync-protocol/SKILL.md`; code in `apps/api/src/modules/sync`.
 
-- **Field writes.** TODAY a driver registers a delivery through
-  `PATCH /api/v1/routes/:id/stops/:stopId`: `routes.controller.ts` declares
-  `@Roles(ADMIN, SELLER, DRIVER)` at class level and that PATCH inherits it.
-  In practice the office records each stop from the web — the driver dictates
-  or writes on paper and someone loads it (spec §4.3). IF sync is ever built,
-  driver field writes enter through `POST /api/v1/sync/operations` (idempotent
-  by device-generated UUID; duplicates -> DUPLICATE, never re-applied), and
-  the PATCH stays as the office path or is restricted to ADMIN/SELLER. That
-  call is made together with the sync module, not before.
-- Sync batches are ALL-OR-NOTHING: one transaction per batch. An operation that
-  fails validation twice goes to quarantine (status REJECTED + email alert) and
-  the rest of the batch proceeds. Never partially apply a batch silently.
-- Sync envelopes are versioned (`type`, `version`, `payload`); the server accepts
-  older versions and normalizes. Never break an envelope shape in place.
+- The app's field writes enter ONLY through `POST /api/v1/sync/operations`,
+  idempotent by device-generated UUID (seen again -> DUPLICATE, never
+  re-applied), through the same services as the web, never writing directly.
+  The stop PATCH stays for the office and the web «Mi ruta».
+- One transaction per batch, one SAVEPOINT per operation: a business rejection
+  undoes only its operation and the rest proceeds; any other error undoes the
+  whole batch. Never partially apply a batch silently.
+- Failing validation twice -> quarantine (REJECTED + `quarantined_at`). A clash
+  with server state quarantines at once: the server wins, nothing is lost, an
+  ADMIN resolves it in «Operaciones en revisión». D-08's email alert isn't
+  built (needs a provider): today it's that inbox plus a log line.
+- Envelopes are versioned (`type`, `version`, `payload`); the server accepts
+  older versions and normalizes. Never change an existing `(type, version)`.
 
 ## Tests — el criterio que manda
 
