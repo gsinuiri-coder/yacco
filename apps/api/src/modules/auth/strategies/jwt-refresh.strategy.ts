@@ -16,7 +16,9 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, "jwt-refresh"
   }
 
   validate(payload: JwtPayload): JwtPayload {
-    if (payload.type !== "refresh") {
+    // El refresh del celular (30 días) no se acepta como cookie del navegador:
+    // estiraría la sesión de la web a la duración de la del chofer.
+    if (payload.type !== "refresh" || payload.client !== undefined) {
       throw new UnauthorizedException("Invalid token type");
     }
     return payload;

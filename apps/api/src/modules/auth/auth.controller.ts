@@ -9,14 +9,22 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiResponse, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from "@nestjs/swagger";
 import type { Response } from "express";
 import { AuthService } from "./auth.service.js";
 import { AuthTokensDto } from "./dto/auth-tokens.dto.js";
 import { LoginDto } from "./dto/login.dto.js";
+import { MobileRefreshDto, MobileSessionDto } from "./dto/mobile-session.dto.js";
 import { RefreshResponseDto } from "./dto/refresh-response.dto.js";
 import { SessionUserDto } from "./dto/session-user.dto.js";
 import { JwtAccessGuard } from "./guards/jwt-access.guard.js";
+import { JwtMobileRefreshGuard } from "./guards/jwt-mobile-refresh.guard.js";
 import { JwtRefreshGuard } from "./guards/jwt-refresh.guard.js";
 import {
   REFRESH_COOKIE,
@@ -54,6 +62,29 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Post("refresh")
   refresh(@Req() request: AuthenticatedRequest): Promise<RefreshResponseDto> {
+    return this.authService.refreshAccessToken(request.user);
+  }
+
+  @ApiResponse({ status: HttpStatus.OK, type: MobileSessionDto })
+  @ApiUnauthorizedResponse({ description: "Invalid credentials or inactive user" })
+  @ApiForbiddenResponse({ description: "The user is not a driver" })
+  @HttpCode(HttpStatus.OK)
+  @Post("mobile/login")
+  loginMobile(@Body() dto: LoginDto): Promise<MobileSessionDto> {
+    return this.authService.loginMobile(dto);
+  }
+
+  // `MobileRefreshDto` no se lee: el token lo saca del cuerpo la estrategia.
+  // Va declarado para que el ValidationPipe y Swagger conozcan la forma.
+  @ApiResponse({ status: HttpStatus.OK, type: RefreshResponseDto })
+  @ApiUnauthorizedResponse({ description: "Invalid, expired, revoked or non-mobile refresh token" })
+  @UseGuards(JwtMobileRefreshGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post("mobile/refresh")
+  refreshMobile(
+    @Body() _dto: MobileRefreshDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RefreshResponseDto> {
     return this.authService.refreshAccessToken(request.user);
   }
 

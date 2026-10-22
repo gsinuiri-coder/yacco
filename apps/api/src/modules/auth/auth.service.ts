@@ -1,15 +1,23 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import type { JwtSignOptions } from "@nestjs/jwt";
-import type { UserRole } from "@prisma/client";
+import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { UsersService } from "../users/users.service.js";
 import type { LoginDto } from "./dto/login.dto.js";
+import type { MobileSessionDto } from "./dto/mobile-session.dto.js";
 import type { RefreshResponseDto } from "./dto/refresh-response.dto.js";
 import type { JwtPayload } from "./types/jwt-payload.js";
 
 const INVALID_CREDENTIALS = "Invalid credentials";
+const MOBILE_DRIVERS_ONLY = "La app es solo para choferes";
+
+/**
+ * Fijo y no por variable de entorno: es una decisión del dueño (el chofer
+ * no vuelve a ingresar en 30 días), no un parámetro de despliegue.
+ */
+export const MOBILE_REFRESH_EXPIRES_IN = "30d";
 
 interface LoginTokens {
   accessToken: string;
@@ -25,20 +33,29 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto): Promise<LoginTokens> {
-    const user = await this.usersService.findByUsername(dto.username);
-    if (!user || !user.active) {
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
-    }
-
-    const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordMatches) {
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
-    }
-
-    const roles = user.roles.map((assignment) => assignment.role.name);
+    const { user, roles } = await this.verifyCredentials(dto);
     return {
       accessToken: this.signAccessToken(user.id, user.username, roles),
       refreshCookieValue: this.signRefreshToken(user.id, user.username, roles, user.tokenVersion),
+    };
+  }
+
+  /**
+   * El ingreso de la app del chofer: mismo usuario y contraseña, solo choferes,
+   * y un refresh de 30 días que el celular guarda cifrado. Lo corta lo mismo
+   * que corta la web: cambiar la contraseña o desactivar desde «Usuarios».
+   */
+  async loginMobile(dto: LoginDto): Promise<MobileSessionDto> {
+    const { user, roles } = await this.verifyCredentials(dto);
+    if (!roles.includes(UserRole.DRIVER)) {
+      throw new ForbiddenException(MOBILE_DRIVERS_ONLY);
+    }
+    return {
+      accessToken: this.signAccessToken(user.id, user.username, roles),
+      refreshToken: this.signRefreshToken(user.id, user.username, roles, user.tokenVersion, {
+        client: "mobile",
+        expiresIn: MOBILE_REFRESH_EXPIRES_IN,
+      }),
     };
   }
 
@@ -54,7 +71,26 @@ export class AuthService {
     }
 
     const roles = user.roles.map((assignment) => assignment.role.name);
+    // Si en estos 30 días le sacaron el rol de chofer, el celular deja de
+    // renovar: la app es solo para choferes.
+    if (payload.client === "mobile" && !roles.includes(UserRole.DRIVER)) {
+      throw new ForbiddenException(MOBILE_DRIVERS_ONLY);
+    }
     return { accessToken: this.signAccessToken(user.id, user.username, roles) };
+  }
+
+  private async verifyCredentials(dto: LoginDto) {
+    const user = await this.usersService.findByUsername(dto.username);
+    if (!user || !user.active) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+
+    const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!passwordMatches) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+
+    return { user, roles: user.roles.map((assignment) => assignment.role.name) };
   }
 
   /** Cuándo vence un refresh token recién firmado: la cookie vence con él. */
@@ -80,11 +116,20 @@ export class AuthService {
     username: string,
     roles: UserRole[],
     tokenVersion: number,
+    mobile?: { client: "mobile"; expiresIn: string },
   ): string {
-    const payload: JwtPayload = { sub, username, roles, type: "refresh", tv: tokenVersion };
+    const payload: JwtPayload = {
+      sub,
+      username,
+      roles,
+      type: "refresh",
+      tv: tokenVersion,
+      ...(mobile !== undefined ? { client: mobile.client } : {}),
+    };
     return this.jwtService.sign(payload, {
       secret: this.configService.getOrThrow<string>("JWT_REFRESH_SECRET"),
-      expiresIn: this.configService.getOrThrow<string>("JWT_REFRESH_EXPIRES_IN") as NonNullable<
+      expiresIn: (mobile?.expiresIn ??
+        this.configService.getOrThrow<string>("JWT_REFRESH_EXPIRES_IN")) as NonNullable<
         JwtSignOptions["expiresIn"]
       >,
     });
