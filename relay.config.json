@@ -1,5 +1,5 @@
 {
-  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. `confirmBeforeRun: true` exige confirmación humana antes de lanzarlo. Ningún agente corre sin sandbox salvo el que lo declara con `unsandboxed: true` y su motivo (hoy codex y antigravity en Windows; el relevo lo avisa al arrancar), y ninguno con --dangerously-bypass-approvals-and-sandbox: ver `verifiedWith`. `model` es el modelo de cada agente: el relevo lo pasa con la bandera de MODEL_FLAGS (scripts/relay.mjs), al final de `args`.",
+  "$comment": "Configuración de `pnpm relay` (scripts/relay.mjs). Cómo usarla y cómo cambiarla: docs/RELEVO-USO.md. `{prompt}` en `args` se reemplaza por `prompt`. Un agente con `args: null` no tiene banderas verificadas y el relevo lo salta. `confirmBeforeRun: true` exige confirmación humana antes de lanzarlo. Ningún agente corre sin sandbox salvo el que lo declara con `unsandboxed: true` y su motivo (codex y antigravity en Windows, hoy desactivados; el relevo lo avisa al arrancar), y ninguno con --dangerously-bypass-approvals-and-sandbox: ver `verifiedWith`. `model` es el modelo de cada agente: el relevo lo pasa con la bandera de MODEL_FLAGS (scripts/relay.mjs), al final de `args`.",
   "prompt": "Sos un agente desatendido de pnpm relay. Leé AGENTS.md y .agents/rules/unattended-agents.md, y seguí .relay/RELEVO.md desde next-step. Al terminar cada paso, actualizá .relay/RELEVO.md (last-step, next-step, updated) y commiteá tu WIP en la rama del ítem. Ante cualquier acción que esas reglas prohíben: status: blocked con blocked-reason, y salí.",
   "waitMinutes": 60,
   "maxRuns": 50,
@@ -12,18 +12,8 @@
       "unsandboxed": true,
       "unsandboxedReason": "Decisión de Giancarlo (2026-10-10): en Windows el sandbox workspace-write de codex deja .git de solo lectura (openai/codex #18918) y sin crear la rama del ítem no puede trabajar. Riesgo y lo que hay que cerrar antes de correr: docs/RELEVO-USO.md.",
       "verifiedWith": "codex-cli 0.162.0 (`codex exec --help` y corridas reales sin TTY, 2026-10-10): --sandbox danger-full-access; `exec` no acepta -a/--ask-for-approval, y su política por defecto es never (el encabezado dice `approval: never`); se fija igual con -c approval_policy=\"never\" para que ninguna config.toml la cambie. Termina sola. Sin --dangerously-bypass-approvals-and-sandbox. Mensaje de límite real (2026-10-10): «ERROR: You’ve hit your usage limit…», con apóstrofo tipográfico, en stderr y con código 1. `--model` verificado en `codex exec --help`.",
-      "args": [
-        "exec",
-        "--sandbox",
-        "danger-full-access",
-        "-c",
-        "approval_policy=\"never\"",
-        "-c",
-        "sandbox_workspace_write.network_access=true",
-        "--color",
-        "never",
-        "{prompt}"
-      ],
+      "$comment": "Desactivado por Giancarlo (2026-10-21): solo Claude. Para reactivarlo, sus args verificados están en docs/RELEVO-USO.md.",
+      "args": null,
       "limitPatterns": [
         "you['’]?ve hit your usage limit",
         "usage limit (has been )?reached",
@@ -38,8 +28,8 @@
       "unsandboxed": true,
       "unsandboxedReason": "Autorización de Giancarlo (2026-10-10), la misma opción explícita que codex: en esta máquina (Windows 11 22H2, build 22621) el --sandbox de agy no anda —pide 24H2 con la actualización de agosto 2026— y, sin él, el modo headless deniega todo comando. Lo único que lo deja trabajar es --dangerously-skip-permissions. Riesgo y lo que hay que cerrar antes de correr: docs/RELEVO-USO.md.",
       "verifiedWith": "agy 1.3.3 (`agy --help`, `agy models` y dos corridas reales sin TTY, 2026-10-10): `-p {prompt}` corre sin TTY y termina solo. Sin bypass, el comando de terminal se deniega («a tool required the \"command\" permission that headless mode cannot prompt for, so it was auto-denied») y sale con 0 sin hacer nada; con --dangerously-skip-permissions lo ejecuta y sale con 0. Las banderas después del prompt se leen. `--model` y el id del modelo salen de `agy --help` y `agy models`.",
-      "$comment": "agy se actualiza sola (pasó de 1.2.8 a 1.3.3 durante la primera verificación): la versión de verifiedWith puede no ser la instalada. Los patrones de límite salen de los mensajes del binario 1.3.3. Si un día anda su --sandbox (Windows 11 24H2 con la actualización de agosto 2026), volver a verificar y sacarle el bypass.",
-      "args": ["-p", "{prompt}", "--dangerously-skip-permissions"],
+      "$comment": "Desactivado por Giancarlo (2026-10-21): solo Claude. Para reactivarlo, sus args verificados están en docs/RELEVO-USO.md. agy se actualiza sola (pasó de 1.2.8 a 1.3.3 durante la primera verificación): la versión de verifiedWith puede no ser la instalada. Los patrones de límite salen de los mensajes del binario 1.3.3. Si un día anda su --sandbox (Windows 11 24H2 con la actualización de agosto 2026), volver a verificar y sacarle el bypass.",
+      "args": null,
       "limitPatterns": [
         "you have exhausted your quota",
         "individual quota reached",
@@ -53,7 +43,6 @@
       "command": "claude",
       "npmPackage": "@anthropic-ai/claude-code",
       "model": "claude-opus-5-5",
-      "confirmBeforeRun": true,
       "verifiedWith": "Claude Code 2.1.295 (`claude --help`, 2026-10-09): --permission-mode dontAsk + --permission-prompts none (lo que pediría aprobación se deniega; los deny de settings aplican en todos los modos: code.claude.com/docs/en/permission-modes). No `auto`: su clasificador aprueba lo que no está en ninguna regla. `--model` verificado en Claude Code 2.1.296 (acepta id o alias; se fija el id para que no cambie solo).",
       "args": [
         "-p",

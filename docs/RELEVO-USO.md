@@ -1,28 +1,46 @@
 # Relevo entre agentes: `pnpm relay`
 
 `pnpm relay` corre la cola de Yacco con un agente a la vez. Cuando uno se queda
-sin cuota, sigue con el siguiente, en el orden de `relay.config.json` (hoy:
-codex, antigravity, claude; claude siempre último). Si todos están sin cuota,
-espera `waitMinutes` y vuelve a empezar por el primero. Un agente que falla
-dos veces seguidas por otra cosa queda fuera por el resto del relevo, y se
-sigue con el siguiente. El traspaso entre agentes es `.relay/RELEVO.md`.
-
-Claude requiere confirmación humana antes de cada ejecución del relevo. Cuando
-le llega el turno, el relevo explica si fue porque los agentes anteriores se
-quedaron sin cuota o fallaron dos veces, y sale con código 5 sin lanzar Claude,
-sin esperar `waitMinutes` y sin volver al primero. Para continuar esa misma cola
-en una ejecución nueva:
-
-```sh
-pnpm relay --confirm claude
-```
-
-La confirmación vive solamente en ese proceso: no queda guardada para una
-ejecución posterior.
+sin cuota, sigue con el siguiente, en el orden de `relay.config.json` (codex,
+antigravity, claude; claude siempre último). Si todos están sin cuota, espera
+`waitMinutes` y vuelve a empezar por el primero. Un agente que falla dos veces
+seguidas por otra cosa queda fuera por el resto del relevo, y se sigue con el
+siguiente. El traspaso entre agentes es `.relay/RELEVO.md`.
 
 Las reglas que sigue cada agente están en `.agents/rules/unattended-agents.md`.
 
+## Hoy corre solo con Claude
+
+**Decisión de Giancarlo (2026-10-21):** no tiene Codex y no quiere
+Antigravity. Sus entradas siguen en `relay.config.json`, con `args: null`: el
+relevo las salta («Salto codex: sus banderas no están verificadas») y corre
+solo a Claude, sin pedir confirmación (no hay `confirmBeforeRun`).
+
+Con un solo agente, «todos sin cuota» es Claude sin cuota: el relevo espera
+`waitMinutes` y vuelve a lanzarlo. No sale con 1 por eso; sale con 1 solo si
+Claude falla dos veces seguidas por otra cosa.
+
+**Para reactivar uno**, devolverle sus `args` (los verificados son estos) y
+sacarle de su `$comment` la línea de desactivado. Antes, la lista de la
+sección de abajo: corren sin sandbox.
+
+```jsonc
+// codex
+"args": ["exec", "--sandbox", "danger-full-access", "-c", "approval_policy=\"never\"",
+         "-c", "sandbox_workspace_write.network_access=true", "--color", "never", "{prompt}"]
+// antigravity
+"args": ["-p", "{prompt}", "--dangerously-skip-permissions"]
+```
+
+Si al reactivarlos se quiere que Claude vuelva a pedir confirmación cuando le
+toca, `"confirmBeforeRun": true` en su entrada. Entonces, cuando le llega el
+turno, el relevo explica si fue porque los agentes anteriores se quedaron sin
+cuota o fallaron dos veces, y sale con código 5 sin lanzarlo. Se sigue con
+`pnpm relay --confirm claude`; la confirmación vive solo en ese proceso.
+
 ## codex y antigravity corren sin sandbox en Windows
+
+Hoy están desactivados (ver arriba). Esto vale si se reactivan.
 
 **Decisión de Giancarlo (2026-10-10).** En Windows, el sandbox
 `workspace-write` de codex deja `.git` de solo lectura (openai/codex #18918):
