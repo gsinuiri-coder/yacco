@@ -3,11 +3,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 
 import { SessionExpiredError } from "./api-client";
-import type { ApiClient } from "./api-client";
+import type { ApiClient, SessionEndReason } from "./api-client";
 
 export type SessionState =
   | { status: "restoring" }
-  | { status: "signedOut"; expired: boolean }
+  // `ended`: por qué terminó la sesión guardada; null si nunca hubo una o el
+  // chofer la cerró él mismo.
+  | { status: "signedOut"; ended: SessionEndReason | null }
   // `user` es null cuando no se pudo preguntar quién es (sin señal, o el
   // servidor no responde): la sesión sigue, dura 30 días en el celular.
   | { status: "signedIn"; user: SessionUser | null };
@@ -40,11 +42,16 @@ export function SessionProvider({ client, children }: { client: ApiClient; child
   useEffect(() => {
     let active = true;
     async function restore(): Promise<SessionState> {
-      if (!(await client.hasStoredSession())) return { status: "signedOut", expired: false };
       try {
+        if (!(await client.hasStoredSession())) return { status: "signedOut", ended: null };
         return { status: "signedIn", user: await whoIs(client) };
-      } catch {
-        return { status: "signedOut", expired: true };
+      } catch (error) {
+        // whoIs solo deja pasar el refresh rechazado; otra falla acá es del
+        // almacenamiento seguro, y sin poder leerlo solo queda volver a ingresar.
+        return {
+          status: "signedOut",
+          ended: error instanceof SessionExpiredError ? error.reason : null,
+        };
       }
     }
     void restore().then((next) => {
@@ -65,7 +72,7 @@ export function SessionProvider({ client, children }: { client: ApiClient; child
 
   const logout = useCallback(async () => {
     await client.logout();
-    setState({ status: "signedOut", expired: false });
+    setState({ status: "signedOut", ended: null });
   }, [client]);
 
   const value = useMemo(() => ({ state, login, logout }), [state, login, logout]);

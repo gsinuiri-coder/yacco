@@ -15,7 +15,7 @@ function CurrentScreen() {
       </View>
     );
   }
-  if (state.status === "signedOut") return <LoginScreen expired={state.expired} />;
+  if (state.status === "signedOut") return <LoginScreen ended={state.ended} />;
   return <HomeScreen user={state.user} />;
 }
 

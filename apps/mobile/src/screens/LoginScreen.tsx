@@ -2,10 +2,16 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 
 import { ApiError, OfflineError } from "../session/api-client";
+import type { SessionEndReason } from "../session/api-client";
 import { useSession } from "../session/SessionContext";
 import { styles } from "../theme";
 
 export const DRIVERS_ONLY_MESSAGE = "Solo choferes. La oficina entra por la web.";
+
+const SESSION_ENDED_MESSAGES: Record<SessionEndReason, string> = {
+  expired: "Tu sesión venció. Vuelve a ingresar.",
+  driversOnly: DRIVERS_ONLY_MESSAGE,
+};
 
 function describeLoginFailure(error: unknown): string {
   if (error instanceof ApiError) {
@@ -19,7 +25,7 @@ function describeLoginFailure(error: unknown): string {
   return "Algo falló al ingresar. Inténtalo de nuevo.";
 }
 
-export function LoginScreen({ expired }: { expired: boolean }) {
+export function LoginScreen({ ended }: { ended: SessionEndReason | null }) {
   const { login } = useSession();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -41,8 +47,8 @@ export function LoginScreen({ expired }: { expired: boolean }) {
     }
   }
 
-  // El aviso de sesión vencida solo si venció: nunca tras «Cerrar sesión».
-  const notice = errorMessage ?? (expired ? "Tu sesión venció. Vuelve a ingresar." : null);
+  // El aviso de sesión terminada solo si terminó sola: nunca tras «Cerrar sesión».
+  const notice = errorMessage ?? (ended === null ? null : SESSION_ENDED_MESSAGES[ended]);
 
   return (
     <View style={styles.screen}>

@@ -1,6 +1,7 @@
 import {
   ApiError,
   OfflineError,
+  SERVER_FAILURE_MESSAGE,
   SessionExpiredError,
   createApiClient,
 } from "../src/session/api-client";
@@ -84,7 +85,7 @@ describe("api client: la sesión de 30 días del celular", () => {
     ]);
   });
 
-  it("dos pedidos que encuentran el acceso vencido comparten una sola renovación", async () => {
+  it("dos pedidos al abrir la app, sin acceso todavía, comparten una sola renovación", async () => {
     const store = memoryStore("refresh-guardado");
     const server = fakeServer(
       { status: 200, body: { accessToken: "access-3" } },
@@ -99,14 +100,70 @@ describe("api client: la sesión de 30 días del celular", () => {
     expect(refreshes).toHaveLength(1);
   });
 
+  it("dos pedidos que reciben 401 a la vez comparten una sola renovación", async () => {
+    const store = memoryStore();
+    const server = fakeServer(
+      { status: 200, body: { accessToken: "access-viejo", refreshToken: "refresh-1" } },
+      { status: 401 },
+      { status: 401 },
+      { status: 200, body: { accessToken: "access-nuevo" } },
+      { status: 200, body: DRIVER },
+      { status: 200, body: DRIVER },
+    );
+    const client = createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl });
+    await client.login({ username: "chofer.juan", password: "una-clave" });
+
+    await Promise.all([client.me(), client.me()]);
+
+    const refreshes = server.calls.filter((call) => call.url.endsWith("/auth/mobile/refresh"));
+    expect(refreshes).toHaveLength(1);
+    expect(server.calls.slice(-2).map((call) => call.authorization)).toEqual([
+      "Bearer access-nuevo",
+      "Bearer access-nuevo",
+    ]);
+  });
+
   it("si el administrador cortó la sesión desde «Usuarios», el refresh da 401 y el celular la olvida", async () => {
     const store = memoryStore("refresh-revocado");
     const server = fakeServer({ status: 401, body: { message: "Credenciales inválidas" } });
     const client = createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl });
 
-    await expect(client.me()).rejects.toBeInstanceOf(SessionExpiredError);
+    await expect(client.me()).rejects.toEqual(new SessionExpiredError("expired"));
     expect(store.value).toBeNull();
     expect(await client.hasStoredSession()).toBe(false);
+  });
+
+  it("si en estos 30 días le sacaron el rol de chofer, el refresh da 403 y el celular la olvida", async () => {
+    const store = memoryStore("refresh-guardado");
+    const server = fakeServer({ status: 403, body: { message: "La app es solo para choferes" } });
+    const client = createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl });
+
+    const failure = await client.me().catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(SessionExpiredError);
+    expect((failure as SessionExpiredError).reason).toBe("driversOnly");
+    expect(store.value).toBeNull();
+  });
+
+  it("una renovación que vuelve después de cerrar sesión no deja un acceso vivo", async () => {
+    const store = memoryStore("refresh-guardado");
+    let answerRefresh: (response: Response) => void = () => undefined;
+    const fetchImpl = jest.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          answerRefresh = resolve;
+        }),
+    ) as unknown as typeof fetch;
+    const client = createApiClient({ baseUrl: BASE, store, fetchImpl });
+
+    const pending = client.me();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await client.logout();
+    answerRefresh(new Response(JSON.stringify({ accessToken: "access-tarde" }), { status: 200 }));
+
+    await expect(pending).rejects.toBeInstanceOf(SessionExpiredError);
+    await expect(client.me()).rejects.toBeInstanceOf(SessionExpiredError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("sin refresh guardado no hay a qué renovar: la sesión venció", async () => {
@@ -135,8 +192,34 @@ describe("api client: la sesión de 30 días del celular", () => {
     const server = fakeServer({ status: 503 });
     const client = createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl });
 
-    await expect(client.me()).rejects.toEqual(new ApiError(503, "El servidor respondió 503."));
+    await expect(client.me()).rejects.toEqual(new ApiError(503, SERVER_FAILURE_MESSAGE));
     expect(store.value).toBe("refresh-guardado");
+  });
+
+  it("un 5xx muestra el aviso en castellano, no el texto del servidor", async () => {
+    const server = fakeServer({ status: 500, body: { message: "Internal server error" } });
+    const client = createApiClient({
+      baseUrl: BASE,
+      store: memoryStore(),
+      fetchImpl: server.fetchImpl,
+    });
+
+    await expect(client.login({ username: "chofer.juan", password: "una-clave" })).rejects.toEqual(
+      new ApiError(500, SERVER_FAILURE_MESSAGE),
+    );
+  });
+
+  it("un error sin cuerpo dice el status", async () => {
+    const server = fakeServer({ status: 200, body: { accessToken: "access-1" } }, { status: 404 });
+    const client = createApiClient({
+      baseUrl: BASE,
+      store: memoryStore("refresh-guardado"),
+      fetchImpl: server.fetchImpl,
+    });
+
+    await expect(client.request("/algo")).rejects.toEqual(
+      new ApiError(404, "El servidor respondió 404."),
+    );
   });
 
   it("los mensajes de validación de la API llegan juntos", async () => {

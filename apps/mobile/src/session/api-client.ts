@@ -24,9 +24,16 @@ export class ApiError extends Error {
   }
 }
 
-/** El refresh no vale más (venció, o el administrador cortó la sesión): hay que volver a ingresar. */
+/**
+ * Por qué terminó una sesión que el celular tenía guardada: venció o el
+ * administrador la cortó desde «Usuarios» (`expired`), o le sacaron el rol de
+ * chofer (`driversOnly`).
+ */
+export type SessionEndReason = "expired" | "driversOnly";
+
+/** El refresh no vale más: hay que volver a ingresar. */
 export class SessionExpiredError extends Error {
-  constructor() {
+  constructor(readonly reason: SessionEndReason = "expired") {
     super("Tu sesión venció. Vuelve a ingresar.");
     this.name = "SessionExpiredError";
   }
@@ -61,7 +68,13 @@ export interface ApiClientOptions {
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
+export const SERVER_FAILURE_MESSAGE =
+  "El servidor tuvo un problema. Inténtalo de nuevo en unos minutos.";
+
 async function toApiError(response: Response): Promise<ApiError> {
+  // Un 5xx trae, si trae algo, un texto genérico del servidor: el chofer ve
+  // siempre el mismo aviso en castellano.
+  if (response.status >= 500) return new ApiError(response.status, SERVER_FAILURE_MESSAGE);
   let message = `El servidor respondió ${response.status}.`;
   try {
     const body = (await response.json()) as { message?: unknown };
@@ -82,6 +95,9 @@ export function createApiClient({
   let accessToken: string | null = null;
   // Dos pedidos que reciben 401 a la vez comparten una sola renovación.
   let pendingRefresh: Promise<void> | null = null;
+  // Sube con cada ingreso y cada cierre de sesión: una renovación que vuelve
+  // después de cerrar sesión no deja un token de acceso vivo en memoria.
+  let generation = 0;
 
   async function send(path: string, init: RequestInit): Promise<Response> {
     try {
@@ -91,7 +107,14 @@ export function createApiClient({
     }
   }
 
+  async function endSession(reason: SessionEndReason): Promise<never> {
+    accessToken = null;
+    await store.clear();
+    throw new SessionExpiredError(reason);
+  }
+
   async function refreshNow(): Promise<void> {
+    const startedAt = generation;
     const refreshToken = await store.read();
     if (!refreshToken) throw new SessionExpiredError();
     const response = await send("/auth/mobile/refresh", {
@@ -99,13 +122,12 @@ export function createApiClient({
       headers: JSON_HEADERS,
       body: JSON.stringify({ refreshToken }),
     });
-    // 401: vencido, revocado desde «Usuarios» o ya sin rol de chofer. El
-    // refresh guardado no sirve más y no se vuelve a intentar con él.
-    if (response.status === 401) {
-      accessToken = null;
-      await store.clear();
-      throw new SessionExpiredError();
-    }
+    if (startedAt !== generation) throw new SessionExpiredError();
+    // El refresh guardado no sirve más y no se vuelve a intentar con él:
+    // 401 si venció o el administrador lo cortó desde «Usuarios», 403 si en
+    // estos 30 días le sacaron el rol de chofer (AuthService.refreshAccessToken).
+    if (response.status === 401) return endSession("expired");
+    if (response.status === 403) return endSession("driversOnly");
     if (!response.ok) throw await toApiError(response);
     accessToken = ((await response.json()) as RefreshResponse).accessToken;
   }
@@ -145,6 +167,7 @@ export function createApiClient({
       if (!response.ok) throw await toApiError(response);
       const session = (await response.json()) as MobileSession;
       await store.write(session.refreshToken);
+      generation += 1;
       accessToken = session.accessToken;
     },
     async hasStoredSession() {
@@ -155,7 +178,9 @@ export function createApiClient({
       return request<SessionUser>("/auth/me");
     },
     async logout() {
+      generation += 1;
       accessToken = null;
+      pendingRefresh = null;
       await store.clear();
     },
   };

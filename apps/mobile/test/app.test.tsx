@@ -5,6 +5,7 @@ import { createApiClient } from "../src/session/api-client";
 import { DRIVER, fakeServer, memoryStore } from "./fakes";
 
 const BASE = "https://api.example.test";
+const OFFLINE_TEXT = "Sin conexión con el servidor. Tu sesión sigue abierta.";
 
 async function renderApp(
   store: ReturnType<typeof memoryStore>,
@@ -113,7 +114,7 @@ describe("la sesión de 30 días al abrir la app", () => {
     const store = memoryStore("refresh-guardado");
     await renderApp(store, fakeServer(new TypeError("Network request failed")));
 
-    expect(await screen.findByText("Sin conexión. Tu sesión sigue abierta.")).toBeOnTheScreen();
+    expect(await screen.findByText(OFFLINE_TEXT)).toBeOnTheScreen();
     expect(store.value).toBe("refresh-guardado");
   });
 
@@ -121,7 +122,7 @@ describe("la sesión de 30 días al abrir la app", () => {
     const store = memoryStore("refresh-guardado");
     await renderApp(store, fakeServer({ status: 503 }));
 
-    expect(await screen.findByText("Sin conexión. Tu sesión sigue abierta.")).toBeOnTheScreen();
+    expect(await screen.findByText(OFFLINE_TEXT)).toBeOnTheScreen();
     expect(store.value).toBe("refresh-guardado");
   });
 
@@ -136,7 +137,7 @@ describe("la sesión de 30 días al abrir la app", () => {
 
     await fillLogin("chofer.juan", "una-clave");
 
-    expect(await screen.findByText("Sin conexión. Tu sesión sigue abierta.")).toBeOnTheScreen();
+    expect(await screen.findByText(OFFLINE_TEXT)).toBeOnTheScreen();
     expect(store.value).toBe("refresh-1");
   });
 
@@ -151,6 +152,46 @@ describe("la sesión de 30 días al abrir la app", () => {
       "Tu sesión venció. Vuelve a ingresar.",
     );
     expect(store.value).toBeNull();
+  });
+
+  it("si le sacaron el rol de chofer, vuelve al ingreso con «Solo choferes»", async () => {
+    const store = memoryStore("refresh-guardado");
+    await renderApp(
+      store,
+      fakeServer({ status: 403, body: { message: "La app es solo para choferes" } }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Solo choferes. La oficina entra por la web.",
+    );
+    expect(store.value).toBeNull();
+  });
+
+  it("si el almacenamiento seguro no se puede leer, pide ingresar sin avisos", async () => {
+    const store = memoryStore();
+    store.read = () => Promise.reject(new Error("Keystore no disponible"));
+    await renderApp(store, fakeServer());
+
+    expect(await screen.findByRole("button", { name: "Ingresar" })).toBeOnTheScreen();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("si no se pudo borrar el refresh, avisa y deja intentar de nuevo", async () => {
+    const store = memoryStore("refresh-guardado");
+    store.clear = () => Promise.reject(new Error("Keystore no disponible"));
+    const server = fakeServer(
+      { status: 200, body: { accessToken: "access-2" } },
+      { status: 200, body: DRIVER },
+    );
+    await renderApp(store, server);
+    await screen.findByRole("header", { name: "Hola, chofer.juan" });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Cerrar sesión" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudo cerrar la sesión. Inténtalo de nuevo.",
+    );
+    expect(screen.getByRole("button", { name: "Cerrar sesión" })).toBeEnabled();
   });
 
   it("cerrar sesión borra el refresh y vuelve al ingreso sin el aviso de vencida", async () => {
