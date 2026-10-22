@@ -7,10 +7,10 @@ import type { NamedReference } from "./container-balances.js";
 import type { EffectivePrice } from "./customer-prices.js";
 import type { PaymentMethod } from "./payments.js";
 import type { ProductType } from "./products.js";
-import type { Route, RouteTruckStockLine } from "./routes.js";
+import type { MarkRouteStopBody, Route, RouteTruckStockLine } from "./routes.js";
 
 /** Operation types the API knows. A new shape is a new `version`, never an edit. */
-export type SyncOperationType = "STOP_MARK";
+export type SyncOperationType = "STOP_MARK" | "STOP_ADD_VAN_SALE";
 
 /** One queued action. `id` is generated on the phone; `clientTimestamp` is the phone's clock. */
 export interface SyncOperationEnvelope<TPayload = Record<string, unknown>> {
@@ -19,6 +19,25 @@ export interface SyncOperationEnvelope<TPayload = Record<string, unknown>> {
   version: number;
   clientTimestamp: string;
   payload: TPayload;
+}
+
+/** `STOP_MARK` v1: the web's stop PATCH body plus which stop. */
+export interface StopMarkPayloadV1 extends MarkRouteStopBody {
+  routeId: string;
+  stopId: string;
+}
+
+/**
+ * `STOP_ADD_VAN_SALE` v1: a van sale at a location with no stop, added and
+ * delivered in one operation. The location must be in the route's zone or
+ * within 1 km of `markedLatitude`/`markedLongitude`.
+ */
+export interface StopAddVanSalePayloadV1 extends Omit<
+  MarkRouteStopBody,
+  "status" | "failureReason"
+> {
+  routeId: string;
+  locationId: string;
 }
 
 /** POST /sync/operations */

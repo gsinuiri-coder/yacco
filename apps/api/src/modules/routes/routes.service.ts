@@ -15,6 +15,7 @@ import {
   StopStatus,
   UserRole,
 } from "@prisma/client";
+import { NEARBY_RADIUS_M, distanceInMeters } from "../../common/geo.js";
 import { ROUTE_STATUS_LABELS, STOP_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import {
@@ -1031,24 +1032,42 @@ export class RoutesService {
     actor: RouteActor,
     occurredAt: Date,
   ): Promise<RouteStopResponseDto> {
-    const route = await tx.route.findUnique({
-      where: { id: routeId },
-      select: { driverId: true },
-    });
-    if (route === null) {
-      throw new NotFoundException(`La ruta "${routeId}" no existe`);
-    }
-    if (route.driverId !== actor.id) {
-      throw new ForbiddenException("Esta ruta es de otro chofer");
-    }
-    const status = await lockRouteAndReadStatus(tx, routeId);
-    if (status !== RouteStatus.IN_PROGRESS) {
-      throw new ConflictException(
-        `Solo se pueden marcar paradas de una ruta en curso; esta está ${ROUTE_STATUS_LABELS[status]}`,
-      );
-    }
+    await lockOwnRouteInProgress(tx, routeId, actor, "marcar paradas");
     assertMarkPayloadMatchesStatus(dto);
     return this.applyStopMark(tx, routeId, stopId, dto, actor, occurredAt);
+  }
+
+  /**
+   * Venta en ruta desde el celular (`STOP_ADD_VAN_SALE`): la parada VAN_SALE
+   * se agrega y se marca entregada en la misma operación, porque sin señal no
+   * hay un paso intermedio que el servidor pueda ver. La parada guarda quién
+   * la agregó (`added_by`, el chofer) y cuándo llegó (`created_at`); la hora
+   * del celular queda en la operación y fecha la venta.
+   *
+   * Solo a un local activo de un cliente activo, de la zona de la ruta o a
+   * menos de 1 km de donde el chofer marcó: lo mismo que el snapshot le
+   * ofrece. Un cliente nuevo sigue siendo cosa de la oficina.
+   */
+  async addVanSaleStopWithinTransaction(
+    tx: Prisma.TransactionClient,
+    routeId: string,
+    locationId: string,
+    dto: Omit<MarkRouteStopDto, "status" | "failureReason">,
+    actor: RouteActor,
+    occurredAt: Date,
+  ): Promise<RouteStopResponseDto> {
+    const route = await lockOwnRouteInProgress(tx, routeId, actor, "hacer ventas en ruta");
+    const mark: MarkRouteStopDto = { ...dto, status: StopStatus.DELIVERED };
+    assertMarkPayloadMatchesStatus(mark);
+    await assertVanSaleLocationReachable(tx, locationId, route.zoneId, mark);
+
+    const stop = await this.createStopWithinTransaction(
+      tx,
+      routeId,
+      { locationId, origin: StopOrigin.VAN_SALE, orderId: null },
+      actor,
+    );
+    return this.applyStopMark(tx, routeId, stop.id, mark, actor, occurredAt);
   }
 
   private applyStopMark(
@@ -1812,6 +1831,89 @@ export async function lockRouteAndReadStatus(
     throw new NotFoundException(`La ruta "${routeId}" no existe`);
   }
   return route.status;
+}
+
+/**
+ * Lo que el lote del celular exige antes de escribir en una ruta: que sea DE
+ * ESE chofer —sin la excepción de la oficina, ver `markStopWithinTransaction`—
+ * y que siga en curso, leído con su candado porque el lote puede llegar horas
+ * después de que la oficina la terminó.
+ */
+async function lockOwnRouteInProgress(
+  tx: Prisma.TransactionClient,
+  routeId: string,
+  actor: RouteActor,
+  action: string,
+): Promise<{ zoneId: string | null }> {
+  const route = await tx.route.findUnique({
+    where: { id: routeId },
+    select: { driverId: true, zoneId: true },
+  });
+  if (route === null) {
+    throw new NotFoundException(`La ruta "${routeId}" no existe`);
+  }
+  if (route.driverId !== actor.id) {
+    throw new ForbiddenException("Esta ruta es de otro chofer");
+  }
+  const status = await lockRouteAndReadStatus(tx, routeId);
+  if (status !== RouteStatus.IN_PROGRESS) {
+    throw new ConflictException(
+      `Solo se pueden ${action} de una ruta en curso; esta está ${ROUTE_STATUS_LABELS[status]}`,
+    );
+  }
+  return { zoneId: route.zoneId };
+}
+
+/**
+ * El mismo criterio con que el snapshot ofrece los locales para una venta en
+ * ruta (`RouteSnapshotService.vanSaleLocationIds`), ahora para aceptarlos.
+ * La distancia se mide desde donde el chofer marcó la venta: sin esa
+ * ubicación, solo vale un local de la zona de la ruta.
+ *
+ * Que el local o el cliente estén inactivos es el servidor que cambió
+ * mientras el chofer no tenía señal (409, cuarentena al primer intento);
+ * estar lejos y en otra zona es la operación que no corresponde (400).
+ */
+async function assertVanSaleLocationReachable(
+  tx: Prisma.TransactionClient,
+  locationId: string,
+  routeZoneId: string | null,
+  mark: MarkRouteStopDto,
+): Promise<void> {
+  const location = await tx.customerLocation.findUnique({
+    where: { id: locationId },
+    select: {
+      active: true,
+      latitude: true,
+      longitude: true,
+      customer: { select: { active: true, zoneId: true } },
+    },
+  });
+  if (location === null) {
+    throw new NotFoundException(`La ubicación "${locationId}" no existe`);
+  }
+  if (!location.active || !location.customer.active) {
+    throw new ConflictException("Ese local o su cliente ya no están activos");
+  }
+  if (routeZoneId !== null && location.customer.zoneId === routeZoneId) {
+    return;
+  }
+  const nearby =
+    mark.markedLatitude !== undefined &&
+    mark.markedLongitude !== undefined &&
+    location.latitude !== null &&
+    location.longitude !== null &&
+    distanceInMeters(
+      Number(mark.markedLatitude),
+      Number(mark.markedLongitude),
+      location.latitude.toNumber(),
+      location.longitude.toNumber(),
+    ) <= NEARBY_RADIUS_M;
+  if (!nearby) {
+    throw new BadRequestException(
+      `Ese local no es de la zona de la ruta ni está a menos de ${NEARBY_RADIUS_M / 1000} km de donde se marcó la venta`,
+    );
+  }
 }
 
 function buildRouteFilter(query: ListRoutesQueryDto, actor: RouteActor): Prisma.RouteWhereInput {
