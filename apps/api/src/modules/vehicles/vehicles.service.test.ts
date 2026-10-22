@@ -537,6 +537,9 @@ describe("VehiclesService", () => {
 
   describe("calculateVehicleAndDriverWarnings", () => {
     it("genera advertencias para revisión vencida, licencia por vencer y vehículo en otra ruta", async () => {
+      // Las advertencias se miden contra hoy en Lima: sin fijarlo, la licencia
+      // del 2026-10-20 pasa de «por vencer» a «vencida» con el calendario.
+      jest.spyOn(service, "getTodayLima").mockReturnValue("2026-10-12");
       prisma.vehicle.findUnique.mockResolvedValue({ id: VEHICLE_ID });
       prisma.vehicleReviewType.findMany.mockResolvedValue([
         { id: REVIEW_TYPE_ID, name: "SOAT", active: true },

@@ -71,7 +71,8 @@
       "js-yaml@3": "^3.15.2",
       "qs@6": "^6.16.0",
       "fontless>esbuild": "^0.28.1",
-      "@nuxt/nitro-server>devalue": "^5.9.3"
+      "@nuxt/nitro-server>devalue": "^5.9.3",
+      "launch-editor": "^2.14.2"
     },
     "packageExtensions": {
       "@testing-library/jest-dom": {
