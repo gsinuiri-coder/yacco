@@ -85,11 +85,13 @@ del build, nunca en un `.env*`:
 EXPO_PUBLIC_API_URL=https://api.ejemplo.pe pnpm --filter @yacco/mobile start
 ```
 
-Sin la variable, la app apunta a `http://10.0.2.2:3200`: la API local vista
-desde el emulador de Android (10.0.2.2 es el localhost de la máquina que corre
-el emulador). Un APK armado sin ella no llega a ninguna API desde un celular
-real. No es un secreto: cualquiera que abra el APK la lee. El comando que arma
-el APK llega en la fila 11e.
+Sin la variable, la app no inventa ninguna: abre en «Falta la dirección del
+servidor». No hay default en el código a propósito: sería una URL sin cifrar
+hacia la máquina de desarrollo (SonarCloud lo marca como vulnerabilidad). Para
+probar contra la API local desde el emulador de Android, se pasa explícita:
+`EXPO_PUBLIC_API_URL=http://10.0.2.2:3200` (10.0.2.2 es el localhost de la
+máquina que corre el emulador). No es un secreto: cualquiera que abra el APK
+la lee. El comando que arma el APK llega en la fila 11e.
 
 ## Visor
 
