@@ -10,9 +10,12 @@ import {
   IsObject,
   IsString,
   IsUUID,
+  Matches,
   Min,
   ValidateNested,
 } from "class-validator";
+
+const INSTANT_WITH_ZONE = /T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
 
 /** Cuántas operaciones entran en un lote: lo que junta un día entero sin señal. */
 export const MAX_OPERATIONS_PER_BATCH = 200;
@@ -37,8 +40,13 @@ export class SyncOperationEnvelopeDto {
   @Min(1, { message: "La versión del sobre empieza en 1" })
   version!: number;
 
-  @ApiProperty({ type: String, format: "date-time", description: "Hora del celular" })
+  // Con hora y zona obligatorias: "2026-10-22" a secas se leería como
+  // medianoche UTC, que en Lima es el día anterior, y fecharía la venta mal.
+  @ApiProperty({ type: String, format: "date-time", description: "Hora del celular, con zona" })
   @IsISO8601({ strict: true }, { message: "La hora de la operación debe ser ISO 8601" })
+  @Matches(INSTANT_WITH_ZONE, {
+    message: "La hora de la operación debe traer hora y zona (Z o ±hh:mm)",
+  })
   clientTimestamp!: string;
 
   @ApiProperty({ type: Object })

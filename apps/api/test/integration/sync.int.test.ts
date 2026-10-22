@@ -275,6 +275,58 @@ describe("POST /api/v1/sync/operations (integration)", () => {
     expect(await routeLedger(routeId)).toEqual(afterFirst);
   });
 
+  it("applies the same batch sent twice at once only once", async () => {
+    const { routeId, stopIds } = await startedRoute(driverId, 2);
+    const batch = [deliveredMark(routeId, stopIds[0]!), deliveredMark(routeId, stopIds[1]!)];
+
+    const responses = await Promise.all([send(batch), send(batch)]);
+
+    const statuses = responses
+      .flatMap((response) =>
+        response.body.results.map((result: { status: string }) => result.status),
+      )
+      .sort();
+    expect(statuses).toEqual(["APPLIED", "APPLIED", "DUPLICATE", "DUPLICATE"]);
+    expect((await routeLedger(routeId)).sales).toBe(2);
+    const rows = await prisma.syncOperation.findMany({
+      where: { id: { in: batch.map((operation) => operation.id) } },
+    });
+    expect(rows.map((row) => row.status)).toEqual(["APPLIED", "APPLIED"]);
+  });
+
+  it("undoes everything a rejected operation had already written, and the rest of the batch applies", async () => {
+    const { routeId, stopIds } = await startedRoute(driverId, 2);
+    // Más de lo cargado: la parada ya pasó a entregada cuando la venta
+    // descubre que no hay stock. Solo el SAVEPOINT deshace ese cambio.
+    const overstock = {
+      ...deliveredMark(routeId, stopIds[0]!),
+      payload: {
+        routeId,
+        stopId: stopIds[0]!,
+        status: "DELIVERED",
+        items: [{ productId: refillProductId, quantity: 20 }],
+      },
+    };
+
+    const response = await send([overstock, failedMark(routeId, stopIds[1]!)]).expect(200);
+
+    expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: false });
+    expect(response.body.results[0].reason).toContain("Stock insuficiente");
+    expect(response.body.results[1].status).toBe("APPLIED");
+    expect(await stopStatus(stopIds[0]!)).toBe("PENDING");
+    expect(await stopStatus(stopIds[1]!)).toBe("FAILED");
+    expect(await routeLedger(routeId)).toEqual({ sales: 0, payments: 0, movements: 0 });
+  });
+
+  it("rejects the whole batch when an operation's time has no zone", async () => {
+    const { routeId, stopIds } = await startedRoute(driverId, 1);
+
+    await send([{ ...failedMark(routeId, stopIds[0]!), clientTimestamp: "2026-10-22" }]).expect(
+      400,
+    );
+    expect(await stopStatus(stopIds[0]!)).toBe("PENDING");
+  });
+
   it("applies in the order the driver made them, not the order they arrived", async () => {
     const { routeId, stopIds } = await startedRoute(driverId, 1);
     const first = failedMark(routeId, stopIds[0]!, new Date(Date.now() - 60_000));
@@ -363,6 +415,23 @@ describe("POST /api/v1/sync/operations (integration)", () => {
     expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
     expect(await stopStatus(stopIds[0]!)).toBe("PENDING");
     expect((await routeLedger(routeId)).sales).toBe(0);
+  });
+
+  it("does not let a driver who is also office touch another driver's route from the app", async () => {
+    const both = await createUserAndLogin("chofer-y-oficina-sync", "DRIVER");
+    await prisma.userRoleAssignment.create({
+      data: {
+        userId: both.id,
+        roleId: (await prisma.role.findUniqueOrThrow({ where: { name: "ADMIN" } })).id,
+      },
+    });
+    const bothToken = await login("chofer-y-oficina-sync", "chofer-y-oficina-sync-clave-de-prueba");
+    const { routeId, stopIds } = await startedRoute(otherDriverId, 1);
+
+    const response = await send([failedMark(routeId, stopIds[0]!)], bothToken).expect(200);
+
+    expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+    expect(await stopStatus(stopIds[0]!)).toBe("PENDING");
   });
 
   it("rejects an envelope version the server does not know, without applying it", async () => {

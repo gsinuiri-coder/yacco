@@ -417,6 +417,26 @@ describe("sesión de la app del chofer", () => {
     await mobileRefresh(refreshCookie.split("=")[1]!).expect(401);
   });
 
+  test("un chofer que también es de oficina entra a la app solo como chofer", async () => {
+    const { adminToken, userId } = await userWithOpenSession("chofer-y-oficina");
+    await request(server())
+      .patch(`/api/v1/users/${userId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ roles: ["DRIVER", "ADMIN"] })
+      .expect(200);
+
+    const login = await mobileLogin("chofer-y-oficina").expect(200);
+    const refreshed = await mobileRefresh(login.body.refreshToken).expect(200);
+
+    for (const accessToken of [login.body.accessToken, refreshed.body.accessToken]) {
+      const me = await request(server())
+        .get("/api/v1/auth/me")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .expect(200);
+      expect(me.body.roles).toEqual(["DRIVER"]);
+    }
+  });
+
   test("quien no es chofer no entra a la app", async () => {
     const adminLogin = await request(server())
       .post("/api/v1/auth/mobile/login")

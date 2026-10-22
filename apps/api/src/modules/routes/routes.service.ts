@@ -1018,6 +1018,10 @@ export class RoutesService {
    *
    * `occurredAt` es la hora del celular al marcar, no la de llegada: la
    * entrega pasó cuando el chofer la anotó, aunque la señal llegara después.
+   *
+   * Solo el chofer DE ESA RUTA, sin la excepción de `assertCanAccessRoute`
+   * para la oficina: quien entra a la app es chofer, y si además tiene otro
+   * rol, desde el celular igual no toca rutas ajenas.
    */
   async markStopWithinTransaction(
     tx: Prisma.TransactionClient,
@@ -1034,7 +1038,9 @@ export class RoutesService {
     if (route === null) {
       throw new NotFoundException(`La ruta "${routeId}" no existe`);
     }
-    assertCanAccessRoute(actor, route);
+    if (route.driverId !== actor.id) {
+      throw new ForbiddenException("Esta ruta es de otro chofer");
+    }
     const status = await lockRouteAndReadStatus(tx, routeId);
     if (status !== RouteStatus.IN_PROGRESS) {
       throw new ConflictException(

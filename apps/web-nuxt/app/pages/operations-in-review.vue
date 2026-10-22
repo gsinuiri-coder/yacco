@@ -152,13 +152,13 @@ function stopStatusLabel(status: string): string {
             <p>Lo que quiso hacer:</p>
             <ul class="list-disc ps-5">
               <li
-                v-for="line in describeSyncOperation(
+                v-for="(line, index) in describeSyncOperation(
                   operation.type,
                   operation.version,
                   operation.payload,
                   catalogs,
                 )"
-                :key="line"
+                :key="index"
               >
                 {{ line }}
               </li>

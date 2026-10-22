@@ -18,6 +18,7 @@ const MOBILE_DRIVERS_ONLY = "La app es solo para choferes";
  * no vuelve a ingresar en 30 días), no un parámetro de despliegue.
  */
 export const MOBILE_REFRESH_EXPIRES_IN = "30d";
+const MOBILE_ROLES: UserRole[] = [UserRole.DRIVER];
 
 interface LoginTokens {
   accessToken: string;
@@ -51,8 +52,10 @@ export class AuthService {
       throw new ForbiddenException(MOBILE_DRIVERS_ONLY);
     }
     return {
-      accessToken: this.signAccessToken(user.id, user.username, roles),
-      refreshToken: this.signRefreshToken(user.id, user.username, roles, user.tokenVersion, {
+      // Solo DRIVER aunque tenga más roles: un celular perdido abre 30 días
+      // de app del chofer, no de oficina.
+      accessToken: this.signAccessToken(user.id, user.username, MOBILE_ROLES),
+      refreshToken: this.signRefreshToken(user.id, user.username, MOBILE_ROLES, user.tokenVersion, {
         client: "mobile",
         expiresIn: MOBILE_REFRESH_EXPIRES_IN,
       }),
@@ -73,8 +76,11 @@ export class AuthService {
     const roles = user.roles.map((assignment) => assignment.role.name);
     // Si en estos 30 días le sacaron el rol de chofer, el celular deja de
     // renovar: la app es solo para choferes.
-    if (payload.client === "mobile" && !roles.includes(UserRole.DRIVER)) {
-      throw new ForbiddenException(MOBILE_DRIVERS_ONLY);
+    if (payload.client === "mobile") {
+      if (!roles.includes(UserRole.DRIVER)) {
+        throw new ForbiddenException(MOBILE_DRIVERS_ONLY);
+      }
+      return { accessToken: this.signAccessToken(user.id, user.username, MOBILE_ROLES) };
     }
     return { accessToken: this.signAccessToken(user.id, user.username, roles) };
   }

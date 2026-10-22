@@ -103,6 +103,15 @@ export class SyncService {
     actor: RouteActor,
     receivedAt: Date,
   ): Promise<SyncOperationResultDto> {
+    // El id se reserva ANTES de leerlo: el celular reintenta cuando se le
+    // corta la respuesta, y el reintento puede llegar con el primer lote
+    // todavía en curso. Sin este candado los dos ven "no existe", el segundo
+    // choca con lo que aplicó el primero y pisa su fila APPLIED con un
+    // rechazo. Con él, el segundo espera al commit del primero y contesta
+    // DUPLICATE. Una colisión de `hashtext` solo serializa dos ids distintos.
+    // `$executeRaw` y no `$queryRaw`: la función devuelve `void`, que Prisma
+    // no sabe deserializar como columna.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${envelope.id}))`;
     const existing = await tx.syncOperation.findUnique({ where: { id: envelope.id } });
     if (existing !== null) {
       const settled = settledResult(existing, actor);
@@ -179,19 +188,18 @@ export class SyncService {
       "status" | "attempts" | "rejectionReason" | "quarantinedAt" | "appliedAt"
     >,
   ): Promise<void> {
+    // Lo que se guarda es lo que se intentó ESTA vez: si el segundo intento
+    // trae otro contenido, la fila tiene que decir qué se aplicó o rechazó.
+    const sent = {
+      operationType: envelope.type,
+      envelopeVersion: envelope.version,
+      payload: envelope.payload as Prisma.InputJsonObject,
+      clientTimestamp: new Date(envelope.clientTimestamp),
+    };
     await tx.syncOperation.upsert({
       where: { id: envelope.id },
-      create: {
-        id: envelope.id,
-        userId: actor.id,
-        operationType: envelope.type,
-        envelopeVersion: envelope.version,
-        payload: envelope.payload as Prisma.InputJsonObject,
-        clientTimestamp: new Date(envelope.clientTimestamp),
-        receivedAt,
-        ...outcome,
-      },
-      update: outcome,
+      create: { id: envelope.id, userId: actor.id, receivedAt, ...sent, ...outcome },
+      update: { ...sent, ...outcome },
     });
   }
 
@@ -306,11 +314,12 @@ function stopIdOf(operation: SyncOperation): string | null {
 function settledResult(existing: SyncOperation, actor: RouteActor): SyncOperationResultDto | null {
   if (existing.userId !== actor.id) {
     // Un UUID repetido entre dos celulares no pasa por azar. Sin escribir
-    // nada: la fila es de quien la mandó primero.
+    // nada: la fila es de quien la mandó primero. En cuarentena para el
+    // celular, que así deja de reintentarla.
     return {
       id: existing.id,
       status: "REJECTED",
-      quarantined: false,
+      quarantined: true,
       reason: "Esa operación la mandó otro usuario",
     };
   }
