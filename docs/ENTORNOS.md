@@ -74,6 +74,25 @@ imagen que va a Cloud Run, corriendo en Docker contra esta base, y el smoke de
 solo lectura contra ella (`docs/DEPLOY.md`, «E2E local antes del deploy
 final»).
 
+### La app del chofer (`apps/mobile`)
+
+La URL de la API **se fija al armar el APK**, no en el celular: Expo copia
+`EXPO_PUBLIC_API_URL` dentro del bundle en ese momento. Es la URL base, sin
+`/api/v1` (la app lo agrega) y sin barra final. Se pasa en la línea de comandos
+del build, nunca en un `.env*`:
+
+```bash
+EXPO_PUBLIC_API_URL=https://api.ejemplo.pe pnpm --filter @yacco/mobile start
+```
+
+Sin la variable, la app no inventa ninguna: abre en «Falta la dirección del
+servidor». No hay default en el código a propósito: sería una URL sin cifrar
+hacia la máquina de desarrollo (SonarCloud lo marca como vulnerabilidad). Para
+probar contra la API local desde el emulador de Android, se pasa explícita:
+`EXPO_PUBLIC_API_URL=http://10.0.2.2:3200` (10.0.2.2 es el localhost de la
+máquina que corre el emulador). No es un secreto: cualquiera que abra el APK
+la lee. El comando que arma el APK llega en la fila 11e.
+
 ## Visor
 
 Herramienta del entorno local para ver y probar la aplicación terminada en una copia

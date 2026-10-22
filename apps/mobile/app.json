@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Yacco Chofer",
+    "slug": "yacco-chofer",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "platforms": ["android"],
+    "android": {
+      "package": "pe.yacco.driver"
+    },
+    "plugins": ["expo-secure-store"]
+  }
+}
