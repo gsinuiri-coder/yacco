@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import type { CustomerPrice, Product } from "@prisma/client";
 import { isOffice } from "../../common/viewer.js";
 import type { Viewer } from "../../common/viewer.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
@@ -37,6 +38,54 @@ function toCustomerPriceResponse(price: CustomerPriceWithRelations): CustomerPri
     location: price.location,
     price: price.price.toFixed(2),
   };
+}
+
+/**
+ * La precedencia de `findEffectivePrices`, sin leer la base: `prices` son los
+ * del cliente —los de toda su cuenta y los de cualquier local—, y de los de
+ * local solo cuenta el de `locationId`. Exportada para el snapshot del chofer
+ * (sync), que resuelve los precios de muchos locales con una sola lectura y
+ * no puede tener una segunda copia de la regla.
+ */
+export function resolveEffectivePrices(
+  products: Pick<Product, "id" | "name" | "listPrice">[],
+  prices: Pick<CustomerPrice, "productId" | "locationId" | "price">[],
+  locationId?: string,
+): EffectivePriceResponseDto[] {
+  const customerPriceByProduct = new Map(
+    prices
+      .filter((price) => price.locationId === null)
+      .map((price) => [price.productId, price] as const),
+  );
+  const locationPriceByProduct = new Map(
+    prices
+      .filter((price) => locationId !== undefined && price.locationId === locationId)
+      .map((price) => [price.productId, price] as const),
+  );
+
+  return products.map((product) => {
+    const productRef = { id: product.id, name: product.name };
+
+    const locationPrice = locationPriceByProduct.get(product.id);
+    if (locationPrice !== undefined) {
+      return {
+        product: productRef,
+        price: locationPrice.price.toFixed(2),
+        source: PriceSource.LOCATION,
+      };
+    }
+
+    const customerPrice = customerPriceByProduct.get(product.id);
+    if (customerPrice !== undefined) {
+      return {
+        product: productRef,
+        price: customerPrice.price.toFixed(2),
+        source: PriceSource.CUSTOMER,
+      };
+    }
+
+    return { product: productRef, price: product.listPrice.toFixed(2), source: PriceSource.LIST };
+  });
 }
 
 @Injectable()
@@ -171,40 +220,7 @@ export class CustomerPricesService {
       }),
     ]);
 
-    const customerPriceByProduct = new Map(
-      prices
-        .filter((price) => price.locationId === null)
-        .map((price) => [price.productId, price] as const),
-    );
-    const locationPriceByProduct = new Map(
-      prices
-        .filter((price) => price.locationId !== null)
-        .map((price) => [price.productId, price] as const),
-    );
-
-    return products.map((product) => {
-      const productRef = { id: product.id, name: product.name };
-
-      const locationPrice = locationPriceByProduct.get(product.id);
-      if (locationPrice !== undefined) {
-        return {
-          product: productRef,
-          price: locationPrice.price.toFixed(2),
-          source: PriceSource.LOCATION,
-        };
-      }
-
-      const customerPrice = customerPriceByProduct.get(product.id);
-      if (customerPrice !== undefined) {
-        return {
-          product: productRef,
-          price: customerPrice.price.toFixed(2),
-          source: PriceSource.CUSTOMER,
-        };
-      }
-
-      return { product: productRef, price: product.listPrice.toFixed(2), source: PriceSource.LIST };
-    });
+    return resolveEffectivePrices(products, prices, query.locationId);
   }
 
   private async assertCustomerExists(customerId: string): Promise<void> {
