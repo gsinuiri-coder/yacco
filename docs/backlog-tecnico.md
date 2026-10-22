@@ -2398,6 +2398,21 @@ build. CI sigue en `--audit-level=high`.
 `babel-plugin-istanbul` › `js-yaml` 3 › `argparse` 1) no se ignora: queda por
 debajo del nivel `high` de CI y sigue a la vista en cada `pnpm audit`.
 
+## Quitar el override de launch-editor cuando Nuxt traiga >= 2.14.2
+
+**Estado:** abierto. **Registrado:** 2026-10-22, en `chore(deps): override de
+launch-editor`. **Disparador:** que `nuxt` traiga un `@nuxt/devtools` que ya
+dependa de `launch-editor` >= 2.14.2. Entonces, en un PR propio, sacar
+`"launch-editor": "^2.14.2"` de `pnpm.overrides` del `package.json` raíz y
+confirmar que el lockfile sigue resolviendo una versión parcheada.
+
+`GHSA-587h-7wmj-h5pm` (high) afecta a `launch-editor` <= 2.14.1, que entra por
+`apps/web-nuxt` › `nuxt` 4.5.2 › `@nuxt/devtools` 3.4.2: solo el servidor de
+desarrollo, nada del runtime de producción. Rompía `pnpm audit
+--audit-level=high` en CI en `main` y en toda rama. Se forzó 2.14.2 (la más
+baja con parche) con un override en vez de ignorar el GHSA, porque el parche
+existe y entra en el rango que pide `@nuxt/devtools`.
+
 ## El test de login que entra al panel falla a veces en local (Windows)
 
 **Estado:** abierto. **Registrado:** 2026-10-09. **Disparador:** que falle una
