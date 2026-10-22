@@ -17,8 +17,8 @@ relevo las salta («Salto codex: sus banderas no están verificadas») y corre
 solo a Claude, sin pedir confirmación (no hay `confirmBeforeRun`).
 
 Con un solo agente, «todos sin cuota» es Claude sin cuota: el relevo espera
-`waitMinutes` y vuelve a lanzarlo. No sale con 1 por eso; sale con 1 solo si
-Claude falla dos veces seguidas por otra cosa.
+`waitMinutes` y vuelve a lanzarlo. Por la cuota no sale con 1 (los motivos
+del código 1 están en la tabla de abajo).
 
 **Para reactivar uno**, devolverle sus `args` (los verificados son estos) y
 sacarle de su `$comment` la línea de desactivado. Antes, la lista de la
@@ -221,7 +221,7 @@ va la hora de Lima; con `--watch` en una terminal, además, «Actualiza cada 5 s
 ```
 pnpm relay --dry-run   # qué correría y con qué banderas, sin correr nada
 pnpm relay             # arranca
-pnpm relay --confirm claude # confirma Claude solo para esta ejecución
+pnpm relay --confirm claude # solo con confirmBeforeRun (hoy no): confirma para esta ejecución
 touch .relay/stop      # para entre dos corridas (sale con 4)
 ```
 
