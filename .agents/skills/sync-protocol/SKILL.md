@@ -1,28 +1,28 @@
 ---
 name: sync-protocol
-description: The agreed DESIGN of the offline sync protocol between the driver
-  app and the API — a protocol not built yet (no sync module, no
-  packages/sync-engine, empty apps/mobile). Use when designing or building
-  that module, or when deciding what POST /api/v1/sync/operations should look
-  like — envelope shape, ordering, idempotency, batching, quarantine. Not a
-  description of code that exists today.
+description: The offline sync protocol between the driver app (apps/mobile)
+  and the API (apps/api/src/modules/sync) — invariants since 2026-10-22. Use
+  whenever touching POST /api/v1/sync/operations, a sync operation type or
+  version, the app's local queue, or the «Operaciones en revisión» inbox —
+  envelope shape, ordering, idempotency, batching, quarantine.
 ---
 
 # Sync protocol (mobile offline queue <-> API)
 
-> **Estado real, decidido con el dueño de la planta:** este documento es el
-> diseño acordado del protocolo, no una descripción del código. El módulo de
-> sincronización **no existe**: `POST /api/v1/sync/operations` no tiene
-> controller ni servicio —solo la tabla `sync_operations`, modelada por
-> adelantado—, `apps/mobile` contiene únicamente un `.gitkeep` y
-> `packages/sync-engine` no existe como directorio. Hoy **la oficina registra
-> cada parada desde la web**, con `PATCH /api/v1/routes/:id/stops/:stopId`
-> (spec §4.3).
+> **Estado real (2026-10-22):** Giancarlo reabrió la app del chofer (Fase 3,
+> fila 11) y este diseño rige como invariante (`AGENTS.md`). El servidor está
+> en `apps/api/src/modules/sync`: `POST /api/v1/sync/operations` (un SAVEPOINT
+> por operación dentro de la transacción del lote), la bandeja
+> `GET /sync/operations/in-review` y `PATCH /sync/operations/:id/resolution`
+> (ADMIN). La app vive en `apps/mobile`; `packages/sync-engine` no existe.
+> Lo que todavía no está: la alerta por correo de D-08 (necesita un proveedor;
+> hoy la alerta es la bandeja «Operaciones en revisión» y un log).
 >
-> Todo lo que sigue está en presente porque describe cómo debe comportarse el
-> protocolo **cuando se construya**, y sigue siendo la decisión vigente sobre
-> su forma. Construir la app del repartidor sigue siendo una decisión abierta,
-> que se toma con el dueño de la planta; este diseño no la prejuzga.
+> Decisión de implementación de la cuarentena: un rechazo por validación
+> (400) se reintenta una vez; un choque con el estado del servidor (409, 403,
+> 404 — la oficina ya marcó o corrigió la parada, la ruta terminó, es de otro
+> chofer) va a cuarentena en el primer intento, porque reintentar no lo
+> cambia: gana el servidor.
 
 ## Operation envelope
 
