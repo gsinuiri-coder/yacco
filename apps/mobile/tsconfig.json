@@ -1,0 +1,12 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "types": ["jest"]
+  },
+  // src más los tests: si un archivo no pertenece al programa de ningún
+  // tsconfig, SonarCloud lo indexa pero no lo analiza.
+  "include": ["index.ts", "src", "test"]
+}
