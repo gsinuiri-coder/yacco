@@ -95,7 +95,11 @@ describe("Operaciones en revisión", () => {
       await screen.findByRole("heading", { name: "Bodega Don Lucho · Principal" })
     ).closest("li") as HTMLElement;
     const navigation = screen.getByRole("navigation", { name: "Principal" });
-    expect(within(navigation).getByRole("link", { name: "Operaciones en revisión" })).toBeTruthy();
+    expect(
+      within(navigation)
+        .getByRole("link", { name: "Operaciones en revisión" })
+        .getAttribute("href"),
+    ).toBe("/operations-in-review");
     expect(within(item).getByText(/Rosa Quispe lo anotó el 22\/10\/2026 10:10/)).toBeTruthy();
     expect(within(item).getByText(/llegó el 22\/10\/2026 14:45/)).toBeTruthy();
     expect(within(item).getByText(/Ruta del 22\/10\/2026/)).toBeTruthy();
