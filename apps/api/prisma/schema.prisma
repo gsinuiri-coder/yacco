@@ -264,8 +264,9 @@ model User {
   vehicleReviewsRecorded        VehicleReview[]          @relation("VehicleReviewRecordedBy")
   vehicleReviewsVoided          VehicleReview[]          @relation("VehicleReviewVoidedBy")
   routeVehicleAssignments       RouteVehicleAssignment[] @relation("RouteVehicleAssignedBy")
-  syncOperations                SyncOperation[]
-  productPriceChanges           ProductPriceChange[]
+  syncOperations                SyncOperation[]          @relation("SyncOperationSentBy")
+  syncOperationsResolved        SyncOperation[]          @relation("SyncOperationResolvedBy")
+  productPriceChanges          ProductPriceChange[]
   customerContactsCreated             CustomerContact[]                  @relation("CustomerContactCreatedBy")
   customerContactsRemoved             CustomerContact[]                  @relation("CustomerContactRemovedBy")
   customerLocationPhotosUploaded      CustomerLocationPhoto[]            @relation("CustomerLocationPhotoUploadedBy")
@@ -1081,8 +1082,22 @@ model SyncOperation {
   clientTimestamp DateTime            @map("client_timestamp") @db.Timestamptz(6)
   appliedAt       DateTime            @default(now()) @map("applied_at") @db.Timestamptz(6)
   status          SyncOperationStatus
+  // Fase 3, fila 11 (expand, todas nullable): cuarentena y revisión. Una
+  // operación rechazada guarda el motivo y cuántas veces llegó; con
+  // `quarantinedAt` queda en la bandeja «Operaciones en revisión» hasta que
+  // un ADMIN la da por resuelta. Las tres de resolución van juntas o ninguna
+  // (CHECK escrito a mano en la migración).
+  envelopeVersion Int?                @map("envelope_version")
+  receivedAt      DateTime?           @map("received_at") @db.Timestamptz(6)
+  attempts        Int?
+  rejectionReason String?             @map("rejection_reason")
+  quarantinedAt   DateTime?           @map("quarantined_at") @db.Timestamptz(6)
+  resolvedAt      DateTime?           @map("resolved_at") @db.Timestamptz(6)
+  resolvedById    String?             @map("resolved_by") @db.Uuid
+  resolutionNote  String?             @map("resolution_note")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user       User  @relation("SyncOperationSentBy", fields: [userId], references: [id], onDelete: Restrict)
+  resolvedBy User? @relation("SyncOperationResolvedBy", fields: [resolvedById], references: [id], onDelete: Restrict)
 
   @@map("sync_operations")
 }
