@@ -120,6 +120,7 @@ function buildCorrectedStop(overrides: Record<string, unknown> = {}) {
     correctedById: ADMIN_ID,
     correctionReason: "Habían sido 4 bidones, no 6",
     correctedBy: { id: ADMIN_ID, name: "Giancarlo Dueño" },
+    order: null,
     ...overrides,
   });
 }
@@ -130,12 +131,18 @@ function buildCorrectedStop(overrides: Record<string, unknown> = {}) {
  * tests miran.
  */
 function buildDetailStop(overrides: Record<string, unknown> = {}) {
-  return buildStop({ status: StopStatus.DELIVERED, ...overrides });
+  // `order: null` es lo que trae Prisma para una venta en ruta (sin pedido).
+  return buildStop({ status: StopStatus.DELIVERED, order: null, ...overrides });
 }
 
 /** Una fila de `sales` de la parada, anulada o no, como está en la tabla. */
-function storedSale(id: string, total: string, voidedAt: Date | null = null) {
-  return { id, total: new Prisma.Decimal(total), creditLimitExceeded: false, voidedAt };
+function storedSale(
+  id: string,
+  total: string,
+  voidedAt: Date | null = null,
+  items: { productId: string; product: { id: string; name: string }; quantity: number }[] = [],
+) {
+  return { id, total: new Prisma.Decimal(total), creditLimitExceeded: false, voidedAt, items };
 }
 
 /** Una fila de `payments` de la parada, anulada o no, como está en la tabla. */
@@ -965,6 +972,60 @@ describe("RoutesService", () => {
         prisma.route.findUnique,
         expect.objectContaining({ correctedBy: { select: { id: true, name: true } } }),
       );
+    });
+
+    // Dos ventas con ítems distintos, una anulada y una vigente: con una sola el
+    // test pasaría aunque lo entregado saliera de la anulada.
+    it("pone lo pedido y lo entregado de la venta VIGENTE lado a lado", async () => {
+      const refill = { id: "p-refill", name: "Recarga 20L" };
+      const noTap = { id: "p-no-tap", name: "Recarga 20L sin caño" };
+      prisma.route.findUnique.mockImplementation(
+        routeWithStoredStopRows(
+          buildRoute({
+            stops: [
+              buildDetailStop({
+                origin: StopOrigin.ORDER,
+                orderId: "order-1",
+                order: { items: [{ productId: refill.id, product: refill, quantity: 3 }] },
+              }),
+            ],
+          }),
+          {
+            sales: [
+              storedSale("sale-anulada", "47.50", new Date("2026-08-26T14:00:00.000Z"), [
+                { productId: noTap.id, product: noTap, quantity: 5 },
+              ]),
+              storedSale("sale-vigente", "38.00", null, [
+                { productId: noTap.id, product: noTap, quantity: 4 },
+              ]),
+            ],
+            payments: [],
+          },
+        ),
+      );
+
+      const result = await service.findOne(ROUTE_ID, adminActor);
+
+      expect(result.stops[0]?.orderedItems).toEqual([
+        { productId: refill.id, product: refill, quantity: 3 },
+      ]);
+      expect(result.stops[0]?.deliveredItems).toEqual([
+        { productId: noTap.id, product: noTap, quantity: 4 },
+      ]);
+    });
+
+    it("una venta en ruta no tiene pedido, y una parada sin venta vigente no tiene entregado", async () => {
+      prisma.route.findUnique.mockImplementation(
+        routeWithStoredStopRows(buildRoute({ stops: [buildDetailStop()] }), {
+          sales: [storedSale("sale-anulada", "60.00", new Date("2026-08-26T14:00:00.000Z"))],
+          payments: [],
+        }),
+      );
+
+      const result = await service.findOne(ROUTE_ID, adminActor);
+
+      expect(result.stops[0]?.orderedItems).toBeNull();
+      expect(result.stops[0]?.deliveredItems).toBeNull();
     });
 
     it("una parada que nunca se corrigió viaja con correction en null", async () => {

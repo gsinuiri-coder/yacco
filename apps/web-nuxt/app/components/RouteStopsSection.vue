@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { formatInstantInLima } from "@yacco/shared";
-import type { PlantLocation, Route, RoutePitStop, RouteStop } from "@yacco/shared";
+import { formatInstantInLima, isDeliveredDifferently } from "@yacco/shared";
+import type { DeliveryLine, PlantLocation, Route, RoutePitStop, RouteStop } from "@yacco/shared";
 import type { TableColumn } from "@nuxt/ui";
 import { googleMapsLocationUrl } from "~/utils/customer-location";
 import {
@@ -28,6 +28,27 @@ const canReorder = computed(() => editable.value && isOffice.value);
 // Es la misma regla que aplica RoutesService.markStop.
 const canMark = computed(() => props.route.status === "IN_PROGRESS");
 const stops = computed(() => props.route.stops);
+
+/**
+ * «Pedido» y «entregado» de una parada de pedido ya entregada (fila 11), o
+ * `null` si no hay qué comparar: una venta en ruta no tiene pedido y una
+ * parada sin venta vigente no tiene entregado.
+ */
+function stopDelivery(
+  stop: RouteStop,
+): { ordered: string; delivered: string; different: boolean } | null {
+  if (stop.orderedItems == null || stop.deliveredItems == null) return null;
+  return {
+    ordered: describeLines(stop.orderedItems),
+    delivered: describeLines(stop.deliveredItems),
+    different: isDeliveredDifferently(stop.orderedItems, stop.deliveredItems),
+  };
+}
+
+function describeLines(lines: readonly DeliveryLine[]): string {
+  if (lines.length === 0) return "nada";
+  return lines.map((line) => `${line.quantity} ${line.product.name}`).join(", ");
+}
 /**
  * Corregir una parada ya registrada (HU-24): solo ADMIN, y solo con la ruta ya
  * en la calle o cerrada. Planificada no tiene nada registrado que corregir.
@@ -547,9 +568,19 @@ function markDone(result: RouteStop): void {
                   variant="soft"
                   label="Corregida"
                 />
+                <UBadge
+                  v-if="stopDelivery(row.original)?.different"
+                  color="warning"
+                  variant="soft"
+                  label="Entregado distinto"
+                />
               </div>
             </template>
             <template #description>
+              <template v-if="stopDelivery(row.original)">
+                <p>Pedido: {{ stopDelivery(row.original)?.ordered }}</p>
+                <p>Entregado: {{ stopDelivery(row.original)?.delivered }}</p>
+              </template>
               <!-- El motivo va condicionado al ESTADO, no a que exista: una
                    parada corregida de FAILED a DELIVERED conserva su motivo de
                    falla original a propósito (es la evidencia del error de

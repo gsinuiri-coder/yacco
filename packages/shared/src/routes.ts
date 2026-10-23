@@ -1,3 +1,4 @@
+import type { DeliveryLine } from "./delivery-comparison.js";
 import type { PaymentStatus } from "./payments.js";
 import type { RouteVehicleAssignment, VehicleSummary } from "./vehicles.js";
 
@@ -106,6 +107,13 @@ export interface RouteStop {
   containerBalances?: RouteStopContainerBalance[];
   stockShortfall?: RouteStopStockShortfall[];
   accessoryShortfall?: RouteStopAccessoryShortfall[];
+  /**
+   * Sólo en el detalle de una ruta, para «pedido» y «entregado» lado a lado:
+   * lo que pidió el pedido (`null` en una venta en ruta) y lo que lleva la
+   * venta vigente (`null` mientras no hay venta).
+   */
+  orderedItems?: DeliveryLine[] | null;
+  deliveredItems?: DeliveryLine[] | null;
 }
 
 /** RouteResponseDto. Stops always come ordered by `position`. */

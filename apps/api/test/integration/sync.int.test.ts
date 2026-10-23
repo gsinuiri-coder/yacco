@@ -586,6 +586,56 @@ describe("POST /api/v1/sync/operations (integration)", () => {
     });
     expect(storedOrder.status).toBe("DELIVERED");
     expect(storedOrder.items).toMatchObject([{ productId: refillProductId, quantity: 3 }]);
+
+    // «Pedido» y «entregado» lado a lado, en el detalle del pedido y en el de
+    // la parada. Después se corrige a 4: la venta de 5 queda anulada y lo
+    // entregado tiene que ser lo de la vigente, no lo de la anulada.
+    const readBoth = async () => {
+      const detail = await request(server())
+        .get(`/api/v1/orders/${order.body.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      const routeDetail = await request(server())
+        .get(`/api/v1/routes/${routeId}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      const routeStop = routeDetail.body.stops.find(
+        (candidate: { id: string }) => candidate.id === stop.body.id,
+      );
+      return { order: detail.body, stop: routeStop };
+    };
+    const ordered = [{ productId: refillProductId, quantity: 3 }];
+    const delivered = await readBoth();
+    expect(delivered.order.items).toMatchObject(ordered);
+    expect(delivered.order.deliveredItems).toEqual([
+      {
+        productId: otherProduct.id,
+        product: { id: otherProduct.id, name: otherProduct.name },
+        quantity: 5,
+      },
+    ]);
+    expect(delivered.stop.orderedItems).toMatchObject(ordered);
+    expect(delivered.stop.deliveredItems).toMatchObject([
+      { productId: otherProduct.id, quantity: 5 },
+    ]);
+
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stop.body.id}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        status: "DELIVERED",
+        items: [{ productId: otherProduct.id, quantity: 4 }],
+        correctionReason: "Eran 4, no 5",
+      })
+      .expect(200);
+
+    const corrected = await readBoth();
+    expect(corrected.order.deliveredItems).toMatchObject([
+      { productId: otherProduct.id, quantity: 4 },
+    ]);
+    expect(corrected.stop.deliveredItems).toMatchObject([
+      { productId: otherProduct.id, quantity: 4 },
+    ]);
   });
 
   describe("venta en ruta (STOP_ADD_VAN_SALE)", () => {

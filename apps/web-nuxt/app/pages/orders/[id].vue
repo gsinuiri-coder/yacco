@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import {
+  compareDelivery,
   formatCalendarDay,
   formatInstantInLima,
   formatSoles,
+  isDeliveredDifferently,
   nextCalendarDay,
   timesQuantity,
 } from "@yacco/shared";
-import type { Order } from "@yacco/shared";
+import type { DeliveryComparisonRow, Order } from "@yacco/shared";
 import type { TableColumn } from "@nuxt/ui";
 
 const route = useRoute();
@@ -42,6 +44,27 @@ const itemColumns: TableColumn<OrderItem>[] = [
     header: "Subtotal",
     footer: () => (order.value ? formatSoles(order.value.total) : ""),
   },
+];
+
+// «Pedido» y «entregado» lado a lado (fila 11): el pedido no se edita cuando
+// el cliente cambió en la puerta; lo entregado es la venta vigente.
+const deliveryRows = computed<DeliveryComparisonRow[] | null>(() => {
+  const deliveredItems = order.value?.deliveredItems;
+  if (!order.value || deliveredItems == null) return null;
+  return compareDelivery(order.value.items, deliveredItems);
+});
+const deliveredDifferently = computed(() => {
+  const deliveredItems = order.value?.deliveredItems;
+  return (
+    !!order.value &&
+    deliveredItems != null &&
+    isDeliveredDifferently(order.value.items, deliveredItems)
+  );
+});
+const deliveryColumns: TableColumn<DeliveryComparisonRow>[] = [
+  { accessorKey: "productName", header: "Producto" },
+  { accessorKey: "ordered", header: "Pedido" },
+  { accessorKey: "delivered", header: "Entregado" },
 ];
 
 function startReschedule(): void {
@@ -231,6 +254,12 @@ async function cancel(): Promise<void> {
                   variant="subtle"
                   :label="ORDER_STATUS[order.status].label"
                 />
+                <UBadge
+                  v-if="deliveredDifferently"
+                  color="warning"
+                  variant="soft"
+                  label="Entregado distinto"
+                />
               </UFieldGroup>
             </UPageCard>
             <UPageCard
@@ -263,6 +292,13 @@ async function cancel(): Promise<void> {
             {{ formatSoles(timesQuantity(row.original.unitPrice, row.original.quantity)) }}
           </template>
         </UTable>
+
+        <UTable
+          v-if="deliveryRows"
+          :data="deliveryRows"
+          :columns="deliveryColumns"
+          caption="Pedido y entregado"
+        />
       </UCard>
 
       <UAlert

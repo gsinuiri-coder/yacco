@@ -1,5 +1,5 @@
 import { registerEndpoint, renderSuspended } from "@nuxt/test-utils/runtime";
-import { screen, waitFor } from "@testing-library/vue";
+import { screen, waitFor, within } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { setResponseStatus } from "h3";
 import type { H3Event } from "h3";
@@ -89,6 +89,69 @@ describe("Detalle de pedido", () => {
     expect(table.textContent).toContain("S/ 34.00");
     expect(table.textContent).toContain("S/ 70.00");
     expect(table.textContent).not.toContain("S/ 71.50");
+  });
+
+  describe("pedido y entregado", () => {
+    const refill = { id: "p1", name: "Recarga 20L" };
+    const noTap = { id: "p2", name: "Recarga 20L sin caño" };
+    const asked = [
+      { id: "i1", productId: refill.id, product: refill, quantity: 3, unitPrice: "8.00" },
+    ];
+
+    function cells(table: HTMLElement): string[][] {
+      return within(table)
+        .getAllByRole("row")
+        .map((tableRow) =>
+          within(tableRow)
+            .queryAllByRole("cell")
+            .map((cell) => cell.textContent?.trim() ?? ""),
+        )
+        .filter((rowCells) => rowCells.length > 0);
+    }
+
+    it("entregado otra cosa: los dos lado a lado y la marca «Entregado distinto»", async () => {
+      stubGet(
+        buildOrder({
+          status: "DELIVERED",
+          items: asked,
+          deliveredItems: [{ productId: noTap.id, product: noTap, quantity: 5 }],
+        }),
+      );
+
+      await renderDetail();
+
+      const table = await screen.findByRole("table", { name: "Pedido y entregado" });
+      expect(cells(table)).toEqual([
+        ["Recarga 20L", "3", "0"],
+        ["Recarga 20L sin caño", "0", "5"],
+      ]);
+      expect(screen.getByText("Entregado distinto")).toBeTruthy();
+    });
+
+    it("entregado lo mismo: los dos lado a lado, sin la marca", async () => {
+      stubGet(
+        buildOrder({
+          status: "DELIVERED",
+          items: asked,
+          deliveredItems: [{ productId: refill.id, product: refill, quantity: 3 }],
+        }),
+      );
+
+      await renderDetail();
+
+      const table = await screen.findByRole("table", { name: "Pedido y entregado" });
+      expect(cells(table)).toEqual([["Recarga 20L", "3", "3"]]);
+      expect(screen.queryByText("Entregado distinto")).toBeNull();
+    });
+
+    it("sin entregar todavía no hay nada que comparar", async () => {
+      stubGet(buildOrder({ status: "ON_ROUTE", deliveredItems: null }));
+
+      await renderDetail();
+
+      expect(await screen.findByText("En ruta")).toBeTruthy();
+      expect(screen.queryByRole("table", { name: "Pedido y entregado" })).toBeNull();
+    });
   });
 
   it("el enlace a la ficha identifica al cliente por su nombre", async () => {

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { OrderStatus } from "@prisma/client";
+import { DeliveryLineDto } from "../../../common/dto/delivery-line.dto.js";
 
 /** Minimum the office needs to recognise the customer without a second call. */
 export class OrderCustomerDto {
@@ -126,6 +127,14 @@ export class OrderResponseDto {
    */
   @ApiProperty({ type: String, example: "37.50" })
   total!: string;
+
+  /**
+   * Sólo en GET /orders/:id: lo que lleva la venta VIGENTE de su parada, para
+   * mostrar «pedido» y «entregado» lado a lado. `null` mientras no hay venta.
+   * «Entregado distinto» no se guarda: se deriva comparando con `items`.
+   */
+  @ApiPropertyOptional({ type: DeliveryLineDto, isArray: true, nullable: true })
+  deliveredItems?: DeliveryLineDto[] | null;
 }
 
 export class PaginatedOrdersDto {

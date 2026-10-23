@@ -15,6 +15,11 @@ import {
   StopStatus,
   UserRole,
 } from "@prisma/client";
+import {
+  DELIVERY_LINE_SELECT,
+  toDeliveredItems,
+  toDeliveryLines,
+} from "../../common/delivery-lines.js";
 import { NEARBY_RADIUS_M, distanceInMeters } from "../../common/geo.js";
 import { ROUTE_STATUS_LABELS, STOP_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
@@ -142,10 +147,18 @@ const STOP_DETAIL_INCLUDE = {
   ...STOP_INCLUDE,
   sales: {
     where: { voidedAt: null },
-    select: { id: true, total: true, creditLimitExceeded: true },
+    select: {
+      id: true,
+      total: true,
+      creditLimitExceeded: true,
+      items: { select: DELIVERY_LINE_SELECT },
+    },
     orderBy: { soldAt: "desc" },
     take: 1,
   },
+  // «Pedido» al lado de «entregado» (fila 11): el pedido no se edita cuando se
+  // entrega distinto, así que sus ítems son lo que se pidió.
+  order: { select: { items: { select: DELIVERY_LINE_SELECT } } },
   payments: {
     where: { voidedAt: null },
     select: { id: true, status: true, amount: true },
@@ -308,6 +321,8 @@ function toStopResponse(
       payment === undefined
         ? null
         : { id: payment.id, status: payment.status, amount: payment.amount.toFixed(2) },
+    orderedItems: stop.order === null ? null : toDeliveryLines(stop.order.items),
+    deliveredItems: toDeliveredItems(stop.sales),
   };
 }
 
