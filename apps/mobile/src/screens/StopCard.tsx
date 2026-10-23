@@ -1,4 +1,11 @@
-import type { MarkRouteStopBody, RouteStop, StopMarkPayloadV1, StopStatus } from "@yacco/shared";
+import {
+  formatDebtBalance,
+  type MarkRouteStopBody,
+  type NamedReference,
+  type RouteStop,
+  type StopMarkPayloadV1,
+  type StopStatus,
+} from "@yacco/shared";
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
@@ -21,11 +28,26 @@ interface StopCardProps {
   canMark: boolean;
   /** Sin el local en la ruta guardada no hay precios ni saldos: no se ofrece «Se entregó». */
   delivery: StopDeliveryContext | null;
+  /** Los saldos con lo que el celular marcó y la ruta guardada todavía no cuenta. */
+  balances: StopBalances | null;
   onDeliver: (body: MarkRouteStopBody) => Promise<void>;
   onFail: (failureReason: string) => Promise<void>;
 }
 
+export interface StopBalances {
+  /** La deuda en S/ del cliente, una sola aunque tenga varios locales. */
+  debt: string;
+  /** Los envases que tiene ESTE local, por tipo. */
+  containers: { containerType: NamedReference; quantity: number }[];
+}
+
 type Mode = "idle" | "delivering" | "failing";
+
+function containersLine(containers: StopBalances["containers"]): string {
+  if (containers.length === 0) return "Envases en el local: ninguno";
+  const counts = containers.map((line) => `${line.quantity} ${line.containerType.name}`);
+  return `Envases en el local: ${counts.join(", ")}`;
+}
 
 function statusLine(stop: RouteStop, queued: QueuedOperation | null): string {
   const origin = stop.origin === "VAN_SALE" ? " · Venta en ruta" : "";
@@ -39,7 +61,15 @@ function statusLine(stop: RouteStop, queued: QueuedOperation | null): string {
   return `${STOP_STATUS_LABELS[shown]}${origin} · ${label}`;
 }
 
-export function StopCard({ stop, queued, canMark, delivery, onDeliver, onFail }: StopCardProps) {
+export function StopCard({
+  stop,
+  queued,
+  canMark,
+  delivery,
+  balances,
+  onDeliver,
+  onFail,
+}: StopCardProps) {
   const [mode, setMode] = useState<Mode>("idle");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +100,12 @@ export function StopCard({ stop, queued, canMark, delivery, onDeliver, onFail }:
       </Text>
       <Text>{stop.location.customer.name}</Text>
       <Text>{stop.location.address}</Text>
+      {balances !== null && (
+        <>
+          <Text>Deuda del cliente: {formatDebtBalance(balances.debt)}</Text>
+          <Text>{containersLine(balances.containers)}</Text>
+        </>
+      )}
       <Text>{statusLine(stop, queued)}</Text>
       {queued?.state === "IN_REVIEW" && queued.reason !== null && <Text>{queued.reason}</Text>}
 

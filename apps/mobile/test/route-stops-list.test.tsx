@@ -404,7 +404,56 @@ describe("marcar una parada como entregada", () => {
     expect(screen.getByRole("button", { name: "Guardar la entrega" })).toBeOnTheScreen();
   });
 
-  it("una parada sin el local en la ruta guardada no ofrece «Se entregó»", async () => {
+  it("al guardarla, la deuda del cliente y los envases del local cambian en la parada", async () => {
+    const store = memoryOfflineStore();
+    await openDelivery(store);
+    const card = screen.getByLabelText("Parada 1");
+
+    expect(within(card).getByText("Deuda del cliente: S/ 10.00")).toBeOnTheScreen();
+    expect(within(card).getByText("Envases en el local: 3 Bidón 20L")).toBeOnTheScreen();
+
+    // 3 recargas a 12.50, 2 vacíos devueltos, 20.00 en efectivo.
+    await fireEvent.changeText(screen.getByLabelText("Vacíos devueltos de Bidón 20L"), "2");
+    await fireEvent.press(screen.getByRole("radio", { name: "Efectivo" }));
+    await fireEvent.changeText(screen.getByLabelText("Monto cobrado"), "20.00");
+    await saveDelivery();
+
+    await screen.findByText("Entregada · Pendiente de enviar");
+    expect(within(card).getByText("Deuda del cliente: S/ 27.50")).toBeOnTheScreen();
+    expect(within(card).getByText("Envases en el local: 4 Bidón 20L")).toBeOnTheScreen();
+  });
+
+  it("enviada con señal, el saldo no vuelve atrás aunque la ruta se haya bajado antes", async () => {
+    const store = memoryOfflineStore();
+    const server = fakeClient(deliverySnapshot(), (body) => ({
+      results: body.operations.map((op) => ({ id: op.id, status: "APPLIED", quarantined: false })),
+    }));
+    await renderList(server.client, store);
+    const card = await screen.findByLabelText("Parada 1");
+    await fireEvent.press(within(card).getByRole("button", { name: "Se entregó" }));
+
+    await saveDelivery();
+
+    expect(await screen.findByText("Entregada · Enviada")).toBeOnTheScreen();
+    expect(within(card).getByText("Deuda del cliente: S/ 47.50")).toBeOnTheScreen();
+    expect(within(card).getByText("Envases en el local: 6 Bidón 20L")).toBeOnTheScreen();
+  });
+
+  it("un local sin envases lo dice, y una deuda a favor se lee a favor", async () => {
+    const snapshot = deliverySnapshot();
+    snapshot.locations = snapshot.locations.map((location) => ({
+      ...location,
+      debtBalance: "-15.00",
+      containerBalances: [],
+    }));
+    await renderList(fakeClient(snapshot, OFFLINE).client, memoryOfflineStore());
+
+    const card = await screen.findByLabelText("Parada 1");
+    expect(within(card).getByText("Deuda del cliente: A favor S/ 15.00")).toBeOnTheScreen();
+    expect(within(card).getByText("Envases en el local: ninguno")).toBeOnTheScreen();
+  });
+
+  it("una parada sin el local en la ruta guardada no ofrece «Se entregó» ni saldos", async () => {
     await renderList(
       fakeClient(snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita")), OFFLINE).client,
       memoryOfflineStore(),
@@ -413,5 +462,6 @@ describe("marcar una parada como entregada", () => {
     const card = await screen.findByLabelText("Parada 1");
     expect(within(card).queryByRole("button", { name: "Se entregó" })).toBeNull();
     expect(within(card).getByRole("button", { name: "No se pudo entregar" })).toBeOnTheScreen();
+    expect(within(card).queryByText(/Deuda del cliente/)).toBeNull();
   });
 });

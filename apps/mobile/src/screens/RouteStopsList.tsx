@@ -2,13 +2,13 @@ import type { MarkRouteStopBody, RouteSnapshot, RouteStop, StopMarkPayloadV1 } f
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
-import { debtWithQueued } from "../offline/delivery-effect";
+import { containersWithQueued, debtWithQueued } from "../offline/delivery-effect";
 import type { OfflineStore, QueuedOperation } from "../offline/offline-store";
 import type { Outbox } from "../offline/outbox";
 import { loadRouteSnapshot } from "../offline/route-snapshot";
 import { ApiError, type ApiClient } from "../session/api-client";
 import { styles } from "../theme";
-import { StopCard } from "./StopCard";
+import { StopCard, type StopBalances } from "./StopCard";
 import type { StopDeliveryContext } from "./StopDeliveryForm";
 
 type Loaded =
@@ -107,6 +107,15 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
     };
   }
 
+  function balancesOf(stop: RouteStop): StopBalances | null {
+    const location = snapshot.locations.find((candidate) => candidate.id === stop.location.id);
+    if (location === undefined) return null;
+    return {
+      debt: debtWithQueued(snapshot, operations, location.customer.id),
+      containers: containersWithQueued(snapshot, operations, location.id),
+    };
+  }
+
   async function mark(stopId: string, body: MarkRouteStopBody): Promise<void> {
     const payload: StopMarkPayloadV1 = { routeId: route.id, stopId, ...body };
     await outbox.enqueue("STOP_MARK", 1, payload);
@@ -127,6 +136,7 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
           queued={marks.get(stop.id) ?? null}
           canMark={route.status === "IN_PROGRESS"}
           delivery={deliveryOf(stop)}
+          balances={balancesOf(stop)}
           onDeliver={(body) => mark(stop.id, body)}
           onFail={(failureReason) => mark(stop.id, { status: "FAILED", failureReason })}
         />
