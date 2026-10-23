@@ -166,4 +166,10 @@ export class RouteSnapshotDto {
 
   @ApiProperty({ type: SnapshotPaymentMethodDto, isArray: true })
   paymentMethods!: SnapshotPaymentMethodDto[];
+
+  @ApiProperty({
+    example: 300,
+    description: "Cada cuántos segundos guarda el celular su ubicación con la ruta en curso",
+  })
+  locationIntervalSeconds!: number;
 }

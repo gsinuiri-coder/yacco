@@ -11,6 +11,7 @@ export * from "./container-movements.js";
 export * from "./container-reconciliation.js";
 export * from "./debt-reconciliation.js";
 export * from "./delivery-comparison.js";
+export * from "./geo-position.js";
 export * from "./customer-prices.js";
 export * from "./customers.js";
 export * from "./maquila.js";

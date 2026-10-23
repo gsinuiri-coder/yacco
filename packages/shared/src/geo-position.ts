@@ -6,13 +6,24 @@ export interface PositionStrings {
 }
 
 /**
- * The phone's reading as the API takes it, or null if it is not one the API
- * would accept (out of range or not a number). Six decimals is what
- * NUMERIC(9,6) keeps; the precision fits NUMERIC(10,2).
+ * A phone's reading: the browser's `GeolocationCoordinates` or the one
+ * expo-location returns, whose accuracy may be missing.
  */
-export function positionStrings(coords: GeolocationCoordinates): PositionStrings | null {
+export interface PositionReading {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+}
+
+/**
+ * The phone's reading as the API takes it, or null if it is not one the API
+ * would accept (out of range, not a number, or without its accuracy). Six
+ * decimals is what NUMERIC(9,6) keeps; the precision fits NUMERIC(10,2).
+ */
+export function positionStrings(coords: PositionReading): PositionStrings | null {
   const { latitude, longitude, accuracy } = coords;
   if (
+    accuracy === null ||
     !Number.isFinite(latitude) ||
     !Number.isFinite(longitude) ||
     !Number.isFinite(accuracy) ||

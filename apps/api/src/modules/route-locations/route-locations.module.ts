@@ -10,5 +10,6 @@ import { RouteLocationsService } from "./route-locations.service.js";
   imports: [PrismaModule],
   controllers: [RouteLocationPointsController, RouteLocationsController],
   providers: [RouteLocationsService],
+  exports: [RouteLocationsService],
 })
 export class RouteLocationsModule {}

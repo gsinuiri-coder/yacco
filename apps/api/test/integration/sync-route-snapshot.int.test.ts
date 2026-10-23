@@ -315,6 +315,21 @@ describe("GET /api/v1/sync/route-snapshot (integration)", () => {
     );
   });
 
+  // Fase 3, fila 11c: cada cuánto guarda el celular su ubicación viaja con la
+  // ruta, para que lo sepa también sin señal. Es la configuración del servidor
+  // (fila 10), la misma que lee la web.
+  test("trae cada cuánto guardar la ubicación, la misma configuración que la web", async () => {
+    const tracking = await request(server())
+      .get("/api/v1/settings/location-tracking")
+      .set("Authorization", `Bearer ${driverAToken}`)
+      .expect(200);
+
+    const response = await snapshot(driverAToken).expect(200);
+
+    expect(typeof tracking.body.intervalSeconds).toBe("number");
+    expect(response.body.locationIntervalSeconds).toBe(tracking.body.intervalSeconds);
+  });
+
   test("la deuda y los envases coinciden con los de la ficha del cliente", async () => {
     const response = await snapshot(driverAToken).expect(200);
     const sold = locationIn(response.body, soldLocationId)!;
