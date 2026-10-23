@@ -2,11 +2,13 @@ import type { RouteSnapshot } from "@yacco/shared";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import { App } from "../src/App";
+import type { LocationTracker } from "../src/location/location-tracker";
 import type { OfflineStore } from "../src/offline/offline-store";
 import { createApiClient } from "../src/session/api-client";
 import {
   DRIVER,
   DRIVER_REFRESH,
+  fakeLocationTracker,
   fakeServer,
   fakeToken,
   memoryOfflineStore,
@@ -43,12 +45,14 @@ async function renderApp(
   store: ReturnType<typeof memoryStore>,
   server: ReturnType<typeof fakeServer>,
   offlineStore: OfflineStore = memoryOfflineStore(),
+  locationTracker?: LocationTracker,
 ) {
   await render(
     <App
       client={createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl })}
       offlineStore={offlineStore}
       newOperationId={() => "op-1"}
+      locationTracker={locationTracker}
     />,
   );
 }
@@ -306,13 +310,16 @@ describe("cerrar sesión con la ruta y la cola en el celular", () => {
   }
 
   /** Entra con la sesión guardada de Juan y sin señal para la ruta ni la cola. */
-  async function signedInWith(offlineStore: ReturnType<typeof memoryOfflineStore>) {
+  async function signedInWith(
+    offlineStore: ReturnType<typeof memoryOfflineStore>,
+    locationTracker?: LocationTracker,
+  ) {
     const store = memoryStore(DRIVER_REFRESH);
     const server = fakeServer(
       { status: 200, body: { accessToken: "access-2" } },
       { status: 200, body: DRIVER },
     );
-    await renderApp(store, server, offlineStore);
+    await renderApp(store, server, offlineStore, locationTracker);
     await screen.findByText("1. Bodega Rosita");
     return store;
   }
@@ -330,6 +337,21 @@ describe("cerrar sesión con la ruta y la cola en el celular", () => {
     expect(store.value).toBeNull();
     expect(offlineStore.snapshot).toBeNull();
     expect(offlineStore.operations).toHaveLength(1);
+  });
+
+  // Fase 3, fila 11c: sin sesión no hay ruta que seguir, y la notificación
+  // fija de la ubicación no puede quedar prendida.
+  it("apaga la ubicación en segundo plano", async () => {
+    const offlineStore = memoryOfflineStore();
+    offlineStore.snapshot = routeWithStop("Bodega Rosita");
+    const { tracker } = fakeLocationTracker();
+    await signedInWith(offlineStore, tracker);
+    expect(tracker.stop).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Cerrar sesión" }));
+
+    expect(await screen.findByLabelText("Usuario")).toBeOnTheScreen();
+    expect(tracker.stop).toHaveBeenCalledTimes(1);
   });
 
   it("con pendientes avisa cuántas, deja cancelar o seguir, y no las borra", async () => {

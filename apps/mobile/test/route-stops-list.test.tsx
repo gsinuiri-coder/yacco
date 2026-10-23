@@ -8,6 +8,7 @@ import type {
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
 
+import type { LocationTracker } from "../src/location/location-tracker";
 import type { OfflineStore } from "../src/offline/offline-store";
 import { createOutbox } from "../src/offline/outbox";
 import { RouteStopsList, SEND_RETRY_INTERVAL_MS } from "../src/screens/RouteStopsList";
@@ -17,7 +18,7 @@ import {
   SessionExpiredError,
   type ApiClient,
 } from "../src/session/api-client";
-import { deliveryCatalog, memoryOfflineStore } from "./fakes";
+import { deliveryCatalog, fakeLocationTracker, memoryOfflineStore } from "./fakes";
 
 function stop(position: number, name: string, overrides: Partial<RouteStop> = {}): RouteStop {
   return {
@@ -76,10 +77,18 @@ function fakeClient(snapshot: RouteSnapshot | Error, sync: SyncReply = new Error
   return { client, batches };
 }
 
-async function renderList(client: ApiClient, store: OfflineStore) {
+async function renderList(client: ApiClient, store: OfflineStore, tracker?: LocationTracker) {
   let next = 0;
   const outbox = createOutbox({ store, driverId: "u-1", newId: () => `op-${++next}` });
-  await render(<RouteStopsList client={client} store={store} outbox={outbox} driverId="u-1" />);
+  await render(
+    <RouteStopsList
+      client={client}
+      store={store}
+      outbox={outbox}
+      driverId="u-1"
+      locationTracker={tracker}
+    />,
+  );
 }
 
 const OFFLINE = new OfflineError(new TypeError("Network request failed"));
@@ -646,5 +655,103 @@ describe("marcar una parada como entregada", () => {
     expect(within(card).queryByRole("button", { name: "Se entregó" })).toBeNull();
     expect(within(card).getByRole("button", { name: "No se pudo entregar" })).toBeOnTheScreen();
     expect(within(card).queryByText(/Deuda del cliente/)).toBeNull();
+  });
+});
+
+// Fase 3, fila 11c: la ubicación en segundo plano sigue a la ruta en curso, y
+// cada marca lleva dónde estaba el celular (#309).
+describe("la ubicación del celular", () => {
+  function withInterval(snapshot: RouteSnapshot, seconds: number): RouteSnapshot {
+    return { ...snapshot, locationIntervalSeconds: seconds };
+  }
+
+  it("con la ruta en curso la sigue, cada cuánto dice el servidor", async () => {
+    const { tracker } = fakeLocationTracker();
+    const route = withInterval(snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita")), 120);
+
+    await renderList(fakeClient(route, OFFLINE).client, memoryOfflineStore(), tracker);
+
+    await waitFor(() => expect(tracker.follow).toHaveBeenLastCalledWith(true, 120));
+  });
+
+  it("con la ruta planificada no la sigue; al empezarla desde el celular, sí", async () => {
+    const { tracker } = fakeLocationTracker();
+    const route = withInterval(snapshotOf("PLANNED", stop(1, "Bodega Rosita")), 300);
+
+    await renderList(fakeClient(route, OFFLINE).client, memoryOfflineStore(), tracker);
+    await waitFor(() => expect(tracker.follow).toHaveBeenLastCalledWith(false, 300));
+    await fireEvent.press(screen.getByRole("button", { name: "Empezar la ruta" }));
+
+    await waitFor(() => expect(tracker.follow).toHaveBeenLastCalledWith(true, 300));
+  });
+
+  it("se apaga sola con la ruta terminada", async () => {
+    const { tracker } = fakeLocationTracker();
+    const route = withInterval(snapshotOf("FINISHED", stop(1, "Bodega Rosita")), 300);
+
+    await renderList(fakeClient(route, OFFLINE).client, memoryOfflineStore(), tracker);
+
+    await waitFor(() => expect(tracker.follow).toHaveBeenCalled());
+    expect(tracker.follow).not.toHaveBeenCalledWith(true, expect.anything());
+  });
+
+  it("con una ruta guardada por una versión anterior de la app, cada 5 minutos", async () => {
+    const { tracker } = fakeLocationTracker();
+    const route = snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita"));
+
+    await renderList(fakeClient(route, OFFLINE).client, memoryOfflineStore(), tracker);
+
+    await waitFor(() => expect(tracker.follow).toHaveBeenLastCalledWith(true, 300));
+  });
+
+  it("la marca de la parada lleva dónde estaba el celular", async () => {
+    const { tracker } = fakeLocationTracker({
+      markedLatitude: "-12.046374",
+      markedLongitude: "-77.042793",
+      markedAccuracyM: "8.00",
+    });
+    const store = memoryOfflineStore();
+    store.snapshot = snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita"));
+
+    await renderList(fakeClient(OFFLINE, OFFLINE).client, store, tracker);
+    await failStop("Local cerrado");
+
+    expect(await screen.findByText("No entregada · Pendiente de enviar")).toBeOnTheScreen();
+    expect(store.operations[0]?.envelope.payload).toEqual({
+      routeId: "r-1",
+      stopId: "stop-1",
+      status: "FAILED",
+      failureReason: "Local cerrado",
+      markedLatitude: "-12.046374",
+      markedLongitude: "-77.042793",
+      markedAccuracyM: "8.00",
+    });
+  });
+
+  it("lo que la tarea de fondo dejó en la cola sale apenas lo avisa", async () => {
+    const fake = fakeLocationTracker();
+    const store = memoryOfflineStore();
+    const route = snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita"));
+    const server = fakeClient(route, (body) => ({
+      results: body.operations.map((op) => ({ id: op.id, status: "APPLIED", quarantined: false })),
+    }));
+    await renderList(server.client, store, fake.tracker);
+    await screen.findByText("1. Bodega Rosita");
+    // La tarea de fondo escribe en la misma base, sin pasar por la pantalla.
+    await store.addOperation(
+      {
+        id: "punto-1",
+        type: "ROUTE_LOCATION_POINT",
+        version: 1,
+        clientTimestamp: "2026-10-23T14:00:00.000Z",
+        payload: { routeId: "r-1" },
+      },
+      "u-1",
+    );
+
+    await act(async () => fake.recorded());
+
+    await waitFor(() => expect(store.operations[0]?.state).toBe("SENT"));
+    expect(server.batches.at(-1)?.operations.map((op) => op.id)).toEqual(["punto-1"]);
   });
 });

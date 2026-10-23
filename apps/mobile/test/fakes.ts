@@ -1,5 +1,6 @@
 import type { RouteSnapshot } from "@yacco/shared";
 
+import type { LocationTracker, MarkedPosition } from "../src/location/location-tracker";
 import type { OfflineStore, QueuedOperation } from "../src/offline/offline-store";
 import type { TokenStore } from "../src/session/api-client";
 
@@ -140,6 +141,33 @@ export function deliveryCatalog(): Pick<
         ],
       },
     ],
+  };
+}
+
+/**
+ * La ubicación del celular, de mentira: anota cada vez que la lista le pide
+ * seguir o apagarse, contesta la posición que el test le da, y deja simular
+ * que la tarea de fondo guardó puntos.
+ */
+export function fakeLocationTracker(position: MarkedPosition = {}) {
+  const listeners = new Set<() => void>();
+  const tracker = {
+    follow: jest.fn(async (_routeInProgress: boolean, _intervalSeconds: number) => undefined),
+    stop: jest.fn(async () => undefined),
+    markedPosition: jest.fn(async () => position),
+    onRecorded(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  } satisfies LocationTracker;
+  return {
+    tracker,
+    /** Lo que hace la tarea de fondo después de dejar puntos en la cola. */
+    recorded() {
+      for (const listener of listeners) listener();
+    },
   };
 }
 

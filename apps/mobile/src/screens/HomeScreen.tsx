@@ -2,6 +2,7 @@ import type { SessionUser } from "@yacco/shared";
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
+import { NO_LOCATION_TRACKER, type LocationTracker } from "../location/location-tracker";
 import type { OfflineStore } from "../offline/offline-store";
 import { createOutbox } from "../offline/outbox";
 import type { ApiClient, SessionExpiredError } from "../session/api-client";
@@ -16,6 +17,7 @@ interface HomeScreenProps {
   client: ApiClient;
   offlineStore: OfflineStore;
   newOperationId: () => string;
+  locationTracker?: LocationTracker;
 }
 
 /** Lo que le queda por enviar, dicho antes de cerrar sesión. */
@@ -31,6 +33,7 @@ export function HomeScreen({
   client,
   offlineStore,
   newOperationId,
+  locationTracker = NO_LOCATION_TRACKER,
 }: HomeScreenProps) {
   const { logout, expire } = useSession();
   // Estable: la lista baja la ruta de nuevo cada vez que cambia.
@@ -62,6 +65,8 @@ export function HomeScreen({
           return;
         }
       }
+      // Sin sesión no hay ruta que seguir: la notificación fija se va.
+      await locationTracker.stop();
       await offlineStore.clearSnapshot();
       await logout();
     } catch {
@@ -88,6 +93,7 @@ export function HomeScreen({
         outbox={outbox}
         driverId={driverId}
         onSessionExpired={onSessionExpired}
+        locationTracker={locationTracker}
       />
 
       {failed && (

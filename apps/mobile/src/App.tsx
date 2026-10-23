@@ -1,5 +1,6 @@
 import { ActivityIndicator, StatusBar, View } from "react-native";
 
+import type { LocationTracker } from "./location/location-tracker";
 import type { OfflineStore } from "./offline/offline-store";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -12,9 +13,11 @@ interface AppProps {
   offlineStore: OfflineStore;
   /** Genera el UUID de cada operación de la cola en el celular. */
   newOperationId: () => string;
+  /** La ubicación del celular: en segundo plano y al marcar la parada. */
+  locationTracker?: LocationTracker;
 }
 
-function CurrentScreen({ client, offlineStore, newOperationId }: AppProps) {
+function CurrentScreen({ client, offlineStore, newOperationId, locationTracker }: AppProps) {
   const { state } = useSession();
   if (state.status === "restoring") {
     return (
@@ -33,6 +36,7 @@ function CurrentScreen({ client, offlineStore, newOperationId }: AppProps) {
       client={client}
       offlineStore={offlineStore}
       newOperationId={newOperationId}
+      locationTracker={locationTracker}
     />
   );
 }

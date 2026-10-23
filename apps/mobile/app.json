@@ -8,6 +8,16 @@
     "android": {
       "package": "pe.yacco.driver"
     },
-    "plugins": ["expo-secure-store", "expo-sqlite"]
+    "plugins": [
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
+    ]
   }
 }
