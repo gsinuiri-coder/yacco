@@ -1,7 +1,7 @@
-import type { EffectivePrice } from "@yacco/shared";
 import { describe, expect, it } from "vitest";
-import { buildMarkBody, isPriceOverride, saleTotal } from "../../app/utils/stop-mark";
-import type { StopMarkDraft } from "../../app/utils/stop-mark";
+import type { EffectivePrice } from "../src/customer-prices.js";
+import { buildMarkBody, isPriceOverride, saleTotal } from "../src/stop-mark.js";
+import type { StopMarkDraft } from "../src/stop-mark.js";
 
 const RECARGA = "p-recarga";
 const BIDON_NUEVO = "p-bidon";

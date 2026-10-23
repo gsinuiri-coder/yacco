@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { formatSoles } from "@yacco/shared";
+import {
+  agreedPrice,
+  buildMarkBody,
+  formatSoles,
+  isPriceOverride,
+  saleLineSubtotal,
+  saleTotal,
+} from "@yacco/shared";
 import type {
   ContainerType,
   EffectivePrice,
@@ -7,18 +14,19 @@ import type {
   Order,
   PaymentMethod,
   Product,
-  RouteStop,
-  User,
-} from "@yacco/shared";
-import type { TableColumn } from "@nuxt/ui";
-import type {
   ReturnLineDraft,
+  RouteStop,
   SaleLineDraft,
   StopMarkDraft,
   StopOutcome,
-} from "../utils/stop-mark";
+  User,
+} from "@yacco/shared";
+import type { TableColumn } from "@nuxt/ui";
 
-/** Registrar lo que pasó en una parada. Las reglas viven en utils/stop-mark.ts. */
+/**
+ * Registrar lo que pasó en una parada. Las reglas viven en
+ * packages/shared/src/stop-mark.ts: la app del chofer usa las mismas.
+ */
 const props = withDefaults(
   defineProps<{
     routeId: string;
