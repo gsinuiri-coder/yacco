@@ -20,6 +20,12 @@ interface SessionValue {
   state: SessionState;
   login(credentials: LoginRequest): Promise<void>;
   logout(): Promise<void>;
+  /**
+   * El servidor rechazó el refresh en medio del uso (venció, lo cortó el
+   * administrador o le sacaron el rol): vuelve al ingreso diciendo por qué.
+   * El cliente ya lo borró del almacenamiento seguro.
+   */
+  expire(reason: SessionEndReason): void;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -86,7 +92,11 @@ export function SessionProvider({ client, children }: { client: ApiClient; child
     setState({ status: "signedOut", ended: null });
   }, [client]);
 
-  const value = useMemo(() => ({ state, login, logout }), [state, login, logout]);
+  const expire = useCallback((reason: SessionEndReason) => {
+    setState({ status: "signedOut", ended: reason });
+  }, []);
+
+  const value = useMemo(() => ({ state, login, logout, expire }), [state, login, logout, expire]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

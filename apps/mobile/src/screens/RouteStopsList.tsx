@@ -13,7 +13,7 @@ import { containersWithQueued, debtWithQueued } from "../offline/delivery-effect
 import type { OfflineStore, QueuedOperation } from "../offline/offline-store";
 import type { Outbox } from "../offline/outbox";
 import { loadRouteSnapshot } from "../offline/route-snapshot";
-import { ApiError, type ApiClient } from "../session/api-client";
+import { ApiError, SessionExpiredError, type ApiClient } from "../session/api-client";
 import { styles } from "../theme";
 import { RouteStart } from "./RouteStart";
 import { StopCard, type StopBalances } from "./StopCard";
@@ -33,6 +33,8 @@ interface RouteStopsListProps {
   outbox: Outbox;
   /** El chofer de la sesión: sin señal solo se abre una ruta guardada suya. */
   driverId: string;
+  /** El servidor rechazó el refresh al bajar la ruta o mandar la cola. */
+  onSessionExpired?: (error: SessionExpiredError) => void;
 }
 
 /** La última marca que el celular hizo de cada parada: la cola está en el orden en que se hizo. */
@@ -61,18 +63,29 @@ function lastStartOf(operations: QueuedOperation[], routeId: string): QueuedOper
  * guardadas; sin señal muestra las que quedaron en el celular. Lo que el
  * chofer marca entra a la cola y sale cuando hay señal.
  */
-export function RouteStopsList({ client, store, outbox, driverId }: RouteStopsListProps) {
+export function RouteStopsList({
+  client,
+  store,
+  outbox,
+  driverId,
+  onSessionExpired,
+}: RouteStopsListProps) {
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [operations, setOperations] = useState<QueuedOperation[]>([]);
 
   const send = useCallback(async () => {
     try {
       await outbox.flush(client);
-    } catch {
-      // Sin señal o con el servidor caído: lo que no llegó sigue pendiente.
+    } catch (error) {
+      // Sin señal o con el servidor caído, lo que no llegó sigue pendiente.
+      // Con la sesión vencida también, y el chofer vuelve al ingreso.
+      if (error instanceof SessionExpiredError) {
+        onSessionExpired?.(error);
+        return;
+      }
     }
     setOperations(await outbox.list());
-  }, [client, outbox]);
+  }, [client, outbox, onSessionExpired]);
 
   useEffect(() => {
     let active = true;
@@ -86,6 +99,10 @@ export function RouteStopsList({ client, store, outbox, driverId }: RouteStopsLi
       },
       (error: unknown) => {
         if (!active) return;
+        if (error instanceof SessionExpiredError) {
+          onSessionExpired?.(error);
+          return;
+        }
         const message =
           error instanceof ApiError
             ? error.message
@@ -96,7 +113,7 @@ export function RouteStopsList({ client, store, outbox, driverId }: RouteStopsLi
     return () => {
       active = false;
     };
-  }, [client, store, outbox, driverId, send]);
+  }, [client, store, outbox, driverId, send, onSessionExpired]);
 
   // Sin una librería de red, la señal que vuelve se nota intentando: cada
   // tanto mientras quede algo pendiente, y al volver la app a primer plano.

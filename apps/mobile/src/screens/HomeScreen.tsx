@@ -1,10 +1,10 @@
 import type { SessionUser } from "@yacco/shared";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import type { OfflineStore } from "../offline/offline-store";
 import { createOutbox } from "../offline/outbox";
-import type { ApiClient } from "../session/api-client";
+import type { ApiClient, SessionExpiredError } from "../session/api-client";
 import { useSession } from "../session/SessionContext";
 import { styles } from "../theme";
 import { RouteStopsList } from "./RouteStopsList";
@@ -32,7 +32,12 @@ export function HomeScreen({
   offlineStore,
   newOperationId,
 }: HomeScreenProps) {
-  const { logout } = useSession();
+  const { logout, expire } = useSession();
+  // Estable: la lista baja la ruta de nuevo cada vez que cambia.
+  const onSessionExpired = useCallback(
+    (error: SessionExpiredError) => expire(error.reason),
+    [expire],
+  );
   const [outbox] = useState(() =>
     createOutbox({ store: offlineStore, driverId, newId: newOperationId }),
   );
@@ -77,7 +82,13 @@ export function HomeScreen({
         <Text style={styles.subtitle}>Sin conexión con el servidor. Tu sesión sigue abierta.</Text>
       )}
 
-      <RouteStopsList client={client} store={offlineStore} outbox={outbox} driverId={driverId} />
+      <RouteStopsList
+        client={client}
+        store={offlineStore}
+        outbox={outbox}
+        driverId={driverId}
+        onSessionExpired={onSessionExpired}
+      />
 
       {failed && (
         <Text style={styles.alert} accessibilityRole="alert">

@@ -218,6 +218,23 @@ describe("la sesión de 30 días al abrir la app", () => {
     expect(store.value).toBeNull();
   });
 
+  it("si la sesión vence mientras baja la ruta, vuelve al ingreso avisando que venció", async () => {
+    const store = memoryStore(DRIVER_REFRESH);
+    const server = fakeServer(
+      { status: 200, body: { accessToken: "access-2" } },
+      { status: 200, body: DRIVER },
+      { status: 401, body: { message: "Token inválido" } },
+      { status: 401, body: { message: "Credenciales inválidas" } },
+    );
+    await renderApp(store, server);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Tu sesión venció. Vuelve a ingresar.",
+    );
+    expect(screen.getByRole("button", { name: "Ingresar" })).toBeOnTheScreen();
+    expect(store.value).toBeNull();
+  });
+
   it("si le sacaron el rol de chofer, vuelve al ingreso con «Solo choferes»", async () => {
     const store = memoryStore(DRIVER_REFRESH);
     await renderApp(

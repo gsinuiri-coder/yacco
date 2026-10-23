@@ -5,13 +5,18 @@ import type {
   SyncBatchBody,
   SyncBatchResult,
 } from "@yacco/shared";
-import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
 
 import type { OfflineStore } from "../src/offline/offline-store";
 import { createOutbox } from "../src/offline/outbox";
 import { RouteStopsList, SEND_RETRY_INTERVAL_MS } from "../src/screens/RouteStopsList";
-import { ApiError, OfflineError, type ApiClient } from "../src/session/api-client";
+import {
+  ApiError,
+  OfflineError,
+  SessionExpiredError,
+  type ApiClient,
+} from "../src/session/api-client";
 import { deliveryCatalog, memoryOfflineStore } from "./fakes";
 
 function stop(position: number, name: string, overrides: Partial<RouteStop> = {}): RouteStop {
@@ -139,6 +144,36 @@ describe("las paradas de la ruta en el celular", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "No se pudo abrir la ruta. Inténtalo de nuevo.",
     );
+  });
+
+  it("si la sesión vence al mandar la cola, lo avisa para volver al ingreso y no pierde nada", async () => {
+    const store = memoryOfflineStore();
+    await store.addOperation(
+      {
+        id: "op-1",
+        type: "STOP_MARK",
+        version: 1,
+        clientTimestamp: "2026-10-23T14:00:00.000Z",
+        payload: { routeId: "r-1", stopId: "stop-1", status: "FAILED", failureReason: "Cerrado" },
+      },
+      "u-1",
+    );
+    const expired = new SessionExpiredError();
+    const onSessionExpired = jest.fn();
+    const outbox = createOutbox({ store, driverId: "u-1", newId: () => "op-2" });
+
+    await render(
+      <RouteStopsList
+        client={fakeClient(snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita")), expired).client}
+        store={store}
+        outbox={outbox}
+        driverId="u-1"
+        onSessionExpired={onSessionExpired}
+      />,
+    );
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalledWith(expired));
+    expect(store.operations[0]?.state).toBe("PENDING");
   });
 
   it("una ruta sin paradas lo dice", async () => {
