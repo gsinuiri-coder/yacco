@@ -36,7 +36,7 @@ function snapshotWith(...stops: RouteStop[]): RouteSnapshot {
 
 function snapshotOf(status: RouteStatus, ...stops: RouteStop[]): RouteSnapshot {
   return {
-    route: { id: "r-1", status, stops },
+    route: { id: "r-1", driverId: "u-1", status, stops },
     locations: [],
     orders: [],
     products: [],
@@ -74,7 +74,7 @@ function fakeClient(snapshot: RouteSnapshot | Error, sync: SyncReply = new Error
 async function renderList(client: ApiClient, store: OfflineStore) {
   let next = 0;
   const outbox = createOutbox({ store, driverId: "u-1", newId: () => `op-${++next}` });
-  await render(<RouteStopsList client={client} store={store} outbox={outbox} />);
+  await render(<RouteStopsList client={client} store={store} outbox={outbox} driverId="u-1" />);
 }
 
 const OFFLINE = new OfflineError(new TypeError("Network request failed"));
@@ -390,7 +390,9 @@ describe("empezar la ruta", () => {
     await renderList(server.client, store);
     await startRoute();
 
-    expect(await screen.findByText("Ruta planificada · La oficina la revisa")).toBeOnTheScreen();
+    // Sin repetir el estado de la ruta guardada, que el motivo contradice.
+    expect(await screen.findByText("Empezar la ruta · La oficina la revisa")).toBeOnTheScreen();
+    expect(screen.queryByText(/Ruta planificada/)).toBeNull();
     expect(
       screen.getByText("Solo se puede iniciar una ruta planificada; esta está terminada"),
     ).toBeOnTheScreen();

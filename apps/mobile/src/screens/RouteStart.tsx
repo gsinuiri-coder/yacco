@@ -30,11 +30,14 @@ export function RouteStart({ status, queued, onStart }: RouteStartProps) {
   const [saving, setSaving] = useState(false);
 
   if (queued !== null) {
-    const shown = queued.state === "IN_REVIEW" ? status : "IN_PROGRESS";
+    // En revisión no se repite el estado de la ruta guardada: el motivo de la
+    // oficina dice el de verdad, y los dos juntos se contradicen.
+    const shown =
+      queued.state === "IN_REVIEW" ? "Empezar la ruta" : ROUTE_STATUS_LABELS.IN_PROGRESS;
     return (
       <View style={styles.card}>
         <Text style={styles.label}>
-          {ROUTE_STATUS_LABELS[shown]} · {QUEUED_OPERATION_STATE_LABELS[queued.state]}
+          {shown} · {QUEUED_OPERATION_STATE_LABELS[queued.state]}
         </Text>
         {queued.state === "IN_REVIEW" && queued.reason !== null && <Text>{queued.reason}</Text>}
       </View>

@@ -31,6 +31,8 @@ interface RouteStopsListProps {
   client: ApiClient;
   store: OfflineStore;
   outbox: Outbox;
+  /** El chofer de la sesión: sin señal solo se abre una ruta guardada suya. */
+  driverId: string;
 }
 
 /** La última marca que el celular hizo de cada parada: la cola está en el orden en que se hizo. */
@@ -59,7 +61,7 @@ function lastStartOf(operations: QueuedOperation[], routeId: string): QueuedOper
  * guardadas; sin señal muestra las que quedaron en el celular. Lo que el
  * chofer marca entra a la cola y sale cuando hay señal.
  */
-export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
+export function RouteStopsList({ client, store, outbox, driverId }: RouteStopsListProps) {
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [operations, setOperations] = useState<QueuedOperation[]>([]);
 
@@ -74,7 +76,7 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
 
   useEffect(() => {
     let active = true;
-    loadRouteSnapshot(client, store).then(
+    loadRouteSnapshot(client, store, driverId).then(
       async ({ snapshot, fromDevice }) => {
         const queued = await outbox.list();
         if (!active) return;
@@ -94,7 +96,7 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
     return () => {
       active = false;
     };
-  }, [client, store, outbox, send]);
+  }, [client, store, outbox, driverId, send]);
 
   // Sin una librería de red, la señal que vuelve se nota intentando: cada
   // tanto mientras quede algo pendiente, y al volver la app a primer plano.

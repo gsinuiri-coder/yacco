@@ -77,7 +77,7 @@ export function HomeScreen({
         <Text style={styles.subtitle}>Sin conexión con el servidor. Tu sesión sigue abierta.</Text>
       )}
 
-      <RouteStopsList client={client} store={offlineStore} outbox={outbox} />
+      <RouteStopsList client={client} store={offlineStore} outbox={outbox} driverId={driverId} />
 
       {failed && (
         <Text style={styles.alert} accessibilityRole="alert">

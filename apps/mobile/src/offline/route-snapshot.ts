@@ -11,12 +11,15 @@ export interface LoadedSnapshot {
 
 /**
  * Con señal baja la ruta del día y la guarda; sin señal, abre la última que
- * quedó en el celular. Los locales para venta en ruta los acota el servidor
- * con las paradas: el celular no manda dónde está.
+ * quedó en el celular si es de este chofer. Cerrar sesión la borra, pero una
+ * sesión vencida o cortada desde «Usuarios» la deja: la de otro no se abre.
+ * Los locales para venta en ruta los acota el servidor con las paradas: el
+ * celular no manda dónde está.
  */
 export async function loadRouteSnapshot(
   client: ApiClient,
   store: OfflineStore,
+  driverId: string,
 ): Promise<LoadedSnapshot> {
   try {
     const snapshot = await client.request<RouteSnapshot>("/sync/route-snapshot");
@@ -28,6 +31,7 @@ export async function loadRouteSnapshot(
     const unreachable =
       error instanceof OfflineError || (error instanceof ApiError && error.status >= 500);
     if (!unreachable) throw error;
-    return { snapshot: await store.loadSnapshot(), fromDevice: true };
+    const saved = await store.loadSnapshot();
+    return { snapshot: saved?.route.driverId === driverId ? saved : null, fromDevice: true };
   }
 }

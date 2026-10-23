@@ -20,6 +20,7 @@ function routeWithStop(name: string): RouteSnapshot {
   return {
     route: {
       id: "r-1",
+      driverId: DRIVER.id,
       stops: [
         {
           id: "s-1",

@@ -1920,9 +1920,9 @@ async function lockOwnRoute(
 /**
  * El mismo criterio con que el snapshot ofrece los locales para una venta en
  * ruta (`RouteSnapshotService.vanSaleLocationIds`), ahora para aceptarlos: la
- * zona de la ruta, o a menos de 1 km de alguna de SUS PARADAS. Lo acota el
- * servidor; donde el chofer marcó la venta no cuenta (decisión de Giancarlo,
- * 2026-10-23), así que un celular no puede ofrecer más de lo que bajó.
+ * zona de la ruta, o a menos de 1 km de alguna de SUS PARADAS —todas, también
+ * las de venta en ruta—. Lo acota el servidor; donde el chofer marcó la venta
+ * no cuenta (decisión de Giancarlo, 2026-10-23).
  *
  * Que el local o el cliente estén inactivos es el servidor que cambió
  * mientras el chofer no tenía señal (409, cuarentena al primer intento);

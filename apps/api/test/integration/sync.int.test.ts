@@ -665,6 +665,8 @@ describe("POST /api/v1/sync/operations (integration)", () => {
 
   describe("venta en ruta (STOP_ADD_VAN_SALE)", () => {
     const STOP_SPOT = { latitude: "-12.050000", longitude: "-77.040000" };
+    // ~5,5 km al norte: ningún local de estos tests le queda cerca.
+    const FIRST_STOP_SPOT = { latitude: "-12.000000", longitude: "-77.040000" };
     // ~2,2 km al sur de la parada.
     const FAR_FROM_STOP = { latitude: "-12.070000", longitude: "-77.040000" };
 
@@ -727,15 +729,20 @@ describe("POST /api/v1/sync/operations (integration)", () => {
       expect(balance.quantity).toBe(2);
     });
 
-    /** Una ruta en curso de otra zona, con una parada en `STOP_SPOT`. */
+    /**
+     * Una ruta en curso de otra zona con dos paradas: la primera lejos de todo
+     * y la segunda en `STOP_SPOT`, para que cuente cada parada y no solo una.
+     */
     async function routeWithStopAtSpot(): Promise<string> {
       const { routeId } = await startedRoute(driverId, 0, await createZone());
-      const stopLocationId = await createLocation(undefined, STOP_SPOT);
-      await request(server())
-        .post(`/api/v1/routes/${routeId}/stops`)
-        .set("Authorization", `Bearer ${adminToken}`)
-        .send({ origin: "VAN_SALE", locationId: stopLocationId })
-        .expect(201);
+      for (const position of [FIRST_STOP_SPOT, STOP_SPOT]) {
+        const stopLocationId = await createLocation(undefined, position);
+        await request(server())
+          .post(`/api/v1/routes/${routeId}/stops`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ origin: "VAN_SALE", locationId: stopLocationId })
+          .expect(201);
+      }
       return routeId;
     }
 

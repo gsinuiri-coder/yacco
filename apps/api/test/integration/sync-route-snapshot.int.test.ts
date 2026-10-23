@@ -19,6 +19,10 @@ const LIMA_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" });
 // ~1,17 km en diagonal. El lejano cae DENTRO de la caja de ±1 km por eje que
 // filtra la base: así lo descarta la distancia de verdad y no la caja.
 const STOP_POSITION = { latitude: "-12.046374", longitude: "-77.042793" };
+// Otra parada ~1,5 km al sur, y un local a ~220 m de ella que está a más de
+// 1 km de la primera: cuenta cada parada, no solo una.
+const SECOND_STOP_POSITION = { latitude: "-12.060000", longitude: "-77.042793" };
+const NEAR_SECOND_STOP = { latitude: "-12.062000", longitude: "-77.042793" };
 const NEAR_POSITION = { latitude: "-12.044000", longitude: "-77.041000" };
 const FAR_POSITION = { latitude: "-12.038874", longitude: "-77.035293" };
 
@@ -41,6 +45,7 @@ let zoneOnlyLocationId: string;
 let otherRouteLocationId: string;
 let nearLocationId: string;
 let farLocationId: string;
+let nearSecondStopLocationId: string;
 
 function server() {
   return ctx.app.getHttpServer();
@@ -183,11 +188,15 @@ beforeAll(async () => {
     zoneA,
     STOP_POSITION,
   ));
-  ({ customerId: soldCustomerId, locationId: soldLocationId } = await createCustomer(zoneA));
+  ({ customerId: soldCustomerId, locationId: soldLocationId } = await createCustomer(
+    zoneA,
+    SECOND_STOP_POSITION,
+  ));
   ({ locationId: zoneOnlyLocationId } = await createCustomer(zoneA));
   ({ locationId: otherRouteLocationId } = await createCustomer(zoneB));
   ({ locationId: nearLocationId } = await createCustomer(undefined, NEAR_POSITION));
   ({ locationId: farLocationId } = await createCustomer(undefined, FAR_POSITION));
+  ({ locationId: nearSecondStopLocationId } = await createCustomer(undefined, NEAR_SECOND_STOP));
 
   // Lo pactado con el cliente del pedido, y un dispensador prestado a su local.
   await request(server())
@@ -343,6 +352,7 @@ describe("GET /api/v1/sync/route-snapshot (integration)", () => {
 
     expect(locationIn(response.body, zoneOnlyLocationId)?.onRoute).toBe(false);
     expect(locationIn(response.body, nearLocationId)?.onRoute).toBe(false);
+    expect(locationIn(response.body, nearSecondStopLocationId)?.onRoute).toBe(false);
     expect(locationIn(response.body, farLocationId)).toBeUndefined();
   });
 

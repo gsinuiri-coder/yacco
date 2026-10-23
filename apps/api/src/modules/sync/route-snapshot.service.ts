@@ -193,9 +193,10 @@ export class RouteSnapshotService {
   /**
    * Los locales que la app ofrece para una venta en ruta: los de la zona de
    * la ruta y los que tienen coordenadas a menos de 1 km de alguna de sus
-   * paradas. Los acota el servidor: la posición del celular no entra
-   * (decisión de Giancarlo, 2026-10-23); la app filtra los «cercanos» con su
-   * GPS sobre esta lista. Primero una caja por grados alrededor de cada
+   * paradas —todas, también las de venta en ruta—. Los acota el servidor: la
+   * posición del celular no entra (decisión de Giancarlo, 2026-10-23); los
+   * «clientes cercanos» de la app (11d) se filtrarán con su GPS sobre esta
+   * lista. Primero una caja por grados alrededor de cada
    * parada —que usa la base— y después la distancia de verdad.
    */
   private async vanSaleLocationIds(zoneId: string | null, stops: GeoPoint[]): Promise<string[]> {
