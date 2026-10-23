@@ -1,6 +1,6 @@
 import type { MarkRouteStopBody, RouteSnapshot, RouteStop, StopMarkPayloadV1 } from "@yacco/shared";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Text, View } from "react-native";
 
 import { containersWithQueued, debtWithQueued } from "../offline/delivery-effect";
 import type { OfflineStore, QueuedOperation } from "../offline/offline-store";
@@ -10,6 +10,9 @@ import { ApiError, type ApiClient } from "../session/api-client";
 import { styles } from "../theme";
 import { StopCard, type StopBalances } from "./StopCard";
 import type { StopDeliveryContext } from "./StopDeliveryForm";
+
+/** Cada cuánto se reintenta mandar la cola mientras quede algo pendiente. */
+export const SEND_RETRY_INTERVAL_MS = 30_000;
 
 type Loaded =
   | { status: "loading" }
@@ -73,6 +76,21 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
       active = false;
     };
   }, [client, store, send]);
+
+  // Sin una librería de red, la señal que vuelve se nota intentando: cada
+  // tanto mientras quede algo pendiente, y al volver la app a primer plano.
+  const hasPending = operations.some((op) => op.state === "PENDING");
+  useEffect(() => {
+    if (!hasPending) return;
+    const timer = setInterval(() => void send(), SEND_RETRY_INTERVAL_MS);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void send();
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [hasPending, send]);
 
   if (loaded.status === "loading") {
     return <ActivityIndicator size="large" accessibilityLabel="Cargando la ruta" />;

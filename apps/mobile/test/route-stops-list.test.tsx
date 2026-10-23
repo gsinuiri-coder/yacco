@@ -5,11 +5,12 @@ import type {
   SyncBatchBody,
   SyncBatchResult,
 } from "@yacco/shared";
-import { fireEvent, render, screen, within } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import { AppState, type AppStateStatus } from "react-native";
 
 import type { OfflineStore } from "../src/offline/offline-store";
 import { createOutbox } from "../src/offline/outbox";
-import { RouteStopsList } from "../src/screens/RouteStopsList";
+import { RouteStopsList, SEND_RETRY_INTERVAL_MS } from "../src/screens/RouteStopsList";
 import { ApiError, OfflineError, type ApiClient } from "../src/session/api-client";
 import { deliveryCatalog, memoryOfflineStore } from "./fakes";
 
@@ -236,6 +237,64 @@ describe("marcar una parada como no entregada", () => {
 
     expect(await screen.findByText("No entregada · Enviada")).toBeOnTheScreen();
     expect(server.batches[0]?.operations.map((op) => op.id)).toEqual(["op-de-ayer"]);
+  });
+
+  describe("cuando vuelve la señal", () => {
+    /** Sin señal hasta que el test la devuelve; después el servidor aplica todo. */
+    function serverWithoutSignal() {
+      let online = false;
+      const server = fakeClient(snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita")), (body) => {
+        if (!online) throw OFFLINE;
+        return {
+          results: body.operations.map((op) => ({
+            id: op.id,
+            status: "APPLIED",
+            quarantined: false,
+          })),
+        };
+      });
+      return { ...server, signalBack: () => (online = true) };
+    }
+
+    afterEach(() => {
+      jest.useRealTimers();
+      jest.restoreAllMocks();
+    });
+
+    it("la manda sola al rato, sin que el chofer haga nada", async () => {
+      jest.useFakeTimers();
+      const store = memoryOfflineStore();
+      const server = serverWithoutSignal();
+
+      await renderList(server.client, store);
+      await failStop("Local cerrado");
+      expect(await screen.findByText("No entregada · Pendiente de enviar")).toBeOnTheScreen();
+
+      server.signalBack();
+      await act(() => jest.advanceTimersByTimeAsync(SEND_RETRY_INTERVAL_MS));
+
+      expect(await screen.findByText("No entregada · Enviada")).toBeOnTheScreen();
+      expect(store.operations[0]?.state).toBe("SENT");
+    });
+
+    it("la manda al volver a la app", async () => {
+      let onChange: ((state: AppStateStatus) => void) | undefined;
+      jest.spyOn(AppState, "addEventListener").mockImplementation((_type, listener) => {
+        onChange = listener;
+        return { remove: jest.fn() };
+      });
+      const store = memoryOfflineStore();
+      const server = serverWithoutSignal();
+
+      await renderList(server.client, store);
+      await failStop("Local cerrado");
+      expect(await screen.findByText("No entregada · Pendiente de enviar")).toBeOnTheScreen();
+
+      server.signalBack();
+      await act(async () => onChange?.("active"));
+
+      expect(await screen.findByText("No entregada · Enviada")).toBeOnTheScreen();
+    });
   });
 
   it("sin motivo avisa y no guarda nada", async () => {
