@@ -187,6 +187,9 @@ export class SyncService {
         );
         return;
       }
+      case SYNC_OPERATION_TYPES.ROUTE_START:
+        await this.routesService.startWithinTransaction(tx, operation.payload.routeId, actor);
+        return;
     }
   }
 

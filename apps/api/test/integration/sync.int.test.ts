@@ -119,6 +119,20 @@ async function startedRoute(
   stopCount: number,
   zoneId?: string,
 ): Promise<{ routeId: string; stopIds: string[] }> {
+  const planned = await plannedRoute(routeDriverId, stopCount, zoneId);
+  await request(server())
+    .patch(`/api/v1/routes/${planned.routeId}/start`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .expect(200);
+  return planned;
+}
+
+/** La misma ruta, todavía planificada. */
+async function plannedRoute(
+  routeDriverId: string,
+  stopCount: number,
+  zoneId?: string,
+): Promise<{ routeId: string; stopIds: string[] }> {
   const route = await request(server())
     .post("/api/v1/routes")
     .set("Authorization", `Bearer ${adminToken}`)
@@ -148,11 +162,17 @@ async function startedRoute(
       .expect(201);
     stopIds.push(stop.body.id);
   }
-  await request(server())
-    .patch(`/api/v1/routes/${routeId}/start`)
-    .set("Authorization", `Bearer ${adminToken}`)
-    .expect(200);
   return { routeId, stopIds };
+}
+
+function routeStart(routeId: string, clientTimestamp = new Date()) {
+  return {
+    id: randomUUID(),
+    type: "ROUTE_START",
+    version: 1,
+    clientTimestamp: clientTimestamp.toISOString(),
+    payload: { routeId },
+  };
 }
 
 function failedMark(routeId: string, stopId: string, clientTimestamp = new Date()) {
@@ -208,7 +228,8 @@ function vanSale(
   };
 }
 
-type Envelope = ReturnType<typeof failedMark> | ReturnType<typeof vanSale>;
+type Envelope =
+  ReturnType<typeof failedMark> | ReturnType<typeof vanSale> | ReturnType<typeof routeStart>;
 
 function send(operations: Envelope[], token = driverToken) {
   return request(server())
@@ -229,6 +250,10 @@ async function routeLedger(routeId: string) {
 
 async function stopStatus(stopId: string): Promise<string> {
   return (await prisma.routeStop.findUniqueOrThrow({ where: { id: stopId } })).status;
+}
+
+async function routeStatus(routeId: string): Promise<string> {
+  return (await prisma.route.findUniqueOrThrow({ where: { id: routeId } })).status;
 }
 
 describe("POST /api/v1/sync/operations (integration)", () => {
@@ -763,6 +788,60 @@ describe("POST /api/v1/sync/operations (integration)", () => {
 
       expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
       expect(await prisma.routeStop.count({ where: { routeId } })).toBe(0);
+    });
+  });
+
+  // Decisión de Giancarlo (2026-10-23 08:17): el chofer empieza la ruta desde
+  // la app, también sin señal, por el mismo paso que usa la oficina.
+  describe("empezar la ruta (ROUTE_START)", () => {
+    it("starts a planned route and, in the same batch, the marks made after it apply; sent again it is DUPLICATE", async () => {
+      const { routeId, stopIds } = await plannedRoute(driverId, 1);
+      const startedAt = new Date(Date.now() - 60 * 60 * 1000);
+      // El lote llega con la marca primero: se aplica en el orden del chofer.
+      const batch = [failedMark(routeId, stopIds[0]!), routeStart(routeId, startedAt)];
+
+      const first = await send(batch).expect(200);
+      const resent = await send([batch[1]!]).expect(200);
+
+      expect(first.body.results.map((result: { status: string }) => result.status)).toEqual([
+        "APPLIED",
+        "APPLIED",
+      ]);
+      expect(await routeStatus(routeId)).toBe("IN_PROGRESS");
+      expect(await stopStatus(stopIds[0]!)).toBe("FAILED");
+      expect(resent.body.results[0]).toMatchObject({ status: "DUPLICATE" });
+    });
+
+    it("applies without changing anything when the office already started it", async () => {
+      const { routeId } = await startedRoute(driverId, 0);
+
+      const response = await send([routeStart(routeId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "APPLIED", quarantined: false });
+      expect(await routeStatus(routeId)).toBe("IN_PROGRESS");
+    });
+
+    it("quarantines at once a start of a route the office already finished, leaving it finished", async () => {
+      const { routeId } = await startedRoute(driverId, 0);
+      await request(server())
+        .patch(`/api/v1/routes/${routeId}/finish`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      const response = await send([routeStart(routeId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+      expect(response.body.results[0].reason).toContain("terminada");
+      expect(await routeStatus(routeId)).toBe("FINISHED");
+    });
+
+    it("does not let a driver start another driver's route", async () => {
+      const { routeId } = await plannedRoute(otherDriverId, 0);
+
+      const response = await send([routeStart(routeId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+      expect(await routeStatus(routeId)).toBe("PLANNED");
     });
   });
 

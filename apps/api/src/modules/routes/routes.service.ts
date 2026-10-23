@@ -674,6 +674,33 @@ export class RoutesService {
   }
 
   /**
+   * El mismo PLANNED -> IN_PROGRESS que `start`, desde el celular
+   * (`ROUTE_START`) y dentro de la transacción del lote. Solo el chofer de esa
+   * ruta, como `markStopWithinTransaction`.
+   *
+   * Que ya esté en curso no es un error: la oficina la empezó mientras el
+   * chofer no tenía señal, y lo que él quería ya pasó —se aplica sin cambiar
+   * nada—. Terminada o liquidada sí choca con el servidor (409): va a
+   * cuarentena (decisión de Giancarlo, 2026-10-23).
+   */
+  async startWithinTransaction(
+    tx: Prisma.TransactionClient,
+    routeId: string,
+    actor: RouteActor,
+  ): Promise<void> {
+    const { status } = await lockOwnRoute(tx, routeId, actor);
+    if (status === RouteStatus.IN_PROGRESS) {
+      return;
+    }
+    if (status !== RouteStatus.PLANNED) {
+      throw new ConflictException(
+        `Solo se puede iniciar una ruta planificada; esta está ${ROUTE_STATUS_LABELS[status]}`,
+      );
+    }
+    await tx.route.update({ where: { id: routeId }, data: { status: RouteStatus.IN_PROGRESS } });
+  }
+
+  /**
    * IN_PROGRESS -> FINISHED, y solo con TODAS sus paradas resueltas. Same
    * idiom as start(): las dos condiciones viven en el WHERE del update, no en
    * una lectura previa que una llamada concurrente pueda adelantar.
@@ -1861,6 +1888,21 @@ async function lockOwnRouteInProgress(
   actor: RouteActor,
   action: string,
 ): Promise<{ zoneId: string | null }> {
+  const route = await lockOwnRoute(tx, routeId, actor);
+  if (route.status !== RouteStatus.IN_PROGRESS) {
+    throw new ConflictException(
+      `Solo se pueden ${action} de una ruta en curso; esta está ${ROUTE_STATUS_LABELS[route.status]}`,
+    );
+  }
+  return { zoneId: route.zoneId };
+}
+
+/** La ruta DE ESE chofer, con su candado y su estado leído después de tomarlo. */
+async function lockOwnRoute(
+  tx: Prisma.TransactionClient,
+  routeId: string,
+  actor: RouteActor,
+): Promise<{ zoneId: string | null; status: RouteStatus }> {
   const route = await tx.route.findUnique({
     where: { id: routeId },
     select: { driverId: true, zoneId: true },
@@ -1872,12 +1914,7 @@ async function lockOwnRouteInProgress(
     throw new ForbiddenException("Esta ruta es de otro chofer");
   }
   const status = await lockRouteAndReadStatus(tx, routeId);
-  if (status !== RouteStatus.IN_PROGRESS) {
-    throw new ConflictException(
-      `Solo se pueden ${action} de una ruta en curso; esta está ${ROUTE_STATUS_LABELS[status]}`,
-    );
-  }
-  return { zoneId: route.zoneId };
+  return { zoneId: route.zoneId, status };
 }
 
 /**

@@ -36,6 +36,9 @@ export function describeSyncOperation(
   payload: unknown,
   catalogs: SyncOperationCatalogs,
 ): string[] {
+  if (type === "ROUTE_START") {
+    return ["Empezar la ruta"];
+  }
   if (type !== "STOP_MARK" || typeof payload !== "object" || payload === null) {
     return [`Operación «${type}», versión ${version}`];
   }

@@ -336,6 +336,90 @@ describe("marcar una parada como no entregada", () => {
   });
 });
 
+// Decisión de Giancarlo (2026-10-23 08:17): el chofer empieza la ruta desde
+// la app, también sin señal; la oficina puede haberla empezado o terminado.
+describe("empezar la ruta", () => {
+  const startRoute = async () =>
+    fireEvent.press(await screen.findByRole("button", { name: "Empezar la ruta" }));
+
+  it("sin señal la empieza en el celular, queda «Pendiente de enviar» y ya se marcan paradas", async () => {
+    const store = memoryOfflineStore();
+    store.snapshot = snapshotWith(stop(1, "Bodega Rosita"));
+
+    await renderList(fakeClient(OFFLINE, OFFLINE).client, store);
+    await startRoute();
+
+    expect(await screen.findByText("Ruta en curso · Pendiente de enviar")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Empezar la ruta" })).toBeNull();
+    expect(screen.getByRole("button", { name: "No se pudo entregar" })).toBeOnTheScreen();
+    expect(store.operations).toHaveLength(1);
+    expect(store.operations[0]?.envelope).toMatchObject({
+      type: "ROUTE_START",
+      version: 1,
+      payload: { routeId: "r-1" },
+    });
+  });
+
+  it("con señal la manda y queda «Enviada»", async () => {
+    const store = memoryOfflineStore();
+    const server = fakeClient(snapshotWith(stop(1, "Bodega Rosita")), (body) => ({
+      results: body.operations.map((op) => ({ id: op.id, status: "APPLIED", quarantined: false })),
+    }));
+
+    await renderList(server.client, store);
+    await startRoute();
+
+    expect(await screen.findByText("Ruta en curso · Enviada")).toBeOnTheScreen();
+    expect(server.batches[0]?.operations.map((op) => op.type)).toEqual(["ROUTE_START"]);
+  });
+
+  it("si la oficina ya la terminó, queda como la tiene el servidor y «La oficina la revisa»", async () => {
+    const store = memoryOfflineStore();
+    const server = fakeClient(snapshotWith(stop(1, "Bodega Rosita")), (body) => ({
+      results: body.operations.map((op) => ({
+        id: op.id,
+        status: "REJECTED",
+        quarantined: true,
+        reason: "Solo se puede iniciar una ruta planificada; esta está terminada",
+      })),
+    }));
+
+    await renderList(server.client, store);
+    await startRoute();
+
+    expect(await screen.findByText("Ruta planificada · La oficina la revisa")).toBeOnTheScreen();
+    expect(
+      screen.getByText("Solo se puede iniciar una ruta planificada; esta está terminada"),
+    ).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Empezar la ruta" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "No se pudo entregar" })).toBeNull();
+  });
+
+  it("una ruta que ya está en curso no ofrece empezarla", async () => {
+    await renderList(
+      fakeClient(snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita")), OFFLINE).client,
+      memoryOfflineStore(),
+    );
+
+    expect(await screen.findByText("1. Bodega Rosita")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Empezar la ruta" })).toBeNull();
+  });
+
+  it("si el celular no lo pudo guardar, lo dice y deja reintentar", async () => {
+    const store = memoryOfflineStore();
+    store.snapshot = snapshotWith(stop(1, "Bodega Rosita"));
+    store.addOperation = () => Promise.reject(new Error("SQLITE_FULL"));
+
+    await renderList(fakeClient(OFFLINE).client, store);
+    await startRoute();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudo guardar en el celular. Inténtalo de nuevo.",
+    );
+    expect(screen.getByRole("button", { name: "Empezar la ruta" })).toBeOnTheScreen();
+  });
+});
+
 /** La ruta en curso con la parada de Bodega Rosita, que pidió 3 recargas. */
 function deliverySnapshot(): RouteSnapshot {
   return {

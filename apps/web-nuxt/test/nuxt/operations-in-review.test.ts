@@ -193,6 +193,26 @@ describe("Operaciones en revisión", () => {
     expect(screen.getByRole("heading", { name: "Operación de Rosa Quispe" })).toBeTruthy();
   });
 
+  it("empezar la ruta desde el celular se lee en palabras de la planta", async () => {
+    stubCatalogs();
+    stubInbox([
+      [
+        {
+          ...delivered,
+          type: "ROUTE_START",
+          payload: { routeId: ROUTE_ID },
+          rejectionReason: "Solo se puede iniciar una ruta planificada; esta está terminada",
+          stop: undefined,
+        },
+      ],
+    ]);
+
+    await renderPage();
+
+    expect(await screen.findByText("Empezar la ruta")).toBeTruthy();
+    expect(screen.queryByText(/ROUTE_START/)).toBeNull();
+  });
+
   it("quien no es administrador no ve el enlace ni consulta la bandeja", async () => {
     const inbox = stubInbox([[delivered]]);
 

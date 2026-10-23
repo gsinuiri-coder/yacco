@@ -10,7 +10,7 @@ import type { ProductType } from "./products.js";
 import type { MarkRouteStopBody, Route, RouteTruckStockLine } from "./routes.js";
 
 /** Operation types the API knows. A new shape is a new `version`, never an edit. */
-export type SyncOperationType = "STOP_MARK" | "STOP_ADD_VAN_SALE";
+export type SyncOperationType = "STOP_MARK" | "STOP_ADD_VAN_SALE" | "ROUTE_START";
 
 /** One queued action. `id` is generated on the phone; `clientTimestamp` is the phone's clock. */
 export interface SyncOperationEnvelope<TPayload = Record<string, unknown>> {
@@ -30,7 +30,8 @@ export interface StopMarkPayloadV1 extends MarkRouteStopBody {
 /**
  * `STOP_ADD_VAN_SALE` v1: a van sale at a location with no stop, added and
  * delivered in one operation. The location must be in the route's zone or
- * within 1 km of `markedLatitude`/`markedLongitude`.
+ * within 1 km of one of the route's stops — the server bounds it, never the
+ * phone's position.
  */
 export interface StopAddVanSalePayloadV1 extends Omit<
   MarkRouteStopBody,
@@ -38,6 +39,14 @@ export interface StopAddVanSalePayloadV1 extends Omit<
 > {
   routeId: string;
   locationId: string;
+}
+
+/**
+ * `ROUTE_START` v1: the driver starts the route from the phone, signal or not.
+ * Already in progress applies with no change; finished goes to quarantine.
+ */
+export interface RouteStartPayloadV1 {
+  routeId: string;
 }
 
 /** POST /sync/operations */
@@ -91,9 +100,6 @@ export interface SyncOperationInReview {
 /** GET /sync/route-snapshot. Without `routeId`: the driver's route in progress, else today's. */
 export interface RouteSnapshotQuery {
   routeId?: string;
-  /** Where the phone is, so the van-sale list adds the locations within 1 km. */
-  latitude?: string;
-  longitude?: string;
 }
 
 export interface RouteSnapshotLocation {

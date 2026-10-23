@@ -1,4 +1,11 @@
-import type { MarkRouteStopBody, RouteSnapshot, RouteStop, StopMarkPayloadV1 } from "@yacco/shared";
+import type {
+  MarkRouteStopBody,
+  RouteSnapshot,
+  RouteStartPayloadV1,
+  RouteStop,
+  StopMarkPayloadV1,
+  SyncOperationType,
+} from "@yacco/shared";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, AppState, Text, View } from "react-native";
 
@@ -8,6 +15,7 @@ import type { Outbox } from "../offline/outbox";
 import { loadRouteSnapshot } from "../offline/route-snapshot";
 import { ApiError, type ApiClient } from "../session/api-client";
 import { styles } from "../theme";
+import { RouteStart } from "./RouteStart";
 import { StopCard, type StopBalances } from "./StopCard";
 import type { StopDeliveryContext } from "./StopDeliveryForm";
 
@@ -33,6 +41,17 @@ function lastMarkByStop(operations: QueuedOperation[]): Map<string, QueuedOperat
     byStop.set((op.envelope.payload as unknown as StopMarkPayloadV1).stopId, op);
   }
   return byStop;
+}
+
+/** El último «Empezar la ruta» que el celular hizo para esta ruta. */
+function lastStartOf(operations: QueuedOperation[], routeId: string): QueuedOperation | null {
+  return (
+    operations.findLast(
+      (op) =>
+        op.envelope.type === "ROUTE_START" &&
+        (op.envelope.payload as unknown as RouteStartPayloadV1).routeId === routeId,
+    ) ?? null
+  );
 }
 
 /**
@@ -113,6 +132,12 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
   const { snapshot } = loaded;
   const { route } = snapshot;
   const marks = lastMarkByStop(operations);
+  const queuedStart = lastStartOf(operations, route.id);
+  // Empezada en el celular, ya se trabaja: salvo que la oficina la haya
+  // rechazado, que entonces gana el servidor.
+  const inProgress =
+    route.status === "IN_PROGRESS" ||
+    (route.status === "PLANNED" && queuedStart !== null && queuedStart.state !== "IN_REVIEW");
 
   function deliveryOf(stop: RouteStop): StopDeliveryContext | null {
     const location = snapshot.locations.find((candidate) => candidate.id === stop.location.id);
@@ -136,7 +161,11 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
 
   async function mark(stopId: string, body: MarkRouteStopBody): Promise<void> {
     const payload: StopMarkPayloadV1 = { routeId: route.id, stopId, ...body };
-    await outbox.enqueue("STOP_MARK", 1, payload);
+    await queue("STOP_MARK", payload);
+  }
+
+  async function queue(type: SyncOperationType, payload: object): Promise<void> {
+    await outbox.enqueue(type, 1, payload);
     setOperations(await store.listOperations());
     void send();
   }
@@ -146,13 +175,18 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
       {loaded.fromDevice && (
         <Text style={styles.notice}>Sin señal: es la ruta guardada en el celular.</Text>
       )}
+      <RouteStart
+        status={route.status}
+        queued={queuedStart}
+        onStart={() => queue("ROUTE_START", { routeId: route.id } satisfies RouteStartPayloadV1)}
+      />
       {route.stops.length === 0 && <Text style={styles.subtitle}>Tu ruta no tiene paradas.</Text>}
       {route.stops.map((stop) => (
         <StopCard
           key={stop.id}
           stop={stop}
           queued={marks.get(stop.id) ?? null}
-          canMark={route.status === "IN_PROGRESS"}
+          canMark={inProgress}
           delivery={deliveryOf(stop)}
           balances={balancesOf(stop)}
           onDeliver={(body) => mark(stop.id, body)}
