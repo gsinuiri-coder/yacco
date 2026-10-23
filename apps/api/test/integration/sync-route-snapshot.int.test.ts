@@ -15,10 +15,10 @@ const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "admin123";
 const LIMA_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" });
 
-// Un punto en Lima y dos locales: uno a ~300 m y otro a ~1,17 km en diagonal.
-// El lejano cae DENTRO de la caja de ±1 km por eje que filtra la base: así lo
-// descarta la distancia de verdad y no la caja.
-const DRIVER_POSITION = { latitude: "-12.046374", longitude: "-77.042793" };
+// El local de una parada y dos locales sin zona: uno a ~300 m y otro a
+// ~1,17 km en diagonal. El lejano cae DENTRO de la caja de ±1 km por eje que
+// filtra la base: así lo descarta la distancia de verdad y no la caja.
+const STOP_POSITION = { latitude: "-12.046374", longitude: "-77.042793" };
 const NEAR_POSITION = { latitude: "-12.044000", longitude: "-77.041000" };
 const FAR_POSITION = { latitude: "-12.038874", longitude: "-77.035293" };
 
@@ -179,7 +179,10 @@ beforeAll(async () => {
 
   const zoneA = await createZone("Zona Snapshot A");
   const zoneB = await createZone("Zona Snapshot B");
-  ({ customerId: orderedCustomerId, locationId: orderedLocationId } = await createCustomer(zoneA));
+  ({ customerId: orderedCustomerId, locationId: orderedLocationId } = await createCustomer(
+    zoneA,
+    STOP_POSITION,
+  ));
   ({ customerId: soldCustomerId, locationId: soldLocationId } = await createCustomer(zoneA));
   ({ locationId: zoneOnlyLocationId } = await createCustomer(zoneA));
   ({ locationId: otherRouteLocationId } = await createCustomer(zoneB));
@@ -332,14 +335,19 @@ describe("GET /api/v1/sync/route-snapshot (integration)", () => {
     expect(sold.containerBalances[0]?.quantity).toBe(2);
   });
 
-  test("ofrece para venta en ruta los locales de la zona y, con posición, los de menos de 1 km", async () => {
-    const withoutPosition = await snapshot(driverAToken).expect(200);
-    expect(locationIn(withoutPosition.body, zoneOnlyLocationId)?.onRoute).toBe(false);
-    expect(locationIn(withoutPosition.body, nearLocationId)).toBeUndefined();
+  // Decisión de Giancarlo (2026-10-23 08:17): los acota el servidor, con la
+  // zona de la ruta y los locales a ≤ 1 km de SUS PARADAS; dónde está el
+  // celular no entra.
+  test("ofrece para venta en ruta los locales de la zona y los de menos de 1 km de sus paradas", async () => {
+    const response = await snapshot(driverAToken).expect(200);
 
-    const withPosition = await snapshot(driverAToken, DRIVER_POSITION).expect(200);
-    expect(locationIn(withPosition.body, nearLocationId)?.onRoute).toBe(false);
-    expect(locationIn(withPosition.body, farLocationId)).toBeUndefined();
+    expect(locationIn(response.body, zoneOnlyLocationId)?.onRoute).toBe(false);
+    expect(locationIn(response.body, nearLocationId)?.onRoute).toBe(false);
+    expect(locationIn(response.body, farLocationId)).toBeUndefined();
+  });
+
+  test("no acepta la posición del celular para sumar locales", async () => {
+    await snapshot(driverAToken, FAR_POSITION).expect(400);
   });
 
   test("otro chofer recibe 403 por la ruta ajena y 404 si no tiene ruta hoy", async () => {

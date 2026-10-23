@@ -28,19 +28,6 @@ describe("la ruta guardada en el celular", () => {
     expect(store.snapshot).toBe(TODAY);
   });
 
-  it("manda dónde está el celular para la venta en ruta", async () => {
-    const { request, client } = clientReplying(TODAY);
-
-    await loadRouteSnapshot(client, memoryOfflineStore(), {
-      latitude: "-12.0464",
-      longitude: "-77.0428",
-    });
-
-    expect(request).toHaveBeenCalledWith(
-      "/sync/route-snapshot?latitude=-12.0464&longitude=-77.0428",
-    );
-  });
-
   it.each([
     ["sin señal", new OfflineError(new TypeError("Network request failed"))],
     ["con el servidor caído", new ApiError(503, "El servidor tuvo un problema.")],

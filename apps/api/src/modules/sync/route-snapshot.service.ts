@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, RouteStatus, UserRole } from "@prisma/client";
-import { NEARBY_RADIUS_M, distanceInMeters, toRadians } from "../../common/geo.js";
+import { isNearAny, nearbyBox } from "../../common/geo.js";
+import type { GeoPoint } from "../../common/geo.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { resolveEffectivePrices } from "../customer-prices/customer-prices.service.js";
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
-import { RoutesService } from "../routes/routes.service.js";
+import { RoutesService, stopPoints } from "../routes/routes.service.js";
 import type { RouteActor } from "../routes/routes.service.js";
 import type {
   RouteSnapshotDto,
@@ -13,7 +14,6 @@ import type {
   SnapshotOrderDto,
 } from "./dto/route-snapshot.dto.js";
 
-const METERS_PER_DEGREE_LATITUDE = 111_320;
 const LIMA_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima" });
 
 /**
@@ -88,7 +88,10 @@ export class RouteSnapshotService {
     ]);
 
     const stopLocationIds = new Set(route.stops.map((stop) => stop.locationId));
-    const vanSaleLocationIds = await this.vanSaleLocationIds(route.zoneId, query);
+    const vanSaleLocationIds = await this.vanSaleLocationIds(
+      route.zoneId,
+      stopPoints(route.stops.map((stop) => stop.location)),
+    );
     const locationIds = [...new Set([...stopLocationIds, ...vanSaleLocationIds])];
 
     const [locations, products, containerTypes, paymentMethods, orders] = await Promise.all([
@@ -189,14 +192,13 @@ export class RouteSnapshotService {
 
   /**
    * Los locales que la app ofrece para una venta en ruta: los de la zona de
-   * la ruta y, si el celular mandó dónde está, los que tienen coordenadas a
-   * menos de 1 km. Primero una caja por grados —que usa la base— y después la
-   * distancia de verdad.
+   * la ruta y los que tienen coordenadas a menos de 1 km de alguna de sus
+   * paradas. Los acota el servidor: la posición del celular no entra
+   * (decisión de Giancarlo, 2026-10-23); la app filtra los «cercanos» con su
+   * GPS sobre esta lista. Primero una caja por grados alrededor de cada
+   * parada —que usa la base— y después la distancia de verdad.
    */
-  private async vanSaleLocationIds(
-    zoneId: string | null,
-    query: RouteSnapshotQueryDto,
-  ): Promise<string[]> {
+  private async vanSaleLocationIds(zoneId: string | null, stops: GeoPoint[]): Promise<string[]> {
     const ids: string[] = [];
     if (zoneId !== null) {
       const inZone = await this.prisma.customerLocation.findMany({
@@ -205,39 +207,36 @@ export class RouteSnapshotService {
       });
       ids.push(...inZone.map((location) => location.id));
     }
-    if (query.latitude === undefined || query.longitude === undefined) {
+    if (stops.length === 0) {
       return ids;
     }
 
-    const latitude = Number(query.latitude);
-    const longitude = Number(query.longitude);
-    const latitudeDelta = NEARBY_RADIUS_M / METERS_PER_DEGREE_LATITUDE;
-    const longitudeDelta =
-      NEARBY_RADIUS_M /
-      (METERS_PER_DEGREE_LATITUDE * Math.max(Math.cos(toRadians(latitude)), 0.01));
     const candidates = await this.prisma.customerLocation.findMany({
       where: {
         ...VAN_SALE_LOCATION,
-        latitude: {
-          gte: new Prisma.Decimal(latitude - latitudeDelta),
-          lte: new Prisma.Decimal(latitude + latitudeDelta),
-        },
-        longitude: {
-          gte: new Prisma.Decimal(longitude - longitudeDelta),
-          lte: new Prisma.Decimal(longitude + longitudeDelta),
-        },
+        OR: stops.map((stop) => {
+          const box = nearbyBox(stop);
+          return {
+            latitude: {
+              gte: new Prisma.Decimal(box.latitude.gte),
+              lte: new Prisma.Decimal(box.latitude.lte),
+            },
+            longitude: {
+              gte: new Prisma.Decimal(box.longitude.gte),
+              lte: new Prisma.Decimal(box.longitude.lte),
+            },
+          };
+        }),
       },
       select: { id: true, latitude: true, longitude: true },
     });
     for (const candidate of candidates) {
       if (candidate.latitude === null || candidate.longitude === null) continue;
-      const distance = distanceInMeters(
-        latitude,
-        longitude,
-        candidate.latitude.toNumber(),
-        candidate.longitude.toNumber(),
-      );
-      if (distance <= NEARBY_RADIUS_M) ids.push(candidate.id);
+      const point = {
+        latitude: candidate.latitude.toNumber(),
+        longitude: candidate.longitude.toNumber(),
+      };
+      if (isNearAny(point, stops)) ids.push(candidate.id);
     }
     return ids;
   }

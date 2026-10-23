@@ -20,7 +20,8 @@ import {
   toDeliveredItems,
   toDeliveryLines,
 } from "../../common/delivery-lines.js";
-import { NEARBY_RADIUS_M, distanceInMeters } from "../../common/geo.js";
+import { NEARBY_RADIUS_M, isNearAny } from "../../common/geo.js";
+import type { GeoPoint } from "../../common/geo.js";
 import { ROUTE_STATUS_LABELS, STOP_STATUS_LABELS } from "../../common/status-labels.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import {
@@ -1060,8 +1061,8 @@ export class RoutesService {
    * del celular queda en la operación y fecha la venta.
    *
    * Solo a un local activo de un cliente activo, de la zona de la ruta o a
-   * menos de 1 km de donde el chofer marcó: lo mismo que el snapshot le
-   * ofrece. Un cliente nuevo sigue siendo cosa de la oficina.
+   * menos de 1 km de una de sus paradas: lo mismo que el snapshot le ofrece.
+   * Un cliente nuevo sigue siendo cosa de la oficina.
    */
   async addVanSaleStopWithinTransaction(
     tx: Prisma.TransactionClient,
@@ -1074,7 +1075,7 @@ export class RoutesService {
     const route = await lockOwnRouteInProgress(tx, routeId, actor, "hacer ventas en ruta");
     const mark: MarkRouteStopDto = { ...dto, status: StopStatus.DELIVERED };
     assertMarkPayloadMatchesStatus(mark);
-    await assertVanSaleLocationReachable(tx, locationId, route.zoneId, mark);
+    await assertVanSaleLocationReachable(tx, locationId, { id: routeId, zoneId: route.zoneId });
 
     const stop = await this.createStopWithinTransaction(
       tx,
@@ -1881,9 +1882,10 @@ async function lockOwnRouteInProgress(
 
 /**
  * El mismo criterio con que el snapshot ofrece los locales para una venta en
- * ruta (`RouteSnapshotService.vanSaleLocationIds`), ahora para aceptarlos.
- * La distancia se mide desde donde el chofer marcó la venta: sin esa
- * ubicación, solo vale un local de la zona de la ruta.
+ * ruta (`RouteSnapshotService.vanSaleLocationIds`), ahora para aceptarlos: la
+ * zona de la ruta, o a menos de 1 km de alguna de SUS PARADAS. Lo acota el
+ * servidor; donde el chofer marcó la venta no cuenta (decisión de Giancarlo,
+ * 2026-10-23), así que un celular no puede ofrecer más de lo que bajó.
  *
  * Que el local o el cliente estén inactivos es el servidor que cambió
  * mientras el chofer no tenía señal (409, cuarentena al primer intento);
@@ -1892,8 +1894,7 @@ async function lockOwnRouteInProgress(
 async function assertVanSaleLocationReachable(
   tx: Prisma.TransactionClient,
   locationId: string,
-  routeZoneId: string | null,
-  mark: MarkRouteStopDto,
+  route: { id: string; zoneId: string | null },
 ): Promise<void> {
   const location = await tx.customerLocation.findUnique({
     where: { id: locationId },
@@ -1910,25 +1911,42 @@ async function assertVanSaleLocationReachable(
   if (!location.active || !location.customer.active) {
     throw new ConflictException("Ese local o su cliente ya no están activos");
   }
-  if (routeZoneId !== null && location.customer.zoneId === routeZoneId) {
+  if (route.zoneId !== null && location.customer.zoneId === route.zoneId) {
     return;
   }
+  const stops = await tx.routeStop.findMany({
+    where: { routeId: route.id },
+    select: { location: { select: { latitude: true, longitude: true } } },
+  });
   const nearby =
-    mark.markedLatitude !== undefined &&
-    mark.markedLongitude !== undefined &&
     location.latitude !== null &&
     location.longitude !== null &&
-    distanceInMeters(
-      Number(mark.markedLatitude),
-      Number(mark.markedLongitude),
-      location.latitude.toNumber(),
-      location.longitude.toNumber(),
-    ) <= NEARBY_RADIUS_M;
+    isNearAny(
+      { latitude: location.latitude.toNumber(), longitude: location.longitude.toNumber() },
+      stopPoints(stops.map((stop) => stop.location)),
+    );
   if (!nearby) {
     throw new BadRequestException(
-      `Ese local no es de la zona de la ruta ni está a menos de ${NEARBY_RADIUS_M / 1000} km de donde se marcó la venta`,
+      `Ese local no es de la zona de la ruta ni está a menos de ${NEARBY_RADIUS_M / 1000} km de una de sus paradas`,
     );
   }
+}
+
+/**
+ * Desde dónde se mide la venta en ruta: los locales de las paradas que tienen
+ * coordenadas. Acepta las del include (Decimal) y las de la respuesta (texto).
+ */
+export function stopPoints(
+  locations: {
+    latitude: Prisma.Decimal | string | null;
+    longitude: Prisma.Decimal | string | null;
+  }[],
+): GeoPoint[] {
+  return locations.flatMap(({ latitude, longitude }) =>
+    latitude === null || longitude === null
+      ? []
+      : [{ latitude: Number(latitude), longitude: Number(longitude) }],
+  );
 }
 
 function buildRouteFilter(query: ListRoutesQueryDto, actor: RouteActor): Prisma.RouteWhereInput {

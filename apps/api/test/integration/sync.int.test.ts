@@ -639,7 +639,9 @@ describe("POST /api/v1/sync/operations (integration)", () => {
   });
 
   describe("venta en ruta (STOP_ADD_VAN_SALE)", () => {
-    const DRIVER_SPOT = { latitude: "-12.050000", longitude: "-77.040000" };
+    const STOP_SPOT = { latitude: "-12.050000", longitude: "-77.040000" };
+    // ~2,2 km al sur de la parada.
+    const FAR_FROM_STOP = { latitude: "-12.070000", longitude: "-77.040000" };
 
     async function vanSaleStops(routeId: string) {
       return prisma.routeStop.findMany({
@@ -700,33 +702,43 @@ describe("POST /api/v1/sync/operations (integration)", () => {
       expect(balance.quantity).toBe(2);
     });
 
-    it("accepts a location of another zone within 1 km of where the driver marked it", async () => {
+    /** Una ruta en curso de otra zona, con una parada en `STOP_SPOT`. */
+    async function routeWithStopAtSpot(): Promise<string> {
       const { routeId } = await startedRoute(driverId, 0, await createZone());
-      // ~445 m al sur de donde marcó el chofer, y de otra zona.
+      const stopLocationId = await createLocation(undefined, STOP_SPOT);
+      await request(server())
+        .post(`/api/v1/routes/${routeId}/stops`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ origin: "VAN_SALE", locationId: stopLocationId })
+        .expect(201);
+      return routeId;
+    }
+
+    // Decisión de Giancarlo (2026-10-23 08:17): el radio se mide desde las
+    // paradas de la ruta, nunca desde donde el celular dice que está.
+    it("accepts a location of another zone within 1 km of one of the route's stops, wherever the driver marked it", async () => {
+      const routeId = await routeWithStopAtSpot();
+      // ~445 m al sur de la parada, y de otra zona.
       const locationId = await createLocation(await createZone(), {
         latitude: "-12.054000",
         longitude: "-77.040000",
       });
 
-      const response = await send([vanSale(routeId, locationId, DRIVER_SPOT)]).expect(200);
+      const response = await send([vanSale(routeId, locationId, FAR_FROM_STOP)]).expect(200);
 
       expect(response.body.results[0]).toMatchObject({ status: "APPLIED" });
       expect(await vanSaleStops(routeId)).toHaveLength(1);
     });
 
-    it("rejects a location of another zone farther than 1 km, writing nothing", async () => {
-      const { routeId } = await startedRoute(driverId, 0, await createZone());
-      // ~2,2 km al sur.
-      const locationId = await createLocation(await createZone(), {
-        latitude: "-12.070000",
-        longitude: "-77.040000",
-      });
+    it("rejects a location of another zone farther than 1 km from every stop, even marked right at it, writing nothing", async () => {
+      const routeId = await routeWithStopAtSpot();
+      const locationId = await createLocation(await createZone(), FAR_FROM_STOP);
 
-      const response = await send([vanSale(routeId, locationId, DRIVER_SPOT)]).expect(200);
+      const response = await send([vanSale(routeId, locationId, FAR_FROM_STOP)]).expect(200);
 
       expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: false });
       expect(response.body.results[0].reason).toContain("1 km");
-      expect(await prisma.routeStop.count({ where: { routeId } })).toBe(0);
+      expect(await vanSaleStops(routeId)).toHaveLength(0);
       expect(await routeLedger(routeId)).toEqual({ sales: 0, payments: 0, movements: 0 });
     });
 

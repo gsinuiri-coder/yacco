@@ -1,48 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ProductType } from "@prisma/client";
-import {
-  IsLatitude,
-  IsLongitude,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Matches,
-  ValidateIf,
-} from "class-validator";
+import { IsOptional, IsUUID } from "class-validator";
 import { EffectivePriceResponseDto } from "../../customer-prices/dto/effective-price-response.dto.js";
 import { RouteTruckStockLineDto } from "../../routes/dto/route-load-response.dto.js";
 import { RouteResponseDto } from "../../routes/dto/route-response.dto.js";
-import { COORDINATE_PATTERN } from "../../routes/dto/mark-route-stop.dto.js";
 
 /**
  * Sin `routeId`, la ruta del chofer en curso o, si no tiene, la de hoy. Con
  * `routeId`, el ADMIN prueba la de cualquiera; el chofer solo puede nombrar la
- * suya de hoy o la que tiene en curso. La posición, si viene, suma los locales
- * a menos de 1 km para la venta en ruta.
+ * suya de hoy o la que tiene en curso. No recibe la posición del celular: los
+ * locales para venta en ruta los acota el servidor con las paradas.
  */
 export class RouteSnapshotQueryDto {
   @ApiPropertyOptional({ format: "uuid" })
   @IsOptional()
   @IsUUID("4", { message: "La ruta debe ser un identificador válido" })
   routeId?: string;
-
-  @ApiPropertyOptional({ type: String, example: "-12.046374" })
-  @ValidateIf(
-    (dto: RouteSnapshotQueryDto) => dto.latitude !== undefined || dto.longitude !== undefined,
-  )
-  @IsString({ message: "La latitud debe ser un texto decimal" })
-  @Matches(COORDINATE_PATTERN, { message: "La latitud admite hasta 6 decimales" })
-  @IsLatitude({ message: "La latitud debe estar entre -90 y 90" })
-  latitude?: string;
-
-  @ApiPropertyOptional({ type: String, example: "-77.042793" })
-  @ValidateIf(
-    (dto: RouteSnapshotQueryDto) => dto.latitude !== undefined || dto.longitude !== undefined,
-  )
-  @IsString({ message: "La longitud debe ser un texto decimal" })
-  @Matches(COORDINATE_PATTERN, { message: "La longitud admite hasta 6 decimales" })
-  @IsLongitude({ message: "La longitud debe estar entre -180 y 180" })
-  longitude?: string;
 }
 
 class NamedDto {

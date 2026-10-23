@@ -3,11 +3,6 @@ import type { RouteSnapshot } from "@yacco/shared";
 import { ApiError, OfflineError, type ApiClient } from "../session/api-client";
 import type { OfflineStore } from "./offline-store";
 
-export interface Position {
-  latitude: string;
-  longitude: string;
-}
-
 export interface LoadedSnapshot {
   snapshot: RouteSnapshot | null;
   /** La ruta es la guardada en el celular: no hubo señal para bajarla de nuevo. */
@@ -16,19 +11,15 @@ export interface LoadedSnapshot {
 
 /**
  * Con señal baja la ruta del día y la guarda; sin señal, abre la última que
- * quedó en el celular. Con la posición, la venta en ruta suma los locales a
- * menos de 1 km.
+ * quedó en el celular. Los locales para venta en ruta los acota el servidor
+ * con las paradas: el celular no manda dónde está.
  */
 export async function loadRouteSnapshot(
   client: ApiClient,
   store: OfflineStore,
-  position?: Position,
 ): Promise<LoadedSnapshot> {
-  const query = position
-    ? `?${new URLSearchParams({ latitude: position.latitude, longitude: position.longitude })}`
-    : "";
   try {
-    const snapshot = await client.request<RouteSnapshot>(`/sync/route-snapshot${query}`);
+    const snapshot = await client.request<RouteSnapshot>("/sync/route-snapshot");
     await store.saveSnapshot(snapshot);
     return { snapshot, fromDevice: false };
   } catch (error) {
