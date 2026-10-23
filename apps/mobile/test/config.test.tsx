@@ -1,13 +1,33 @@
 import { render, screen } from "@testing-library/react-native";
 
+import { openDatabaseAsync } from "expo-sqlite";
+
 import { resolveApiUrl } from "../src/config";
-import { Root, buildClient } from "../src/Root";
+import { OFFLINE_DATABASE_NAME } from "../src/offline/sqlite-offline-store";
+import { Root, buildClient, buildOfflineStore } from "../src/Root";
 
 jest.mock("expo-secure-store", () => ({
   getItemAsync: jest.fn(async () => null),
   setItemAsync: jest.fn(async () => undefined),
   deleteItemAsync: jest.fn(async () => undefined),
 }));
+
+jest.mock("expo-sqlite", () => ({
+  openDatabaseAsync: jest.fn(async () => ({
+    execAsync: jest.fn(async () => undefined),
+    getFirstAsync: jest.fn(async () => null),
+  })),
+}));
+
+describe("la base del celular", () => {
+  it("abre la base de la app recién cuando se la usa", async () => {
+    const store = buildOfflineStore();
+    expect(openDatabaseAsync).not.toHaveBeenCalled();
+
+    expect(await store.loadSnapshot()).toBeNull();
+    expect(openDatabaseAsync).toHaveBeenCalledWith(OFFLINE_DATABASE_NAME);
+  });
+});
 
 describe("la URL de la API", () => {
   it("usa la que se fijó al armar el APK, sin las barras finales", () => {

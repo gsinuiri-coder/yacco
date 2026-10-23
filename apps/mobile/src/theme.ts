@@ -4,6 +4,8 @@ const PRIMARY = "#0369a1";
 
 export const styles = StyleSheet.create({
   screen: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#ffffff" },
+  // La pantalla con la ruta: arranca arriba y se desplaza, la lista es larga.
+  scrollScreen: { padding: 24, paddingTop: 48, backgroundColor: "#ffffff" },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 28, fontWeight: "700", color: "#0f172a", marginBottom: 4 },
   subtitle: { fontSize: 16, color: "#475569", marginBottom: 24 },

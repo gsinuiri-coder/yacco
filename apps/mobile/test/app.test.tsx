@@ -1,18 +1,41 @@
+import type { RouteSnapshot } from "@yacco/shared";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { App } from "../src/App";
+import type { OfflineStore } from "../src/offline/offline-store";
 import { createApiClient } from "../src/session/api-client";
-import { DRIVER, fakeServer, memoryStore } from "./fakes";
+import { DRIVER, fakeServer, memoryOfflineStore, memoryStore } from "./fakes";
 
 const BASE = "https://api.example.test";
 const OFFLINE_TEXT = "Sin conexión con el servidor. Tu sesión sigue abierta.";
 
+function routeWithStop(name: string): RouteSnapshot {
+  return {
+    route: {
+      id: "r-1",
+      stops: [
+        {
+          id: "s-1",
+          position: 1,
+          origin: "ORDER",
+          status: "PENDING",
+          location: { id: "l-1", name, address: "Jr. Lima 120", customer: { id: "c-1", name } },
+        },
+      ],
+    },
+  } as unknown as RouteSnapshot;
+}
+
 async function renderApp(
   store: ReturnType<typeof memoryStore>,
   server: ReturnType<typeof fakeServer>,
+  offlineStore: OfflineStore = memoryOfflineStore(),
 ) {
   await render(
-    <App client={createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl })} />,
+    <App
+      client={createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl })}
+      offlineStore={offlineStore}
+    />,
   );
 }
 
@@ -108,6 +131,33 @@ describe("la sesión de 30 días al abrir la app", () => {
 
     expect(await screen.findByRole("header", { name: "Hola, chofer.juan" })).toBeOnTheScreen();
     expect(screen.queryByLabelText("Contraseña")).toBeNull();
+  });
+
+  it("al entrar baja la ruta del día y muestra sus paradas", async () => {
+    const offlineStore = memoryOfflineStore();
+    const server = fakeServer(
+      { status: 200, body: { accessToken: "access-2" } },
+      { status: 200, body: DRIVER },
+      { status: 200, body: routeWithStop("Bodega Rosita") },
+    );
+    await renderApp(memoryStore("refresh-guardado"), server, offlineStore);
+
+    expect(await screen.findByText("1. Bodega Rosita")).toBeOnTheScreen();
+    expect(server.calls[2]?.url).toBe(`${BASE}/api/v1/sync/route-snapshot`);
+    expect(offlineStore.snapshot?.route.stops[0]?.location.name).toBe("Bodega Rosita");
+  });
+
+  it("sin señal entra igual y muestra la ruta que quedó guardada en el celular", async () => {
+    const offlineStore = memoryOfflineStore();
+    offlineStore.snapshot = routeWithStop("Bodega Rosita");
+    await renderApp(
+      memoryStore("refresh-guardado"),
+      fakeServer(new TypeError("Network request failed")),
+      offlineStore,
+    );
+
+    expect(await screen.findByText("1. Bodega Rosita")).toBeOnTheScreen();
+    expect(screen.getByText("Sin señal: es la ruta guardada en el celular.")).toBeOnTheScreen();
   });
 
   it("sin señal entra igual: la sesión sigue abierta", async () => {

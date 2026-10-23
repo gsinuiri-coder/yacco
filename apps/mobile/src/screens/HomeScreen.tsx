@@ -1,11 +1,20 @@
 import type { SessionUser } from "@yacco/shared";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, Text } from "react-native";
 
+import type { OfflineStore } from "../offline/offline-store";
+import type { ApiClient } from "../session/api-client";
 import { useSession } from "../session/SessionContext";
 import { styles } from "../theme";
+import { RouteStopsList } from "./RouteStopsList";
 
-export function HomeScreen({ user }: { user: SessionUser | null }) {
+interface HomeScreenProps {
+  user: SessionUser | null;
+  client: ApiClient;
+  offlineStore: OfflineStore;
+}
+
+export function HomeScreen({ user, client, offlineStore }: HomeScreenProps) {
   const { logout } = useSession();
   const [leaving, setLeaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -23,15 +32,15 @@ export function HomeScreen({ user }: { user: SessionUser | null }) {
   }
 
   return (
-    <View style={styles.screen}>
+    <ScrollView contentContainerStyle={styles.scrollScreen}>
       <Text style={styles.title} accessibilityRole="header">
         {user === null ? "Hola" : `Hola, ${user.username}`}
       </Text>
-      <Text style={styles.subtitle}>
-        {user === null
-          ? "Sin conexión con el servidor. Tu sesión sigue abierta."
-          : "Aquí vas a ver tu ruta del día."}
-      </Text>
+      {user === null && (
+        <Text style={styles.subtitle}>Sin conexión con el servidor. Tu sesión sigue abierta.</Text>
+      )}
+
+      <RouteStopsList client={client} store={offlineStore} />
 
       {failed && (
         <Text style={styles.alert} accessibilityRole="alert">
@@ -48,6 +57,6 @@ export function HomeScreen({ user }: { user: SessionUser | null }) {
       >
         <Text style={styles.secondaryButtonText}>Cerrar sesión</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
