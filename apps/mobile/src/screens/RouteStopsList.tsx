@@ -69,14 +69,14 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
     } catch {
       // Sin señal o con el servidor caído: lo que no llegó sigue pendiente.
     }
-    setOperations(await store.listOperations());
-  }, [client, store, outbox]);
+    setOperations(await outbox.list());
+  }, [client, outbox]);
 
   useEffect(() => {
     let active = true;
     loadRouteSnapshot(client, store).then(
       async ({ snapshot, fromDevice }) => {
-        const queued = await store.listOperations();
+        const queued = await outbox.list();
         if (!active) return;
         setOperations(queued);
         setLoaded({ status: "ready", snapshot, fromDevice });
@@ -94,7 +94,7 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
     return () => {
       active = false;
     };
-  }, [client, store, send]);
+  }, [client, store, outbox, send]);
 
   // Sin una librería de red, la señal que vuelve se nota intentando: cada
   // tanto mientras quede algo pendiente, y al volver la app a primer plano.
@@ -166,7 +166,7 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
 
   async function queue(type: SyncOperationType, payload: object): Promise<void> {
     await outbox.enqueue(type, 1, payload);
-    setOperations(await store.listOperations());
+    setOperations(await outbox.list());
     void send();
   }
 

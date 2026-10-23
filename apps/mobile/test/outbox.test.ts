@@ -33,6 +33,7 @@ describe("la cola de operaciones del chofer", () => {
     const store = memoryOfflineStore();
     const outbox = createOutbox({
       store,
+      driverId: "u-1",
       newId: () => "6f1c1f0e-0000-4000-8000-000000000001",
       now: () => new Date("2026-10-23T14:05:00.000Z"),
     });
@@ -46,13 +47,18 @@ describe("la cola de operaciones del chofer", () => {
       clientTimestamp: "2026-10-23T14:05:00.000Z",
       payload: MARK,
     });
-    expect(await store.listOperations()).toEqual([{ envelope, state: "PENDING", reason: null }]);
+    expect(await outbox.list()).toEqual([{ envelope, state: "PENDING", reason: null }]);
   });
 
   it("manda lo pendiente en el orden en que se hizo, no en el que entró a la cola", async () => {
     const store = memoryOfflineStore();
     const times = ["2026-10-23T15:00:00.000Z", "2026-10-23T14:00:00.000Z"];
-    const outbox = createOutbox({ store, newId: counter(), now: () => new Date(times.shift()!) });
+    const outbox = createOutbox({
+      store,
+      driverId: "u-1",
+      newId: counter(),
+      now: () => new Date(times.shift()!),
+    });
     await outbox.enqueue("STOP_MARK", 1, MARK);
     await outbox.enqueue("STOP_MARK", 1, MARK);
     const { batches, client } = fakeClient(applied);
@@ -64,7 +70,7 @@ describe("la cola de operaciones del chofer", () => {
 
   it("deja cada operación en lo que respondió el servidor", async () => {
     const store = memoryOfflineStore();
-    const outbox = createOutbox({ store, newId: counter() });
+    const outbox = createOutbox({ store, driverId: "u-1", newId: counter() });
     for (let i = 0; i < 4; i++) await outbox.enqueue("STOP_MARK", 1, MARK);
     const replies: Record<string, Omit<SyncOperationResult, "id">> = {
       "op-1": { status: "APPLIED", quarantined: false },
@@ -80,7 +86,7 @@ describe("la cola de operaciones del chofer", () => {
 
     const summary = await outbox.flush(client);
 
-    expect((await store.listOperations()).map(({ state, reason }) => ({ state, reason }))).toEqual([
+    expect((await outbox.list()).map(({ state, reason }) => ({ state, reason }))).toEqual([
       { state: "SENT", reason: null },
       { state: "SENT", reason: null },
       { state: "IN_REVIEW", reason: "La parada ya fue entregada" },
@@ -92,7 +98,7 @@ describe("la cola de operaciones del chofer", () => {
 
   it("no vuelve a mandar lo que ya llegó", async () => {
     const store = memoryOfflineStore();
-    const outbox = createOutbox({ store, newId: counter() });
+    const outbox = createOutbox({ store, driverId: "u-1", newId: counter() });
     await outbox.enqueue("STOP_MARK", 1, MARK);
     await outbox.flush(fakeClient(applied).client);
     await outbox.enqueue("STOP_MARK", 1, MARK);
@@ -105,18 +111,18 @@ describe("la cola de operaciones del chofer", () => {
 
   it("sin señal no pierde nada: todo sigue pendiente", async () => {
     const store = memoryOfflineStore();
-    const outbox = createOutbox({ store, newId: counter() });
+    const outbox = createOutbox({ store, driverId: "u-1", newId: counter() });
     await outbox.enqueue("STOP_MARK", 1, MARK);
     const { client } = fakeClient(() => new OfflineError(new TypeError("Network request failed")));
 
     await expect(outbox.flush(client)).rejects.toBeInstanceOf(OfflineError);
 
-    expect((await store.listOperations())[0]?.state).toBe("PENDING");
+    expect((await outbox.list())[0]?.state).toBe("PENDING");
   });
 
   it("parte la cola en lotes del tope del servidor", async () => {
     const store = memoryOfflineStore();
-    const outbox = createOutbox({ store, newId: counter() });
+    const outbox = createOutbox({ store, driverId: "u-1", newId: counter() });
     for (let i = 0; i < MAX_OPERATIONS_PER_BATCH + 1; i++) {
       await outbox.enqueue("STOP_MARK", 1, MARK);
     }
@@ -130,7 +136,7 @@ describe("la cola de operaciones del chofer", () => {
 
   it("dos envíos a la vez salen como uno solo", async () => {
     const store = memoryOfflineStore();
-    const outbox = createOutbox({ store, newId: counter() });
+    const outbox = createOutbox({ store, driverId: "u-1", newId: counter() });
     await outbox.enqueue("STOP_MARK", 1, MARK);
     const { request, client } = fakeClient(applied);
 
@@ -142,11 +148,30 @@ describe("la cola de operaciones del chofer", () => {
   it("con la cola vacía no llama al servidor", async () => {
     const { request, client } = fakeClient(applied);
 
-    const summary = await createOutbox({ store: memoryOfflineStore(), newId: counter() }).flush(
-      client,
-    );
+    const summary = await createOutbox({
+      store: memoryOfflineStore(),
+      driverId: "u-1",
+      newId: counter(),
+    }).flush(client);
 
     expect(request).not.toHaveBeenCalled();
     expect(summary).toEqual({ sent: 0, inReview: 0, stillPending: 0 });
+  });
+
+  // Decisión de Giancarlo (2026-10-23 08:17): la cola queda a nombre de quien
+  // la hizo; otro chofer en el mismo celular no la ve ni la envía.
+  it("otro chofer en el mismo celular no ve ni manda la cola ajena, que sigue esperando a su dueño", async () => {
+    const store = memoryOfflineStore();
+    const juan = createOutbox({ store, driverId: "u-1", newId: () => "op-de-juan" });
+    const pedro = createOutbox({ store, driverId: "u-2", newId: () => "op-de-pedro" });
+    await juan.enqueue("STOP_MARK", 1, MARK);
+    await pedro.enqueue("STOP_MARK", 1, MARK);
+    const { batches, client } = fakeClient(applied);
+
+    await pedro.flush(client);
+
+    expect((await pedro.list()).map((op) => op.envelope.id)).toEqual(["op-de-pedro"]);
+    expect(batches[0]?.operations.map((op) => op.id)).toEqual(["op-de-pedro"]);
+    expect(await juan.list()).toMatchObject([{ envelope: { id: "op-de-juan" }, state: "PENDING" }]);
   });
 });

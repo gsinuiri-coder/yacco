@@ -52,10 +52,23 @@ export function fakeServer(...replies: Reply[]) {
   return { calls, fetchImpl: fetchImpl as unknown as typeof fetch };
 }
 
+/**
+ * Un token con la forma de los del servidor (cabecera.cuerpo.firma) y `sub`
+ * en el cuerpo. La firma es de mentira: el celular no la verifica, solo lee
+ * de quién es la sesión.
+ */
+export function fakeToken(sub: string, label = "refresh"): string {
+  const body = btoa(JSON.stringify({ sub, type: label }))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+  return `cabecera.${body}.firma-${label}`;
+}
+
 /** La base del celular, en memoria: la cola queda en el orden en que entró. */
 export function memoryOfflineStore(): OfflineStore & {
   snapshot: RouteSnapshot | null;
-  operations: QueuedOperation[];
+  operations: (QueuedOperation & { driverId: string })[];
 } {
   return {
     snapshot: null,
@@ -66,11 +79,16 @@ export function memoryOfflineStore(): OfflineStore & {
     async loadSnapshot() {
       return this.snapshot;
     },
-    async addOperation(envelope) {
-      this.operations.push({ envelope, state: "PENDING", reason: null });
+    async clearSnapshot() {
+      this.snapshot = null;
     },
-    async listOperations() {
-      return this.operations.map((op) => ({ ...op }));
+    async addOperation(envelope, driverId) {
+      this.operations.push({ envelope, state: "PENDING", reason: null, driverId });
+    },
+    async listOperations(driverId) {
+      return this.operations
+        .filter((op) => op.driverId === driverId)
+        .map(({ envelope, state, reason }) => ({ envelope, state, reason }));
     },
     async setOperationState(id, state, reason) {
       const op = this.operations.find((candidate) => candidate.envelope.id === id);
@@ -126,3 +144,6 @@ export function deliveryCatalog(): Pick<
 }
 
 export const DRIVER = { id: "u-1", username: "chofer.juan", roles: ["DRIVER" as const] };
+
+/** El refresh de 30 días de `DRIVER`, como lo guarda el celular. */
+export const DRIVER_REFRESH = fakeToken(DRIVER.id);

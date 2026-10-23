@@ -5,9 +5,34 @@ import {
   SessionExpiredError,
   createApiClient,
 } from "../src/session/api-client";
-import { DRIVER, fakeServer, memoryStore } from "./fakes";
+import { DRIVER, fakeServer, fakeToken, memoryStore } from "./fakes";
 
 const BASE = "https://api.example.test";
+
+describe("api client: de quién es la sesión guardada", () => {
+  it("lo lee del refresh guardado, también sin señal", async () => {
+    const server = fakeServer();
+    const client = createApiClient({
+      baseUrl: BASE,
+      store: memoryStore(fakeToken("u-7")),
+      fetchImpl: server.fetchImpl,
+    });
+
+    expect(await client.sessionUserId()).toBe("u-7");
+    expect(server.calls).toHaveLength(0);
+  });
+
+  it.each([
+    ["sin sesión", null],
+    ["con un refresh ilegible", "no-es-un-token"],
+    ["con un cuerpo que no es JSON", "cabecera.%%%.firma"],
+    ["sin sub", `cabecera.${btoa(JSON.stringify({ type: "refresh" }))}.firma`],
+  ])("%s no inventa un dueño", async (_case, stored) => {
+    const client = createApiClient({ baseUrl: BASE, store: memoryStore(stored) });
+
+    expect(await client.sessionUserId()).toBeNull();
+  });
+});
 
 describe("api client: la sesión de 30 días del celular", () => {
   it("al ingresar guarda el refresh en el almacenamiento seguro y usa el acceso en los pedidos", async () => {

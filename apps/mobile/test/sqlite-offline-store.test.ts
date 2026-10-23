@@ -47,10 +47,43 @@ describe("la base SQLite del celular", () => {
     expect(await store.loadSnapshot()).toEqual(snapshot);
   });
 
+  it("borra la ruta guardada", async () => {
+    const { db, database } = fakeDatabase();
+    const store = await createSqliteOfflineStore(database);
+
+    await store.clearSnapshot();
+
+    expect(db.runAsync).toHaveBeenCalledWith("DELETE FROM route_snapshots");
+  });
+
   it("sin ruta guardada devuelve null", async () => {
     const store = await createSqliteOfflineStore(fakeDatabase().database);
 
     expect(await store.loadSnapshot()).toBeNull();
+  });
+
+  it("guarda cada operación a nombre del chofer y lee solo la suya", async () => {
+    const { db, database } = fakeDatabase();
+    const store = await createSqliteOfflineStore(database);
+
+    await store.addOperation(ENVELOPE, "u-1");
+    await store.listOperations("u-2");
+
+    const schema = db.execAsync.mock.calls[0] as unknown as [string];
+    expect(schema[0]).toContain("driver_id TEXT NOT NULL");
+    expect(db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining("driver_id"),
+      ENVELOPE.id,
+      "STOP_MARK",
+      1,
+      ENVELOPE.clientTimestamp,
+      JSON.stringify(ENVELOPE.payload),
+      "u-1",
+    );
+    expect(db.getAllAsync).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE driver_id = ?"),
+      "u-2",
+    );
   });
 
   it("encola pendiente y lee la cola con sus estados", async () => {
@@ -69,7 +102,7 @@ describe("la base SQLite del celular", () => {
     });
     const store = await createSqliteOfflineStore(database);
 
-    await store.addOperation(ENVELOPE);
+    await store.addOperation(ENVELOPE, "u-1");
     await store.setOperationState(ENVELOPE.id, "IN_REVIEW", "La parada ya fue entregada");
 
     expect(db.runAsync).toHaveBeenCalledWith(
@@ -79,6 +112,7 @@ describe("la base SQLite del celular", () => {
       1,
       ENVELOPE.clientTimestamp,
       JSON.stringify(ENVELOPE.payload),
+      "u-1",
     );
     expect(db.runAsync).toHaveBeenCalledWith(
       expect.stringContaining("UPDATE queued_operations"),
@@ -86,7 +120,7 @@ describe("la base SQLite del celular", () => {
       "La parada ya fue entregada",
       ENVELOPE.id,
     );
-    expect(await store.listOperations()).toEqual([
+    expect(await store.listOperations("u-1")).toEqual([
       { envelope: ENVELOPE, state: "IN_REVIEW", reason: "La parada ya fue entregada" },
     ]);
   });

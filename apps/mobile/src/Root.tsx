@@ -7,7 +7,6 @@ import { App } from "./App";
 import { resolveApiUrl } from "./config";
 import { lazyOfflineStore } from "./offline/lazy-offline-store";
 import type { OfflineStore } from "./offline/offline-store";
-import { createOutbox, type Outbox } from "./offline/outbox";
 import { OFFLINE_DATABASE_NAME, createSqliteOfflineStore } from "./offline/sqlite-offline-store";
 import { createApiClient } from "./session/api-client";
 import type { ApiClient } from "./session/api-client";
@@ -24,11 +23,6 @@ export function buildOfflineStore(): OfflineStore {
   return lazyOfflineStore(async () =>
     createSqliteOfflineStore(await openDatabaseAsync(OFFLINE_DATABASE_NAME)),
   );
-}
-
-/** La cola del chofer: cada operación lleva un UUID generado en el celular. */
-export function buildOutbox(store: OfflineStore): Outbox {
-  return createOutbox({ store, newId: randomUUID });
 }
 
 /** Lo que ve el chofer si el APK se armó sin la dirección del servidor. */
@@ -55,10 +49,10 @@ export function Root({ apiUrl = process.env.EXPO_PUBLIC_API_URL }: { apiUrl?: st
   // Un solo cliente por vida de la app: guarda el token de acceso en memoria.
   const [client] = useState(() => buildClient(apiUrl));
   const [offlineStore] = useState(buildOfflineStore);
-  const [outbox] = useState(() => buildOutbox(offlineStore));
+  // Cada operación de la cola lleva un UUID generado en el celular.
   return client === null ? (
     <MissingServer />
   ) : (
-    <App client={client} offlineStore={offlineStore} outbox={outbox} />
+    <App client={client} offlineStore={offlineStore} newOperationId={randomUUID} />
   );
 }

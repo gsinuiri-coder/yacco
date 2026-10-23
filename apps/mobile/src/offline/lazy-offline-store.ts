@@ -23,11 +23,14 @@ export function lazyOfflineStore(open: () => Promise<OfflineStore>): OfflineStor
     async loadSnapshot() {
       return (await opened()).loadSnapshot();
     },
-    async addOperation(envelope) {
-      return (await opened()).addOperation(envelope);
+    async clearSnapshot() {
+      return (await opened()).clearSnapshot();
     },
-    async listOperations() {
-      return (await opened()).listOperations();
+    async addOperation(envelope, driverId) {
+      return (await opened()).addOperation(envelope, driverId);
+    },
+    async listOperations(driverId) {
+      return (await opened()).listOperations(driverId);
     },
     async setOperationState(id, state, reason) {
       return (await opened()).setOperationState(id, state, reason);

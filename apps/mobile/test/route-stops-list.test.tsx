@@ -73,7 +73,7 @@ function fakeClient(snapshot: RouteSnapshot | Error, sync: SyncReply = new Error
 
 async function renderList(client: ApiClient, store: OfflineStore) {
   let next = 0;
-  const outbox = createOutbox({ store, newId: () => `op-${++next}` });
+  const outbox = createOutbox({ store, driverId: "u-1", newId: () => `op-${++next}` });
   await render(<RouteStopsList client={client} store={store} outbox={outbox} />);
 }
 
@@ -222,13 +222,16 @@ describe("marcar una parada como no entregada", () => {
   it("al abrir con señal manda lo que quedó pendiente en el celular", async () => {
     const store = memoryOfflineStore();
     const route = snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita"));
-    await store.addOperation({
-      id: "op-de-ayer",
-      type: "STOP_MARK",
-      version: 1,
-      clientTimestamp: "2026-10-23T14:00:00.000Z",
-      payload: { routeId: "r-1", stopId: "stop-1", status: "FAILED", failureReason: "Cerrado" },
-    });
+    await store.addOperation(
+      {
+        id: "op-de-ayer",
+        type: "STOP_MARK",
+        version: 1,
+        clientTimestamp: "2026-10-23T14:00:00.000Z",
+        payload: { routeId: "r-1", stopId: "stop-1", status: "FAILED", failureReason: "Cerrado" },
+      },
+      "u-1",
+    );
     const server = fakeClient(route, (body) => ({
       results: body.operations.map((op) => ({ id: op.id, status: "APPLIED", quarantined: false })),
     }));

@@ -1,7 +1,6 @@
 import { ActivityIndicator, StatusBar, View } from "react-native";
 
 import type { OfflineStore } from "./offline/offline-store";
-import type { Outbox } from "./offline/outbox";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import type { ApiClient } from "./session/api-client";
@@ -11,10 +10,11 @@ import { styles } from "./theme";
 interface AppProps {
   client: ApiClient;
   offlineStore: OfflineStore;
-  outbox: Outbox;
+  /** Genera el UUID de cada operación de la cola en el celular. */
+  newOperationId: () => string;
 }
 
-function CurrentScreen({ client, offlineStore, outbox }: AppProps) {
+function CurrentScreen({ client, offlineStore, newOperationId }: AppProps) {
   const { state } = useSession();
   if (state.status === "restoring") {
     return (
@@ -25,7 +25,15 @@ function CurrentScreen({ client, offlineStore, outbox }: AppProps) {
   }
   if (state.status === "signedOut") return <LoginScreen ended={state.ended} />;
   return (
-    <HomeScreen user={state.user} client={client} offlineStore={offlineStore} outbox={outbox} />
+    // Una pantalla por chofer: su cola no se mezcla con la de otro.
+    <HomeScreen
+      key={state.driverId}
+      user={state.user}
+      driverId={state.driverId}
+      client={client}
+      offlineStore={offlineStore}
+      newOperationId={newOperationId}
+    />
   );
 }
 

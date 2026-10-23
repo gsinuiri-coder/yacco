@@ -19,14 +19,16 @@ describe("la base del celular, abierta al primer uso", () => {
     const store = lazyOfflineStore(open);
     expect(open).not.toHaveBeenCalled();
 
-    await Promise.all([store.saveSnapshot(SNAPSHOT), store.addOperation(ENVELOPE)]);
+    await Promise.all([store.saveSnapshot(SNAPSHOT), store.addOperation(ENVELOPE, "u-1")]);
     await store.setOperationState(ENVELOPE.id, "SENT", null);
 
     expect(open).toHaveBeenCalledTimes(1);
     expect(await store.loadSnapshot()).toBe(SNAPSHOT);
-    expect(await store.listOperations()).toEqual([
+    expect(await store.listOperations("u-1")).toEqual([
       { envelope: ENVELOPE, state: "SENT", reason: null },
     ]);
+    await store.clearSnapshot();
+    expect(await store.loadSnapshot()).toBeNull();
   });
 
   it("si no se pudo abrir, el próximo uso lo intenta de nuevo", async () => {

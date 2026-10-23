@@ -7,13 +7,15 @@ import type {
 } from "@yacco/shared";
 
 import type { ApiClient } from "../session/api-client";
-import type { OfflineStore, QueuedOperationState } from "./offline-store";
+import type { OfflineStore, QueuedOperation, QueuedOperationState } from "./offline-store";
 
 /** El tope de POST /sync/operations (MAX_OPERATIONS_PER_BATCH en la API). */
 export const MAX_OPERATIONS_PER_BATCH = 200;
 
 export interface OutboxOptions {
   store: OfflineStore;
+  /** El chofer de la sesión: la cola es suya y no ve ni envía la de otro. */
+  driverId: string;
   /** Genera el UUID de cada operación en el celular. */
   newId: () => string;
   /** El reloj del celular. */
@@ -33,6 +35,8 @@ export interface Outbox {
     version: number,
     payload: TPayload,
   ): Promise<SyncOperationEnvelope>;
+  /** Las operaciones del chofer, en el orden en que las hizo. */
+  list(): Promise<QueuedOperation[]>;
   /**
    * Manda lo pendiente, en el orden en que se hizo y en lotes del tope de la
    * API. Sin señal o con el servidor caído, el error sube y lo que no llegó
@@ -47,14 +51,19 @@ function nextState(result: SyncOperationResult): QueuedOperationState {
   return result.quarantined ? "IN_REVIEW" : "PENDING";
 }
 
-export function createOutbox({ store, newId, now = () => new Date() }: OutboxOptions): Outbox {
+export function createOutbox({
+  store,
+  driverId,
+  newId,
+  now = () => new Date(),
+}: OutboxOptions): Outbox {
   // Dos envíos a la vez mandarían lo mismo dos veces: comparten uno solo.
   let pendingFlush: Promise<FlushSummary> | null = null;
 
   async function flushNow(client: ApiClient): Promise<FlushSummary> {
     // El servidor las aplica en el orden en que el chofer las hizo; sort es
     // estable, así que a igual hora queda el orden en que entraron a la cola.
-    const pending = (await store.listOperations())
+    const pending = (await store.listOperations(driverId))
       .filter((op) => op.state === "PENDING")
       .sort((a, b) => a.envelope.clientTimestamp.localeCompare(b.envelope.clientTimestamp));
     const summary: FlushSummary = { sent: 0, inReview: 0, stillPending: pending.length };
@@ -88,8 +97,11 @@ export function createOutbox({ store, newId, now = () => new Date() }: OutboxOpt
         clientTimestamp: now().toISOString(),
         payload: payload as Record<string, unknown>,
       };
-      await store.addOperation(envelope);
+      await store.addOperation(envelope, driverId);
       return envelope;
+    },
+    list() {
+      return store.listOperations(driverId);
     },
     flush(client) {
       pendingFlush ??= flushNow(client).finally(() => {

@@ -52,6 +52,12 @@ export interface ApiClient {
   login(credentials: LoginRequest): Promise<void>;
   /** Hay un refresh guardado de una sesión anterior. */
   hasStoredSession(): Promise<boolean>;
+  /**
+   * De quién es la sesión guardada: el `sub` del refresh, leído en el celular
+   * y también sin señal. A su nombre queda la cola. null si no hay sesión o
+   * el refresh no se puede leer.
+   */
+  sessionUserId(): Promise<string | null>;
   /** Un pedido con el token de acceso; ante un 401 renueva una vez y repite. */
   request<T>(path: string, init?: RequestInit): Promise<T>;
   /** GET /auth/me: quién es el chofer, según su token. */
@@ -84,6 +90,23 @@ async function toApiError(response: Response): Promise<ApiError> {
     // Sin cuerpo JSON: queda el mensaje con el status.
   }
   return new ApiError(response.status, message);
+}
+
+/**
+ * El `sub` del cuerpo de un JWT. Sin verificar la firma: no autoriza nada, el
+ * servidor verifica cada pedido; solo dice a nombre de quién guardar la cola.
+ */
+function tokenSubject(token: string): string | null {
+  const body = token.split(".")[1];
+  if (body === undefined || body === "") return null;
+  try {
+    const base64 = body.replaceAll("-", "+").replaceAll("_", "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const { sub } = JSON.parse(atob(padded)) as { sub?: unknown };
+    return typeof sub === "string" && sub !== "" ? sub : null;
+  } catch {
+    return null;
+  }
 }
 
 export function createApiClient({
@@ -172,6 +195,10 @@ export function createApiClient({
     },
     async hasStoredSession() {
       return (await store.read()) !== null;
+    },
+    async sessionUserId() {
+      const refreshToken = await store.read();
+      return refreshToken === null ? null : tokenSubject(refreshToken);
     },
     request,
     me() {

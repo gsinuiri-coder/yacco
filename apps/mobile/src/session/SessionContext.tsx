@@ -12,7 +12,9 @@ export type SessionState =
   | { status: "signedOut"; ended: SessionEndReason | null }
   // `user` es null cuando no se pudo preguntar quién es (sin señal, o el
   // servidor no responde): la sesión sigue, dura 30 días en el celular.
-  | { status: "signedIn"; user: SessionUser | null };
+  // `driverId` sale del refresh guardado y se sabe siempre, con o sin señal:
+  // a su nombre queda la cola.
+  | { status: "signedIn"; user: SessionUser | null; driverId: string };
 
 interface SessionValue {
   state: SessionState;
@@ -36,6 +38,15 @@ async function whoIs(client: ApiClient): Promise<SessionUser | null> {
   }
 }
 
+/** La sesión abierta, o la de ingreso si el refresh guardado no dice de quién es. */
+async function signedIn(client: ApiClient): Promise<SessionState> {
+  const user = await whoIs(client);
+  const driverId = await client.sessionUserId();
+  return driverId === null
+    ? { status: "signedOut", ended: null }
+    : { status: "signedIn", user, driverId };
+}
+
 export function SessionProvider({ client, children }: { client: ApiClient; children: ReactNode }) {
   const [state, setState] = useState<SessionState>({ status: "restoring" });
 
@@ -44,7 +55,7 @@ export function SessionProvider({ client, children }: { client: ApiClient; child
     async function restore(): Promise<SessionState> {
       try {
         if (!(await client.hasStoredSession())) return { status: "signedOut", ended: null };
-        return { status: "signedIn", user: await whoIs(client) };
+        return await signedIn(client);
       } catch (error) {
         // whoIs solo deja pasar el refresh rechazado; otra falla acá es del
         // almacenamiento seguro, y sin poder leerlo solo queda volver a ingresar.
@@ -65,7 +76,7 @@ export function SessionProvider({ client, children }: { client: ApiClient; child
   const login = useCallback(
     async (credentials: LoginRequest) => {
       await client.login(credentials);
-      setState({ status: "signedIn", user: await whoIs(client) });
+      setState(await signedIn(client));
     },
     [client],
   );

@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS queued_operations (
   client_timestamp TEXT NOT NULL,
   payload TEXT NOT NULL,
   state TEXT NOT NULL,
-  reason TEXT
+  reason TEXT,
+  driver_id TEXT NOT NULL
 );
 `;
 
@@ -55,19 +56,24 @@ export async function createSqliteOfflineStore(db: SQLiteDatabase): Promise<Offl
       );
       return row ? (JSON.parse(row.body) as RouteSnapshot) : null;
     },
-    async addOperation(envelope) {
+    async clearSnapshot() {
+      await db.runAsync("DELETE FROM route_snapshots");
+    },
+    async addOperation(envelope, driverId) {
       await db.runAsync(
-        "INSERT INTO queued_operations (id, type, version, client_timestamp, payload, state) VALUES (?, ?, ?, ?, ?, 'PENDING')",
+        "INSERT INTO queued_operations (id, type, version, client_timestamp, payload, state, driver_id) VALUES (?, ?, ?, ?, ?, 'PENDING', ?)",
         envelope.id,
         envelope.type,
         envelope.version,
         envelope.clientTimestamp,
         JSON.stringify(envelope.payload),
+        driverId,
       );
     },
-    async listOperations(): Promise<QueuedOperation[]> {
+    async listOperations(driverId): Promise<QueuedOperation[]> {
       const rows = await db.getAllAsync<QueuedOperationRow>(
-        "SELECT id, type, version, client_timestamp, payload, state, reason FROM queued_operations ORDER BY client_timestamp, rowid",
+        "SELECT id, type, version, client_timestamp, payload, state, reason FROM queued_operations WHERE driver_id = ? ORDER BY client_timestamp, rowid",
+        driverId,
       );
       return rows.map((row) => ({
         envelope: {
