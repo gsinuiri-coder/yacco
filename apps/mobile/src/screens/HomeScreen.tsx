@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text } from "react-native";
 
 import type { OfflineStore } from "../offline/offline-store";
+import type { Outbox } from "../offline/outbox";
 import type { ApiClient } from "../session/api-client";
 import { useSession } from "../session/SessionContext";
 import { styles } from "../theme";
@@ -12,9 +13,10 @@ interface HomeScreenProps {
   user: SessionUser | null;
   client: ApiClient;
   offlineStore: OfflineStore;
+  outbox: Outbox;
 }
 
-export function HomeScreen({ user, client, offlineStore }: HomeScreenProps) {
+export function HomeScreen({ user, client, offlineStore, outbox }: HomeScreenProps) {
   const { logout } = useSession();
   const [leaving, setLeaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -40,7 +42,7 @@ export function HomeScreen({ user, client, offlineStore }: HomeScreenProps) {
         <Text style={styles.subtitle}>Sin conexión con el servidor. Tu sesión sigue abierta.</Text>
       )}
 
-      <RouteStopsList client={client} store={offlineStore} />
+      <RouteStopsList client={client} store={offlineStore} outbox={outbox} />
 
       {failed && (
         <Text style={styles.alert} accessibilityRole="alert">

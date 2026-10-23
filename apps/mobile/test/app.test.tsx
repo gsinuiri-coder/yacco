@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { App } from "../src/App";
 import type { OfflineStore } from "../src/offline/offline-store";
+import { createOutbox } from "../src/offline/outbox";
 import { createApiClient } from "../src/session/api-client";
 import { DRIVER, fakeServer, memoryOfflineStore, memoryStore } from "./fakes";
 
@@ -35,6 +36,7 @@ async function renderApp(
     <App
       client={createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl })}
       offlineStore={offlineStore}
+      outbox={createOutbox({ store: offlineStore, newId: () => "op-1" })}
     />,
   );
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from "expo-crypto";
 import { openDatabaseAsync } from "expo-sqlite";
 import { useState } from "react";
 import { Text, View } from "react-native";
@@ -6,6 +7,7 @@ import { App } from "./App";
 import { resolveApiUrl } from "./config";
 import { lazyOfflineStore } from "./offline/lazy-offline-store";
 import type { OfflineStore } from "./offline/offline-store";
+import { createOutbox, type Outbox } from "./offline/outbox";
 import { OFFLINE_DATABASE_NAME, createSqliteOfflineStore } from "./offline/sqlite-offline-store";
 import { createApiClient } from "./session/api-client";
 import type { ApiClient } from "./session/api-client";
@@ -22,6 +24,11 @@ export function buildOfflineStore(): OfflineStore {
   return lazyOfflineStore(async () =>
     createSqliteOfflineStore(await openDatabaseAsync(OFFLINE_DATABASE_NAME)),
   );
+}
+
+/** La cola del chofer: cada operación lleva un UUID generado en el celular. */
+export function buildOutbox(store: OfflineStore): Outbox {
+  return createOutbox({ store, newId: randomUUID });
 }
 
 /** Lo que ve el chofer si el APK se armó sin la dirección del servidor. */
@@ -48,5 +55,10 @@ export function Root({ apiUrl = process.env.EXPO_PUBLIC_API_URL }: { apiUrl?: st
   // Un solo cliente por vida de la app: guarda el token de acceso en memoria.
   const [client] = useState(() => buildClient(apiUrl));
   const [offlineStore] = useState(buildOfflineStore);
-  return client === null ? <MissingServer /> : <App client={client} offlineStore={offlineStore} />;
+  const [outbox] = useState(() => buildOutbox(offlineStore));
+  return client === null ? (
+    <MissingServer />
+  ) : (
+    <App client={client} offlineStore={offlineStore} outbox={outbox} />
+  );
 }

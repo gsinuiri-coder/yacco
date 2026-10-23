@@ -1,36 +1,62 @@
-import type { RouteSnapshot, StopStatus } from "@yacco/shared";
-import { useEffect, useState } from "react";
+import type { RouteSnapshot, StopMarkPayloadV1 } from "@yacco/shared";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
-import type { OfflineStore } from "../offline/offline-store";
+import type { OfflineStore, QueuedOperation } from "../offline/offline-store";
+import type { Outbox } from "../offline/outbox";
 import { loadRouteSnapshot } from "../offline/route-snapshot";
 import { ApiError, type ApiClient } from "../session/api-client";
 import { styles } from "../theme";
-
-/** Las mismas palabras que la web (route-status.ts). */
-export const STOP_STATUS_LABELS: Record<StopStatus, string> = {
-  PENDING: "Pendiente",
-  DELIVERED: "Entregada",
-  FAILED: "No entregada",
-};
+import { StopCard } from "./StopCard";
 
 type Loaded =
   | { status: "loading" }
   | { status: "ready"; snapshot: RouteSnapshot | null; fromDevice: boolean }
   | { status: "failed"; message: string };
 
+interface RouteStopsListProps {
+  client: ApiClient;
+  store: OfflineStore;
+  outbox: Outbox;
+}
+
+/** La última marca que el celular hizo de cada parada: la cola está en el orden en que se hizo. */
+function lastMarkByStop(operations: QueuedOperation[]): Map<string, QueuedOperation> {
+  const byStop = new Map<string, QueuedOperation>();
+  for (const op of operations) {
+    if (op.envelope.type !== "STOP_MARK") continue;
+    byStop.set((op.envelope.payload as unknown as StopMarkPayloadV1).stopId, op);
+  }
+  return byStop;
+}
+
 /**
  * Las paradas de la ruta del día. Con señal las baja del servidor y las deja
- * guardadas; sin señal muestra las que quedaron en el celular.
+ * guardadas; sin señal muestra las que quedaron en el celular. Lo que el
+ * chofer marca entra a la cola y sale cuando hay señal.
  */
-export function RouteStopsList({ client, store }: { client: ApiClient; store: OfflineStore }) {
+export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
+  const [operations, setOperations] = useState<QueuedOperation[]>([]);
+
+  const send = useCallback(async () => {
+    try {
+      await outbox.flush(client);
+    } catch {
+      // Sin señal o con el servidor caído: lo que no llegó sigue pendiente.
+    }
+    setOperations(await store.listOperations());
+  }, [client, store, outbox]);
 
   useEffect(() => {
     let active = true;
     loadRouteSnapshot(client, store).then(
-      ({ snapshot, fromDevice }) => {
-        if (active) setLoaded({ status: "ready", snapshot, fromDevice });
+      async ({ snapshot, fromDevice }) => {
+        const queued = await store.listOperations();
+        if (!active) return;
+        setOperations(queued);
+        setLoaded({ status: "ready", snapshot, fromDevice });
+        await send();
       },
       (error: unknown) => {
         if (!active) return;
@@ -44,7 +70,7 @@ export function RouteStopsList({ client, store }: { client: ApiClient; store: Of
     return () => {
       active = false;
     };
-  }, [client, store]);
+  }, [client, store, send]);
 
   if (loaded.status === "loading") {
     return <ActivityIndicator size="large" accessibilityLabel="Cargando la ruta" />;
@@ -65,6 +91,20 @@ export function RouteStopsList({ client, store }: { client: ApiClient; store: Of
   }
 
   const { route } = loaded.snapshot;
+  const marks = lastMarkByStop(operations);
+
+  async function fail(stopId: string, failureReason: string): Promise<void> {
+    const payload: StopMarkPayloadV1 = {
+      routeId: route.id,
+      stopId,
+      status: "FAILED",
+      failureReason,
+    };
+    await outbox.enqueue("STOP_MARK", 1, payload);
+    setOperations(await store.listOperations());
+    void send();
+  }
+
   return (
     <View>
       {loaded.fromDevice && (
@@ -72,17 +112,13 @@ export function RouteStopsList({ client, store }: { client: ApiClient; store: Of
       )}
       {route.stops.length === 0 && <Text style={styles.subtitle}>Tu ruta no tiene paradas.</Text>}
       {route.stops.map((stop) => (
-        <View key={stop.id} style={styles.card} accessibilityLabel={`Parada ${stop.position}`}>
-          <Text style={styles.label}>
-            {stop.position}. {stop.location.name}
-          </Text>
-          <Text>{stop.location.customer.name}</Text>
-          <Text>{stop.location.address}</Text>
-          <Text>
-            {STOP_STATUS_LABELS[stop.status]}
-            {stop.origin === "VAN_SALE" ? " · Venta en ruta" : ""}
-          </Text>
-        </View>
+        <StopCard
+          key={stop.id}
+          stop={stop}
+          queued={marks.get(stop.id) ?? null}
+          canMark={route.status === "IN_PROGRESS"}
+          onFail={(reason) => fail(stop.id, reason)}
+        />
       ))}
     </View>
   );
