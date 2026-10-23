@@ -175,6 +175,21 @@ export class SyncService {
         );
         return;
       }
+      case SYNC_OPERATION_TYPES.STOP_ADD_VAN_SALE: {
+        const { routeId, locationId, ...sale } = operation.payload;
+        await this.routesService.addVanSaleStopWithinTransaction(
+          tx,
+          routeId,
+          locationId,
+          sale,
+          actor,
+          occurredAt,
+        );
+        return;
+      }
+      case SYNC_OPERATION_TYPES.ROUTE_START:
+        await this.routesService.startWithinTransaction(tx, operation.payload.routeId, actor);
+        return;
     }
   }
 

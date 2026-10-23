@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { PaymentStatus, RouteStatus, StopOrigin, StopStatus } from "@prisma/client";
+import { DeliveryLineDto } from "../../../common/dto/delivery-line.dto.js";
 import { VehicleSummaryDto } from "../../vehicles/dto/vehicle-response.dto.js";
 
 export class RouteDriverDto {
@@ -248,6 +249,18 @@ export class RouteStopResponseDto {
 
   @ApiPropertyOptional({ type: RouteStopAccessoryShortfallDto, isArray: true })
   accessoryShortfall?: RouteStopAccessoryShortfallDto[];
+
+  /**
+   * Sólo en el detalle de una ruta: lo que pidió el pedido (`null` en una
+   * venta en ruta) y lo que lleva la venta vigente (`null` sin venta), para
+   * «pedido» y «entregado» lado a lado. «Entregado distinto» se deriva de
+   * comparar los dos; no se guarda.
+   */
+  @ApiPropertyOptional({ type: DeliveryLineDto, isArray: true, nullable: true })
+  orderedItems?: DeliveryLineDto[] | null;
+
+  @ApiPropertyOptional({ type: DeliveryLineDto, isArray: true, nullable: true })
+  deliveredItems?: DeliveryLineDto[] | null;
 }
 
 export class RouteVehicleAssignmentResponseDto {

@@ -12,7 +12,9 @@
   "dependencies": {
     "@yacco/shared": "workspace:*",
     "expo": "~58.0.17",
+    "expo-crypto": "~58.0.7",
     "expo-secure-store": "~58.0.2",
+    "expo-sqlite": "~58.0.13",
     "react": "19.3.0",
     "react-native": "0.88.0"
   },
@@ -28,6 +30,10 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "testTimeout": 15000,
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    },
     "testMatch": [
       "<rootDir>/test/**/*.test.ts?(x)"
     ],

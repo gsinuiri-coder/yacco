@@ -1,6 +1,7 @@
-import { addAmounts, isMoneyInput, timesQuantity } from "@yacco/shared";
-import type { EffectivePrice, MarkRouteStopBody } from "@yacco/shared";
-import { positiveWhole } from "./quantity";
+import type { EffectivePrice } from "./customer-prices.js";
+import { addAmounts, isMoneyInput, timesQuantity } from "./money.js";
+import { positiveWhole } from "./quantity.js";
+import type { MarkRouteStopBody } from "./routes.js";
 
 /**
  * Registrar lo que pasó en una parada. Los tres escenarios de HU-12 salen sin

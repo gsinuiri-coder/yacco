@@ -688,6 +688,45 @@ describe("OrdersService", () => {
       ]);
     });
 
+    it("puts what the stop's LIVE sale delivered next to what was ordered", async () => {
+      const noTap = { id: "p-no-tap", name: "Recarga 20L sin caño" };
+      prisma.order.findFirst.mockResolvedValue(
+        buildOrder({
+          status: OrderStatus.DELIVERED,
+          routeStop: {
+            failureReason: null,
+            sales: [{ items: [{ productId: noTap.id, product: noTap, quantity: 5 }] }],
+          },
+        }),
+      );
+
+      const result = await service.findOne(ORDER_ID);
+
+      expect(result.items).toMatchObject([{ productId: PRODUCT_ID, quantity: 3 }]);
+      expect(result.deliveredItems).toEqual([{ productId: noTap.id, product: noTap, quantity: 5 }]);
+      // La venta anulada de una parada corregida no es lo entregado: el filtro
+      // lo hace la consulta, así que se mira que lo pida.
+      expect(prisma.order.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            routeStop: {
+              select: expect.objectContaining({
+                sales: expect.objectContaining({ where: { voidedAt: null } }) as unknown,
+              }) as unknown,
+            },
+          }) as unknown,
+        }),
+      );
+    });
+
+    it("has nothing delivered while the order is not on a stop with a sale", async () => {
+      prisma.order.findFirst.mockResolvedValue(buildOrder());
+
+      const result = await service.findOne(ORDER_ID);
+
+      expect(result.deliveredItems).toBeNull();
+    });
+
     it("throws NotFoundException for an unknown id", async () => {
       prisma.order.findFirst.mockResolvedValue(null);
 

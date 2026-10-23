@@ -3,19 +3,28 @@ import { plainToInstance } from "class-transformer";
 import type { ClassConstructor } from "class-transformer";
 import { validate } from "class-validator";
 import type { ValidationError } from "class-validator";
+import { RouteStartPayloadV1Dto } from "./dto/route-start-payload.dto.js";
+import { StopAddVanSalePayloadV1Dto } from "./dto/stop-add-van-sale-payload.dto.js";
 import { StopMarkPayloadV1Dto } from "./dto/stop-mark-payload.dto.js";
 
-export const SYNC_OPERATION_TYPES = { STOP_MARK: "STOP_MARK" } as const;
+export const SYNC_OPERATION_TYPES = {
+  STOP_MARK: "STOP_MARK",
+  STOP_ADD_VAN_SALE: "STOP_ADD_VAN_SALE",
+  ROUTE_START: "ROUTE_START",
+} as const;
 
 /**
  * Una operación ya normalizada a la forma vigente de su tipo. Las versiones
  * viejas de un sobre se aceptan y se traen hasta acá (sync-protocol, D-06):
  * el servicio aplica siempre la última forma, nunca una vieja.
  */
-export type NormalizedSyncOperation = {
-  type: typeof SYNC_OPERATION_TYPES.STOP_MARK;
-  payload: StopMarkPayloadV1Dto;
-};
+export type NormalizedSyncOperation =
+  | { type: typeof SYNC_OPERATION_TYPES.STOP_MARK; payload: StopMarkPayloadV1Dto }
+  | {
+      type: typeof SYNC_OPERATION_TYPES.STOP_ADD_VAN_SALE;
+      payload: StopAddVanSalePayloadV1Dto;
+    }
+  | { type: typeof SYNC_OPERATION_TYPES.ROUTE_START; payload: RouteStartPayloadV1Dto };
 
 /**
  * Cómo leer cada `(type, version)` que alguna vez salió en una app. NUNCA se
@@ -31,6 +40,18 @@ const READERS: Record<
     1: async (payload) => ({
       type: SYNC_OPERATION_TYPES.STOP_MARK,
       payload: await validatedPayload(StopMarkPayloadV1Dto, payload),
+    }),
+  },
+  [SYNC_OPERATION_TYPES.STOP_ADD_VAN_SALE]: {
+    1: async (payload) => ({
+      type: SYNC_OPERATION_TYPES.STOP_ADD_VAN_SALE,
+      payload: await validatedPayload(StopAddVanSalePayloadV1Dto, payload),
+    }),
+  },
+  [SYNC_OPERATION_TYPES.ROUTE_START]: {
+    1: async (payload) => ({
+      type: SYNC_OPERATION_TYPES.ROUTE_START,
+      payload: await validatedPayload(RouteStartPayloadV1Dto, payload),
     }),
   },
 };

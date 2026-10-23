@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { OrderStatus, Prisma } from "@prisma/client";
+import { LIVE_SALE_ITEMS, toDeliveredItems } from "../../common/delivery-lines.js";
 import { isOffice } from "../../common/viewer.js";
 import type { Viewer } from "../../common/viewer.js";
 import { ORDER_STATUS_LABELS } from "../../common/status-labels.js";
@@ -54,6 +55,21 @@ const ORDER_INCLUDE = {
     select: {
       id: true,
       deliveryDate: true,
+    },
+  },
+} satisfies Prisma.OrderInclude;
+
+/**
+ * El detalle de UN pedido, además, con lo que lleva la venta vigente de su
+ * parada: «pedido» y «entregado» lado a lado. Los listados siguen con
+ * `ORDER_INCLUDE` — ninguna pantalla lee lo entregado desde ahí.
+ */
+const ORDER_DETAIL_INCLUDE = {
+  ...ORDER_INCLUDE,
+  routeStop: {
+    select: {
+      failureReason: true,
+      sales: LIVE_SALE_ITEMS,
     },
   },
 } satisfies Prisma.OrderInclude;
@@ -473,7 +489,7 @@ export class OrdersService {
         : {};
     const order = await this.prisma.order.findFirst({
       where: { id, ...onlyOwnRoutes },
-      include: ORDER_INCLUDE,
+      include: ORDER_DETAIL_INCLUDE,
     });
     if (order === null) {
       throw new NotFoundException(`El pedido "${id}" no existe`);
@@ -500,7 +516,10 @@ export class OrdersService {
       }));
     }
 
-    return toOrderResponse(order, siblingOrders);
+    return {
+      ...toOrderResponse(order, siblingOrders),
+      deliveredItems: toDeliveredItems(order.routeStop?.sales),
+    };
   }
 
   /**

@@ -4,6 +4,8 @@
  * America/Lima, never a Date.
  */
 
+import type { DeliveryLine } from "./delivery-comparison.js";
+
 /** Prisma enum OrderStatus. */
 export type OrderStatus = "PENDING" | "ON_ROUTE" | "DELIVERED" | "FAILED" | "CANCELLED";
 
@@ -51,6 +53,12 @@ export interface Order {
   items: OrderItem[];
   total: string;
   siblingOrders?: OrderSibling[];
+  /**
+   * Lo que lleva la venta VIGENTE de su parada, sólo en el detalle (GET
+   * /orders/:id). `null` mientras no se entregó; para saber si se entregó
+   * distinto, `isDeliveredDifferently(items, deliveredItems)`.
+   */
+  deliveredItems?: DeliveryLine[] | null;
 }
 
 /**

@@ -81,6 +81,53 @@ describe("Detalle de ruta", () => {
     expect(within(row("Bodega Central")).getByText("Pedido")).toBeTruthy();
   });
 
+  it("una parada de pedido entregada pone lo pedido al lado de lo entregado, y marca cuando no coinciden", async () => {
+    const refill = { id: "p1", name: "Recarga 20L" };
+    const noTap = { id: "p2", name: "Recarga 20L sin caño" };
+    const asked = [{ productId: refill.id, product: refill, quantity: 3 }];
+    stubRouteDetail(
+      cleanups,
+      buildRoute({
+        status: "IN_PROGRESS",
+        stops: [
+          buildStop({
+            status: "DELIVERED",
+            orderedItems: asked,
+            deliveredItems: [{ productId: noTap.id, product: noTap, quantity: 5 }],
+          }),
+          buildStop({
+            id: "stop-2",
+            position: 2,
+            status: "DELIVERED",
+            orderedItems: asked,
+            deliveredItems: asked,
+            location: {
+              id: "loc-2",
+              name: "Principal",
+              address: "Jr. Puno 1",
+              addressReference: "Frente al mercado",
+              phone: "987000222",
+              contactName: null,
+              latitude: null,
+              longitude: null,
+              customer: { id: "c-2", name: "Panadería Aurora" },
+            },
+          }),
+        ],
+      }),
+    );
+
+    await renderDetail();
+
+    const changed = row("Bodega Central");
+    expect(within(changed).getByText("Pedido: 3 Recarga 20L")).toBeTruthy();
+    expect(within(changed).getByText("Entregado: 5 Recarga 20L sin caño")).toBeTruthy();
+    expect(within(changed).getByText("Entregado distinto")).toBeTruthy();
+    const same = row("Panadería Aurora");
+    expect(within(same).getByText("Entregado: 3 Recarga 20L")).toBeTruthy();
+    expect(within(same).queryByText("Entregado distinto")).toBeNull();
+  });
+
   it("la oficina abre en Maps el punto donde se marcó una parada", async () => {
     const marked = {
       ...buildStop({ status: "DELIVERED" }),

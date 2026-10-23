@@ -39,4 +39,13 @@ export default tseslint.config(
       },
     },
   },
+  {
+    // Metro lee su config como CommonJS de Node, con require y module.
+    files: ["apps/mobile/metro.config.js"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: { require: "readonly", module: "writable", __dirname: "readonly" },
+    },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 );

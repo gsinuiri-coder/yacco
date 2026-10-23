@@ -1,12 +1,20 @@
 import { ActivityIndicator, StatusBar, View } from "react-native";
 
+import type { OfflineStore } from "./offline/offline-store";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import type { ApiClient } from "./session/api-client";
 import { SessionProvider, useSession } from "./session/SessionContext";
 import { styles } from "./theme";
 
-function CurrentScreen() {
+interface AppProps {
+  client: ApiClient;
+  offlineStore: OfflineStore;
+  /** Genera el UUID de cada operación de la cola en el celular. */
+  newOperationId: () => string;
+}
+
+function CurrentScreen({ client, offlineStore, newOperationId }: AppProps) {
   const { state } = useSession();
   if (state.status === "restoring") {
     return (
@@ -16,14 +24,24 @@ function CurrentScreen() {
     );
   }
   if (state.status === "signedOut") return <LoginScreen ended={state.ended} />;
-  return <HomeScreen user={state.user} />;
+  return (
+    // Una pantalla por chofer: su cola no se mezcla con la de otro.
+    <HomeScreen
+      key={state.driverId}
+      user={state.user}
+      driverId={state.driverId}
+      client={client}
+      offlineStore={offlineStore}
+      newOperationId={newOperationId}
+    />
+  );
 }
 
-export function App({ client }: { client: ApiClient }) {
+export function App(props: AppProps) {
   return (
-    <SessionProvider client={client}>
+    <SessionProvider client={props.client}>
       <StatusBar barStyle="dark-content" />
-      <CurrentScreen />
+      <CurrentScreen {...props} />
     </SessionProvider>
   );
 }

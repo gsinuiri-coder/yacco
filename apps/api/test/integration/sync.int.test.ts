@@ -56,8 +56,22 @@ async function createUserAndLogin(
   return { token: await login(username, password), id: created.body.id };
 }
 
+let zoneSeq = 0;
+async function createZone(): Promise<string> {
+  zoneSeq += 1;
+  const zone = await request(server())
+    .post("/api/v1/zones")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ name: `Zona Sync ${zoneSeq}` })
+    .expect(201);
+  return zone.body.id;
+}
+
 let customerSeq = 0;
-async function createLocation(): Promise<string> {
+async function createLocation(
+  zoneId?: string,
+  position?: { latitude: string; longitude: string },
+): Promise<string> {
   customerSeq += 1;
   const customer = await request(server())
     .post("/api/v1/customers")
@@ -67,17 +81,24 @@ async function createLocation(): Promise<string> {
       phone: `98700${String(customerSeq).padStart(4, "0")}`,
       address: "Av. Sin Señal 1",
       addressReference: "Frente al parque",
+      ...(zoneId !== undefined ? { zoneId } : {}),
     })
     .expect(201);
   const location = await prisma.customerLocation.findFirstOrThrow({
     where: { customerId: customer.body.id },
   });
+  if (position !== undefined) {
+    await prisma.customerLocation.update({ where: { id: location.id }, data: position });
+  }
   return location.id;
 }
 
 let batchCounter = 0;
 /** Cada lote un día más viejo, para que el recién creado sea la cabeza del FIFO. */
-async function createBatchItem(producedQty: number): Promise<string> {
+async function createBatchItem(
+  producedQty: number,
+  batchContainerTypeId = containerTypeId,
+): Promise<string> {
   batchCounter += 1;
   const date = new Date(Date.UTC(2026, 8, 1) - batchCounter * 24 * 60 * 60 * 1000);
   const response = await request(server())
@@ -86,7 +107,7 @@ async function createBatchItem(producedQty: number): Promise<string> {
     .send({
       code: `LOTE-SYNC-${batchCounter}`,
       date: date.toISOString().slice(0, 10),
-      items: [{ containerTypeId, producedQty }],
+      items: [{ containerTypeId: batchContainerTypeId, producedQty }],
     })
     .expect(201);
   return response.body.items[0].id;
@@ -96,11 +117,31 @@ async function createBatchItem(producedQty: number): Promise<string> {
 async function startedRoute(
   routeDriverId: string,
   stopCount: number,
+  zoneId?: string,
+): Promise<{ routeId: string; stopIds: string[] }> {
+  const planned = await plannedRoute(routeDriverId, stopCount, zoneId);
+  await request(server())
+    .patch(`/api/v1/routes/${planned.routeId}/start`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .expect(200);
+  return planned;
+}
+
+/** La misma ruta, todavía planificada. */
+async function plannedRoute(
+  routeDriverId: string,
+  stopCount: number,
+  zoneId?: string,
 ): Promise<{ routeId: string; stopIds: string[] }> {
   const route = await request(server())
     .post("/api/v1/routes")
     .set("Authorization", `Bearer ${adminToken}`)
-    .send({ driverId: routeDriverId, date: nextDate(), vehicleId })
+    .send({
+      driverId: routeDriverId,
+      date: nextDate(),
+      vehicleId,
+      ...(zoneId !== undefined ? { zoneId } : {}),
+    })
     .expect(201);
   const routeId = route.body.id as string;
   // Cada id se resuelve ANTES de armar el request: supertest levanta y cierra
@@ -121,11 +162,17 @@ async function startedRoute(
       .expect(201);
     stopIds.push(stop.body.id);
   }
-  await request(server())
-    .patch(`/api/v1/routes/${routeId}/start`)
-    .set("Authorization", `Bearer ${adminToken}`)
-    .expect(200);
   return { routeId, stopIds };
+}
+
+function routeStart(routeId: string, clientTimestamp = new Date()) {
+  return {
+    id: randomUUID(),
+    type: "ROUTE_START",
+    version: 1,
+    clientTimestamp: clientTimestamp.toISOString(),
+    payload: { routeId },
+  };
 }
 
 function failedMark(routeId: string, stopId: string, clientTimestamp = new Date()) {
@@ -154,7 +201,35 @@ function deliveredMark(routeId: string, stopId: string, clientTimestamp = new Da
   };
 }
 
-type Envelope = ReturnType<typeof failedMark>;
+function vanSale(
+  routeId: string,
+  locationId: string,
+  markedAt?: { latitude: string; longitude: string },
+  clientTimestamp = new Date(),
+) {
+  return {
+    id: randomUUID(),
+    type: "STOP_ADD_VAN_SALE",
+    version: 1,
+    clientTimestamp: clientTimestamp.toISOString(),
+    payload: {
+      routeId,
+      locationId,
+      items: [{ productId: refillProductId, quantity: 2 }],
+      payment: { paymentMethodId: cashPaymentMethodId, amount: "16.00" },
+      ...(markedAt !== undefined
+        ? {
+            markedLatitude: markedAt.latitude,
+            markedLongitude: markedAt.longitude,
+            markedAccuracyM: "8.00",
+          }
+        : {}),
+    },
+  };
+}
+
+type Envelope =
+  ReturnType<typeof failedMark> | ReturnType<typeof vanSale> | ReturnType<typeof routeStart>;
 
 function send(operations: Envelope[], token = driverToken) {
   return request(server())
@@ -175,6 +250,10 @@ async function routeLedger(routeId: string) {
 
 async function stopStatus(stopId: string): Promise<string> {
   return (await prisma.routeStop.findUniqueOrThrow({ where: { id: stopId } })).status;
+}
+
+async function routeStatus(routeId: string): Promise<string> {
+  return (await prisma.route.findUniqueOrThrow({ where: { id: routeId } })).status;
 }
 
 describe("POST /api/v1/sync/operations (integration)", () => {
@@ -452,6 +531,325 @@ describe("POST /api/v1/sync/operations (integration)", () => {
     await send([operation, operation]).expect(400);
     await send([operation], adminToken).expect(403);
     expect(await stopStatus(stopIds[0]!)).toBe("PENDING");
+  });
+
+  it("delivers something other than what was ordered: the sale and the containers follow the delivery, the order keeps what was asked", async () => {
+    const otherType = await prisma.containerType.findFirstOrThrow({ where: { name: "Sin caño" } });
+    const otherProduct = await prisma.product.findFirstOrThrow({
+      where: { name: "Recarga 20L sin caño" },
+    });
+    const locationId = await createLocation();
+    const { customerId } = await prisma.customerLocation.findUniqueOrThrow({
+      where: { id: locationId },
+    });
+    // El precio del cliente difiere del de lista: la venta tiene que usar este.
+    await request(server())
+      .post(`/api/v1/customers/${customerId}/prices`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ productId: otherProduct.id, price: "9.50" })
+      .expect(201);
+    const date = nextDate();
+    const order = await request(server())
+      .post("/api/v1/orders")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        deliveryDate: date,
+        items: [{ productId: refillProductId, quantity: 3, unitPrice: "8.00" }],
+      })
+      .expect(201);
+    const route = await request(server())
+      .post("/api/v1/routes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId, date, vehicleId })
+      .expect(201);
+    const routeId = route.body.id as string;
+    const otherBatchItemId = await createBatchItem(10, otherType.id);
+    await request(server())
+      .post(`/api/v1/routes/${routeId}/loads`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ batchItemId: otherBatchItemId, quantity: 10 })
+      .expect(201);
+    const stop = await request(server())
+      .post(`/api/v1/routes/${routeId}/stops`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ origin: "ORDER", orderId: order.body.id })
+      .expect(201);
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/start`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    const operation = {
+      ...deliveredMark(routeId, stop.body.id),
+      payload: {
+        routeId,
+        stopId: stop.body.id,
+        status: "DELIVERED",
+        items: [{ productId: otherProduct.id, quantity: 5 }],
+      },
+    };
+
+    const response = await send([operation]).expect(200);
+
+    expect(response.body.results[0]).toMatchObject({ status: "APPLIED" });
+    const sale = await prisma.sale.findFirstOrThrow({
+      where: { stopId: stop.body.id },
+      include: { items: true },
+    });
+    expect(sale.total.toFixed(2)).toBe("47.50");
+    expect(sale.items).toMatchObject([{ productId: otherProduct.id, quantity: 5 }]);
+    const movements = await prisma.containerMovement.findMany({
+      where: { stopId: stop.body.id },
+      select: { containerTypeId: true, quantity: true },
+    });
+    expect(movements.length).toBeGreaterThan(0);
+    expect(movements.every((movement) => movement.containerTypeId === otherType.id)).toBe(true);
+    expect(movements.some((movement) => movement.quantity === 5)).toBe(true);
+    const storedOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: order.body.id },
+      include: { items: true },
+    });
+    expect(storedOrder.status).toBe("DELIVERED");
+    expect(storedOrder.items).toMatchObject([{ productId: refillProductId, quantity: 3 }]);
+
+    // «Pedido» y «entregado» lado a lado, en el detalle del pedido y en el de
+    // la parada. Después se corrige a 4: la venta de 5 queda anulada y lo
+    // entregado tiene que ser lo de la vigente, no lo de la anulada.
+    const readBoth = async () => {
+      const detail = await request(server())
+        .get(`/api/v1/orders/${order.body.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      const routeDetail = await request(server())
+        .get(`/api/v1/routes/${routeId}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      const routeStop = routeDetail.body.stops.find(
+        (candidate: { id: string }) => candidate.id === stop.body.id,
+      );
+      return { order: detail.body, stop: routeStop };
+    };
+    const ordered = [{ productId: refillProductId, quantity: 3 }];
+    const delivered = await readBoth();
+    expect(delivered.order.items).toMatchObject(ordered);
+    expect(delivered.order.deliveredItems).toEqual([
+      {
+        productId: otherProduct.id,
+        product: { id: otherProduct.id, name: otherProduct.name },
+        quantity: 5,
+      },
+    ]);
+    expect(delivered.stop.orderedItems).toMatchObject(ordered);
+    expect(delivered.stop.deliveredItems).toMatchObject([
+      { productId: otherProduct.id, quantity: 5 },
+    ]);
+
+    await request(server())
+      .patch(`/api/v1/routes/${routeId}/stops/${stop.body.id}/correction`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        status: "DELIVERED",
+        items: [{ productId: otherProduct.id, quantity: 4 }],
+        correctionReason: "Eran 4, no 5",
+      })
+      .expect(200);
+
+    const corrected = await readBoth();
+    expect(corrected.order.deliveredItems).toMatchObject([
+      { productId: otherProduct.id, quantity: 4 },
+    ]);
+    expect(corrected.stop.deliveredItems).toMatchObject([
+      { productId: otherProduct.id, quantity: 4 },
+    ]);
+  });
+
+  describe("venta en ruta (STOP_ADD_VAN_SALE)", () => {
+    const STOP_SPOT = { latitude: "-12.050000", longitude: "-77.040000" };
+    // ~5,5 km al norte: ningún local de estos tests le queda cerca.
+    const FIRST_STOP_SPOT = { latitude: "-12.000000", longitude: "-77.040000" };
+    // ~2,2 km al sur de la parada.
+    const FAR_FROM_STOP = { latitude: "-12.070000", longitude: "-77.040000" };
+
+    async function vanSaleStops(routeId: string) {
+      return prisma.routeStop.findMany({
+        where: { routeId, origin: "VAN_SALE", status: "DELIVERED" },
+        include: { sales: true },
+      });
+    }
+
+    // HU-14 E1: «Dado carga disponible, cuando registro una venta a un cliente
+    // existente [...], entonces se descuenta de mi carga y aplican las mismas
+    // reglas de canje, precio y cobro.» Cobra 6.00 de 16.00 para que la deuda
+    // se mueva: pagada entera, una deuda sin actualizar pasaría igual.
+    it("adds a delivered stop with its sale and movements at a location of the route's zone, once even if sent twice (HU-14 E1)", async () => {
+      const zoneId = await createZone();
+      const { routeId } = await startedRoute(driverId, 0, zoneId);
+      const locationId = await createLocation(zoneId);
+      const soldAt = new Date(Date.now() - 20 * 60 * 1000);
+      const operation = vanSale(routeId, locationId, undefined, soldAt);
+      operation.payload.payment = { paymentMethodId: cashPaymentMethodId, amount: "6.00" };
+
+      const first = await send([operation]).expect(200);
+      const resent = await send([operation]).expect(200);
+
+      expect(first.body.results[0]).toMatchObject({ status: "APPLIED" });
+      expect(resent.body.results[0]).toMatchObject({ status: "DUPLICATE" });
+      const stops = await vanSaleStops(routeId);
+      expect(stops).toHaveLength(1);
+      expect(stops[0]).toMatchObject({ locationId, addedById: driverId, orderId: null });
+      expect(stops[0]!.sales).toHaveLength(1);
+      expect(stops[0]!.sales[0]!.total.toFixed(2)).toBe("16.00");
+      expect(stops[0]!.sales[0]!.soldAt.toISOString()).toBe(soldAt.toISOString());
+      const ledger = await routeLedger(routeId);
+      expect(ledger).toMatchObject({ sales: 1, payments: 1 });
+      expect(ledger.movements).toBeGreaterThan(0);
+
+      // Se descuenta de la carga: 10 cargados, 2 recargas entregadas.
+      const truckStock = await request(server())
+        .get(`/api/v1/routes/${routeId}/truck-stock`)
+        .set("Authorization", `Bearer ${driverToken}`)
+        .expect(200);
+      expect(truckStock.body).toEqual([
+        {
+          containerType: { id: containerTypeId, name: expect.any(String) },
+          loaded: 10,
+          onBoard: 8,
+        },
+      ]);
+      // Las mismas reglas de canje y cobro: las 2 recargas quedan prestadas al
+      // local y la deuda sube lo que no se cobró, una sola vez.
+      const { customerId } = await prisma.customerLocation.findUniqueOrThrow({
+        where: { id: locationId },
+      });
+      const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+      expect(customer.debtBalance.toFixed(2)).toBe("10.00");
+      const balance = await prisma.customerContainerBalance.findUniqueOrThrow({
+        where: { locationId_containerTypeId: { locationId, containerTypeId } },
+      });
+      expect(balance.quantity).toBe(2);
+    });
+
+    /**
+     * Una ruta en curso de otra zona con dos paradas: la primera lejos de todo
+     * y la segunda en `STOP_SPOT`, para que cuente cada parada y no solo una.
+     */
+    async function routeWithStopAtSpot(): Promise<string> {
+      const { routeId } = await startedRoute(driverId, 0, await createZone());
+      for (const position of [FIRST_STOP_SPOT, STOP_SPOT]) {
+        const stopLocationId = await createLocation(undefined, position);
+        await request(server())
+          .post(`/api/v1/routes/${routeId}/stops`)
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({ origin: "VAN_SALE", locationId: stopLocationId })
+          .expect(201);
+      }
+      return routeId;
+    }
+
+    // Decisión de Giancarlo (2026-10-23 08:17): el radio se mide desde las
+    // paradas de la ruta, nunca desde donde el celular dice que está.
+    it("accepts a location of another zone within 1 km of one of the route's stops, wherever the driver marked it", async () => {
+      const routeId = await routeWithStopAtSpot();
+      // ~445 m al sur de la parada, y de otra zona.
+      const locationId = await createLocation(await createZone(), {
+        latitude: "-12.054000",
+        longitude: "-77.040000",
+      });
+
+      const response = await send([vanSale(routeId, locationId, FAR_FROM_STOP)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "APPLIED" });
+      expect(await vanSaleStops(routeId)).toHaveLength(1);
+    });
+
+    it("rejects a location of another zone farther than 1 km from every stop, even marked right at it, writing nothing", async () => {
+      const routeId = await routeWithStopAtSpot();
+      const locationId = await createLocation(await createZone(), FAR_FROM_STOP);
+
+      const response = await send([vanSale(routeId, locationId, FAR_FROM_STOP)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: false });
+      expect(response.body.results[0].reason).toContain("1 km");
+      expect(await vanSaleStops(routeId)).toHaveLength(0);
+      expect(await routeLedger(routeId)).toEqual({ sales: 0, payments: 0, movements: 0 });
+    });
+
+    it("quarantines at once a van sale at a location the office deactivated meanwhile", async () => {
+      const zoneId = await createZone();
+      const { routeId } = await startedRoute(driverId, 0, zoneId);
+      const locationId = await createLocation(zoneId);
+      await prisma.customerLocation.update({ where: { id: locationId }, data: { active: false } });
+
+      const response = await send([vanSale(routeId, locationId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+      expect(await prisma.routeStop.count({ where: { routeId } })).toBe(0);
+    });
+
+    it("does not let a driver add a van sale to another driver's route", async () => {
+      const zoneId = await createZone();
+      const { routeId } = await startedRoute(otherDriverId, 0, zoneId);
+      const locationId = await createLocation(zoneId);
+
+      const response = await send([vanSale(routeId, locationId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+      expect(await prisma.routeStop.count({ where: { routeId } })).toBe(0);
+    });
+  });
+
+  // Decisión de Giancarlo (2026-10-23 08:17): el chofer empieza la ruta desde
+  // la app, también sin señal, por el mismo paso que usa la oficina.
+  describe("empezar la ruta (ROUTE_START)", () => {
+    it("starts a planned route and, in the same batch, the marks made after it apply; sent again it is DUPLICATE", async () => {
+      const { routeId, stopIds } = await plannedRoute(driverId, 1);
+      const startedAt = new Date(Date.now() - 60 * 60 * 1000);
+      // El lote llega con la marca primero: se aplica en el orden del chofer.
+      const batch = [failedMark(routeId, stopIds[0]!), routeStart(routeId, startedAt)];
+
+      const first = await send(batch).expect(200);
+      const resent = await send([batch[1]!]).expect(200);
+
+      expect(first.body.results.map((result: { status: string }) => result.status)).toEqual([
+        "APPLIED",
+        "APPLIED",
+      ]);
+      expect(await routeStatus(routeId)).toBe("IN_PROGRESS");
+      expect(await stopStatus(stopIds[0]!)).toBe("FAILED");
+      expect(resent.body.results[0]).toMatchObject({ status: "DUPLICATE" });
+    });
+
+    it("applies without changing anything when the office already started it", async () => {
+      const { routeId } = await startedRoute(driverId, 0);
+
+      const response = await send([routeStart(routeId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "APPLIED", quarantined: false });
+      expect(await routeStatus(routeId)).toBe("IN_PROGRESS");
+    });
+
+    it("quarantines at once a start of a route the office already finished, leaving it finished", async () => {
+      const { routeId } = await startedRoute(driverId, 0);
+      await request(server())
+        .patch(`/api/v1/routes/${routeId}/finish`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      const response = await send([routeStart(routeId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+      expect(response.body.results[0].reason).toContain("terminada");
+      expect(await routeStatus(routeId)).toBe("FINISHED");
+    });
+
+    it("does not let a driver start another driver's route", async () => {
+      const { routeId } = await plannedRoute(otherDriverId, 0);
+
+      const response = await send([routeStart(routeId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+      expect(await routeStatus(routeId)).toBe("PLANNED");
+    });
   });
 
   describe("Operaciones en revisión", () => {

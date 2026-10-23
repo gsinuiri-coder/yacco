@@ -1,3 +1,6 @@
+import type { RouteSnapshot } from "@yacco/shared";
+
+import type { OfflineStore, QueuedOperation } from "../src/offline/offline-store";
 import type { TokenStore } from "../src/session/api-client";
 
 /** El almacenamiento seguro, en memoria: guarda lo mismo que guardaría el celular. */
@@ -49,4 +52,98 @@ export function fakeServer(...replies: Reply[]) {
   return { calls, fetchImpl: fetchImpl as unknown as typeof fetch };
 }
 
+/**
+ * Un token con la forma de los del servidor (cabecera.cuerpo.firma) y `sub`
+ * en el cuerpo. La firma es de mentira: el celular no la verifica, solo lee
+ * de quién es la sesión.
+ */
+export function fakeToken(sub: string, label = "refresh"): string {
+  const body = btoa(JSON.stringify({ sub, type: label }))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+  return `cabecera.${body}.firma-${label}`;
+}
+
+/** La base del celular, en memoria: la cola queda en el orden en que entró. */
+export function memoryOfflineStore(): OfflineStore & {
+  snapshot: RouteSnapshot | null;
+  operations: (QueuedOperation & { driverId: string })[];
+} {
+  return {
+    snapshot: null,
+    operations: [],
+    async saveSnapshot(snapshot) {
+      this.snapshot = snapshot;
+    },
+    async loadSnapshot() {
+      return this.snapshot;
+    },
+    async clearSnapshot() {
+      this.snapshot = null;
+    },
+    async addOperation(envelope, driverId) {
+      this.operations.push({ envelope, state: "PENDING", reason: null, driverId });
+    },
+    async listOperations(driverId) {
+      return this.operations
+        .filter((op) => op.driverId === driverId)
+        .map(({ envelope, state, reason }) => ({ envelope, state, reason }));
+    },
+    async setOperationState(id, state, reason) {
+      const op = this.operations.find((candidate) => candidate.envelope.id === id);
+      if (op) Object.assign(op, { state, reason });
+    },
+  };
+}
+
+/**
+ * Lo que la ruta guardada trae para entregar en el local `loc-1` del cliente
+ * `c-1`: recarga a 12.50 (el envase va prestado), bidón vendido a 25.00 (sale
+ * del parque), efectivo (confirmado al toque) y Yape (lo confirma la oficina).
+ * Debe 10.00 con un límite de 50.00.
+ */
+export function deliveryCatalog(): Pick<
+  RouteSnapshot,
+  "products" | "containerTypes" | "paymentMethods"
+> & { locations: RouteSnapshot["locations"] } {
+  const jug = { id: "ct-20l", name: "Bidón 20L" };
+  return {
+    products: [
+      { id: "p-refill", name: "Recarga 20L", type: "REFILL", containerType: jug },
+      { id: "p-jug", name: "Bidón nuevo 20L", type: "CONTAINER_SALE", containerType: jug },
+    ],
+    containerTypes: [jug],
+    paymentMethods: [
+      { id: "pm-cash", name: "Efectivo", requiresConfirmation: false },
+      { id: "pm-yape", name: "Yape", requiresConfirmation: true },
+    ],
+    locations: [
+      {
+        id: "loc-1",
+        name: "Bodega Rosita",
+        address: "Av. Los Olivos 100",
+        addressReference: "",
+        phone: "",
+        contactName: null,
+        latitude: null,
+        longitude: null,
+        onRoute: true,
+        customer: { id: "c-1", name: "Cliente 1" },
+        debtBalance: "10.00",
+        creditLimit: "50.00",
+        containerBalances: [{ containerType: jug, quantity: 3 }],
+        loanedAccessories: [],
+        prices: [
+          { product: { id: "p-refill", name: "Recarga 20L" }, price: "12.50", source: "CUSTOMER" },
+          { product: { id: "p-jug", name: "Bidón nuevo 20L" }, price: "25.00", source: "LIST" },
+        ],
+      },
+    ],
+  };
+}
+
 export const DRIVER = { id: "u-1", username: "chofer.juan", roles: ["DRIVER" as const] };
+
+/** El refresh de 30 días de `DRIVER`, como lo guarda el celular. */
+export const DRIVER_REFRESH = fakeToken(DRIVER.id);
