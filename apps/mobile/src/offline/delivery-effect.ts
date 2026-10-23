@@ -88,9 +88,10 @@ interface UncountedDelivery {
 
 /**
  * Las entregas que hizo el celular y que la ruta guardada todavía no cuenta:
- * las pendientes de enviar, y las ya enviadas cuya parada la ruta todavía
- * muestra pendiente (se bajó antes del envío). Cuando la ruta ya trae la
- * parada resuelta, los saldos que bajaron ya la incluyen. Las que revisa la
+ * las pendientes de enviar y las ya enviadas, mientras la ruta muestre su
+ * parada pendiente (se bajó antes del envío). Cuando la ruta ya trae la
+ * parada resuelta, los saldos que bajaron ya la incluyen, aunque la entrega
+ * siga pendiente porque la respuesta del servidor no llegó. Las que revisa la
  * oficina no cuentan: ahí gana el servidor.
  */
 function uncountedDeliveries(
@@ -103,8 +104,7 @@ function uncountedDeliveries(
     const payload = op.envelope.payload as unknown as StopMarkPayloadV1;
     if (payload.status !== "DELIVERED") continue;
     const stop = snapshot.route.stops.find((candidate) => candidate.id === payload.stopId);
-    if (stop === undefined) continue;
-    if (op.state === "SENT" && stop.status !== "PENDING") continue;
+    if (stop?.status !== "PENDING") continue;
     const location = snapshot.locations.find((candidate) => candidate.id === stop.location.id);
     if (location === undefined) continue;
     deliveries.push({ location, effect: deliveryEffect(snapshot, location, payload) });

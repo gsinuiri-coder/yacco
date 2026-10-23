@@ -136,6 +136,14 @@ describe("la deuda que ve el chofer", () => {
     expect(debtWithQueued(snapshot, operations, "c-1")).toBe("35.00");
   });
 
+  it("una pendiente cuya parada la ruta ya trae resuelta no suma dos veces", () => {
+    // El servidor la aplicó y la respuesta no llegó: sigue pendiente en el
+    // celular, pero la ruta que bajó después ya cuenta la venta en la deuda.
+    const operations = [queued("PENDING", "s-4", twoRefills), queued("PENDING", "s-1", twoRefills)];
+
+    expect(debtWithQueued(snapshot, operations, "c-1")).toBe("35.00");
+  });
+
   it("un cliente que no está en la ruta guardada no debe nada a la vista", () => {
     expect(debtWithQueued(snapshot, [], "c-otro")).toBe("0.00");
   });
