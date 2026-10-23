@@ -8,6 +8,6 @@
     "android": {
       "package": "pe.yacco.driver"
     },
-    "plugins": ["expo-secure-store"]
+    "plugins": ["expo-secure-store", "expo-sqlite"]
   }
 }

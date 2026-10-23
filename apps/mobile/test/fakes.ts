@@ -1,3 +1,6 @@
+import type { RouteSnapshot } from "@yacco/shared";
+
+import type { OfflineStore, QueuedOperation } from "../src/offline/offline-store";
 import type { TokenStore } from "../src/session/api-client";
 
 /** El almacenamiento seguro, en memoria: guarda lo mismo que guardaría el celular. */
@@ -47,6 +50,33 @@ export function fakeServer(...replies: Reply[]) {
     });
   });
   return { calls, fetchImpl: fetchImpl as unknown as typeof fetch };
+}
+
+/** La base del celular, en memoria: la cola queda en el orden en que entró. */
+export function memoryOfflineStore(): OfflineStore & {
+  snapshot: RouteSnapshot | null;
+  operations: QueuedOperation[];
+} {
+  return {
+    snapshot: null,
+    operations: [],
+    async saveSnapshot(snapshot) {
+      this.snapshot = snapshot;
+    },
+    async loadSnapshot() {
+      return this.snapshot;
+    },
+    async addOperation(envelope) {
+      this.operations.push({ envelope, state: "PENDING", reason: null });
+    },
+    async listOperations() {
+      return this.operations.map((op) => ({ ...op }));
+    },
+    async setOperationState(id, state, reason) {
+      const op = this.operations.find((candidate) => candidate.envelope.id === id);
+      if (op) Object.assign(op, { state, reason });
+    },
+  };
 }
 
 export const DRIVER = { id: "u-1", username: "chofer.juan", roles: ["DRIVER" as const] };
