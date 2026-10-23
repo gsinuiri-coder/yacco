@@ -648,12 +648,17 @@ describe("POST /api/v1/sync/operations (integration)", () => {
       });
     }
 
-    it("adds a delivered stop with its sale and movements at a location of the route's zone, once even if sent twice", async () => {
+    // HU-14 E1: «Dado carga disponible, cuando registro una venta a un cliente
+    // existente [...], entonces se descuenta de mi carga y aplican las mismas
+    // reglas de canje, precio y cobro.» Cobra 6.00 de 16.00 para que la deuda
+    // se mueva: pagada entera, una deuda sin actualizar pasaría igual.
+    it("adds a delivered stop with its sale and movements at a location of the route's zone, once even if sent twice (HU-14 E1)", async () => {
       const zoneId = await createZone();
       const { routeId } = await startedRoute(driverId, 0, zoneId);
       const locationId = await createLocation(zoneId);
       const soldAt = new Date(Date.now() - 20 * 60 * 1000);
       const operation = vanSale(routeId, locationId, undefined, soldAt);
+      operation.payload.payment = { paymentMethodId: cashPaymentMethodId, amount: "6.00" };
 
       const first = await send([operation]).expect(200);
       const resent = await send([operation]).expect(200);
@@ -669,6 +674,30 @@ describe("POST /api/v1/sync/operations (integration)", () => {
       const ledger = await routeLedger(routeId);
       expect(ledger).toMatchObject({ sales: 1, payments: 1 });
       expect(ledger.movements).toBeGreaterThan(0);
+
+      // Se descuenta de la carga: 10 cargados, 2 recargas entregadas.
+      const truckStock = await request(server())
+        .get(`/api/v1/routes/${routeId}/truck-stock`)
+        .set("Authorization", `Bearer ${driverToken}`)
+        .expect(200);
+      expect(truckStock.body).toEqual([
+        {
+          containerType: { id: containerTypeId, name: expect.any(String) },
+          loaded: 10,
+          onBoard: 8,
+        },
+      ]);
+      // Las mismas reglas de canje y cobro: las 2 recargas quedan prestadas al
+      // local y la deuda sube lo que no se cobró, una sola vez.
+      const { customerId } = await prisma.customerLocation.findUniqueOrThrow({
+        where: { id: locationId },
+      });
+      const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+      expect(customer.debtBalance.toFixed(2)).toBe("10.00");
+      const balance = await prisma.customerContainerBalance.findUniqueOrThrow({
+        where: { locationId_containerTypeId: { locationId, containerTypeId } },
+      });
+      expect(balance.quantity).toBe(2);
     });
 
     it("accepts a location of another zone within 1 km of where the driver marked it", async () => {
