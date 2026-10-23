@@ -18,6 +18,14 @@ export const styles = StyleSheet.create({
     marginBottom: 16,
   },
   alert: { fontSize: 16, color: "#b91c1c", marginBottom: 16 },
+  notice: { fontSize: 16, color: "#92400e", marginBottom: 16 },
+  card: {
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
   button: { backgroundColor: PRIMARY, borderRadius: 8, paddingVertical: 14, alignItems: "center" },
   buttonText: { color: "#ffffff", fontSize: 18, fontWeight: "600" },
   secondaryButton: {
