@@ -23,6 +23,12 @@ import { ACCURACY_PATTERN, COORDINATE_PATTERN } from "../../routes/dto/mark-rout
  */
 export const MAX_LOCATION_POINTS_PER_BATCH = 500;
 
+/**
+ * OJO: `ROUTE_LOCATION_POINT` v1 de la cola del celular hereda esta clase
+ * (sync/dto/route-location-point-payload.dto.ts). Cambiar lo que acepta
+ * cambia lo que acepta un sobre que ya salió en una app: antes de tocarla, la
+ * forma nueva va como v2 y la v1 se congela en su propia clase.
+ */
 export class RouteLocationPointInputDto {
   @ApiProperty({
     format: "uuid",

@@ -5,6 +5,7 @@ import { Text, View } from "react-native";
 
 import { App } from "./App";
 import { resolveApiUrl } from "./config";
+import { createExpoLocationTracker } from "./location/expo-location-tracker";
 import { lazyOfflineStore } from "./offline/lazy-offline-store";
 import type { OfflineStore } from "./offline/offline-store";
 import { OFFLINE_DATABASE_NAME, createSqliteOfflineStore } from "./offline/sqlite-offline-store";
@@ -24,6 +25,12 @@ export function buildOfflineStore(): OfflineStore {
     createSqliteOfflineStore(await openDatabaseAsync(OFFLINE_DATABASE_NAME)),
   );
 }
+
+/**
+ * Una sola base por proceso: las pantallas y la tarea de la ubicación en
+ * segundo plano escriben en la misma cola. Se abre recién cuando se usa.
+ */
+export const deviceOfflineStore = buildOfflineStore();
 
 /** Lo que ve el chofer si el APK se armó sin la dirección del servidor. */
 export function MissingServer() {
@@ -48,11 +55,16 @@ export function MissingServer() {
 export function Root({ apiUrl = process.env.EXPO_PUBLIC_API_URL }: { apiUrl?: string }) {
   // Un solo cliente por vida de la app: guarda el token de acceso en memoria.
   const [client] = useState(() => buildClient(apiUrl));
-  const [offlineStore] = useState(buildOfflineStore);
+  const [locationTracker] = useState(createExpoLocationTracker);
   // Cada operación de la cola lleva un UUID generado en el celular.
   return client === null ? (
     <MissingServer />
   ) : (
-    <App client={client} offlineStore={offlineStore} newOperationId={randomUUID} />
+    <App
+      client={client}
+      offlineStore={deviceOfflineStore}
+      newOperationId={randomUUID}
+      locationTracker={locationTracker}
+    />
   );
 }

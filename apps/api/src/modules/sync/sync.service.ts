@@ -11,6 +11,7 @@ import { Prisma, SyncOperationStatus } from "@prisma/client";
 import type { SyncOperation } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { formatBusinessDate } from "../orders/orders.service.js";
+import { RouteLocationsService } from "../route-locations/route-locations.service.js";
 import { RoutesService } from "../routes/routes.service.js";
 import type { RouteActor } from "../routes/routes.service.js";
 import type { SyncBatchDto, SyncOperationEnvelopeDto } from "./dto/sync-batch.dto.js";
@@ -55,6 +56,7 @@ export class SyncService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly routesService: RoutesService,
+    private readonly routeLocationsService: RouteLocationsService,
   ) {}
 
   /**
@@ -190,6 +192,11 @@ export class SyncService {
       case SYNC_OPERATION_TYPES.ROUTE_START:
         await this.routesService.startWithinTransaction(tx, operation.payload.routeId, actor);
         return;
+      case SYNC_OPERATION_TYPES.ROUTE_LOCATION_POINT: {
+        const { routeId, ...point } = operation.payload;
+        await this.routeLocationsService.recordPointsWithinTransaction(tx, routeId, [point], actor);
+        return;
+      }
     }
   }
 

@@ -2,11 +2,13 @@ import type { RouteSnapshot } from "@yacco/shared";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import { App } from "../src/App";
+import type { LocationTracker } from "../src/location/location-tracker";
 import type { OfflineStore } from "../src/offline/offline-store";
 import { createApiClient } from "../src/session/api-client";
 import {
   DRIVER,
   DRIVER_REFRESH,
+  fakeLocationTracker,
   fakeServer,
   fakeToken,
   memoryOfflineStore,
@@ -43,12 +45,14 @@ async function renderApp(
   store: ReturnType<typeof memoryStore>,
   server: ReturnType<typeof fakeServer>,
   offlineStore: OfflineStore = memoryOfflineStore(),
+  locationTracker?: LocationTracker,
 ) {
   await render(
     <App
       client={createApiClient({ baseUrl: BASE, store, fetchImpl: server.fetchImpl })}
       offlineStore={offlineStore}
       newOperationId={() => "op-1"}
+      locationTracker={locationTracker}
     />,
   );
 }
@@ -235,6 +239,27 @@ describe("la sesión de 30 días al abrir la app", () => {
     expect(store.value).toBeNull();
   });
 
+  // Fase 3, fila 11c: la sesión cortada desde «Usuarios» o vencida deja la
+  // ruta guardada, pero a un chofer sin sesión no se lo sigue.
+  it("si la sesión vence con la ruta en curso, apaga la ubicación en segundo plano", async () => {
+    const offlineStore = memoryOfflineStore();
+    offlineStore.snapshot = routeWithStop("Bodega Rosita");
+    const { tracker } = fakeLocationTracker();
+    const server = fakeServer(
+      { status: 200, body: { accessToken: "access-2" } },
+      { status: 200, body: DRIVER },
+      { status: 401, body: { message: "Token inválido" } },
+      { status: 401, body: { message: "Credenciales inválidas" } },
+    );
+    await renderApp(memoryStore(DRIVER_REFRESH), server, offlineStore, tracker);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Tu sesión venció. Vuelve a ingresar.",
+    );
+    await waitFor(() => expect(tracker.stop).toHaveBeenCalled());
+    expect(offlineStore.snapshot).not.toBeNull();
+  });
+
   it("si le sacaron el rol de chofer, vuelve al ingreso con «Solo choferes»", async () => {
     const store = memoryStore(DRIVER_REFRESH);
     await renderApp(
@@ -306,13 +331,16 @@ describe("cerrar sesión con la ruta y la cola en el celular", () => {
   }
 
   /** Entra con la sesión guardada de Juan y sin señal para la ruta ni la cola. */
-  async function signedInWith(offlineStore: ReturnType<typeof memoryOfflineStore>) {
+  async function signedInWith(
+    offlineStore: ReturnType<typeof memoryOfflineStore>,
+    locationTracker?: LocationTracker,
+  ) {
     const store = memoryStore(DRIVER_REFRESH);
     const server = fakeServer(
       { status: 200, body: { accessToken: "access-2" } },
       { status: 200, body: DRIVER },
     );
-    await renderApp(store, server, offlineStore);
+    await renderApp(store, server, offlineStore, locationTracker);
     await screen.findByText("1. Bodega Rosita");
     return store;
   }
@@ -330,6 +358,21 @@ describe("cerrar sesión con la ruta y la cola en el celular", () => {
     expect(store.value).toBeNull();
     expect(offlineStore.snapshot).toBeNull();
     expect(offlineStore.operations).toHaveLength(1);
+  });
+
+  // Fase 3, fila 11c: sin sesión no hay ruta que seguir, y la notificación
+  // fija de la ubicación no puede quedar prendida.
+  it("apaga la ubicación en segundo plano", async () => {
+    const offlineStore = memoryOfflineStore();
+    offlineStore.snapshot = routeWithStop("Bodega Rosita");
+    const { tracker } = fakeLocationTracker();
+    await signedInWith(offlineStore, tracker);
+    expect(tracker.stop).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Cerrar sesión" }));
+
+    expect(await screen.findByLabelText("Usuario")).toBeOnTheScreen();
+    expect(tracker.stop).toHaveBeenCalledTimes(1);
   });
 
   it("con pendientes avisa cuántas, deja cancelar o seguir, y no las borra", async () => {
@@ -363,10 +406,17 @@ describe("cerrar sesión con la ruta y la cola en el celular", () => {
     ]);
   });
 
-  it("con una sola pendiente lo dice en singular", async () => {
+  it("con una sola pendiente lo dice en singular, sin contar los puntos de la ubicación", async () => {
     const offlineStore = memoryOfflineStore();
     offlineStore.snapshot = routeWithStop("Bodega Rosita");
     await offlineStore.addOperation(queuedMark("op-1"), DRIVER.id);
+    // Los puntos también salen al volver a entrar, pero no son algo que hizo.
+    for (const id of ["punto-1", "punto-2"]) {
+      await offlineStore.addOperation(
+        { ...queuedMark(id), type: "ROUTE_LOCATION_POINT", payload: { routeId: "r-1" } },
+        DRIVER.id,
+      );
+    }
     await signedInWith(offlineStore);
 
     await fireEvent.press(screen.getByRole("button", { name: "Cerrar sesión" }));

@@ -213,6 +213,35 @@ describe("Operaciones en revisión", () => {
     expect(screen.queryByText(/ROUTE_START/)).toBeNull();
   });
 
+  // Fase 3, fila 11c: un punto de la ubicación en segundo plano que llegó con
+  // la ruta ya terminada; la hora es la del celular, leída en Lima.
+  it("la ubicación del celular se lee en palabras de la planta, con su hora en Lima", async () => {
+    stubCatalogs();
+    stubInbox([
+      [
+        {
+          ...delivered,
+          type: "ROUTE_LOCATION_POINT",
+          payload: {
+            routeId: ROUTE_ID,
+            latitude: "-12.046374",
+            longitude: "-77.042793",
+            recordedAt: "2026-10-23T19:05:00.000Z",
+          },
+          rejectionReason: "Solo se recibe la ubicación de una ruta en curso; esta está terminada",
+          stop: undefined,
+        },
+      ],
+    ]);
+
+    await renderPage();
+
+    expect(
+      await screen.findByText("Ubicación del celular, tomada el 23/10/2026 14:05"),
+    ).toBeTruthy();
+    expect(screen.queryByText(/ROUTE_LOCATION_POINT/)).toBeNull();
+  });
+
   it("quien no es administrador no ve el enlace ni consulta la bandeja", async () => {
     const inbox = stubInbox([[delivered]]);
 

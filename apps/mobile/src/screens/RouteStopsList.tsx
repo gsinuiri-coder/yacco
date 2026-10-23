@@ -9,9 +9,12 @@ import type {
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, AppState, Text, View } from "react-native";
 
+import { NO_LOCATION_TRACKER, type LocationTracker } from "../location/location-tracker";
+import { DEFAULT_LOCATION_INTERVAL_SECONDS } from "../location/route-tracking";
 import { containersWithQueued, debtWithQueued } from "../offline/delivery-effect";
 import type { OfflineStore, QueuedOperation } from "../offline/offline-store";
 import type { Outbox } from "../offline/outbox";
+import { isRouteInProgress, lastStartOf, shouldFollowRoute } from "../offline/route-progress";
 import { loadRouteSnapshot } from "../offline/route-snapshot";
 import { ApiError, SessionExpiredError, type ApiClient } from "../session/api-client";
 import { styles } from "../theme";
@@ -35,6 +38,8 @@ interface RouteStopsListProps {
   driverId: string;
   /** El servidor rechazó el refresh al bajar la ruta o mandar la cola. */
   onSessionExpired?: (error: SessionExpiredError) => void;
+  /** La ubicación: sigue a la ruta en curso y acompaña cada marca. */
+  locationTracker?: LocationTracker;
 }
 
 /** La última marca que el celular hizo de cada parada: la cola está en el orden en que se hizo. */
@@ -45,17 +50,6 @@ function lastMarkByStop(operations: QueuedOperation[]): Map<string, QueuedOperat
     byStop.set((op.envelope.payload as unknown as StopMarkPayloadV1).stopId, op);
   }
   return byStop;
-}
-
-/** El último «Empezar la ruta» que el celular hizo para esta ruta. */
-function lastStartOf(operations: QueuedOperation[], routeId: string): QueuedOperation | null {
-  return (
-    operations.findLast(
-      (op) =>
-        op.envelope.type === "ROUTE_START" &&
-        (op.envelope.payload as unknown as RouteStartPayloadV1).routeId === routeId,
-    ) ?? null
-  );
 }
 
 /**
@@ -69,6 +63,7 @@ export function RouteStopsList({
   outbox,
   driverId,
   onSessionExpired,
+  locationTracker = NO_LOCATION_TRACKER,
 }: RouteStopsListProps) {
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [operations, setOperations] = useState<QueuedOperation[]>([]);
@@ -130,6 +125,18 @@ export function RouteStopsList({
     };
   }, [hasPending, send]);
 
+  // La ubicación en segundo plano sigue a la ruta en curso y se apaga sola
+  // cuando deja de estarlo (Fase 3, fila 11c). Lo que la tarea deja en la
+  // cola sale con el resto.
+  const snapshot = loaded.status === "ready" ? loaded.snapshot : null;
+  const following = snapshot !== null && shouldFollowRoute(snapshot.route, operations);
+  const intervalSeconds = snapshot?.locationIntervalSeconds ?? DEFAULT_LOCATION_INTERVAL_SECONDS;
+  useEffect(() => {
+    if (snapshot === null) return;
+    void locationTracker.follow(following, intervalSeconds);
+  }, [locationTracker, snapshot, following, intervalSeconds]);
+  useEffect(() => locationTracker.onRecorded(() => void send()), [locationTracker, send]);
+
   if (loaded.status === "loading") {
     return <ActivityIndicator size="large" accessibilityLabel="Cargando la ruta" />;
   }
@@ -148,38 +155,36 @@ export function RouteStopsList({
     );
   }
 
-  const { snapshot } = loaded;
-  const { route } = snapshot;
+  const day = loaded.snapshot;
+  const { route } = day;
   const marks = lastMarkByStop(operations);
   const queuedStart = lastStartOf(operations, route.id);
-  // Empezada en el celular, ya se trabaja: salvo que la oficina la haya
-  // rechazado, que entonces gana el servidor.
-  const inProgress =
-    route.status === "IN_PROGRESS" ||
-    (route.status === "PLANNED" && queuedStart !== null && queuedStart.state !== "IN_REVIEW");
+  const inProgress = isRouteInProgress(route, operations);
 
   function deliveryOf(stop: RouteStop): StopDeliveryContext | null {
-    const location = snapshot.locations.find((candidate) => candidate.id === stop.location.id);
+    const location = day.locations.find((candidate) => candidate.id === stop.location.id);
     if (location === undefined) return null;
     return {
       location,
-      order: snapshot.orders.find((order) => order.stopId === stop.id) ?? null,
-      catalog: snapshot,
-      debtBefore: debtWithQueued(snapshot, operations, location.customer.id),
+      order: day.orders.find((order) => order.stopId === stop.id) ?? null,
+      catalog: day,
+      debtBefore: debtWithQueued(day, operations, location.customer.id),
     };
   }
 
   function balancesOf(stop: RouteStop): StopBalances | null {
-    const location = snapshot.locations.find((candidate) => candidate.id === stop.location.id);
+    const location = day.locations.find((candidate) => candidate.id === stop.location.id);
     if (location === undefined) return null;
     return {
-      debt: debtWithQueued(snapshot, operations, location.customer.id),
-      containers: containersWithQueued(snapshot, operations, location.id),
+      debt: debtWithQueued(day, operations, location.customer.id),
+      containers: containersWithQueued(day, operations, location.id),
     };
   }
 
+  /** Con la posición de ese momento (#309), sin frenar la marca si no se sabe. */
   async function mark(stopId: string, body: MarkRouteStopBody): Promise<void> {
-    const payload: StopMarkPayloadV1 = { routeId: route.id, stopId, ...body };
+    const position = await locationTracker.markedPosition();
+    const payload: StopMarkPayloadV1 = { routeId: route.id, stopId, ...body, ...position };
     await queue("STOP_MARK", payload);
   }
 

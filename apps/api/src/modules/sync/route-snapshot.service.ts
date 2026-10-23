@@ -7,6 +7,7 @@ import { resolveEffectivePrices } from "../customer-prices/customer-prices.servi
 import { formatBusinessDate, parseBusinessDate } from "../orders/orders.service.js";
 import { RoutesService, stopPoints } from "../routes/routes.service.js";
 import type { RouteActor } from "../routes/routes.service.js";
+import { SettingsService } from "../settings/settings.service.js";
 import type {
   RouteSnapshotDto,
   RouteSnapshotQueryDto,
@@ -74,6 +75,7 @@ export class RouteSnapshotService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly routesService: RoutesService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async build(
@@ -140,6 +142,8 @@ export class RouteSnapshotService {
       })),
       containerTypes,
       paymentMethods,
+      // Viaja con la ruta para que el celular lo tenga también sin señal.
+      locationIntervalSeconds: this.settingsService.locationTracking().intervalSeconds,
     };
   }
 

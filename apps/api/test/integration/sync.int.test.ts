@@ -228,8 +228,31 @@ function vanSale(
   };
 }
 
+function locationPoint(
+  routeId: string,
+  recordedAt = new Date(),
+  position = { latitude: "-12.046374", longitude: "-77.042793" },
+) {
+  return {
+    id: randomUUID(),
+    type: "ROUTE_LOCATION_POINT",
+    version: 1,
+    clientTimestamp: recordedAt.toISOString(),
+    payload: {
+      routeId,
+      clientPointId: randomUUID(),
+      ...position,
+      accuracyM: "12.50",
+      recordedAt: recordedAt.toISOString(),
+    },
+  };
+}
+
 type Envelope =
-  ReturnType<typeof failedMark> | ReturnType<typeof vanSale> | ReturnType<typeof routeStart>;
+  | ReturnType<typeof failedMark>
+  | ReturnType<typeof vanSale>
+  | ReturnType<typeof routeStart>
+  | ReturnType<typeof locationPoint>;
 
 function send(operations: Envelope[], token = driverToken) {
   return request(server())
@@ -849,6 +872,110 @@ describe("POST /api/v1/sync/operations (integration)", () => {
 
       expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
       expect(await routeStatus(routeId)).toBe("PLANNED");
+    });
+  });
+
+  // Fase 3, fila 11c: la ubicación en segundo plano viaja por la misma cola,
+  // por el mismo servicio que POST /routes/:id/location-points.
+  describe("ubicación en segundo plano (ROUTE_LOCATION_POINT)", () => {
+    async function routePoints(routeId: string) {
+      return prisma.routeLocationPoint.findMany({
+        where: { routeId },
+        orderBy: { recordedAt: "asc" },
+        select: {
+          latitude: true,
+          longitude: true,
+          accuracyM: true,
+          recordedAt: true,
+          driverId: true,
+          vehicleId: true,
+        },
+      });
+    }
+
+    it("stores the points taken without signal once, with the phone's hour, even if the batch arrives twice", async () => {
+      const { routeId } = await startedRoute(driverId, 0);
+      const firstAt = new Date(Date.now() - 10 * 60 * 1000);
+      const secondAt = new Date(Date.now() - 5 * 60 * 1000);
+      const batch = [
+        locationPoint(routeId, firstAt, { latitude: "-12.046374", longitude: "-77.042793" }),
+        locationPoint(routeId, secondAt, { latitude: "-12.050000", longitude: "-77.040000" }),
+      ];
+
+      const first = await send(batch).expect(200);
+      const resent = await send(batch).expect(200);
+
+      expect(first.body.results.map((result: { status: string }) => result.status)).toEqual([
+        "APPLIED",
+        "APPLIED",
+      ]);
+      expect(resent.body.results.map((result: { status: string }) => result.status)).toEqual([
+        "DUPLICATE",
+        "DUPLICATE",
+      ]);
+      const points = await routePoints(routeId);
+      expect(
+        points.map((point) => ({
+          latitude: point.latitude.toFixed(6),
+          longitude: point.longitude.toFixed(6),
+          accuracyM: point.accuracyM?.toFixed(2),
+          recordedAt: point.recordedAt.toISOString(),
+          driverId: point.driverId,
+          vehicleId: point.vehicleId,
+        })),
+      ).toEqual([
+        {
+          latitude: "-12.046374",
+          longitude: "-77.042793",
+          accuracyM: "12.50",
+          recordedAt: firstAt.toISOString(),
+          driverId,
+          vehicleId,
+        },
+        {
+          latitude: "-12.050000",
+          longitude: "-77.040000",
+          accuracyM: "12.50",
+          recordedAt: secondAt.toISOString(),
+          driverId,
+          vehicleId,
+        },
+      ]);
+    });
+
+    it("quarantines a point of a route that is no longer in progress, storing nothing", async () => {
+      const { routeId } = await startedRoute(driverId, 0);
+      await request(server())
+        .patch(`/api/v1/routes/${routeId}/finish`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      const response = await send([locationPoint(routeId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+      expect(response.body.results[0].reason).toContain("en curso");
+      expect(await routePoints(routeId)).toEqual([]);
+    });
+
+    it("does not let a driver send points for another driver's route", async () => {
+      const { routeId } = await startedRoute(otherDriverId, 0);
+
+      const response = await send([locationPoint(routeId)]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: true });
+      expect(await routePoints(routeId)).toEqual([]);
+    });
+
+    it("rejects a point the REST endpoint would reject, with the same rule", async () => {
+      const { routeId } = await startedRoute(driverId, 0);
+
+      const response = await send([
+        locationPoint(routeId, new Date(), { latitude: "-91.000000", longitude: "-77.000000" }),
+      ]).expect(200);
+
+      expect(response.body.results[0]).toMatchObject({ status: "REJECTED", quarantined: false });
+      expect(response.body.results[0].reason).toContain("latitud");
+      expect(await routePoints(routeId)).toEqual([]);
     });
   });
 

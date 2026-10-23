@@ -3,6 +3,7 @@ import { plainToInstance } from "class-transformer";
 import type { ClassConstructor } from "class-transformer";
 import { validate } from "class-validator";
 import type { ValidationError } from "class-validator";
+import { RouteLocationPointPayloadV1Dto } from "./dto/route-location-point-payload.dto.js";
 import { RouteStartPayloadV1Dto } from "./dto/route-start-payload.dto.js";
 import { StopAddVanSalePayloadV1Dto } from "./dto/stop-add-van-sale-payload.dto.js";
 import { StopMarkPayloadV1Dto } from "./dto/stop-mark-payload.dto.js";
@@ -11,6 +12,7 @@ export const SYNC_OPERATION_TYPES = {
   STOP_MARK: "STOP_MARK",
   STOP_ADD_VAN_SALE: "STOP_ADD_VAN_SALE",
   ROUTE_START: "ROUTE_START",
+  ROUTE_LOCATION_POINT: "ROUTE_LOCATION_POINT",
 } as const;
 
 /**
@@ -24,7 +26,11 @@ export type NormalizedSyncOperation =
       type: typeof SYNC_OPERATION_TYPES.STOP_ADD_VAN_SALE;
       payload: StopAddVanSalePayloadV1Dto;
     }
-  | { type: typeof SYNC_OPERATION_TYPES.ROUTE_START; payload: RouteStartPayloadV1Dto };
+  | { type: typeof SYNC_OPERATION_TYPES.ROUTE_START; payload: RouteStartPayloadV1Dto }
+  | {
+      type: typeof SYNC_OPERATION_TYPES.ROUTE_LOCATION_POINT;
+      payload: RouteLocationPointPayloadV1Dto;
+    };
 
 /**
  * Cómo leer cada `(type, version)` que alguna vez salió en una app. NUNCA se
@@ -52,6 +58,12 @@ const READERS: Record<
     1: async (payload) => ({
       type: SYNC_OPERATION_TYPES.ROUTE_START,
       payload: await validatedPayload(RouteStartPayloadV1Dto, payload),
+    }),
+  },
+  [SYNC_OPERATION_TYPES.ROUTE_LOCATION_POINT]: {
+    1: async (payload) => ({
+      type: SYNC_OPERATION_TYPES.ROUTE_LOCATION_POINT,
+      payload: await validatedPayload(RouteLocationPointPayloadV1Dto, payload),
     }),
   },
 };

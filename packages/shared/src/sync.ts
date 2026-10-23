@@ -7,10 +7,12 @@ import type { NamedReference } from "./container-balances.js";
 import type { EffectivePrice } from "./customer-prices.js";
 import type { PaymentMethod } from "./payments.js";
 import type { ProductType } from "./products.js";
+import type { RouteLocationPointInput } from "./route-locations.js";
 import type { MarkRouteStopBody, Route, RouteTruckStockLine } from "./routes.js";
 
 /** Operation types the API knows. A new shape is a new `version`, never an edit. */
-export type SyncOperationType = "STOP_MARK" | "STOP_ADD_VAN_SALE" | "ROUTE_START";
+export type SyncOperationType =
+  "STOP_MARK" | "STOP_ADD_VAN_SALE" | "ROUTE_START" | "ROUTE_LOCATION_POINT";
 
 /** One queued action. `id` is generated on the phone; `clientTimestamp` is the phone's clock. */
 export interface SyncOperationEnvelope<TPayload = Record<string, unknown>> {
@@ -46,6 +48,15 @@ export interface StopAddVanSalePayloadV1 extends Omit<
  * Already in progress applies with no change; finished goes to quarantine.
  */
 export interface RouteStartPayloadV1 {
+  routeId: string;
+}
+
+/**
+ * `ROUTE_LOCATION_POINT` v1: where the phone was, taken in the background
+ * while the route is in progress. The same point as POST
+ * /routes/:id/location-points, through the queue so it survives no signal.
+ */
+export interface RouteLocationPointPayloadV1 extends RouteLocationPointInput {
   routeId: string;
 }
 
@@ -149,6 +160,8 @@ export interface RouteSnapshot {
   }[];
   containerTypes: NamedReference[];
   paymentMethods: Pick<PaymentMethod, "id" | "name" | "requiresConfirmation">[];
+  /** How often the phone records where it is while the route is in progress. */
+  locationIntervalSeconds: number;
 }
 
 /** PATCH /sync/operations/:id/resolution */

@@ -10,7 +10,10 @@ import { PrismaService } from "../../prisma/prisma.service.js";
 import { formatBusinessDate } from "../orders/orders.service.js";
 import { lockRouteAndReadStatus } from "../routes/routes.service.js";
 import type { RouteActor } from "../routes/routes.service.js";
-import type { CreateRouteLocationPointsDto } from "./dto/create-route-location-points.dto.js";
+import type {
+  CreateRouteLocationPointsDto,
+  RouteLocationPointInputDto,
+} from "./dto/create-route-location-points.dto.js";
 import type {
   LiveRouteLocationsDto,
   RouteLocationPointDto,
@@ -69,36 +72,49 @@ export class RouteLocationsService {
     dto: CreateRouteLocationPointsDto,
     actor: RouteActor,
   ): Promise<RouteLocationPointsReceiptDto> {
-    return this.prisma.$transaction(async (tx) => {
-      const status = await lockRouteAndReadStatus(tx, routeId);
-      const route = await tx.route.findUniqueOrThrow({
-        where: { id: routeId },
-        select: { driverId: true, vehicleId: true },
-      });
-      if (route.driverId !== actor.id) {
-        throw new ForbiddenException("Solo el chofer de la ruta manda su ubicación");
-      }
-      if (status !== RouteStatus.IN_PROGRESS) {
-        throw new ConflictException(
-          `Solo se recibe la ubicación de una ruta en curso; esta está ${ROUTE_STATUS_LABELS[status]}`,
-        );
-      }
+    return this.prisma.$transaction((tx) =>
+      this.recordPointsWithinTransaction(tx, routeId, dto.points, actor),
+    );
+  }
 
-      const { count } = await tx.routeLocationPoint.createMany({
-        data: dto.points.map((point) => ({
-          clientPointId: point.clientPointId,
-          routeId,
-          driverId: route.driverId,
-          vehicleId: route.vehicleId,
-          latitude: new Prisma.Decimal(point.latitude),
-          longitude: new Prisma.Decimal(point.longitude),
-          accuracyM: point.accuracyM === undefined ? null : new Prisma.Decimal(point.accuracyM),
-          recordedAt: new Date(point.recordedAt),
-        })),
-        skipDuplicates: true,
-      });
-      return { received: dto.points.length, stored: count };
+  /**
+   * The same rule inside a transaction somebody else opened: the driver's
+   * app sends each point through POST /sync/operations (Fase 3, fila 11c).
+   */
+  async recordPointsWithinTransaction(
+    tx: Prisma.TransactionClient,
+    routeId: string,
+    points: RouteLocationPointInputDto[],
+    actor: RouteActor,
+  ): Promise<RouteLocationPointsReceiptDto> {
+    const status = await lockRouteAndReadStatus(tx, routeId);
+    const route = await tx.route.findUniqueOrThrow({
+      where: { id: routeId },
+      select: { driverId: true, vehicleId: true },
     });
+    if (route.driverId !== actor.id) {
+      throw new ForbiddenException("Solo el chofer de la ruta manda su ubicación");
+    }
+    if (status !== RouteStatus.IN_PROGRESS) {
+      throw new ConflictException(
+        `Solo se recibe la ubicación de una ruta en curso; esta está ${ROUTE_STATUS_LABELS[status]}`,
+      );
+    }
+
+    const { count } = await tx.routeLocationPoint.createMany({
+      data: points.map((point) => ({
+        clientPointId: point.clientPointId,
+        routeId,
+        driverId: route.driverId,
+        vehicleId: route.vehicleId,
+        latitude: new Prisma.Decimal(point.latitude),
+        longitude: new Prisma.Decimal(point.longitude),
+        accuracyM: point.accuracyM === undefined ? null : new Prisma.Decimal(point.accuracyM),
+        recordedAt: new Date(point.recordedAt),
+      })),
+      skipDuplicates: true,
+    });
+    return { received: points.length, stored: count };
   }
 
   async listRoutePoints(routeId: string): Promise<RouteLocationPointDto[]> {
