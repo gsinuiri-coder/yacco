@@ -11,7 +11,7 @@ import type { OfflineStore } from "../src/offline/offline-store";
 import { createOutbox } from "../src/offline/outbox";
 import { RouteStopsList } from "../src/screens/RouteStopsList";
 import { ApiError, OfflineError, type ApiClient } from "../src/session/api-client";
-import { memoryOfflineStore } from "./fakes";
+import { deliveryCatalog, memoryOfflineStore } from "./fakes";
 
 function stop(position: number, name: string, overrides: Partial<RouteStop> = {}): RouteStop {
   return {
@@ -34,7 +34,14 @@ function snapshotWith(...stops: RouteStop[]): RouteSnapshot {
 }
 
 function snapshotOf(status: RouteStatus, ...stops: RouteStop[]): RouteSnapshot {
-  return { route: { id: "r-1", status, stops } } as unknown as RouteSnapshot;
+  return {
+    route: { id: "r-1", status, stops },
+    locations: [],
+    orders: [],
+    products: [],
+    containerTypes: [],
+    paymentMethods: [],
+  } as unknown as RouteSnapshot;
 }
 
 type SyncReply = SyncBatchResult | Error | ((body: SyncBatchBody) => SyncBatchResult);
@@ -267,5 +274,144 @@ describe("marcar una parada como no entregada", () => {
 
     expect(await screen.findByText("1. Bodega Rosita")).toBeOnTheScreen();
     expect(screen.queryByRole("button", { name: "No se pudo entregar" })).toBeNull();
+  });
+});
+
+/** La ruta en curso con la parada de Bodega Rosita, que pidió 3 recargas. */
+function deliverySnapshot(): RouteSnapshot {
+  return {
+    ...snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita")),
+    ...deliveryCatalog(),
+    orders: [
+      {
+        id: "o-1",
+        stopId: "stop-1",
+        items: [
+          {
+            product: { id: "p-refill", name: "Recarga 20L" },
+            productType: "REFILL",
+            quantity: 3,
+            unitPrice: "12.50",
+          },
+        ],
+      },
+    ],
+  } as RouteSnapshot;
+}
+
+async function openDelivery(store: OfflineStore, snapshot = deliverySnapshot()) {
+  await renderList(fakeClient(snapshot, OFFLINE).client, store);
+  const card = await screen.findByLabelText("Parada 1");
+  await fireEvent.press(within(card).getByRole("button", { name: "Se entregó" }));
+}
+
+const saveDelivery = () =>
+  fireEvent.press(screen.getByRole("button", { name: "Guardar la entrega" }));
+
+describe("marcar una parada como entregada", () => {
+  it("precarga lo pedido y sin señal queda «Entregada · Pendiente de enviar» con venta, vacíos y cobro", async () => {
+    const store = memoryOfflineStore();
+    await openDelivery(store);
+
+    expect(screen.getByLabelText("Cantidad de Recarga 20L")).toHaveDisplayValue("3");
+    expect(screen.getByText("Precio pactado: S/ 12.50 · Subtotal: S/ 37.50")).toBeOnTheScreen();
+    expect(screen.getByText("Total de la venta: S/ 37.50")).toBeOnTheScreen();
+
+    await fireEvent.changeText(screen.getByLabelText("Vacíos devueltos de Bidón 20L"), "2");
+    await fireEvent.press(screen.getByRole("radio", { name: "Efectivo" }));
+    await fireEvent.changeText(screen.getByLabelText("Monto cobrado"), "20.00");
+    await saveDelivery();
+
+    expect(await screen.findByText("Entregada · Pendiente de enviar")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Se entregó" })).toBeNull();
+    expect(store.operations).toHaveLength(1);
+    // El precio no viaja: el servidor cobra el pactado, como en «Mi ruta».
+    expect(store.operations[0]?.envelope.payload).toEqual({
+      routeId: "r-1",
+      stopId: "stop-1",
+      status: "DELIVERED",
+      items: [{ productId: "p-refill", quantity: 3 }],
+      containersReturned: [{ containerTypeId: "ct-20l", quantity: 2 }],
+      payment: { paymentMethodId: "pm-cash", amount: "20.00" },
+    });
+  });
+
+  it("entrega distinto de lo pedido: otra cantidad y otro producto, al precio del local", async () => {
+    const store = memoryOfflineStore();
+    await openDelivery(store);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Agregar producto" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Bidón nuevo 20L" }));
+    await fireEvent.changeText(screen.getByLabelText("Cantidad de Recarga 20L"), "5");
+
+    expect(screen.getByText("Total de la venta: S/ 87.50")).toBeOnTheScreen();
+    await saveDelivery();
+
+    await screen.findByText("Entregada · Pendiente de enviar");
+    expect(store.operations[0]?.envelope.payload).toMatchObject({
+      items: [
+        { productId: "p-refill", quantity: 5 },
+        { productId: "p-jug", quantity: 1 },
+      ],
+    });
+    // Al fiado: sin cobro en el sobre.
+    expect(store.operations[0]?.envelope.payload).not.toHaveProperty("payment");
+  });
+
+  it("avisa que supera el límite de crédito y la guarda igual", async () => {
+    const store = memoryOfflineStore();
+    await openDelivery(store);
+    const warning = "Esta venta supera el límite de crédito de Bodega Rosita. Se guarda igual.";
+
+    // Debe 10.00: 3 recargas al fiado la dejan en 47.50, dentro de 50.00.
+    expect(screen.queryByText(warning)).toBeNull();
+
+    // 4 recargas la dejan en 60.00.
+    await fireEvent.changeText(screen.getByLabelText("Cantidad de Recarga 20L"), "4");
+    expect(screen.getByText(warning)).toBeOnTheScreen();
+
+    await saveDelivery();
+    expect(await screen.findByText("Entregada · Pendiente de enviar")).toBeOnTheScreen();
+    expect(store.operations).toHaveLength(1);
+  });
+
+  it("sin productos avisa con las palabras de la web y no guarda nada", async () => {
+    const store = memoryOfflineStore();
+    await openDelivery(store);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Quitar Recarga 20L" }));
+    await saveDelivery();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Una entrega tiene que decir qué se entregó",
+    );
+    expect(store.operations).toHaveLength(0);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.getByRole("button", { name: "Se entregó" })).toBeOnTheScreen();
+  });
+
+  it("si el celular no la pudo guardar, lo dice y deja reintentar", async () => {
+    const store = memoryOfflineStore();
+    store.addOperation = () => Promise.reject(new Error("SQLITE_FULL"));
+    await openDelivery(store);
+
+    await saveDelivery();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudo guardar en el celular. Inténtalo de nuevo.",
+    );
+    expect(screen.getByRole("button", { name: "Guardar la entrega" })).toBeOnTheScreen();
+  });
+
+  it("una parada sin el local en la ruta guardada no ofrece «Se entregó»", async () => {
+    await renderList(
+      fakeClient(snapshotOf("IN_PROGRESS", stop(1, "Bodega Rosita")), OFFLINE).client,
+      memoryOfflineStore(),
+    );
+
+    const card = await screen.findByLabelText("Parada 1");
+    expect(within(card).queryByRole("button", { name: "Se entregó" })).toBeNull();
+    expect(within(card).getByRole("button", { name: "No se pudo entregar" })).toBeOnTheScreen();
   });
 });

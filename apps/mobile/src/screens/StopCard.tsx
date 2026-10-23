@@ -1,9 +1,10 @@
-import type { RouteStop, StopMarkPayloadV1, StopStatus } from "@yacco/shared";
+import type { MarkRouteStopBody, RouteStop, StopMarkPayloadV1, StopStatus } from "@yacco/shared";
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 
 import { QUEUED_OPERATION_STATE_LABELS, type QueuedOperation } from "../offline/offline-store";
 import { styles } from "../theme";
+import { StopDeliveryForm, type StopDeliveryContext } from "./StopDeliveryForm";
 
 /** Las mismas palabras que la web (route-status.ts). */
 export const STOP_STATUS_LABELS: Record<StopStatus, string> = {
@@ -18,8 +19,13 @@ interface StopCardProps {
   queued: QueuedOperation | null;
   /** La ruta está en curso: recién ahí se marcan paradas, igual que en la web. */
   canMark: boolean;
+  /** Sin el local en la ruta guardada no hay precios ni saldos: no se ofrece «Se entregó». */
+  delivery: StopDeliveryContext | null;
+  onDeliver: (body: MarkRouteStopBody) => Promise<void>;
   onFail: (failureReason: string) => Promise<void>;
 }
+
+type Mode = "idle" | "delivering" | "failing";
 
 function statusLine(stop: RouteStop, queued: QueuedOperation | null): string {
   const origin = stop.origin === "VAN_SALE" ? " · Venta en ruta" : "";
@@ -33,8 +39,8 @@ function statusLine(stop: RouteStop, queued: QueuedOperation | null): string {
   return `${STOP_STATUS_LABELS[shown]}${origin} · ${label}`;
 }
 
-export function StopCard({ stop, queued, canMark, onFail }: StopCardProps) {
-  const [failing, setFailing] = useState(false);
+export function StopCard({ stop, queued, canMark, delivery, onDeliver, onFail }: StopCardProps) {
+  const [mode, setMode] = useState<Mode>("idle");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -49,7 +55,7 @@ export function StopCard({ stop, queued, canMark, onFail }: StopCardProps) {
     setSaving(true);
     try {
       await onFail(failureReason);
-      setFailing(false);
+      setMode("idle");
     } catch {
       setError("No se pudo guardar en el celular. Inténtalo de nuevo.");
     } finally {
@@ -67,17 +73,32 @@ export function StopCard({ stop, queued, canMark, onFail }: StopCardProps) {
       <Text>{statusLine(stop, queued)}</Text>
       {queued?.state === "IN_REVIEW" && queued.reason !== null && <Text>{queued.reason}</Text>}
 
-      {markable && !failing && (
-        <Pressable
-          style={styles.secondaryButton}
-          accessibilityRole="button"
-          onPress={() => setFailing(true)}
-        >
-          <Text style={styles.secondaryButtonText}>No se pudo entregar</Text>
-        </Pressable>
+      {markable && mode === "idle" && (
+        <View>
+          {delivery !== null && (
+            <Pressable
+              style={styles.button}
+              accessibilityRole="button"
+              onPress={() => setMode("delivering")}
+            >
+              <Text style={styles.buttonText}>Se entregó</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={styles.secondaryButton}
+            accessibilityRole="button"
+            onPress={() => setMode("failing")}
+          >
+            <Text style={styles.secondaryButtonText}>No se pudo entregar</Text>
+          </Pressable>
+        </View>
       )}
 
-      {markable && failing && (
+      {markable && mode === "delivering" && delivery !== null && (
+        <StopDeliveryForm {...delivery} onSave={onDeliver} onCancel={() => setMode("idle")} />
+      )}
+
+      {markable && mode === "failing" && (
         <View>
           <TextInput
             style={styles.input}
@@ -107,7 +128,7 @@ export function StopCard({ stop, queued, canMark, onFail }: StopCardProps) {
             style={styles.secondaryButton}
             accessibilityRole="button"
             onPress={() => {
-              setFailing(false);
+              setMode("idle");
               setError(null);
             }}
           >

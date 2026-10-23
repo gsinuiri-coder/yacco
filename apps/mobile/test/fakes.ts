@@ -79,4 +79,50 @@ export function memoryOfflineStore(): OfflineStore & {
   };
 }
 
+/**
+ * Lo que la ruta guardada trae para entregar en el local `loc-1` del cliente
+ * `c-1`: recarga a 12.50 (el envase va prestado), bidón vendido a 25.00 (sale
+ * del parque), efectivo (confirmado al toque) y Yape (lo confirma la oficina).
+ * Debe 10.00 con un límite de 50.00.
+ */
+export function deliveryCatalog(): Pick<
+  RouteSnapshot,
+  "products" | "containerTypes" | "paymentMethods"
+> & { locations: RouteSnapshot["locations"] } {
+  const jug = { id: "ct-20l", name: "Bidón 20L" };
+  return {
+    products: [
+      { id: "p-refill", name: "Recarga 20L", type: "REFILL", containerType: jug },
+      { id: "p-jug", name: "Bidón nuevo 20L", type: "CONTAINER_SALE", containerType: jug },
+    ],
+    containerTypes: [jug],
+    paymentMethods: [
+      { id: "pm-cash", name: "Efectivo", requiresConfirmation: false },
+      { id: "pm-yape", name: "Yape", requiresConfirmation: true },
+    ],
+    locations: [
+      {
+        id: "loc-1",
+        name: "Bodega Rosita",
+        address: "Av. Los Olivos 100",
+        addressReference: "",
+        phone: "",
+        contactName: null,
+        latitude: null,
+        longitude: null,
+        onRoute: true,
+        customer: { id: "c-1", name: "Cliente 1" },
+        debtBalance: "10.00",
+        creditLimit: "50.00",
+        containerBalances: [{ containerType: jug, quantity: 3 }],
+        loanedAccessories: [],
+        prices: [
+          { product: { id: "p-refill", name: "Recarga 20L" }, price: "12.50", source: "CUSTOMER" },
+          { product: { id: "p-jug", name: "Bidón nuevo 20L" }, price: "25.00", source: "LIST" },
+        ],
+      },
+    ],
+  };
+}
+
 export const DRIVER = { id: "u-1", username: "chofer.juan", roles: ["DRIVER" as const] };

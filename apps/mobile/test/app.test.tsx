@@ -24,6 +24,11 @@ function routeWithStop(name: string): RouteSnapshot {
         },
       ],
     },
+    locations: [],
+    orders: [],
+    products: [],
+    containerTypes: [],
+    paymentMethods: [],
   } as unknown as RouteSnapshot;
 }
 

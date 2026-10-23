@@ -1,13 +1,15 @@
-import type { RouteSnapshot, StopMarkPayloadV1 } from "@yacco/shared";
+import type { MarkRouteStopBody, RouteSnapshot, RouteStop, StopMarkPayloadV1 } from "@yacco/shared";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
+import { debtWithQueued } from "../offline/delivery-effect";
 import type { OfflineStore, QueuedOperation } from "../offline/offline-store";
 import type { Outbox } from "../offline/outbox";
 import { loadRouteSnapshot } from "../offline/route-snapshot";
 import { ApiError, type ApiClient } from "../session/api-client";
 import { styles } from "../theme";
 import { StopCard } from "./StopCard";
+import type { StopDeliveryContext } from "./StopDeliveryForm";
 
 type Loaded =
   | { status: "loading" }
@@ -90,16 +92,23 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
     );
   }
 
-  const { route } = loaded.snapshot;
+  const { snapshot } = loaded;
+  const { route } = snapshot;
   const marks = lastMarkByStop(operations);
 
-  async function fail(stopId: string, failureReason: string): Promise<void> {
-    const payload: StopMarkPayloadV1 = {
-      routeId: route.id,
-      stopId,
-      status: "FAILED",
-      failureReason,
+  function deliveryOf(stop: RouteStop): StopDeliveryContext | null {
+    const location = snapshot.locations.find((candidate) => candidate.id === stop.location.id);
+    if (location === undefined) return null;
+    return {
+      location,
+      order: snapshot.orders.find((order) => order.stopId === stop.id) ?? null,
+      catalog: snapshot,
+      debtBefore: debtWithQueued(snapshot, operations, location.customer.id),
     };
+  }
+
+  async function mark(stopId: string, body: MarkRouteStopBody): Promise<void> {
+    const payload: StopMarkPayloadV1 = { routeId: route.id, stopId, ...body };
     await outbox.enqueue("STOP_MARK", 1, payload);
     setOperations(await store.listOperations());
     void send();
@@ -117,7 +126,9 @@ export function RouteStopsList({ client, store, outbox }: RouteStopsListProps) {
           stop={stop}
           queued={marks.get(stop.id) ?? null}
           canMark={route.status === "IN_PROGRESS"}
-          onFail={(reason) => fail(stop.id, reason)}
+          delivery={deliveryOf(stop)}
+          onDeliver={(body) => mark(stop.id, body)}
+          onFail={(failureReason) => mark(stop.id, { status: "FAILED", failureReason })}
         />
       ))}
     </View>
