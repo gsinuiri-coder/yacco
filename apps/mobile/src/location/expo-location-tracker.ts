@@ -1,5 +1,6 @@
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
+import { PermissionsAndroid } from "react-native";
 
 import type { OfflineStore } from "../offline/offline-store";
 import type { LocationTracker, MarkedPosition } from "./location-tracker";
@@ -64,6 +65,11 @@ async function startUpdates(intervalSeconds: number): Promise<void> {
   if (foreground.status !== Location.PermissionStatus.GRANTED) return;
   const background = await Location.requestBackgroundPermissionsAsync();
   if (background.status !== Location.PermissionStatus.GRANTED) return;
+  // Desde Android 13 la notificación fija solo se ve con este permiso. Sin él
+  // la ubicación se guarda igual: la respuesta no cambia lo que sigue.
+  await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS).catch(
+    () => undefined,
+  );
 
   const minutes = Math.round(intervalSeconds / 60);
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {

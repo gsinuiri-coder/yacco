@@ -1,6 +1,7 @@
 import type { RouteSnapshot } from "@yacco/shared";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
+import { PermissionsAndroid } from "react-native";
 
 import {
   MARK_POSITION_TIMEOUT_MS,
@@ -51,6 +52,27 @@ describe("seguir la ruta en segundo plano", () => {
         }),
       }),
     );
+  });
+
+  it("pide el permiso de notificaciones antes de prender, para que la notificación fija se vea en Android 13+", async () => {
+    const request = jest.spyOn(PermissionsAndroid, "request").mockResolvedValue("denied");
+
+    await createExpoLocationTracker().follow(true, 300);
+
+    expect(request).toHaveBeenCalledWith(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+    // Sin ese permiso la ubicación se guarda igual.
+    expect(location.startLocationUpdatesAsync).toHaveBeenCalled();
+    expect(request.mock.invocationCallOrder[0]).toBeLessThan(
+      location.startLocationUpdatesAsync.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("si pedir ese permiso falla, la prende igual", async () => {
+    jest.spyOn(PermissionsAndroid, "request").mockRejectedValue(new Error("no disponible"));
+
+    await createExpoLocationTracker().follow(true, 300);
+
+    expect(location.startLocationUpdatesAsync).toHaveBeenCalled();
   });
 
   it("con un intervalo de un minuto lo dice en singular", async () => {

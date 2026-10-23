@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { ActivityIndicator, StatusBar, View } from "react-native";
 
-import type { LocationTracker } from "./location/location-tracker";
+import { NO_LOCATION_TRACKER, type LocationTracker } from "./location/location-tracker";
 import type { OfflineStore } from "./offline/offline-store";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -17,8 +18,21 @@ interface AppProps {
   locationTracker?: LocationTracker;
 }
 
-function CurrentScreen({ client, offlineStore, newOperationId, locationTracker }: AppProps) {
+function CurrentScreen({
+  client,
+  offlineStore,
+  newOperationId,
+  locationTracker = NO_LOCATION_TRACKER,
+}: AppProps) {
   const { state } = useSession();
+  // Sin sesión no se sigue a nadie: la cerró el chofer, la cortó el
+  // administrador desde «Usuarios» o venció. La ruta guardada puede quedar
+  // (para el mismo chofer al volver), pero la notificación fija se va.
+  const signedOut = state.status === "signedOut";
+  useEffect(() => {
+    if (signedOut) void locationTracker.stop();
+  }, [signedOut, locationTracker]);
+
   if (state.status === "restoring") {
     return (
       <View style={styles.centered}>

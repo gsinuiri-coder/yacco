@@ -36,31 +36,37 @@ export type RecordOutcome = "recorded" | "stop";
 
 /**
  * Lo que hace la tarea de fondo con cada tanda de lecturas: las deja en la
- * cola como `ROUTE_LOCATION_POINT`, a nombre del chofer de la ruta guardada y
- * con la hora en que se tomaron. Sin ruta guardada (cerró sesión) o con la
- * ruta que ya no está en curso, no guarda nada y pide apagarse: Android puede
- * despertarla con la app cerrada y nadie más la apagaría.
+ * cola como `ROUTE_LOCATION_POINT`, a nombre del chofer de la ruta guardada.
+ * Sin ruta guardada (cerró sesión) o con la ruta que ya no está en curso, no
+ * guarda nada y pide apagarse: Android puede despertarla con la app cerrada y
+ * nadie más la apagaría.
+ *
+ * Dos horas distintas: la del punto (`recordedAt`) es la del GPS, la del
+ * sobre es el reloj del celular, el mismo de «Empezar la ruta» y las marcas.
+ * La cola se ordena por la del sobre: con la del GPS, un reloj adelantado
+ * pondría los primeros puntos antes de empezar la ruta y el servidor los
+ * rechazaría.
  */
 export async function recordRouteLocations(
   store: OfflineStore,
   locations: DeviceLocation[],
   newId: () => string,
+  now: () => Date = () => new Date(),
 ): Promise<RecordOutcome> {
   const snapshot = await store.loadSnapshot();
   if (snapshot === null) return "stop";
   const { route } = snapshot;
   if (!shouldFollowRoute(route, await store.listOperations(route.driverId))) return "stop";
 
+  const outbox = createOutbox({ store, driverId: route.driverId, newId, now });
   for (const location of locations) {
     const strings = positionStrings(location.coords);
     if (strings === null) continue;
-    const takenAt = new Date(location.timestamp);
-    const outbox = createOutbox({ store, driverId: route.driverId, newId, now: () => takenAt });
     const payload: RouteLocationPointPayloadV1 = {
       routeId: route.id,
       clientPointId: newId(),
       ...strings,
-      recordedAt: takenAt.toISOString(),
+      recordedAt: new Date(location.timestamp).toISOString(),
     };
     await outbox.enqueue("ROUTE_LOCATION_POINT", 1, payload);
   }

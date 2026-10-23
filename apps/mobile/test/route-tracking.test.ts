@@ -1,4 +1,9 @@
-import type { RouteSnapshot, RouteStatus, SyncOperationEnvelope } from "@yacco/shared";
+import type {
+  RouteLocationPointPayloadV1,
+  RouteSnapshot,
+  RouteStatus,
+  SyncOperationEnvelope,
+} from "@yacco/shared";
 
 import type { QueuedOperationState } from "../src/offline/offline-store";
 import { markedPositionOf, recordRouteLocations } from "../src/location/route-tracking";
@@ -40,9 +45,10 @@ function counter() {
 }
 
 describe("la tarea de la ubicación en segundo plano", () => {
-  it("con la ruta en curso deja cada lectura en la cola del chofer, con la hora en que se tomó", async () => {
+  it("con la ruta en curso deja cada lectura en la cola del chofer: el punto con la hora del GPS, el sobre con la del celular", async () => {
     const store = memoryOfflineStore();
     store.snapshot = savedRoute("IN_PROGRESS");
+    const phoneClock = () => new Date("2026-10-23T14:06:00.000Z");
 
     const outcome = await recordRouteLocations(
       store,
@@ -51,6 +57,7 @@ describe("la tarea de la ubicación en segundo plano", () => {
         reading(-12.05, -77.04, "2026-10-23T14:05:00.000Z", 12),
       ],
       counter(),
+      phoneClock,
     );
 
     expect(outcome).toBe("recorded");
@@ -64,7 +71,7 @@ describe("la tarea de la ubicación en segundo plano", () => {
           id: "id-2",
           type: "ROUTE_LOCATION_POINT",
           version: 1,
-          clientTimestamp: "2026-10-23T14:00:00.000Z",
+          clientTimestamp: "2026-10-23T14:06:00.000Z",
           payload: {
             routeId: "r-1",
             clientPointId: "id-1",
@@ -82,7 +89,7 @@ describe("la tarea de la ubicación en segundo plano", () => {
           id: "id-4",
           type: "ROUTE_LOCATION_POINT",
           version: 1,
-          clientTimestamp: "2026-10-23T14:05:00.000Z",
+          clientTimestamp: "2026-10-23T14:06:00.000Z",
           payload: {
             routeId: "r-1",
             clientPointId: "id-3",
@@ -109,9 +116,11 @@ describe("la tarea de la ubicación en segundo plano", () => {
       counter(),
     );
 
-    expect(store.operations.map((op) => op.envelope.clientTimestamp)).toEqual([
-      "2026-10-23T14:05:00.000Z",
-    ]);
+    expect(
+      store.operations.map(
+        (op) => (op.envelope.payload as unknown as RouteLocationPointPayloadV1).recordedAt,
+      ),
+    ).toEqual(["2026-10-23T14:05:00.000Z"]);
   });
 
   it("con la ruta empezada en el celular sin señal ya la sigue", async () => {
@@ -123,6 +132,7 @@ describe("la tarea de la ubicación en segundo plano", () => {
       store,
       [reading(-12.05, -77.04, "2026-10-23T14:05:00.000Z")],
       counter(),
+      () => new Date("2026-10-23T14:05:00.000Z"),
     );
 
     expect(outcome).toBe("recorded");
@@ -130,6 +140,25 @@ describe("la tarea de la ubicación en segundo plano", () => {
       "ROUTE_START",
       "ROUTE_LOCATION_POINT",
     ]);
+  });
+
+  it("con el reloj del celular adelantado al GPS, el punto igual sale después de «Empezar la ruta»", async () => {
+    const store = memoryOfflineStore();
+    store.snapshot = savedRoute("PLANNED");
+    // El celular marca 14:10 al empezar; el GPS, que tiene la hora real, 14:02.
+    await queue(store, queued("start", "ROUTE_START", "2026-10-23T14:10:00.000Z"), "PENDING");
+
+    await recordRouteLocations(
+      store,
+      [reading(-12.05, -77.04, "2026-10-23T14:02:00.000Z")],
+      counter(),
+      () => new Date("2026-10-23T14:15:00.000Z"),
+    );
+
+    const sent = (await store.listOperations("u-1")).sort((a, b) =>
+      a.envelope.clientTimestamp.localeCompare(b.envelope.clientTimestamp),
+    );
+    expect(sent.map((op) => op.envelope.type)).toEqual(["ROUTE_START", "ROUTE_LOCATION_POINT"]);
   });
 
   it.each<[string, (store: ReturnType<typeof memoryOfflineStore>) => Promise<void>]>([

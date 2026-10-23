@@ -58,15 +58,17 @@ export function HomeScreen({
     setFailed(false);
     try {
       if (!confirmed) {
-        const pending = (await outbox.list()).filter((op) => op.state === "PENDING").length;
+        // Lo que hizo el chofer, no los puntos de la ubicación: esos también
+        // salen al volver a entrar, pero no son entregas que tenga que contar.
+        const pending = (await outbox.list()).filter(
+          (op) => op.state === "PENDING" && op.envelope.type !== "ROUTE_LOCATION_POINT",
+        ).length;
         if (pending > 0) {
           setPendingToConfirm(pending);
           setLeaving(false);
           return;
         }
       }
-      // Sin sesión no hay ruta que seguir: la notificación fija se va.
-      await locationTracker.stop();
       await offlineStore.clearSnapshot();
       await logout();
     } catch {

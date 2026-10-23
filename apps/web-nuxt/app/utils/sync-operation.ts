@@ -1,4 +1,4 @@
-import { formatSoles } from "@yacco/shared";
+import { formatInstantInLima, formatSoles } from "@yacco/shared";
 import type { StopStatus } from "@yacco/shared";
 import { STOP_STATUS } from "./route-status";
 
@@ -38,6 +38,12 @@ export function describeSyncOperation(
 ): string[] {
   if (type === "ROUTE_START") {
     return ["Empezar la ruta"];
+  }
+  if (type === "ROUTE_LOCATION_POINT") {
+    const recordedAt = (payload as { recordedAt?: unknown } | null)?.recordedAt;
+    return typeof recordedAt === "string"
+      ? [`Ubicación del celular, tomada el ${formatInstantInLima(recordedAt)}`]
+      : ["Ubicación del celular"];
   }
   if (type !== "STOP_MARK" || typeof payload !== "object" || payload === null) {
     return [`Operación «${type}», versión ${version}`];
