@@ -19,7 +19,7 @@
     "@nuxt/ui": "4.11.3",
     "@yacco/shared": "workspace:*",
     "leaflet": "^1.9.4",
-    "nuxt": "4.5.2",
+    "nuxt": "4.6.4",
     "tailwindcss": "4.3.3",
     "vue": "^3.5.43",
     "vue-router": "^5.3.1"
